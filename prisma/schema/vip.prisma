@@ -1,0 +1,71 @@
+// ============================================================
+// VIP (AR-7) — membership tiers driven by lifetime Gold-coin
+// recharge. Owned by the "vip" module. Recharge is accumulated from
+// the wallet's RECHARGE credits (consumed from WalletCreditedEvent);
+// crossing a tier threshold auto-upgrades and grants the tier's
+// benefits (badge/frame/entrance-effect cosmetics via the backpack).
+// Immutable upgrade + recharge ledgers. No cross-module relations.
+// ============================================================
+
+/// VIP tiers (PRD). NONE is the default (no VIP). Ordinal order is the tier rank.
+enum VipLevel {
+  NONE
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+  ELITE
+  TITAN
+}
+
+/// A user's current VIP tier + lifetime recharge (denormalised for fast reads).
+model VipStatus {
+  userId           String   @id @db.Uuid
+  level            VipLevel @default(NONE)
+  lifetimeRecharge BigInt   @default(0)
+  updatedAt        DateTime @updatedAt
+
+  @@map("vip_status")
+}
+
+/// Admin-managed tier config. `minRecharge` is the lifetime gold recharge to
+/// reach the tier; `benefits` is a JSON array of `{ kind, cosmeticId? , ... }`
+/// (cosmetics granted on reaching it) + free-text perk descriptors.
+model VipConfig {
+  level       VipLevel @id
+  minRecharge BigInt
+  benefits    Json     @default("[]")
+  createdBy   String?  @db.Uuid
+  updatedBy   String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("vip_configs")
+}
+
+/// Append-only, idempotent ledger of recharge contributions to VIP progress.
+model VipRechargeLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  amount         BigInt
+  idempotencyKey String   @unique
+  totalAfter     BigInt
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("vip_recharge_logs")
+}
+
+/// Immutable record of every VIP tier upgrade.
+model VipLog {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @db.Uuid
+  fromLevel        VipLevel
+  toLevel          VipLevel
+  lifetimeRecharge BigInt
+  createdAt        DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("vip_logs")
+}

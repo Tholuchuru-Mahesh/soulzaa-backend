@@ -1,0 +1,57 @@
+// ============================================================
+// Audio Room Premium Features (AR-9) — paid premium-admin seats
+// and the YouTube watch-party sync state. Owned by the "audio_rooms"
+// module. Premium seats are purchased with gold (via WALLET_SERVICE),
+// grant the PREMIUM_ADMIN role for a configurable duration, and are
+// auto-revoked on expiry. No cross-module relations.
+// ============================================================
+
+/// Lifecycle of a purchased premium admin seat.
+enum PremiumSeatStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+/// A user's purchased Premium Paid Admin Seat in a room. Grants PREMIUM_ADMIN
+/// until `expiresAt`, then the expiry monitor revokes the role and flips status.
+/// At most one ACTIVE row per (room,user), enforced in the service.
+model PremiumAdminSeat {
+  id          String            @id @default(uuid()) @db.Uuid
+  roomId      String            @db.Uuid
+  userId      String            @db.Uuid
+  price       BigInt
+  walletTxnId String?           @db.Uuid
+  status      PremiumSeatStatus @default(ACTIVE)
+  purchasedAt DateTime          @default(now())
+  expiresAt   DateTime
+  revokedBy   String?           @db.Uuid
+  revokedAt   DateTime?
+
+  @@index([roomId, status])
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("premium_admin_seats")
+}
+
+/// Playback state of a YouTube watch party (PLAYING) accumulates from
+/// `positionSeconds` at `updatedAt`.
+enum WatchPartyStatus {
+  PLAYING
+  PAUSED
+  STOPPED
+}
+
+/// The room's YouTube watch-party sync state (1:1). Owner/admin controlled; the
+/// effective position for a late joiner is `positionSeconds + (now - updatedAt)`
+/// while PLAYING. `videoId` is the YouTube video id.
+model RoomWatchParty {
+  roomId          String           @id @db.Uuid
+  videoId         String?
+  status          WatchPartyStatus @default(STOPPED)
+  positionSeconds Int              @default(0)
+  controlledBy    String?          @db.Uuid
+  updatedAt       DateTime         @updatedAt
+
+  @@map("room_watch_party")
+}

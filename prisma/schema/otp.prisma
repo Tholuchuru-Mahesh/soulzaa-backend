@@ -1,0 +1,46 @@
+// ============================================================
+// OTP — one-time passwords (SMS / email)
+// Owned by the "otp" module. Live OTP state (code hash, attempt
+// and resend counters, abuse block) lives in Redis with TTLs; the
+// table below is the durable audit trail, pruned on a schedule.
+// No cross-module relations — reference other domains by id.
+// ============================================================
+
+enum OtpPurpose {
+  REGISTRATION
+  LOGIN
+  FORGOT_PASSWORD
+  EMAIL_VERIFY
+  MOBILE_VERIFY
+  EMAIL_CHANGE
+  MOBILE_CHANGE
+}
+
+enum OtpChannel {
+  SMS
+  EMAIL
+}
+
+/// Durable record/audit of every OTP issued. The live code + attempt
+/// counter are held in Redis with TTL; this table backs history and
+/// lets us reconstruct verification outcomes. `consumedAt` marks a
+/// successful verification (idempotent re-verify is a no-op). Pruned
+/// by the OTP maintenance job on `expiresAt` + retention window.
+model OtpRecord {
+  id          String     @id @default(uuid()) @db.Uuid
+  userId      String?    @db.Uuid
+  purpose     OtpPurpose
+  channel     OtpChannel
+  destination String
+  codeHash    String
+  attempts    Int        @default(0)
+  maxAttempts Int
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime   @default(now())
+
+  @@index([destination, purpose])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("otp_records")
+}

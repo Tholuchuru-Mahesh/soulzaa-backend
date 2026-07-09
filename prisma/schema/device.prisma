@@ -1,0 +1,90 @@
+// ============================================================
+// Device — device registry, trust ledger, device audit
+// Owned by the "device" module. One row per physical device an
+// account logs in from; trust + verification + push-token state and
+// suspicious-login detection live here. The session module references
+// devices by id via DEVICE_SERVICE. No cross-module relations.
+// ============================================================
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+enum DeviceEventType {
+  REGISTERED
+  VERIFIED
+  REMOVED
+  TRUSTED
+  UNTRUSTED
+  SUSPICIOUS_LOGIN
+  PUSH_TOKEN_UPDATED
+  RENAMED
+}
+
+/// A physical device an account has logged in from. Upserted by
+/// (userId, deviceIdentifier) so repeated logins are idempotent.
+/// `trusted`/`verified` are fast flags; the trust ledger + audit trail
+/// live in trusted_devices / device_history.
+model UserDevice {
+  id               String         @id @default(uuid()) @db.Uuid
+  userId           String         @db.Uuid
+  deviceIdentifier String
+  platform         DevicePlatform
+  deviceName       String?
+  deviceType       String?
+  osVersion        String?
+  appVersion       String?
+  pushToken        String?
+  ipAddress        String?
+  country          String?
+  trusted          Boolean        @default(false)
+  trustedAt        DateTime?
+  verified         Boolean        @default(false)
+  verifiedAt       DateTime?
+  // Physical column kept as `lastSeenAt` (@map) so the rename is
+  // client-side only — no destructive column drop on migration.
+  lastActiveAt     DateTime       @default(now()) @map("lastSeenAt")
+  deletedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, deviceIdentifier])
+  @@index([userId])
+  @@map("user_devices")
+}
+
+/// Normalised trust ledger — the source of truth for "which devices a
+/// user has trusted", with grant metadata. Kept in sync with the
+/// denormalised user_devices.trusted flag (fast reads for session checks).
+model TrustedDevice {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  deviceId    String    @unique @db.Uuid
+  trustedByIp String?
+  trustedAt   DateTime  @default(now())
+  revokedAt   DateTime?
+
+  @@index([userId])
+  @@map("trusted_devices")
+}
+
+/// Append-only audit of every device lifecycle event (registration,
+/// verification, trust changes, suspicious logins, removal).
+model DeviceHistory {
+  id        String          @id @default(uuid()) @db.Uuid
+  userId    String          @db.Uuid
+  deviceId  String?         @db.Uuid
+  event     DeviceEventType
+  ip        String?
+  country   String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime        @default(now())
+
+  @@index([userId])
+  @@index([deviceId])
+  @@map("device_history")
+}

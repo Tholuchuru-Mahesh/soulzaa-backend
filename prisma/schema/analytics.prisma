@@ -1,0 +1,106 @@
+// ============================================================
+// Analytics — aggregated metrics & reporting tables
+// Owned by the "analytics" module.
+// No cross-module relations — reference other domains by id.
+// ============================================================
+
+model RoomActivity {
+  id                   String   @id @default(uuid()) @db.Uuid
+  roomId               String   @unique @db.Uuid
+  peakParticipants     Int      @default(0)
+  totalJoined          Int      @default(0)
+  totalGifts           Int      @default(0)
+  totalGiftCoins       BigInt   @default(0)
+  totalSpeakingMinutes Int      @default(0)
+  durationSeconds      Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([roomId])
+  @@map("room_activities")
+}
+
+model RoomVisitor {
+  id              String    @id @default(uuid()) @db.Uuid
+  roomId          String    @db.Uuid
+  userId          String    @db.Uuid
+  joinedAt        DateTime  @default(now())
+  leftAt          DateTime?
+  durationSeconds Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([roomId, userId])
+  @@map("room_visitors")
+}
+
+model SpeakerSession {
+  id              String    @id @default(uuid()) @db.Uuid
+  roomId          String    @db.Uuid
+  userId          String    @db.Uuid
+  joinedSeatAt    DateTime  @default(now())
+  leftSeatAt      DateTime?
+  speakingSeconds Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([roomId, userId])
+  @@map("speaker_sessions")
+}
+
+model RevenueReport {
+  id           String   @id @default(uuid()) @db.Uuid
+  dateKey      String // E.g., "20260707"
+  roomId       String   @db.Uuid // Use all-zero UUID for global/all rooms
+  userId       String   @db.Uuid // Use all-zero UUID for global/all users
+  giftCoins    BigInt   @default(0) // Total Gold Coins spent on gifts
+  creatorCoins BigInt   @default(0) // Total Gold Coins earned by creator
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([dateKey, roomId, userId])
+  @@map("revenue_reports")
+}
+
+// AR-13 rollup tables — materialized daily per room/creator by the analytics
+// rollup job from live Redis counters. Reads combine these (history) with the
+// live counters (today). Upserts overwrite with the day's counter snapshot, so
+// re-running the rollup for a day is idempotent.
+
+model RoomDailyStat {
+  id               String   @id @default(uuid()) @db.Uuid
+  dateKey          String // YYYYMMDD
+  roomId           String   @db.Uuid
+  joins            Int      @default(0)
+  uniqueVisitors   Int      @default(0)
+  peakParticipants Int      @default(0)
+  messages         Int      @default(0)
+  giftCount        Int      @default(0)
+  giftCoins        BigInt   @default(0)
+  speakingSeconds  BigInt   @default(0)
+  engagementScore  Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([dateKey, roomId])
+  @@index([roomId, dateKey])
+  @@map("room_daily_stats")
+}
+
+model CreatorDailyStat {
+  id                 String   @id @default(uuid()) @db.Uuid
+  dateKey            String // YYYYMMDD
+  userId             String   @db.Uuid
+  giftsReceivedCount Int      @default(0)
+  giftCoinsReceived  BigInt   @default(0)
+  creatorEarnings    BigInt   @default(0)
+  roomsHosted        Int      @default(0)
+  speakingSeconds    BigInt   @default(0)
+  engagementScore    Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([dateKey, userId])
+  @@index([userId, dateKey])
+  @@map("creator_daily_stats")
+}

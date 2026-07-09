@@ -1,0 +1,212 @@
+// ============================================================
+// Audio Room Moderation (AR-3) — bans, mutes, reports, notes,
+// appeals, and the append-only moderation audit trail.
+// Owned by the "audio_rooms" module. No cross-module relations —
+// reference users/rooms by id. Live enforcement state (banned/muted
+// sets) is cached in Redis; these tables are the durable record.
+// ============================================================
+
+enum ModerationBanType {
+  TEMPORARY
+  PERMANENT
+}
+
+enum ModerationMuteType {
+  TEMPORARY
+  PERMANENT
+}
+
+/// Lifecycle of a ban/mute: ACTIVE until lifted (manually) or expired (TTL).
+enum ModerationStatus {
+  ACTIVE
+  LIFTED
+  EXPIRED
+}
+
+/// Report reasons (PRD §21 Reports & Blocking).
+enum ReportReason {
+  ABUSE
+  HARASSMENT
+  SPAM
+  FRAUD
+  FAKE_PROFILE
+  COPYRIGHT
+  ADULT_CONTENT
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+  ACTIONED
+}
+
+enum AppealStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Actions recorded in the append-only moderation_actions audit trail.
+enum ModerationActionType {
+  KICK
+  BAN_TEMPORARY
+  BAN_PERMANENT
+  UNBAN
+  MUTE_TEMPORARY
+  MUTE_PERMANENT
+  UNMUTE
+  WARN
+  REPORT_REVIEWED
+  NOTE_ADDED
+  APPEAL_SUBMITTED
+  APPEAL_APPROVED
+  APPEAL_REJECTED
+  // ---- Chat (AR-4) ----
+  CHAT_MESSAGE_DELETED
+  CHAT_WORD_MASKED
+  CHAT_WORD_REJECTED
+  CHAT_WORD_ESCALATED
+  CHAT_AUTO_MUTED
+  CHAT_AUTO_KICKED
+}
+
+/// A per-room ban. `expiresAt` null ⇒ PERMANENT. At most one ACTIVE ban per
+/// (roomId,userId), enforced in the service under a lock. Redis mirrors the
+/// active set for the fast join-time gate.
+model RoomBan {
+  id          String            @id @default(uuid()) @db.Uuid
+  roomId      String            @db.Uuid
+  userId      String            @db.Uuid
+  moderatorId String            @db.Uuid
+  type        ModerationBanType
+  reason      String?
+  expiresAt   DateTime?
+  status      ModerationStatus  @default(ACTIVE)
+  liftedBy    String?           @db.Uuid
+  liftedAt    DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, status])
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("room_bans")
+}
+
+/// A per-room member mute (independent of seat occupancy). PERMANENT + null
+/// `expiresAt` ⇒ "mute until manually removed". One ACTIVE mute per user/room.
+model RoomMute {
+  id          String             @id @default(uuid()) @db.Uuid
+  roomId      String             @db.Uuid
+  userId      String             @db.Uuid
+  moderatorId String             @db.Uuid
+  type        ModerationMuteType
+  reason      String?
+  expiresAt   DateTime?
+  status      ModerationStatus   @default(ACTIVE)
+  liftedBy    String?            @db.Uuid
+  liftedAt    DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, status])
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("room_mutes")
+}
+
+/// Append-only immutable audit of every moderator action (kick/ban/mute/unban/
+/// unmute/warn/report-review/note/appeal). Write-once — the system of record for
+/// moderation review and compliance.
+model ModerationAction {
+  id           String               @id @default(uuid()) @db.Uuid
+  roomId       String               @db.Uuid
+  moderatorId  String?              @db.Uuid
+  targetUserId String?              @db.Uuid
+  action       ModerationActionType
+  reason       String?
+  metadata     Json?
+  createdAt    DateTime             @default(now())
+
+  @@index([roomId])
+  @@index([action])
+  @@index([targetUserId])
+  @@map("moderation_actions")
+}
+
+/// Moderator annotations about a user in a room. Append-only (edit = new note).
+model ModerationNote {
+  id           String   @id @default(uuid()) @db.Uuid
+  roomId       String   @db.Uuid
+  targetUserId String   @db.Uuid
+  authorId     String   @db.Uuid
+  note         String
+  createdAt    DateTime @default(now())
+
+  @@index([roomId, targetUserId])
+  @@map("moderation_notes")
+}
+
+/// A user-submitted report against another user in a room (PRD §21/§22). A
+/// moderator reviews and resolves it, optionally chaining to a ban/mute.
+model RoomReport {
+  id               String       @id @default(uuid()) @db.Uuid
+  roomId           String       @db.Uuid
+  reporterId       String       @db.Uuid
+  targetUserId     String       @db.Uuid
+  reason           ReportReason
+  description      String?
+  status           ReportStatus @default(PENDING)
+  reviewedBy       String?      @db.Uuid
+  reviewedAt       DateTime?
+  resolutionAction String?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, status])
+  @@index([targetUserId])
+  @@index([reporterId])
+  @@map("room_reports")
+}
+
+/// A banned/muted user's appeal against a specific ban or mute. One PENDING
+/// appeal per ban/mute (enforced in the service). A moderator approves (lifts
+/// the action) or rejects it.
+model RoomAppeal {
+  id           String       @id @default(uuid()) @db.Uuid
+  roomId       String       @db.Uuid
+  userId       String       @db.Uuid
+  banId        String?      @db.Uuid
+  muteId       String?      @db.Uuid
+  reason       String
+  status       AppealStatus @default(PENDING)
+  reviewedBy   String?      @db.Uuid
+  reviewedAt   DateTime?
+  decisionNote String?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([userId])
+  @@index([banId])
+  @@index([muteId])
+  @@map("room_appeals")
+}

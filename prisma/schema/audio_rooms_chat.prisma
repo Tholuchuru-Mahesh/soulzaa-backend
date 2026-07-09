@@ -1,0 +1,126 @@
+// ============================================================
+// Audio Room Chat (AR-4) — messages, pins, chat reports, and the
+// severity-based blocked-word dictionary.
+// Owned by the "audio_rooms" module. No cross-module relations —
+// reference users/rooms/messages by id. Anti-abuse counters live in
+// Redis; these tables are the durable record. Reuses AR-3 ReportReason.
+// ============================================================
+
+enum ChatMessageType {
+  TEXT
+  EMOJI
+  GIF
+  ANNOUNCEMENT
+  SYSTEM
+}
+
+enum BlockedWordSeverity {
+  MILD
+  OFFENSIVE
+  CRITICAL
+}
+
+enum BlockedWordAction {
+  MASK
+  REJECT
+  ESCALATE
+}
+
+enum ChatReportStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+  ACTIONED
+}
+
+/// A chat message in a room. `content` is the final stored text (masked when a
+/// MILD blocked word matched). Content is never edited; moderation deletes are
+/// soft (`isDeleted`) so the audit trail is preserved. `mentions` holds the
+/// resolved user ids referenced with @username.
+model RoomMessage {
+  id        String          @id @default(uuid()) @db.Uuid
+  roomId    String          @db.Uuid
+  senderId  String          @db.Uuid
+  type      ChatMessageType @default(TEXT)
+  content   String
+  gifUrl    String?
+  mentions  String[]        @db.Uuid
+  replyToId String?         @db.Uuid
+  isDeleted Boolean         @default(false)
+  deletedBy String?         @db.Uuid
+  deletedAt DateTime?
+  createdAt DateTime        @default(now())
+
+  @@index([roomId, createdAt])
+  @@index([senderId])
+  @@map("room_messages")
+}
+
+/// A pinned message. `isActive` false ⇒ unpinned (kept for audit). Multiple
+/// active pins allowed per room (capped in the service).
+model PinnedMessage {
+  id         String    @id @default(uuid()) @db.Uuid
+  roomId     String    @db.Uuid
+  messageId  String    @db.Uuid
+  pinnedBy   String    @db.Uuid
+  isActive   Boolean   @default(true)
+  pinnedAt   DateTime  @default(now())
+  unpinnedBy String?   @db.Uuid
+  unpinnedAt DateTime?
+
+  @@index([roomId, isActive])
+  @@map("pinned_messages")
+}
+
+/// A user-submitted report against a specific chat message (also auto-created by
+/// the CRITICAL blocked-word escalation). Mirrors AR-3 RoomReport + messageId.
+model ChatReport {
+  id               String           @id @default(uuid()) @db.Uuid
+  roomId           String           @db.Uuid
+  messageId        String           @db.Uuid
+  reporterId       String           @db.Uuid
+  targetUserId     String           @db.Uuid
+  reason           ReportReason
+  description      String?
+  status           ChatReportStatus @default(PENDING)
+  reviewedBy       String?          @db.Uuid
+  reviewedAt       DateTime?
+  resolutionAction String?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, status])
+  @@index([messageId])
+  @@index([reporterId])
+  @@map("chat_reports")
+}
+
+/// Global, admin-managed blocked-word dictionary. A literal `pattern` matches on
+/// word boundaries; `isRegex` compiles the pattern as a RegExp. `severity`
+/// classifies the term; `action` drives behaviour (MASK / REJECT / ESCALATE).
+/// Multilingual via `language`. Loaded into an in-memory compiled cache by
+/// BlockedWordService so the chat hot path never queries the DB.
+model ChatBlockedWord {
+  id       String              @id @default(uuid()) @db.Uuid
+  pattern  String
+  isRegex  Boolean             @default(false)
+  language String              @default("en")
+  severity BlockedWordSeverity
+  action   BlockedWordAction
+  enabled  Boolean             @default(true)
+  notes    String?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled])
+  @@index([language])
+  @@map("chat_blocked_words")
+}

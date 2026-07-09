@@ -1,0 +1,97 @@
+import { DomainEvent } from 'src/common/events';
+
+/**
+ * Treasure box & rocket domain events on the EVENT_BUS (AR-6). The audio-rooms
+ * module bridges these to the `/audio-room` namespace so participants see live
+ * progress, opening animations and global announcements. Analytics/notifications
+ * consume the same events without importing this module.
+ */
+export const TREASURE_EVENTS = {
+  SESSION_STARTED: 'treasure.session_started',
+  PROGRESS: 'treasure.progress',
+  BOX_OPENED: 'treasure.box_opened',
+  SESSION_COMPLETED: 'treasure.session_completed',
+  ROCKET_STARTED: 'treasure.rocket_started',
+  ROCKET_PROGRESS: 'treasure.rocket_progress',
+  ROCKET_COMPLETED: 'treasure.rocket_completed',
+} as const;
+
+/** A ranked contributor snapshot (Top-3 gifters / rocket contributors). */
+export interface RankedContributor {
+  rank: number;
+  userId: string;
+  amount: number;
+}
+
+/** A distributed-reward summary line (for the broadcast + announcement). */
+export interface RewardSummary {
+  userId: string;
+  rank: number;
+  kind: string;
+  coins: number | null;
+  itemName: string | null;
+}
+
+export class TreasureSessionStartedEvent extends DomainEvent<{
+  roomId: string;
+  sessionId: string;
+  currentLevel: number;
+  threshold: number;
+}> {
+  readonly name = TREASURE_EVENTS.SESSION_STARTED;
+}
+
+export class TreasureProgressEvent extends DomainEvent<{
+  roomId: string;
+  sessionId: string;
+  level: number;
+  progress: number;
+  threshold: number;
+}> {
+  readonly name = TREASURE_EVENTS.PROGRESS;
+}
+
+export class TreasureBoxOpenedEvent extends DomainEvent<{
+  roomId: string;
+  sessionId: string;
+  level: number;
+  topGifters: RankedContributor[];
+  rewards: RewardSummary[];
+  nextLevel: number | null;
+}> {
+  readonly name = TREASURE_EVENTS.BOX_OPENED;
+}
+
+export class TreasureSessionCompletedEvent extends DomainEvent<{
+  roomId: string;
+  sessionId: string;
+}> {
+  readonly name = TREASURE_EVENTS.SESSION_COMPLETED;
+}
+
+export class RocketStartedEvent extends DomainEvent<{
+  roomId: string;
+  rocketId: string;
+  triggerGiftId: string;
+  triggeredBy: string;
+  endsAt: string;
+}> {
+  readonly name = TREASURE_EVENTS.ROCKET_STARTED;
+}
+
+export class RocketProgressEvent extends DomainEvent<{
+  roomId: string;
+  rocketId: string;
+  totalContribution: number;
+}> {
+  readonly name = TREASURE_EVENTS.ROCKET_PROGRESS;
+}
+
+export class RocketCompletedEvent extends DomainEvent<{
+  roomId: string;
+  rocketId: string;
+  totalContribution: number;
+  rewards: RewardSummary[];
+}> {
+  readonly name = TREASURE_EVENTS.ROCKET_COMPLETED;
+}

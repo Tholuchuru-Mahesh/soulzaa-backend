@@ -1,0 +1,477 @@
+// ============================================================
+// Audio Rooms — rooms, members, settings, categories, languages,
+// statistics, presence, immutable room logs.
+// Owned by the "audio_rooms" module. AR-0 implements the room lifecycle
+// only (seats, voice/Agora, chat, gifts, treasure boxes live in later
+// phases). No cross-module relations — reference other domains (users)
+// by id and coordinate via the event bus. Live occupancy is authoritative
+// in Redis (PresenceService); these tables are the durable record.
+// ============================================================
+
+enum RoomStatus {
+  LIVE
+  ENDED
+}
+
+enum RoomVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+/// Membership / effective role inside a room. AR-1 vocabulary: OWNER, ADMIN,
+/// PREMIUM_ADMIN, SPEAKER, LISTENER. `AUDIENCE` is retained (deprecated) so the
+/// enum change is non-destructive; code writes LISTENER for the audience role.
+/// Elevated grants (OWNER/ADMIN/PREMIUM_ADMIN) are authoritative in room_roles;
+/// SPEAKER is derived from occupying a speaker seat.
+enum RoomMemberRole {
+  OWNER
+  ADMIN
+  PREMIUM_ADMIN
+  SPEAKER
+  LISTENER
+  AUDIENCE
+}
+
+/// Physical seat kinds on the stage.
+enum SeatType {
+  OWNER
+  PREMIUM_ADMIN
+  SPEAKER
+}
+
+/// Lifecycle of a microphone (seat) request.
+enum SeatRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+/// Lifecycle of an invite-to-seat.
+enum SeatInvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+/// Actions recorded in the append-only seat_history audit trail.
+enum SeatHistoryAction {
+  SEAT_TAKEN
+  SEAT_LEFT
+  SEAT_MOVED
+  SPEAKER_REMOVED
+  SEAT_LOCKED
+  SEAT_UNLOCKED
+  SEAT_MUTED
+  SEAT_UNMUTED
+  ROOM_MUTED
+  ROOM_UNMUTED
+  REQUEST_CREATED
+  REQUEST_ACCEPTED
+  REQUEST_REJECTED
+  REQUEST_CANCELLED
+  INVITE_SENT
+  INVITE_ACCEPTED
+  INVITE_REJECTED
+  INVITE_EXPIRED
+  ROLE_GRANTED
+  ROLE_REVOKED
+  LAYOUT_CHANGED
+}
+
+/// Actions recorded in the append-only room_logs audit trail.
+enum RoomLogAction {
+  CREATED
+  UPDATED
+  DELETED
+  ENDED
+  JOINED
+  LEFT
+  LOCKED
+  UNLOCKED
+  OWNERSHIP_TRANSFERRED
+  IMAGE_UPDATED
+}
+
+/// The canonical audio room row. `passwordHash` set ⇒ the room is
+/// password-protected (only meaningful while `isLocked`). `imageKey` is an
+/// S3 object key (display picture); the client resolves a URL. `agoraChannel`
+/// is generated at creation and reserved for the voice phase. `language`
+/// references room_languages.code by value (no cross-table FK by convention).
+model AudioRoom {
+  id              String         @id @default(uuid()) @db.Uuid
+  ownerId         String         @db.Uuid
+  name            String
+  description     String?
+  imageKey        String?
+  categoryId      String?        @db.Uuid
+  language        String?
+  visibility      RoomVisibility @default(PUBLIC)
+  isLocked        Boolean        @default(false)
+  passwordHash    String?
+  isDiscoverable  Boolean        @default(true)
+  maxParticipants Int
+  status          RoomStatus     @default(LIVE)
+  endedAt         DateTime?
+  // Legacy Agora channel handle (AR-0). ZEGOCLOUD is the voice provider (AR-2).
+  agoraChannel    String         @unique
+  // ZEGOCLOUD voice room id. Nullable so the AR-2 migration applies without
+  // backfilling pre-voice rooms; new rooms get one at creation, legacy rooms are
+  // lazily assigned on first voice use.
+  zegoRoomId      String?        @unique
+
+  // ---- Audit ----
+  createdBy String?   @db.Uuid
+  updatedBy String?   @db.Uuid
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([categoryId])
+  @@index([visibility, isDiscoverable, status])
+  @@map("audio_rooms")
+}
+
+/// Per-room configurable settings (1:1). Flags for later phases are kept
+/// here defaulted now so the settings surface is stable. Created alongside
+/// the room in one transaction.
+model RoomSettings {
+  roomId                 String   @id @db.Uuid
+  allowChat              Boolean  @default(true)
+  allowGifts             Boolean  @default(true)
+  chatSlowModeSeconds    Int      @default(0)
+  joinApprovalRequired   Boolean  @default(false)
+  // ---- Seat / stage layout (AR-1) ----
+  speakerSeatCount       Int      @default(8)
+  premiumAdminSeatCount  Int      @default(0)
+  isRoomMuted            Boolean  @default(false)
+  requireApprovalForSeat Boolean  @default(true)
+  metadata               Json?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@map("room_settings")
+}
+
+/// Durable membership record of record. `isActive` + `leftAt` track the
+/// current occupancy; Redis presence is the live hot-path view. A returning
+/// user's row is reactivated rather than duplicated (unique on room+user).
+model RoomMember {
+  id       String         @id @default(uuid()) @db.Uuid
+  roomId   String         @db.Uuid
+  userId   String         @db.Uuid
+  role     RoomMemberRole @default(LISTENER)
+  joinedAt DateTime       @default(now())
+  leftAt   DateTime?
+  isActive Boolean        @default(true)
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+  @@map("room_members")
+}
+
+/// Seeded reference data — room categories (Music, Chat, Gaming, ...).
+/// Admin-managed CRUD is deferred to the Admin phase.
+model RoomCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  iconKey   String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("room_categories")
+}
+
+/// Seeded reference data — supported room languages (ISO 639-1 code as PK).
+model RoomLanguage {
+  code       String   @id
+  name       String
+  nativeName String?
+  isActive   Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("room_languages")
+}
+
+/// Denormalised per-room counters (1:1). Updated on join/leave/end.
+model RoomStatistics {
+  roomId               String   @id @db.Uuid
+  peakParticipants     Int      @default(0)
+  totalJoins           BigInt   @default(0)
+  currentParticipants  Int      @default(0)
+  totalDurationSeconds BigInt   @default(0)
+  lastActivityAt       DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("room_statistics")
+}
+
+/// Durable mirror of the Redis presence set, for cross-instance recovery
+/// and analytics. Redis remains the authoritative live count; this table is
+/// upserted on REST join and removed on leave.
+model RoomPresence {
+  id         String   @id @default(uuid()) @db.Uuid
+  roomId     String   @db.Uuid
+  userId     String   @db.Uuid
+  socketId   String?
+  joinedAt   DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@map("room_presence")
+}
+
+/// Append-only immutable audit of room lifecycle events (SessionHistory
+/// pattern). Write-once — no update/delete paths. Backs moderation review
+/// and financial/audit reconciliation in later phases.
+model RoomLog {
+  id        String        @id @default(uuid()) @db.Uuid
+  roomId    String        @db.Uuid
+  actorId   String?       @db.Uuid
+  action    RoomLogAction
+  metadata  Json?
+  createdAt DateTime      @default(now())
+
+  @@index([roomId])
+  @@index([action])
+  @@map("room_logs")
+}
+
+// ============================================================
+// AR-1 — Role & Seat System
+// ============================================================
+
+/// Authoritative elevated role grants within a room (OWNER / ADMIN /
+/// PREMIUM_ADMIN). RoomMember.role is kept synced as a denormalised mirror;
+/// permission checks resolve the effective role from here first, then seat
+/// occupancy (SPEAKER), then active membership (LISTENER). One grant per user.
+model RoomRole {
+  id        String         @id @default(uuid()) @db.Uuid
+  roomId    String         @db.Uuid
+  userId    String         @db.Uuid
+  role      RoomMemberRole
+  grantedBy String?        @db.Uuid
+  expiresAt DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@map("room_roles")
+}
+
+/// A physical seat on the stage. Seat 0 is always the OWNER seat; the rest are
+/// PREMIUM_ADMIN or SPEAKER seats per the configurable layout. `occupantUserId`
+/// null ⇒ empty. A user may occupy at most one seat per room (unique). Seat
+/// state (lock/mute) is synced to clients; actual audio muting is client-side
+/// (Agora) in the later voice phase.
+model RoomSeat {
+  id             String   @id @default(uuid()) @db.Uuid
+  roomId         String   @db.Uuid
+  seatIndex      Int
+  seatType       SeatType
+  occupantUserId String?  @db.Uuid
+  isLocked       Boolean  @default(false)
+  isMuted        Boolean  @default(false)
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, seatIndex])
+  @@unique([roomId, occupantUserId])
+  @@index([roomId])
+  @@map("room_seats")
+}
+
+/// A listener's microphone (seat) request. `seatIndex` null ⇒ any speaker seat.
+/// At most one PENDING request per user/room (enforced in the service).
+model SeatRequest {
+  id         String            @id @default(uuid()) @db.Uuid
+  roomId     String            @db.Uuid
+  userId     String            @db.Uuid
+  seatIndex  Int?
+  status     SeatRequestStatus @default(PENDING)
+  resolvedBy String?           @db.Uuid
+  resolvedAt DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, status])
+  @@index([userId])
+  @@map("seat_requests")
+}
+
+/// An owner/admin invitation for a user to take a seat. Expires after a TTL.
+model SeatInvitation {
+  id            String               @id @default(uuid()) @db.Uuid
+  roomId        String               @db.Uuid
+  inviterId     String               @db.Uuid
+  inviteeUserId String               @db.Uuid
+  seatIndex     Int?
+  status        SeatInvitationStatus @default(PENDING)
+  expiresAt     DateTime
+  resolvedAt    DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, status])
+  @@index([inviteeUserId, status])
+  @@map("seat_invitations")
+}
+
+/// Durable mirror of the ordered mic-request queue. Redis (list) is the hot
+/// ordering path; this table is the durable record for recovery/analytics.
+model SeatQueueEntry {
+  id         String   @id @default(uuid()) @db.Uuid
+  roomId     String   @db.Uuid
+  userId     String   @db.Uuid
+  position   Int
+  requestId  String?  @db.Uuid
+  enqueuedAt DateTime @default(now())
+
+  @@unique([roomId, userId])
+  @@index([roomId, position])
+  @@map("seat_queue")
+}
+
+/// Append-only immutable audit of every seat/role event (SessionHistory /
+/// RoomLog pattern). Write-once — backs moderation review and reporting.
+model SeatHistory {
+  id            String            @id @default(uuid()) @db.Uuid
+  roomId        String            @db.Uuid
+  actorId       String?           @db.Uuid
+  subjectUserId String?           @db.Uuid
+  action        SeatHistoryAction
+  seatIndex     Int?
+  metadata      Json?
+  createdAt     DateTime          @default(now())
+
+  @@index([roomId])
+  @@index([action])
+  @@map("seat_history")
+}
+
+// ============================================================
+// AR-2 — Voice Infrastructure (ZEGOCLOUD)
+// ============================================================
+
+/// Whether a voice participant may publish audio (on a seat) or only subscribe.
+enum VoicePublishRole {
+  PUBLISHER
+  SUBSCRIBER
+}
+
+enum VoiceSessionStatus {
+  ACTIVE
+  ENDED
+}
+
+/// Actions recorded in the append-only voice_session_logs audit trail.
+enum VoiceSessionAction {
+  JOINED
+  LEFT
+  MUTED
+  UNMUTED
+  RECONNECTED
+  NETWORK_LOST
+  NETWORK_RECOVERED
+  QUALITY_SAMPLED
+  SPEAKING_STARTED
+  SPEAKING_STOPPED
+  ROUTE_SWITCHED
+  BACKGROUND_ENTERED
+  BACKGROUND_EXITED
+  ROLE_CHANGED
+  HEARTBEAT_TIMEOUT
+}
+
+/// A user's durable voice session in a room (one per room+user, reactivated on
+/// rejoin). Live presence/speaking/heartbeat are authoritative in Redis; this is
+/// the durable record with a rolling quality summary. `role` follows seat state
+/// (publisher on a seat, subscriber in the audience). `selfMuted` is the user's
+/// own mic control — the effective mic state also considers admin seat-mute /
+/// room-mute (AR-1), combined by the service.
+model VoiceSession {
+  id              String             @id @default(uuid()) @db.Uuid
+  roomId          String             @db.Uuid
+  userId          String             @db.Uuid
+  zegoRoomId      String
+  role            VoicePublishRole   @default(SUBSCRIBER)
+  status          VoiceSessionStatus @default(ACTIVE)
+  selfMuted       Boolean            @default(false)
+  isSpeaking      Boolean            @default(false)
+  inBackground    Boolean            @default(false)
+  audioRoute      String?
+  reconnectCount  Int                @default(0)
+  joinedAt        DateTime           @default(now())
+  lastHeartbeatAt DateTime           @default(now())
+  endedAt         DateTime?
+  durationSeconds BigInt             @default(0)
+
+  // ---- Rolling quality summary (AR-2: summary + sampled logs) ----
+  lastQualityLevel   Int?
+  avgRttMs           Int?
+  worstRttMs         Int?
+  avgPacketLossPct   Float?
+  qualitySampleCount Int       @default(0)
+  lastReportAt       DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([status])
+  @@map("voice_sessions")
+}
+
+/// Append-only immutable audit of every voice event (join/leave/mute/reconnect/
+/// network/quality/speaking/route/background/role). Write-once.
+model VoiceSessionLog {
+  id        String             @id @default(uuid()) @db.Uuid
+  roomId    String             @db.Uuid
+  userId    String             @db.Uuid
+  action    VoiceSessionAction
+  metadata  Json?
+  createdAt DateTime           @default(now())
+
+  @@index([roomId])
+  @@index([action])
+  @@map("voice_session_logs")
+}

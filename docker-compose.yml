@@ -1,0 +1,133 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: soulzaa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: soulzaa
+      POSTGRES_PASSWORD: soulzaa
+      POSTGRES_DB: soulzaa
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U soulzaa']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  pgbouncer:
+    image: bitnami/pgbouncer:1
+    container_name: soulzaa-pgbouncer
+    restart: unless-stopped
+    environment:
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT_NUMBER: 5432
+      POSTGRESQL_USERNAME: soulzaa
+      POSTGRESQL_PASSWORD: soulzaa
+      POSTGRESQL_DATABASE: soulzaa
+      PGBOUNCER_DATABASE: soulzaa
+      PGBOUNCER_PORT: 6432
+      # Transaction pooling multiplexes many clients over few server conns.
+      # Requires prepared statements off — Prisma handles this via pgbouncer=true.
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_CLIENT_CONN: 1000
+      PGBOUNCER_DEFAULT_POOL_SIZE: 25
+      PGBOUNCER_AUTH_TYPE: scram-sha-256
+      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    ports:
+      - '6432:6432'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -p 6432 -U soulzaa']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: soulzaa-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  adminer:
+    image: adminer:latest
+    container_name: soulzaa-adminer
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    depends_on:
+      - postgres
+
+  minio:
+    image: minio/minio:latest
+    container_name: soulzaa-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9000:9000' # S3 API
+      - '9001:9001' # web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: create the media bucket then exit.
+  createbuckets:
+    image: minio/mc:latest
+    container_name: soulzaa-createbuckets
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/soulzaa-media &&
+      echo 'bucket ready';
+      "
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: soulzaa-api
+    restart: unless-stopped
+    profiles: ['full'] # `docker compose --profile full up` to include the API
+    env_file:
+      - .env
+    environment:
+      # App traffic goes through PgBouncer; migrations use DIRECT_URL (Postgres).
+      DATABASE_URL: postgresql://soulzaa:soulzaa@pgbouncer:6432/soulzaa?schema=public&pgbouncer=true
+      DIRECT_URL: postgresql://soulzaa:soulzaa@postgres:5432/soulzaa?schema=public
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

@@ -1,0 +1,70 @@
+// ============================================================
+// Backpack — the user inventory of earned non-coin rewards
+// (frames, themes, entrance effects, badges, decorations).
+// Owned by the "backpack" module. Rewards are granted by the
+// economy features (treasure boxes, rocket events, VIP, attendance)
+// via BACKPACK_SERVICE. No cross-module relations — reference users
+// and reward catalogs by id.
+// ============================================================
+
+/// The kind of cosmetic/utility a backpack item represents.
+enum BackpackItemType {
+  FRAME
+  THEME
+  ENTRANCE_EFFECT
+  BADGE
+  DECORATION
+  OTHER
+}
+
+/// Where an item came from (drives history + audit).
+enum BackpackItemSource {
+  TREASURE_BOX
+  ROCKET
+  GIFT
+  EVENT
+  ATTENDANCE
+  ADMIN
+  PURCHASE
+}
+
+/// One owned inventory item. Each grant is a distinct row keyed by a unique
+/// `grantKey` so awarding is idempotent (a replayed grant maps to the same row).
+/// Equippable types (frame/theme/entrance effect) toggle `equipped`; the service
+/// enforces at most one equipped item per type per user. `transferable` gates the
+/// transfer action; `expiresAt` supports time-limited rewards.
+model BackpackItem {
+  id           String             @id @default(uuid()) @db.Uuid
+  userId       String             @db.Uuid
+  type         BackpackItemType
+  /// Optional id into the source catalog (frame/theme id, etc.).
+  refId        String?
+  name         String
+  source       BackpackItemSource
+  quantity     Int                @default(1)
+  equipped     Boolean            @default(false)
+  transferable Boolean            @default(false)
+  grantKey     String             @unique
+  metadata     Json?
+  acquiredAt   DateTime           @default(now())
+  expiresAt    DateTime?
+  updatedAt    DateTime           @updatedAt
+
+  @@index([userId, type])
+  @@index([userId, equipped])
+  @@map("backpack_items")
+}
+
+/// Append-only history of backpack actions (grant/equip/unequip/transfer/expire)
+/// — the immutable audit trail for earned rewards.
+model BackpackLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  itemId    String?  @db.Uuid
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("backpack_logs")
+}

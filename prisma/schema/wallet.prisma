@@ -1,0 +1,91 @@
+// ============================================================
+// Wallet — gold/free/earnings balances + the immutable wallet
+// transaction ledger. Owned by the "wallet" module. The economy
+// authority: every coin movement (recharge, gift send/receive,
+// admin adjustment, refund) is an append-only WalletTransaction row
+// with a unique idempotency key. Balances never go negative. No
+// cross-module relations — reference users by id.
+// ============================================================
+
+/// Currencies held in a wallet. GOLD is purchased with real money and spent on
+/// gifts/VIP/treasure; FREE is earned and used only in casual games; EARNINGS is
+/// the creator-earnings balance accrued from received gifts (diamonds).
+enum WalletCurrency {
+  GOLD
+  FREE
+  EARNINGS
+}
+
+/// Direction of a ledger entry relative to the wallet holder.
+enum WalletEntryType {
+  CREDIT
+  DEBIT
+}
+
+/// Why a ledger entry was written (drives reporting/reconciliation).
+enum WalletTxnReason {
+  RECHARGE
+  GIFT_SEND
+  GIFT_RECEIVE
+  GIFT_REFUND
+  ADMIN_CREDIT
+  ADMIN_DEBIT
+  TREASURE_BOX
+  GAME_STAKE
+  GAME_PAYOUT
+  GAME_REFUND
+  VIP_PURCHASE
+  EVENT_REWARD
+  COSMETIC_PURCHASE
+  PREMIUM_SEAT
+}
+
+/// One wallet per user (1:1). Balances are BigInt to scale to platform-wide
+/// lifetime volumes; convert to Number at the read-model layer. `version` is an
+/// optimistic-concurrency counter bumped on every balance mutation.
+model Wallet {
+  userId                  String @id @db.Uuid
+  goldBalance             BigInt @default(0)
+  freeBalance             BigInt @default(0)
+  earningsBalance         BigInt @default(0)
+  totalRecharged          BigInt @default(0)
+  totalGiftsSentValue     BigInt @default(0)
+  totalGiftsReceivedValue BigInt @default(0)
+  totalSpent              BigInt @default(0)
+  version                 Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("wallets")
+}
+
+/// Append-only, immutable ledger. Written once per balance movement inside the
+/// same DB transaction that mutates the wallet, so the ledger and balances can
+/// never diverge. `idempotencyKey` is globally unique — a replayed request maps
+/// to the same row instead of double-applying. `balanceBefore/After` capture the
+/// running balance for audit and reconciliation.
+model WalletTransaction {
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @db.Uuid
+  currency       WalletCurrency
+  type           WalletEntryType
+  reason         WalletTxnReason
+  amount         BigInt
+  balanceBefore  BigInt
+  balanceAfter   BigInt
+  /// Source domain of the movement, e.g. "gift", "recharge", "admin".
+  referenceType  String?
+  /// Id of the source entity (gift transaction id, recharge order id, ...).
+  referenceId    String?         @db.Uuid
+  idempotencyKey String          @unique
+  metadata       Json?
+  /// Actor who caused the entry (the user, or an admin for adjustments).
+  createdBy      String?         @db.Uuid
+  createdAt      DateTime        @default(now())
+
+  @@index([userId, createdAt])
+  @@index([referenceType, referenceId])
+  @@index([reason])
+  @@map("wallet_transactions")
+}

@@ -1,0 +1,76 @@
+// ============================================================
+// Families (Guilds) — families, members, roles, join requests, logs
+// Owned by the "families" module.
+// No cross-module relations — reference other domains by id.
+// ============================================================
+
+enum FamilyRole {
+  LEADER
+  CO_LEADER
+  ELDER
+  MEMBER
+}
+
+enum FamilyRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Family {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique
+  description String?
+  logoKey     String?
+  leaderId    String    @db.Uuid
+  level       Int       @default(1)
+  exp         BigInt    @default(0)
+  memberCount Int       @default(1)
+  maxMembers  Int       @default(100)
+  autoAccept  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([leaderId])
+  @@map("families")
+}
+
+model FamilyMember {
+  id                 String     @id @default(uuid()) @db.Uuid
+  familyId           String     @db.Uuid
+  userId             String     @unique @db.Uuid // A user can only belong to one family at a time
+  role               FamilyRole @default(MEMBER)
+  contributionPoints Int        @default(0)
+  joinedAt           DateTime   @default(now())
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  @@index([familyId])
+  @@map("family_members")
+}
+
+model FamilyJoinRequest {
+  id        String              @id @default(uuid()) @db.Uuid
+  familyId  String              @db.Uuid
+  userId    String              @db.Uuid
+  status    FamilyRequestStatus @default(PENDING)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@index([familyId, status])
+  @@index([userId, status])
+  @@map("family_join_requests")
+}
+
+model FamilyLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  familyId  String   @db.Uuid
+  userId    String   @db.Uuid // Actor ID
+  action    String // E.g., "CREATE", "JOIN", "LEAVE", "KICK", "PROMOTE", "DEMOTE", "EDIT_PROFILE"
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([familyId])
+  @@map("family_logs")
+}

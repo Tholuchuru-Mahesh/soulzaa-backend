@@ -1,0 +1,70 @@
+// ============================================================
+// Events (AR-8) — the seasonal/promotional event system: claimable
+// reward events (festival/anniversary/lucky-gift/generic) and active
+// multiplier events (double-recharge / double-EXP). Owned by the
+// "events" module. Claims grant coins→wallet, cosmetics→backpack,
+// EXP→exp; multiplier events expose a live multiplier the accrual
+// pipelines consult. Immutable claim ledger. No cross-module relations.
+// ============================================================
+
+/// Event kind. FESTIVAL/ANNIVERSARY/LUCKY_GIFT/GENERIC are claimable reward
+/// events; DOUBLE_RECHARGE/DOUBLE_EXP are active multiplier events (no claim).
+enum EventType {
+  FESTIVAL
+  ANNIVERSARY
+  LUCKY_GIFT
+  DOUBLE_RECHARGE
+  DOUBLE_EXP
+  GENERIC
+}
+
+/// Whether the event is listed to users. HIDDEN events still run (multipliers)
+/// but are not shown in the public event list.
+enum EventVisibility {
+  PUBLIC
+  HIDDEN
+}
+
+/// An admin-configured event. `rewards` (claimable types) is a JSON array of
+/// `{ kind, coins?, currency?, cosmeticId?, exp? }`. `multiplier` applies to the
+/// DOUBLE_* types (e.g. 2 = double). `eligibility` is an optional JSON gate
+/// `{ minUserLevel?, minVipLevel? }`. Active ⇔ enabled AND now ∈ [startAt,endAt].
+model PlatformEvent {
+  id          String          @id @default(uuid()) @db.Uuid
+  name        String
+  type        EventType
+  description String?
+  startAt     DateTime
+  endAt       DateTime
+  visibility  EventVisibility @default(PUBLIC)
+  enabled     Boolean         @default(true)
+  rewards     Json            @default("[]")
+  multiplier  Int             @default(1)
+  eligibility Json?
+  bannerUrl   String?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, type])
+  @@index([startAt, endAt])
+  @@map("platform_events")
+}
+
+/// Immutable record of a user claiming a reward event. At most one claim per
+/// (event,user), enforced by the unique constraint.
+model EventClaim {
+  id             String   @id @default(uuid()) @db.Uuid
+  eventId        String   @db.Uuid
+  userId         String   @db.Uuid
+  rewardsSummary Json
+  idempotencyKey String   @unique
+  createdAt      DateTime @default(now())
+
+  @@unique([eventId, userId])
+  @@index([userId, createdAt])
+  @@map("event_claims")
+}

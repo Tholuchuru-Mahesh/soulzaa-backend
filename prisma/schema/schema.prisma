@@ -1,0 +1,41 @@
+// ============================================================
+// Soulzaa — Prisma base schema
+// Multi-file schema (prismaSchemaFolder): datasource + generator
+// live here; each domain owns its own <module>.prisma file in
+// this folder. One database, one migration history, boundaries
+// expressed by file ownership.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Direct connection for the Prisma CLI (migrate/introspect): bypasses the
+  // PgBouncer transaction pooler, which does not support DDL sessions.
+  directUrl = env("DIRECT_URL")
+}
+
+// ---- Shared enums (platform-wide vocabulary) ----
+// These are cross-cutting value types referenced by multiple domains.
+// Domain-specific enums belong in that domain's own .prisma file.
+
+enum PlatformRole {
+  SUPER_ADMIN
+  ADMIN
+  COUNTRY_MANAGER
+  OFFICIAL
+  MODERATOR
+  BUSINESS_DEV
+  AGENCY
+  COIN_SELLER
+  HOST
+  USER
+}
+
+enum CurrencyType {
+  GOLD // purchased with real money
+  FREE // earned via activity / used in casual games
+}

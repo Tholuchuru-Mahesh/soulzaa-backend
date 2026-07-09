@@ -1,0 +1,6 @@
+// ============================================================
+// Video Rooms — rooms, seats, viewers, PK config
+// Owned by the "video_rooms" module. Add models/enums here as the module
+// is implemented. No cross-module relations by default — reference
+// other domains by id and coordinate via the event bus.
+// ============================================================

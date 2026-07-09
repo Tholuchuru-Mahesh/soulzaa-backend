@@ -1,0 +1,73 @@
+// ============================================================
+// Cosmetics — the admin-managed catalog of frames, badges,
+// entrance effects, themes and decorations awarded by the EXP,
+// level, VIP, treasure and event systems. Owned by the "cosmetics"
+// module. The Backpack stores per-user granted instances (referencing
+// a cosmetic by id); this table is the definition/source of truth.
+// No cross-module relations — reference by id.
+// ============================================================
+
+enum CosmeticType {
+  FRAME
+  BADGE
+  ENTRANCE_EFFECT
+  THEME
+  DECORATION
+}
+
+enum CosmeticRarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+/// A catalog cosmetic. `mediaUrl`/`thumbnailUrl` are resolved by the client.
+/// `transferable` propagates to the backpack item on grant. Unique per
+/// (type, name) so seeds/admin upserts are idempotent by name.
+model Cosmetic {
+  id           String         @id @default(uuid()) @db.Uuid
+  type         CosmeticType
+  name         String
+  mediaUrl     String?
+  thumbnailUrl String?
+  rarity       CosmeticRarity @default(COMMON)
+  transferable Boolean        @default(false)
+  enabled      Boolean        @default(true)
+  sortOrder    Int            @default(0)
+  metadata     Json?
+
+  // ---- Premium store (AR-9) ----
+  /// Gold-coin price. Purchasable only when `isPremium` and `price > 0`.
+  price     Int     @default(0)
+  isPremium Boolean @default(false)
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, name])
+  @@index([enabled, type])
+  @@index([isPremium, enabled])
+  @@map("cosmetics")
+}
+
+/// Immutable ledger of premium-cosmetic purchases. `idempotencyKey` (a client
+/// key or a generated one) makes a purchase exactly-once. Written after the
+/// wallet debit + backpack grant succeed.
+model CosmeticPurchase {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  cosmeticId     String   @db.Uuid
+  price          BigInt
+  walletTxnId    String?  @db.Uuid
+  backpackItemId String?  @db.Uuid
+  idempotencyKey String   @unique
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([cosmeticId])
+  @@map("cosmetic_purchases")
+}

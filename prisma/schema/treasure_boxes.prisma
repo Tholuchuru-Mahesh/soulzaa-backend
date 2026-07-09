@@ -1,0 +1,200 @@
+// ============================================================
+// Treasure Boxes & Rocket Events (AR-6) — gift-driven room reward
+// events. Owned by the "treasure_boxes" module. Gift contributions
+// (from the gifts module's GiftSentEvent) drive progress; when a box
+// fills it auto-opens and distributes rewards to its Top-3 gifters;
+// rocket events accumulate contributions over a timed window then pay
+// out. Coin rewards go to the wallet, item rewards to the backpack.
+// Immutable contribution + reward ledgers. No cross-module relations.
+// ============================================================
+
+enum TreasureSessionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TreasureBoxStatus {
+  PENDING
+  ACTIVE
+  OPENED
+}
+
+enum RocketStatus {
+  ACTIVE
+  COMPLETED
+}
+
+/// The reward kind stored in a config reward entry / a distributed reward row.
+enum TreasureRewardKind {
+  COINS
+  BACKPACK_ITEM
+}
+
+/// Admin-managed config for each of the 5 sequential boxes. `threshold` is the
+/// gold-value of gift contributions required to open the box; `rewards` is a
+/// JSON array of `{ rank, kind, coins?, itemType?, itemName?, itemRefId? }` —
+/// one entry per Top-3 rank. Configurable per the PRD (thresholds + rewards).
+model TreasureBoxConfig {
+  id        String  @id @default(uuid()) @db.Uuid
+  level     Int     @unique
+  threshold BigInt
+  rewards   Json
+  enabled   Boolean @default(true)
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("treasure_box_configs")
+}
+
+/// A run of the 5-box ladder in a room. At most one ACTIVE session per room.
+/// `currentLevel` is the box currently accumulating (1..5); the session
+/// COMPLETES after box 5 opens.
+model TreasureSession {
+  id           String                @id @default(uuid()) @db.Uuid
+  roomId       String                @db.Uuid
+  contextType  String                @default("AUDIO_ROOM")
+  startedBy    String                @db.Uuid
+  status       TreasureSessionStatus @default(ACTIVE)
+  currentLevel Int                   @default(1)
+  createdAt    DateTime              @default(now())
+  completedAt  DateTime?
+
+  @@index([roomId, status])
+  @@map("treasure_sessions")
+}
+
+/// One box within a session. `progress` accumulates contributed gift value until
+/// it reaches `threshold`, then the box OPENS. `topGifters` snapshots the Top-3
+/// at open time for history/audit.
+model TreasureBox {
+  id         String            @id @default(uuid()) @db.Uuid
+  sessionId  String            @db.Uuid
+  roomId     String            @db.Uuid
+  level      Int
+  threshold  BigInt
+  progress   BigInt            @default(0)
+  status     TreasureBoxStatus @default(PENDING)
+  topGifters Json?
+  openedAt   DateTime?
+  createdAt  DateTime          @default(now())
+
+  @@unique([sessionId, level])
+  @@index([roomId])
+  @@map("treasure_boxes")
+}
+
+/// Append-only per-gift contribution to a box (independent progress per box).
+/// Drives the Top-3 calculation and the contribution history/audit.
+model TreasureContribution {
+  id        String   @id @default(uuid()) @db.Uuid
+  boxId     String   @db.Uuid
+  sessionId String   @db.Uuid
+  roomId    String   @db.Uuid
+  userId    String   @db.Uuid
+  amount    BigInt
+  giftTxnId String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([boxId])
+  @@index([boxId, userId])
+  @@index([roomId, createdAt])
+  @@map("treasure_contributions")
+}
+
+/// Immutable record of every reward distributed when a box opens.
+model TreasureReward {
+  id             String             @id @default(uuid()) @db.Uuid
+  sessionId      String             @db.Uuid
+  boxId          String             @db.Uuid
+  roomId         String             @db.Uuid
+  level          Int
+  userId         String             @db.Uuid
+  rank           Int
+  kind           TreasureRewardKind
+  coins          BigInt?
+  itemType       String?
+  itemName       String?
+  walletTxnId    String?            @db.Uuid
+  backpackItemId String?            @db.Uuid
+  createdAt      DateTime           @default(now())
+
+  @@index([sessionId])
+  @@index([userId])
+  @@map("treasure_rewards")
+}
+
+/// Admin config for a rocket event, keyed by the premium gift that triggers it.
+/// `rewardPool` is a JSON array of `{ rank, kind, coins?, itemType?, itemName? }`.
+model RocketConfig {
+  id              String  @id @default(uuid()) @db.Uuid
+  triggerGiftId   String  @unique @db.Uuid
+  durationSeconds Int     @default(60)
+  priority        Int     @default(0)
+  rewardPool      Json
+  enabled         Boolean @default(true)
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("rocket_configs")
+}
+
+/// A live rocket event in a room. Accumulates trigger-gift contributions until
+/// `endsAt`, then the expiry monitor COMPLETES it and distributes the pool.
+model RocketEvent {
+  id                String       @id @default(uuid()) @db.Uuid
+  roomId            String       @db.Uuid
+  contextType       String       @default("AUDIO_ROOM")
+  triggerGiftId     String       @db.Uuid
+  triggeredBy       String       @db.Uuid
+  status            RocketStatus @default(ACTIVE)
+  totalContribution BigInt       @default(0)
+  startedAt         DateTime     @default(now())
+  endsAt            DateTime
+  completedAt       DateTime?
+
+  @@index([roomId, status])
+  @@index([status, endsAt])
+  @@map("rocket_events")
+}
+
+/// Append-only per-gift contribution to a rocket event.
+model RocketContribution {
+  id        String   @id @default(uuid()) @db.Uuid
+  rocketId  String   @db.Uuid
+  roomId    String   @db.Uuid
+  userId    String   @db.Uuid
+  amount    BigInt
+  giftTxnId String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([rocketId])
+  @@index([rocketId, userId])
+  @@map("rocket_contributions")
+}
+
+/// Immutable record of every reward distributed when a rocket completes.
+model RocketReward {
+  id             String             @id @default(uuid()) @db.Uuid
+  rocketId       String             @db.Uuid
+  roomId         String             @db.Uuid
+  userId         String             @db.Uuid
+  rank           Int
+  kind           TreasureRewardKind
+  coins          BigInt?
+  itemType       String?
+  itemName       String?
+  walletTxnId    String?            @db.Uuid
+  backpackItemId String?            @db.Uuid
+  createdAt      DateTime           @default(now())
+
+  @@index([rocketId])
+  @@index([userId])
+  @@map("rocket_rewards")
+}

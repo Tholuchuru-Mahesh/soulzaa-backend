@@ -1,0 +1,61 @@
+// ============================================================
+// Session — sessions + session audit
+// Owned by the "session" module. Refresh-token rotation, inactivity
+// expiry, concurrent limits and hijack detection live here. Devices
+// live in the device module (referenced by deviceId). Live session
+// state (session:{id}, user_sessions:{userId}) is cached in Redis;
+// these tables are the durable system of record. No cross-module relations.
+// ============================================================
+
+enum SessionEventType {
+  CREATED
+  REFRESHED
+  REVOKED
+  EXPIRED
+  LOGGED_OUT
+  HIJACK_DETECTED
+  ADMIN_LOGOUT
+  CONCURRENT_EVICTED
+}
+
+/// One row per issued refresh token (rotation-enabled). The refresh JWT
+/// is stored only as a SHA-256 hash. `replacedBySessionId` chains
+/// rotations so a replayed (already-rotated) token triggers reuse
+/// detection. `id` is the `sid` claim embedded in access/refresh tokens.
+model UserSession {
+  id                  String          @id @default(uuid()) @db.Uuid
+  userId              String          @db.Uuid
+  deviceId            String?         @db.Uuid
+  platform            DevicePlatform?
+  refreshTokenHash    String
+  expiresAt           DateTime
+  revokedAt           DateTime?
+  replacedBySessionId String?         @db.Uuid
+  createdByIp         String?
+  userAgent           String?
+  // Physical column kept as `lastUsedAt` (@map) so the rename is client-side
+  // only — no destructive column drop when this schema is migrated.
+  lastActivityAt      DateTime        @default(now()) @map("lastUsedAt")
+  createdAt           DateTime        @default(now())
+
+  @@index([userId])
+  @@index([refreshTokenHash])
+  @@map("user_sessions")
+}
+
+/// Append-only audit of every session lifecycle event. Backs security
+/// review (hijack detection, admin force-logout) and device history.
+model SessionHistory {
+  id        String           @id @default(uuid()) @db.Uuid
+  sessionId String?          @db.Uuid
+  userId    String           @db.Uuid
+  event     SessionEventType
+  ip        String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  @@index([userId])
+  @@index([sessionId])
+  @@map("session_history")
+}

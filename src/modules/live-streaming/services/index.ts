@@ -1,0 +1,2 @@
+/** live-streaming services — empty until the module is implemented. */
+export {};

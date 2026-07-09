@@ -1,0 +1,60 @@
+// ============================================================
+// Auth — credentials, providers, password resets
+// Owned by the "auth" module. The `users` identity row lives in the
+// users module; OTP lives in the otp module; sessions + devices live
+// in the session module. Login-attempt counters live in Redis; the
+// tables below are the durable system of record. No cross-module relations.
+// ============================================================
+
+enum AuthProviderType {
+  PASSWORD
+  MOBILE_OTP
+  GOOGLE
+  APPLE
+}
+
+/// Password material for email+password accounts. One row per user.
+/// passwordHash is null for OTP-only / social-only accounts.
+model UserCredential {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @unique @db.Uuid
+  passwordHash      String?
+  passwordUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_credentials")
+}
+
+/// Links an account to an authentication provider identity. For social
+/// logins providerUserId is the provider `sub`; the (provider, sub)
+/// pair is globally unique so re-login is idempotent.
+model UserAuthProvider {
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @db.Uuid
+  provider       AuthProviderType
+  providerUserId String?
+  email          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("user_auth_providers")
+}
+
+/// Single-use password-reset token (stored hashed). `usedAt` marks
+/// consumption so a token cannot be replayed.
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}

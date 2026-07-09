@@ -1,0 +1,22 @@
+// ============================================================
+// Audio Room Appearance (AR-8) — the active theme/background +
+// decorations applied to a room from owned Backpack cosmetics.
+// Owned by the "audio_rooms" module. Cosmetic ids reference the
+// cosmetics catalog; ownership is verified via BACKPACK_SERVICE at
+// apply time. One row per room (1:1).
+// ============================================================
+
+/// A room's active appearance. `themeCosmeticId` is the applied THEME/background;
+/// `decorationCosmeticIds` are the applied DECORATION cosmetics (parallel to
+/// `decorationNames` for display). Reset clears all fields.
+model RoomAppearance {
+  roomId                String   @id @db.Uuid
+  themeCosmeticId       String?  @db.Uuid
+  themeName             String?
+  decorationCosmeticIds String[] @db.Uuid
+  decorationNames       String[]
+  updatedBy             String?  @db.Uuid
+  updatedAt             DateTime @updatedAt
+
+  @@map("room_appearance")
+}

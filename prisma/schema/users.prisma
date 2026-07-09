@@ -1,0 +1,124 @@
+// ============================================================
+// Users — identity / account record + profile aggregate
+// Owned by the "users" module. System of record for account
+// identity (users) plus the profile aggregate: user_profiles,
+// user_statistics, user_verification. No cross-module relations —
+// reference other domains by id and coordinate via the event bus.
+// ============================================================
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DELETED
+}
+
+enum VerificationStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VerificationType {
+  IDENTITY
+  CELEBRITY
+  OFFICIAL
+  CREATOR
+}
+
+/// The canonical account/identity row. Auth reads/writes this only
+/// through IUsersService (USERS_SERVICE) — never via Prisma directly.
+model User {
+  id                String         @id @default(uuid()) @db.Uuid
+  username          String         @unique
+  // Nullable: an account may onboard via a single method (mobile-only,
+  // or social-only). @unique still enforces "email unique" and
+  // "one mobile → one account" — Postgres allows multiple NULLs.
+  email             String?        @unique
+  mobile            String?        @unique
+  fullName          String?
+  gender            Gender?
+  dateOfBirth       DateTime?      @db.Date
+  country           String?
+  preferredLanguage String?
+  roles             PlatformRole[] @default([USER])
+  isGuest           Boolean        @default(false)
+  status            AccountStatus  @default(ACTIVE)
+
+  emailVerifiedAt  DateTime?
+  mobileVerifiedAt DateTime?
+
+  // ---- Audit ----
+  createdBy String?   @db.Uuid
+  updatedBy String?   @db.Uuid
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([status])
+  @@map("users")
+}
+
+/// Presentational profile — the net-new fields on top of the identity row
+/// (which already holds fullName/gender/birthday/country/language). Avatar
+/// and cover store the S3 object KEY; the read model resolves a URL. One row
+/// per user, created with the identity in a single transaction.
+model UserProfile {
+  userId    String   @id @db.Uuid
+  bio       String?
+  avatarKey String?
+  coverKey  String?
+  state     String?
+  city      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_profiles")
+}
+
+/// Denormalised counters shown on the profile. Written by other domains via
+/// the PROFILE_SERVICE.incrementStatistic contract (gifts, follows, rooms...).
+/// Hours are stored as minutes and surfaced as hours in the view.
+model UserStatistics {
+  userId         String   @id @db.Uuid
+  followersCount Int      @default(0)
+  followingCount Int      @default(0)
+  friendsCount   Int      @default(0)
+  giftsSent      BigInt   @default(0)
+  giftsReceived  BigInt   @default(0)
+  coinsReceived  BigInt   @default(0)
+  audioMinutes   Int      @default(0)
+  videoMinutes   Int      @default(0)
+  liveMinutes    Int      @default(0)
+  exp            BigInt   @default(0)
+  level          Int      @default(1)
+  vipLevel       Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@map("user_statistics")
+}
+
+/// Verified-badge state + review workflow. `verified` is the blue-check the
+/// profile view exposes; status/type/documentKey drive the review request.
+model UserVerification {
+  userId          String             @id @db.Uuid
+  verified        Boolean            @default(false)
+  status          VerificationStatus @default(NONE)
+  type            VerificationType?
+  documentKey     String?
+  rejectionReason String?
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+  reviewedBy      String?            @db.Uuid
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@map("user_verification")
+}

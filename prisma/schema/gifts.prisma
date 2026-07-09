@@ -1,0 +1,112 @@
+// ============================================================
+// Gifts — the gift catalog + the immutable gift-send ledger.
+// Owned by the "gifts" module. Coin movement is delegated to the
+// wallet module (WALLET_SERVICE); this ledger is the durable record
+// of every gift sent (sender, receiver, context, combo, lucky roll,
+// creator earnings, EXP). No cross-module relations — reference
+// users/rooms/wallet transactions by id.
+// ============================================================
+
+/// Presentation/behaviour type of a gift (PRD gift types).
+enum GiftType {
+  STATIC
+  ANIMATED
+  COMBO
+  LUCKY
+  FESTIVAL
+  PREMIUM
+}
+
+/// Catalog category (PRD gift categories) — drives shelves & VIP gating.
+enum GiftCategory {
+  STANDARD
+  PREMIUM
+  LUXURY
+  EVENT
+  VIP_EXCLUSIVE
+}
+
+/// Where a gift was sent. AR-5 wires AUDIO_ROOM; the others are reserved so the
+/// same pipeline serves live/video/private-chat gifting later.
+enum GiftContextType {
+  AUDIO_ROOM
+  VIDEO_ROOM
+  LIVE_STREAM
+  PRIVATE_CHAT
+}
+
+/// Lifecycle of a gift transaction. COMPLETED is terminal; REVERSED marks an
+/// admin-authorized rollback (a compensating wallet refund was issued).
+enum GiftTxnStatus {
+  COMPLETED
+  REVERSED
+}
+
+/// The gift catalog (admin-managed). `coinValue` is the Gold-coin unit price.
+/// `comboEnabled` gifts accumulate a combo tier within `comboWindowSeconds`.
+/// LUCKY gifts roll a multiplier from `luckyMultipliers` at `luckyWinChanceBp`
+/// (basis points). `minVipLevel` gates VIP-exclusive gifts (enforced once the
+/// VIP module lands). All media are URLs resolved by the client.
+model Gift {
+  id                 String       @id @default(uuid()) @db.Uuid
+  name               String
+  category           GiftCategory
+  type               GiftType
+  coinValue          Int
+  thumbnailUrl       String?
+  animationUrl       String?
+  soundUrl           String?
+  minVipLevel        Int          @default(0)
+  comboEnabled       Boolean      @default(false)
+  comboWindowSeconds Int          @default(10)
+  luckyMultipliers   Int[]        @default([])
+  luckyWinChanceBp   Int          @default(0)
+  festivalTag        String?
+  enabled            Boolean      @default(true)
+  sortOrder          Int          @default(0)
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([enabled, category])
+  @@index([type])
+  @@map("gifts")
+}
+
+/// Append-only, immutable record of every gift sent. Written after the wallet
+/// debit (sender) + credit (receiver earnings) succeed, inside the same
+/// send flow. `idempotencyKey` is unique so a replayed send returns the original
+/// row. `totalCoinValue = unitCoinValue * quantity * luckyMultiplier`.
+model GiftTransaction {
+  id                  String          @id @default(uuid()) @db.Uuid
+  senderId            String          @db.Uuid
+  receiverId          String          @db.Uuid
+  giftId              String          @db.Uuid
+  giftType            GiftType
+  contextType         GiftContextType
+  contextId           String          @db.Uuid
+  quantity            Int             @default(1)
+  comboTier           Int             @default(1)
+  unitCoinValue       Int
+  totalCoinValue      BigInt
+  creatorEarnings     BigInt
+  luckyMultiplier     Int             @default(1)
+  isLuckyWin          Boolean         @default(false)
+  senderExp           Int             @default(0)
+  receiverExp         Int             @default(0)
+  status              GiftTxnStatus   @default(COMPLETED)
+  idempotencyKey      String          @unique
+  senderWalletTxnId   String?         @db.Uuid
+  receiverWalletTxnId String?         @db.Uuid
+  metadata            Json?
+  createdAt           DateTime        @default(now())
+
+  @@index([contextType, contextId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([receiverId, createdAt])
+  @@index([giftId])
+  @@map("gift_transactions")
+}

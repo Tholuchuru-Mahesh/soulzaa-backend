@@ -1,0 +1,239 @@
+// ============================================================
+// Games (AR-11) — game platform backend: catalog, lobbies, sessions,
+// participants, immutable economy ledger, settlement results, audit log.
+//
+// This owns the *platform* around games (matchmaking lobbies, entry-stake
+// escrow, trusted result settlement, anti-cheat validation, history, audit).
+// Per-game rule engines (who wins UNO / dice rolls / slot reels) are NOT
+// modelled here — a trusted game engine submits results through the
+// settlement seam. Currency mapping (PRD Vol.3 §16): premium games spend
+// GOLD, casual games spend FREE.
+//
+// No cross-module relations — other domains are referenced by id and
+// coordinated via the EVENT_BUS. Wallet movements link back by walletTxnId.
+// ============================================================
+
+/// The eight games defined by the PRD.
+enum GameCode {
+  GREEDY
+  ROULETTE
+  SLOTS
+  JACKPOT
+  UNO
+  LUDO
+  CARROM
+  DOMINO
+}
+
+/// Premium games spend Gold Coins; casual games spend Free Coins.
+enum GameCategory {
+  PREMIUM
+  CASUAL
+}
+
+/// Currency a game stakes/pays out in (maps to WalletCurrency at the seam).
+enum GameCurrency {
+  GOLD
+  FREE
+}
+
+enum GameLobbyStatus {
+  OPEN
+  STARTED
+  CANCELLED
+  EXPIRED
+}
+
+enum GameSessionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  ABORTED
+}
+
+enum GameParticipantStatus {
+  PLAYING
+  WON
+  LOST
+  DREW
+  REFUNDED
+}
+
+enum GameTxnType {
+  STAKE
+  PAYOUT
+  REFUND
+}
+
+/// Immutable catalog entry — admin-configurable per PRD (stakes, players,
+/// enable/disable). Seeded idempotently on bootstrap.
+model GameDefinition {
+  id           String       @id @default(uuid()) @db.Uuid
+  code         GameCode     @unique
+  name         String
+  category     GameCategory
+  currency     GameCurrency
+  minPlayers   Int
+  maxPlayers   Int
+  minStake     BigInt
+  maxStake     BigInt
+  /// House cut applied at settlement, basis points (0 = winner-take-pot).
+  houseRakeBps Int          @default(0)
+  enabled      Boolean      @default(true)
+  /// Per-game tunables owned by the (future) game engine — opaque here.
+  config       Json?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  createdBy    String?      @db.Uuid
+  updatedBy    String?      @db.Uuid
+
+  @@map("game_definitions")
+}
+
+/// A pre-match lobby. Host creates it, others join by code, host starts it.
+model GameLobby {
+  id           String          @id @default(uuid()) @db.Uuid
+  definitionId String          @db.Uuid
+  code         String          @unique
+  hostId       String          @db.Uuid
+  /// Optional audio-room context the game is played inside.
+  roomId       String?         @db.Uuid
+  category     GameCategory
+  currency     GameCurrency
+  stake        BigInt
+  maxPlayers   Int
+  status       GameLobbyStatus @default(OPEN)
+  sessionId    String?         @db.Uuid
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  expiresAt    DateTime
+  startedAt    DateTime?
+  cancelledAt  DateTime?
+  createdBy    String?         @db.Uuid
+  updatedBy    String?         @db.Uuid
+
+  @@index([status, expiresAt])
+  @@index([definitionId, status])
+  @@index([hostId])
+  @@map("game_lobbies")
+}
+
+/// Membership of a lobby before the match starts.
+model GameLobbyMember {
+  id       String   @id @default(uuid()) @db.Uuid
+  lobbyId  String   @db.Uuid
+  userId   String   @db.Uuid
+  joinedAt DateTime @default(now())
+
+  @@unique([lobbyId, userId])
+  @@index([lobbyId])
+  @@map("game_lobby_members")
+}
+
+/// The match once started — stakes are escrowed and the pot is fixed.
+model GameSession {
+  id           String            @id @default(uuid()) @db.Uuid
+  definitionId String            @db.Uuid
+  code         GameCode
+  lobbyId      String?           @db.Uuid
+  joinCode     String
+  hostId       String            @db.Uuid
+  roomId       String?           @db.Uuid
+  category     GameCategory
+  currency     GameCurrency
+  stake        BigInt
+  playerCount  Int
+  potAmount    BigInt            @default(0)
+  status       GameSessionStatus @default(ACTIVE)
+  startedAt    DateTime          @default(now())
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+  settledAt    DateTime?
+  createdBy    String?           @db.Uuid
+  updatedBy    String?           @db.Uuid
+
+  @@index([status])
+  @@index([definitionId, status])
+  @@index([roomId])
+  @@index([hostId])
+  @@index([status, startedAt])
+  @@map("game_sessions")
+}
+
+/// A player in a session, their staked amount, and settled outcome.
+model GameParticipant {
+  id           String                @id @default(uuid()) @db.Uuid
+  sessionId    String                @db.Uuid
+  definitionId String                @db.Uuid
+  userId       String                @db.Uuid
+  stake        BigInt
+  stakeTxnId   String?               @db.Uuid
+  status       GameParticipantStatus @default(PLAYING)
+  payoutAmount BigInt                @default(0)
+  payoutTxnId  String?               @db.Uuid
+  refundTxnId  String?               @db.Uuid
+  isWinner     Boolean               @default(false)
+  joinedAt     DateTime              @default(now())
+  settledAt    DateTime?
+
+  @@unique([sessionId, userId])
+  @@index([sessionId])
+  @@index([userId])
+  @@map("game_participants")
+}
+
+/// Append-only game-economy ledger (mirrors wallet movements for game-domain
+/// reporting/reconciliation). Idempotency key dedups replays.
+model GameTransaction {
+  id             String       @id @default(uuid()) @db.Uuid
+  sessionId      String       @db.Uuid
+  participantId  String?      @db.Uuid
+  userId         String       @db.Uuid
+  type           GameTxnType
+  currency       GameCurrency
+  amount         BigInt
+  walletTxnId    String?      @db.Uuid
+  idempotencyKey String       @unique
+  createdAt      DateTime     @default(now())
+
+  @@index([sessionId])
+  @@index([userId, createdAt])
+  @@map("game_transactions")
+}
+
+/// Immutable settlement record — one per settled session (unique). Stores the
+/// pot/payout/rake accounting and the raw result payload submitted by the
+/// trusted game engine (scoreboard/seed/proof) for audit.
+model GameMatchResult {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionId    String   @unique @db.Uuid
+  definitionId String   @db.Uuid
+  code         GameCode
+  potAmount    BigInt
+  payoutTotal  BigInt
+  rakeAmount   BigInt
+  winners      String[] @db.Uuid
+  /// Raw settlement payload (scoreboard, seed, proof) — opaque to the platform.
+  resultData   Json
+  settledBy    String?  @db.Uuid
+  settledAt    DateTime @default(now())
+
+  @@index([definitionId, settledAt])
+  @@map("game_match_results")
+}
+
+/// Append-only audit trail of every game action (lobby/session lifecycle,
+/// settlement, cancellation, anti-cheat rejections).
+model GameEventLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  sessionId String?  @db.Uuid
+  lobbyId   String?  @db.Uuid
+  userId    String?  @db.Uuid
+  action    String
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([action, createdAt])
+  @@map("game_event_logs")
+}
