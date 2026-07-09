@@ -14,7 +14,9 @@ import { FamiliesModule } from './families/families.module';
 import { GamesModule } from './games/games.module';
 import { GiftsModule } from './gifts/gifts.module';
 import { LiveStreamingModule } from './live-streaming/live-streaming.module';
+import { LuckyPacketsModule } from './lucky-packets/lucky-packets.module';
 import { NotificationModule } from './notification/notification.module';
+import { RoomUtilitiesModule } from './room-utilities/room-utilities.module';
 import { OtpModule } from './otp/otp.module';
 import { SessionModule } from './session/session.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -43,6 +45,8 @@ export const DOMAIN_MODULES = [
   EventsModule,
   RankingsModule,
   TreasureBoxesModule,
+  LuckyPacketsModule,
+  RoomUtilitiesModule,
   VideoRoomsModule,
   LiveStreamingModule,
   VipModule,

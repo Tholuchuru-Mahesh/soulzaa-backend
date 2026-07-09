@@ -38,6 +38,10 @@ enum WalletTxnReason {
   EVENT_REWARD
   COSMETIC_PURCHASE
   PREMIUM_SEAT
+  LUCKY_PACKET_CREATE
+  LUCKY_PACKET_CLAIM
+  LUCKY_PACKET_REFUND
+  SPIN_WHEEL_REWARD
 }
 
 /// One wallet per user (1:1). Balances are BigInt to scale to platform-wide

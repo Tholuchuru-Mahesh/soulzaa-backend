@@ -18,7 +18,9 @@ import { AudioRoomSeatsListener } from './listeners/audio-room-seats.listener';
 import { AudioRoomSocketListener } from './listeners/audio-room-socket.listener';
 import { ChatSocketListener } from './listeners/chat-socket.listener';
 import { GiftSocketListener } from './listeners/gift-socket.listener';
+import { LuckyPacketSocketListener } from './listeners/lucky-packet-socket.listener';
 import { ModerationSocketListener } from './listeners/moderation-socket.listener';
+import { RoomUtilitiesSocketListener } from './listeners/room-utilities-socket.listener';
 import { PkGiftListener } from './listeners/pk-gift.listener';
 import { PkSocketListener } from './listeners/pk-socket.listener';
 import { PremiumSocketListener } from './listeners/premium-socket.listener';
@@ -134,6 +136,8 @@ import { VoiceService } from './services/voice.service';
     ChatSocketListener,
     GiftSocketListener,
     TreasureSocketListener,
+    LuckyPacketSocketListener,
+    RoomUtilitiesSocketListener,
     ProgressionSocketListener,
     RoomCosmeticsSocketListener,
     PremiumSocketListener,

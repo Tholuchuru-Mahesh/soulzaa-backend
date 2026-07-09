@@ -87,6 +87,25 @@ export const ROOM_SOCKET_EVENTS = {
   PK_SCORE: 'pk.score',
   PK_ENDED: 'pk.ended',
   PK_CANCELLED: 'pk.cancelled',
+  // ---- Lucky Packets (AR-14) ----
+  LUCKY_PACKET_CREATED: 'lucky_packet.created',
+  LUCKY_PACKET_CLAIMED: 'lucky_packet.claimed',
+  LUCKY_PACKET_COMPLETED: 'lucky_packet.completed',
+  LUCKY_PACKET_EXPIRED: 'lucky_packet.expired',
+  // ---- Room Interactive Utilities (AR-15) ----
+  POLL_CREATED: 'poll.created',
+  POLL_VOTED: 'poll.voted',
+  POLL_ENDED: 'poll.ended',
+  DICE_ROLLED: 'dice.rolled',
+  COIN_FLIPPED: 'coin.flipped',
+  RANDOM_PICKED: 'random.picked',
+  SPIN_RESULT: 'spin.result',
+  COUNTDOWN_STARTED: 'countdown.started',
+  COUNTDOWN_TICK: 'countdown.tick',
+  COUNTDOWN_PAUSED: 'countdown.paused',
+  COUNTDOWN_RESUMED: 'countdown.resumed',
+  COUNTDOWN_COMPLETED: 'countdown.completed',
+  COUNTDOWN_CANCELLED: 'countdown.cancelled',
 } as const;
 
 /** Validation bounds for room fields (mirrored by the DTOs). */

@@ -1,0 +1,193 @@
+// ============================================================
+// Room Interactive Utilities (AR-15) — lightweight host tools that
+// run inside an audio room: polls, dice, coin flip, random picker,
+// spin wheel, and countdown timer. Owned by the "room-utilities"
+// module. Every outcome (vote tally, dice values, coin face, picked
+// user, spin segment) is computed server-side and is the single
+// source of truth; the client only animates it. Realtime fan-out
+// flows through EVENT_BUS → the audio-rooms room-utilities socket
+// bridge. No cross-module relations (loose FK by @db.Uuid).
+// ============================================================
+
+enum RoomPollStatus {
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum CoinFace {
+  HEADS
+  TAILS
+}
+
+enum RandomPickPool {
+  ALL
+  SPEAKERS
+  AUDIENCE
+  NUMBER
+}
+
+enum SpinWheelStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum RoomCountdownStatus {
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+/// A host-created poll. One ACTIVE poll may auto-end at `endsAt` (swept by the
+/// tick monitor) or be ended manually. `allowMultiple` is reserved; phase-15
+/// enforces one vote per user via the vote's unique constraint.
+model RoomPoll {
+  id            String         @id @default(uuid()) @db.Uuid
+  roomId        String         @db.Uuid
+  creatorId     String         @db.Uuid
+  question      String
+  status        RoomPollStatus @default(ACTIVE)
+  allowMultiple Boolean        @default(false)
+  endsAt        DateTime?
+  endedAt       DateTime?
+  createdAt     DateTime       @default(now())
+
+  options RoomPollOption[]
+
+  @@index([roomId, status])
+  @@map("room_polls")
+}
+
+/// A poll option with a denormalized `voteCount` tally (kept in step with the
+/// vote ledger inside the vote transaction).
+model RoomPollOption {
+  id        String @id @default(uuid()) @db.Uuid
+  pollId    String @db.Uuid
+  label     String
+  position  Int
+  voteCount Int    @default(0)
+
+  poll  RoomPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes RoomPollVote[]
+
+  @@index([pollId])
+  @@map("room_poll_options")
+}
+
+/// One member's vote. `@@unique([pollId, userId])` is the authoritative
+/// duplicate-vote guard.
+model RoomPollVote {
+  id        String   @id @default(uuid()) @db.Uuid
+  pollId    String   @db.Uuid
+  optionId  String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  option RoomPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@index([pollId])
+  @@map("room_poll_votes")
+}
+
+/// A host dice roll. `values` holds each die's face (1..6); `total` is their sum.
+model DiceRoll {
+  id        String   @id @default(uuid()) @db.Uuid
+  roomId    String   @db.Uuid
+  userId    String   @db.Uuid
+  diceCount Int      @default(1)
+  values    Int[]
+  total     Int
+  createdAt DateTime @default(now())
+
+  @@index([roomId, createdAt])
+  @@map("dice_rolls")
+}
+
+/// A host coin flip. `result` is the server-decided face.
+model CoinFlip {
+  id        String   @id @default(uuid()) @db.Uuid
+  roomId    String   @db.Uuid
+  userId    String   @db.Uuid
+  result    CoinFace
+  createdAt DateTime @default(now())
+
+  @@index([roomId, createdAt])
+  @@map("coin_flips")
+}
+
+/// A host random pick over a live pool of members (or a number range). The
+/// candidate set is resolved from the live stage/roster at pick time.
+model RandomPick {
+  id           String         @id @default(uuid()) @db.Uuid
+  roomId       String         @db.Uuid
+  userId       String         @db.Uuid
+  pool         RandomPickPool
+  rangeMin     Int?
+  rangeMax     Int?
+  pickedUserId String?        @db.Uuid
+  pickedNumber Int?
+  createdAt    DateTime       @default(now())
+
+  @@index([roomId, createdAt])
+  @@map("random_picks")
+}
+
+/// A host-defined spin wheel. `segments` is a JSON array of
+/// `{ label, weight, color?, rewardCoins? }`. Spins draw a weighted segment
+/// server-side; optional `rewardCoins` credit the spinner's wallet.
+model SpinWheel {
+  id        String          @id @default(uuid()) @db.Uuid
+  roomId    String          @db.Uuid
+  creatorId String          @db.Uuid
+  title     String
+  status    SpinWheelStatus @default(ACTIVE)
+  segments  Json
+  createdAt DateTime        @default(now())
+
+  results SpinResult[]
+
+  @@index([roomId, status])
+  @@map("spin_wheels")
+}
+
+/// The immutable result of one spin: the server-selected segment.
+model SpinResult {
+  id           String   @id @default(uuid()) @db.Uuid
+  wheelId      String   @db.Uuid
+  roomId       String   @db.Uuid
+  userId       String   @db.Uuid
+  segmentIndex Int
+  segmentLabel String
+  rewardCoins  BigInt?
+  walletTxnId  String?  @db.Uuid
+  createdAt    DateTime @default(now())
+
+  wheel SpinWheel @relation(fields: [wheelId], references: [id], onDelete: Cascade)
+
+  @@index([wheelId])
+  @@index([roomId, createdAt])
+  @@map("spin_results")
+}
+
+/// A host countdown timer. At most one non-terminal countdown per room.
+/// `remainingSeconds` is authoritative while PAUSED; while RUNNING the
+/// remaining time is derived from `endsAt`. The tick monitor completes it
+/// when `endsAt` elapses.
+model RoomCountdown {
+  id               String              @id @default(uuid()) @db.Uuid
+  roomId           String              @db.Uuid
+  creatorId        String              @db.Uuid
+  label            String?
+  durationSeconds  Int
+  remainingSeconds Int
+  status           RoomCountdownStatus @default(RUNNING)
+  startedAt        DateTime            @default(now())
+  endsAt           DateTime
+  completedAt      DateTime?
+
+  @@index([roomId, status])
+  @@index([status, endsAt])
+  @@map("room_countdowns")
+}

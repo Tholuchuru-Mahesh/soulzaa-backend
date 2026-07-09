@@ -1,0 +1,71 @@
+// ============================================================
+// Lucky Packets (AR-14) — host-created coin "red envelopes" in a
+// room. A host debits their wallet to fund a packet with N winner
+// slots; members claim slots and are credited a server-computed
+// share (RANDOM or FIXED distribution). Unclaimed remainder is
+// refunded to the creator on expiry. Owned by the "lucky-packets"
+// module. Coins move through the wallet (WALLET_SERVICE); balances
+// and amounts are BigInt. Immutable claim ledger. Realtime fan-out
+// flows through EVENT_BUS → the audio-rooms lucky-packet socket
+// bridge. No cross-module relations (loose FK by @db.Uuid).
+// ============================================================
+
+enum LuckyPacketDistribution {
+  RANDOM
+  FIXED
+}
+
+enum LuckyPacketStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
+  REFUNDED
+}
+
+/// A funded lucky packet. `totalCoins` is debited from the creator at
+/// creation; `remainingCoins`/`remainingSlots` decrement as members claim.
+/// COMPLETED when all slots are claimed; EXPIRED/REFUNDED when the expiry
+/// sweeper refunds the unclaimed remainder to the creator.
+model LuckyPacket {
+  id             String                  @id @default(uuid()) @db.Uuid
+  roomId         String                  @db.Uuid
+  creatorId      String                  @db.Uuid
+  currency       WalletCurrency          @default(GOLD)
+  totalCoins     BigInt
+  winnerCount    Int
+  distribution   LuckyPacketDistribution
+  message        String?
+  status         LuckyPacketStatus       @default(ACTIVE)
+  remainingCoins BigInt
+  remainingSlots Int
+  debitTxnId     String?                 @db.Uuid
+  expiresAt      DateTime
+  completedAt    DateTime?
+  createdAt      DateTime                @default(now())
+
+  claims LuckyPacketClaim[]
+
+  @@index([roomId, status])
+  @@index([status, expiresAt])
+  @@map("lucky_packets")
+}
+
+/// One member's claim on a packet. `@@unique([packetId, userId])` is the
+/// authoritative duplicate-claim guard; `amount` is the server-computed share
+/// and `walletTxnId` references the wallet credit.
+model LuckyPacketClaim {
+  id          String   @id @default(uuid()) @db.Uuid
+  packetId    String   @db.Uuid
+  roomId      String   @db.Uuid
+  userId      String   @db.Uuid
+  amount      BigInt
+  walletTxnId String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  packet LuckyPacket @relation(fields: [packetId], references: [id], onDelete: Cascade)
+
+  @@unique([packetId, userId])
+  @@index([packetId])
+  @@index([userId, createdAt])
+  @@map("lucky_packet_claims")
+}
