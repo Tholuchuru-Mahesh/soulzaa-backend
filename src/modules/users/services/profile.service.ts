@@ -144,6 +144,23 @@ export class ProfileService implements IProfileService {
     return stats ? this.toStatisticsView(stats) : null;
   }
 
+  async getCards(ids: string[]): Promise<UserCard[]> {
+    const unique = [...new Set(ids)];
+    const views = await Promise.all(unique.map((id) => this.getProfileView(id)));
+    return views
+      .filter((v): v is ProfileView => v !== null)
+      .map((v) => ({
+        id: v.id,
+        username: v.username,
+        fullName: v.fullName,
+        avatarUrl: v.avatarUrl,
+        verified: v.verification.verified,
+        level: v.statistics.level,
+        vipLevel: v.statistics.vipLevel,
+        country: v.country,
+      }));
+  }
+
   async incrementStatistic(userId: string, field: StatisticField, delta: number): Promise<void> {
     await this.profiles.incrementStatistic(userId, field, delta);
     await this.invalidate(userId);

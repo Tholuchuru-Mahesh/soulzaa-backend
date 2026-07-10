@@ -1,12 +1,27 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
+import { NotificationController } from './controllers/notification.controller';
+import { NOTIFICATION_SERVICE } from './interfaces/notification.interface';
+import { SocialNotificationListener } from './listeners/social-notification.listener';
+import { NotificationRepository } from './repositories/notification.repository';
+import { NotificationService } from './services/notification.service';
 
 /**
- * Notification domain — push/in-app notifications and preferences.
+ * Notification domain — durable in-app notifications + preferences. Owns its
+ * Prisma tables; other domains never write them. A bridge listener turns social
+ * domain events (friend/follow/invite) into notification rows. Realtime delivery
+ * of those same events rides each producer's socket layer.
  *
- * Phase 0 placeholder — no controllers/providers yet. When implemented, this
- * module owns its Prisma models (its file under prisma/schema/), its DTOs, and
- * exposes a public service interface (interfaces/); other domains depend only on
- * that interface or communicate via the EVENT_BUS — never on its internals.
+ * @Global so producers resolve NOTIFICATION_SERVICE by token without importing.
  */
-@Module({})
+@Global()
+@Module({
+  controllers: [NotificationController],
+  providers: [
+    NotificationRepository,
+    NotificationService,
+    SocialNotificationListener,
+    { provide: NOTIFICATION_SERVICE, useExisting: NotificationService },
+  ],
+  exports: [NOTIFICATION_SERVICE],
+})
 export class NotificationModule {}

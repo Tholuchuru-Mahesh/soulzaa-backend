@@ -80,6 +80,8 @@ export interface IProfileService {
   /** View a profile by username as `viewerId` (undefined = anonymous). Privacy-gated. */
   getProfileByUsername(username: string, viewerId?: string): Promise<ProfileView | null>;
   getStatistics(userId: string): Promise<StatisticsView | null>;
+  /** Resolve lightweight cards for a set of user ids (missing ids are dropped). */
+  getCards(ids: string[]): Promise<UserCard[]>;
   /** Atomically adjust a counter (delta may be negative). Returns nothing. */
   incrementStatistic(userId: string, field: StatisticField, delta: number): Promise<void>;
   /** Search users; results exclude anyone in a block relationship with `viewerId`. */

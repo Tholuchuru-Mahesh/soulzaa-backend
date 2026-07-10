@@ -22,6 +22,7 @@ import { SessionModule } from './session/session.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrivacyModule } from './privacy/privacy.module';
 import { RankingsModule } from './rankings/rankings.module';
+import { SocialModule } from './social/social.module';
 import { TreasureBoxesModule } from './treasure-boxes/treasure-boxes.module';
 import { UsersModule } from './users/users.module';
 import { VideoRoomsModule } from './video-rooms/video-rooms.module';
@@ -55,5 +56,6 @@ export const DOMAIN_MODULES = [
   AgenciesModule,
   GamesModule,
   NotificationModule,
+  SocialModule,
   AnalyticsModule,
 ];

@@ -1,0 +1,152 @@
+// ============================================================
+// Social Graph — friends, friend requests, follows, invitations,
+// presence, and interaction scoring.
+// Owned by the "social" module. Authoritative store for the social
+// graph; other domains consult it via RELATIONSHIP_SERVICE (privacy)
+// and SOCIAL_SERVICE. No cross-module relations — reference other
+// domains (users, rooms, games, families) by id.
+// ============================================================
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum InvitationType {
+  AUDIO_ROOM
+  GAME
+  FAMILY
+  PK_BATTLE
+  EVENT
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
+enum PresenceStatus {
+  OFFLINE
+  ONLINE
+  IN_ROOM
+  IN_GAME
+  IN_PK
+}
+
+/// A pending friend request. Directed (requester -> addressee) and
+/// expirable. Exactly one live row per ordered pair; the unique guard
+/// prevents duplicate outgoing requests. Reverse-direction requests are
+/// resolved in the service (a reverse PENDING auto-accepts into a
+/// Friendship).
+model FriendRequest {
+  id          String              @id @default(uuid()) @db.Uuid
+  requesterId String              @db.Uuid
+  addresseeId String              @db.Uuid
+  status      FriendRequestStatus @default(PENDING)
+  message     String?
+  createdAt   DateTime            @default(now())
+  respondedAt DateTime?
+  expiresAt   DateTime
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+  @@index([requesterId, status])
+  @@index([status, expiresAt])
+  @@map("friend_requests")
+}
+
+/// An accepted friendship. Undirected — stored as a single canonical
+/// row with the ordered pair (userAId < userBId) so the unique guard
+/// dedupes regardless of who sent the request. Best-friend is a
+/// per-direction pin; interactionScore drives derived best-friends.
+model Friendship {
+  id                String    @id @default(uuid()) @db.Uuid
+  userAId           String    @db.Uuid
+  userBId           String    @db.Uuid
+  isBestFriendA     Boolean   @default(false)
+  isBestFriendB     Boolean   @default(false)
+  interactionScore  Int       @default(0)
+  lastInteractionAt DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+  @@index([userAId, interactionScore])
+  @@index([userBId, interactionScore])
+  @@map("friendships")
+}
+
+/// A directed follow edge: `followerId` follows `followingId`. The
+/// unique guard prevents duplicate follows. Followers list = rows where
+/// followingId = target; following list = rows where followerId = user.
+model Follow {
+  id          String   @id @default(uuid()) @db.Uuid
+  followerId  String   @db.Uuid
+  followingId String   @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+  @@index([followerId])
+  @@map("follows")
+}
+
+/// A user-to-user invitation to join a resource (room/game/family/PK/
+/// event). `targetId` is the resource id (roomId/gameId/...); `payload`
+/// carries display metadata resolved at send time. Expirable.
+model Invitation {
+  id          String           @id @default(uuid()) @db.Uuid
+  type        InvitationType
+  inviterId   String           @db.Uuid
+  inviteeId   String           @db.Uuid
+  targetId    String?          @db.Uuid
+  status      InvitationStatus @default(PENDING)
+  payload     Json?
+  createdAt   DateTime         @default(now())
+  respondedAt DateTime?
+  expiresAt   DateTime
+
+  @@index([inviteeId, status])
+  @@index([inviterId, status])
+  @@index([status, expiresAt])
+  @@map("invitations")
+}
+
+/// Durable presence snapshot (Redis is the hot path; this row survives
+/// restarts and backs the `lastSeenAt` history). One row per user.
+model PresenceState {
+  userId        String         @id @db.Uuid
+  status        PresenceStatus @default(OFFLINE)
+  currentRoomId String?        @db.Uuid
+  lastSeenAt    DateTime?
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status])
+  @@map("presence_state")
+}
+
+/// Rolling interaction accrual between two users. Drives derived
+/// best-friends and the "mutual" recommendation heuristic. Populated by
+/// the social interaction listener from gift/chat/co-presence events.
+model UserInteraction {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @db.Uuid
+  peerId          String   @db.Uuid
+  giftScore       Int      @default(0)
+  chatScore       Int      @default(0)
+  coPresenceScore Int      @default(0)
+  totalScore      Int      @default(0)
+  windowStart     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, peerId])
+  @@index([userId, totalScore])
+  @@map("user_interactions")
+}

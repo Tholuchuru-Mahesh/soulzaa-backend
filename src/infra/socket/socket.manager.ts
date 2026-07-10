@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Server, Socket } from 'socket.io';
 import type { ExtendedError } from 'socket.io/dist/namespace';
+import { EVENT_BUS, type IEventBus } from '../../common/events';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { MonitoringMetrics } from '../observability/monitoring.metrics';
 import { PresenceService } from '../redis/presence.service';
 import { TokenService } from '../auth/token.service';
+import { PresenceChangedEvent } from './presence.events';
 
 /** Socket.IO middleware signature (namespace-level `server.use`). */
 type SocketMiddleware = (socket: Socket, next: (err?: ExtendedError) => void) => void;
@@ -40,6 +42,7 @@ export class SocketManager {
     private readonly tokenService: TokenService,
     private readonly presence: PresenceService,
     private readonly metrics: MonitoringMetrics,
+    @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
 
   /**
@@ -81,7 +84,11 @@ export class SocketManager {
     this.userBySocket.set(client.id, user.id);
     this.metrics.setConnectedClients(this.userBySocket.size);
 
-    return this.presence.connect(user.id, client.id);
+    const firstConnection = await this.presence.connect(user.id, client.id);
+    if (firstConnection) {
+      await this.bus.publish(new PresenceChangedEvent({ userId: user.id, online: true }));
+    }
+    return firstConnection;
   }
 
   /**
@@ -104,6 +111,7 @@ export class SocketManager {
     if (last) {
       const rooms = await this.presence.userRooms(userId);
       await Promise.all(rooms.map((roomId) => this.presence.leaveRoom(roomId, userId)));
+      await this.bus.publish(new PresenceChangedEvent({ userId, online: false }));
     }
     return last;
   }

@@ -1,6 +1,52 @@
 // ============================================================
 // Notification — notifications, notification preferences.
-// Owned by the "notification" module. Add models/enums here as the
-// module is implemented. No cross-module relations by default —
+// Owned by the "notification" module. No cross-module relations —
 // reference other domains by id and coordinate via the event bus.
+// The write path is driven by a listener subscribing to domain events
+// (e.g. SOCIAL_EVENTS.*); producers never touch these tables.
 // ============================================================
+
+enum NotificationType {
+  FRIEND_REQUEST
+  FRIEND_ACCEPTED
+  NEW_FOLLOWER
+  ROOM_INVITE
+  GAME_INVITE
+  FAMILY_INVITE
+  PK_INVITE
+  EVENT_INVITE
+}
+
+/// A single in-app notification for `userId`, optionally caused by
+/// `actorId` (the other user) and pointing at an entity (room/request/
+/// invitation). `data` carries denormalised display fields resolved at
+/// creation time. `readAt` null = unread.
+model Notification {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @db.Uuid
+  type       NotificationType
+  actorId    String?          @db.Uuid
+  entityType String?
+  entityId   String?          @db.Uuid
+  data       Json?
+  readAt     DateTime?
+  createdAt  DateTime         @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+/// Per-user notification delivery toggles. One row per user, created on
+/// first read with push enabled.
+model NotificationPreference {
+  userId       String   @id @db.Uuid
+  pushEnabled  Boolean  @default(true)
+  friendEvents Boolean  @default(true)
+  followEvents Boolean  @default(true)
+  inviteEvents Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("notification_preferences")
+}
