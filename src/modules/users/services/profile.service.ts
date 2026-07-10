@@ -188,6 +188,7 @@ export class ProfileService implements IProfileService {
       state?: string;
       city?: string;
       preferredLanguage?: string;
+      dateOfBirth?: string;
     },
   ): Promise<ProfileView> {
     const changed: string[] = [];
@@ -199,6 +200,10 @@ export class ProfileService implements IProfileService {
         identityData[f] = input[f];
         changed.push(f);
       }
+    }
+    if (input.dateOfBirth !== undefined) {
+      identityData['dateOfBirth'] = input.dateOfBirth ? new Date(input.dateOfBirth) : null;
+      changed.push('dateOfBirth');
     }
     if (Object.keys(identityData).length > 0) {
       await this.users.update(userId, { ...identityData, updatedBy: userId });

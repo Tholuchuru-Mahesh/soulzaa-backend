@@ -39,6 +39,11 @@ export class UpdateProfileDto {
   @MaxLength(80)
   city?: string;
 
+  @ApiPropertyOptional({ example: '1990-01-01' })
+  @IsOptional()
+  @IsString()
+  dateOfBirth?: string;
+
   @ApiPropertyOptional({ example: 'en' })
   @IsOptional()
   @IsString()

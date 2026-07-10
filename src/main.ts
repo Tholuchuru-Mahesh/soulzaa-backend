@@ -54,9 +54,11 @@ async function bootstrap(): Promise<void> {
     swaggerOptions: { persistAuthorization: true },
   });
 
-  await app.listen(appCfg.port);
+  await app.listen(appCfg.port, '0.0.0.0');
   const logger = app.get(PinoLogger);
   logger.log(`🚀 Soulzaa backend listening on port ${appCfg.port} (/${appCfg.apiPrefix})`);
 }
 
 void bootstrap();
+// Trigger restart to reload .env configuration changes
+

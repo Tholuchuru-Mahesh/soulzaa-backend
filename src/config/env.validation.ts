@@ -137,7 +137,12 @@ export const envSchema = z.object({
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
   S3_BUCKET: z.string().default('soulzaa-media'),
-  S3_ENDPOINT: optionalUrl, // for S3-compatible/local (MinIO)
+  S3_ENDPOINT: optionalUrl, // for S3-compatible/local (MinIO), used server→S3
+  // Host used to SIGN presigned upload/download URLs when it must differ from
+  // S3_ENDPOINT — e.g. local dev where the backend reaches MinIO via localhost
+  // but a physical device must reach it via the machine's LAN IP. Leave unset in
+  // prod (presigns then use S3_ENDPOINT / real S3).
+  S3_PUBLIC_ENDPOINT: optionalUrl,
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
   S3_PRESIGN_EXPIRY_SECONDS: z.coerce.number().int().positive().default(900),
 

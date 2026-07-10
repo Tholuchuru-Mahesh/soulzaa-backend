@@ -193,6 +193,7 @@ export const storageConfig = registerAs('storage', () => ({
   secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
   bucket: env.S3_BUCKET,
   endpoint: env.S3_ENDPOINT,
+  publicEndpoint: env.S3_PUBLIC_ENDPOINT,
   forcePathStyle: env.S3_FORCE_PATH_STYLE,
   presignExpirySeconds: env.S3_PRESIGN_EXPIRY_SECONDS,
 }));

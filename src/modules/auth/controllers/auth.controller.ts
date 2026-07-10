@@ -28,6 +28,7 @@ import {
   RequestOtpDto,
   ResetPasswordDto,
   SocialLoginDto,
+  FirebaseLoginDto,
   VerifyOtpDto,
 } from '../dto';
 import { AUTH_SERVICE, type AuthContext, type IAuthService } from '../interfaces/auth.interface';
@@ -112,14 +113,11 @@ export class AuthController {
   }
 
   @Public()
-  @Post('login/mobile')
+  @Post('login/firebase-mobile')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with mobile number + OTP' })
-  loginMobile(@Body() dto: VerifyOtpDto, @RequestMeta() meta: RequestMetadata) {
-    return this.auth.loginWithMobileOtp(
-      { mobile: dto.destination, code: dto.code },
-      this.context(meta, dto.device),
-    );
+  @ApiOperation({ summary: 'Login via verified Firebase Phone Authentication ID token' })
+  loginWithFirebaseMobile(@Body() dto: FirebaseLoginDto, @RequestMeta() meta: RequestMetadata) {
+    return this.auth.loginWithFirebaseMobile(dto.idToken, this.context(meta, dto.device));
   }
 
   @Public()

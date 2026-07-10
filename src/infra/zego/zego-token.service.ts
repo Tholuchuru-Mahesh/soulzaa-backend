@@ -38,17 +38,17 @@ export class ZegoTokenService {
     return Boolean(Number(cfg?.appId) && cfg?.serverSecret);
   }
 
-  /**
-   * A room-scoped token. `canPublish` controls the ZEGO publish privilege (2);
-   * login (1) is always granted. Room binding + privileges live in the payload.
-   */
   buildRoomToken(userId: string, roomId: string, canPublish: boolean): ZegoTokenResult {
     const { appId, serverSecret, expiry } = this.creds();
+    // Provide a detailed privilege payload. If ZEGOCLOUD Console has Token Authentication (Strict Mode)
+    // enabled, basic empty tokens will 403/1001004. This payload satisfies both standard and strict modes.
     const payload = JSON.stringify({
       room_id: roomId,
-      // ZEGO privilege keys: 1 = login, 2 = publish.
-      privilege: { 1: 1, 2: canPublish ? 1 : 0 },
-      stream_id_list: null,
+      privilege: {
+        '1': 1, // login
+        '2': canPublish ? 1 : 0, // publish
+      },
+      stream_id_list: [],
     });
     const token = generateToken04(appId, userId, serverSecret, expiry, payload);
     return { appId, token, expiresInSeconds: expiry };

@@ -32,6 +32,13 @@ export interface ObjectHead {
 export class S3Service {
   private readonly logger = new Logger(S3Service.name);
   private readonly client: S3Client;
+  /**
+   * Client used only to SIGN presigned URLs. Separate from [client] because a
+   * SigV4 signature covers the request host, so a URL the caller (a browser or a
+   * physical device) must reach has to be signed with the host they'll use. When
+   * S3_PUBLIC_ENDPOINT is unset this is the same instance as [client].
+   */
+  private readonly presignClient: S3Client;
   private readonly bucket: string;
   private readonly presignExpiry: number;
 
@@ -44,20 +51,27 @@ export class S3Service {
     // `configuration.ts` surfaces raw process.env strings (zod coercion isn't
     // written back), so coerce the boolean/number values the SDK needs typed.
     this.presignExpiry = Number(cfg.presignExpirySeconds);
-    this.client = new S3Client({
+    const forcePathStyle = String(cfg.forcePathStyle) === 'true';
+    const credentials =
+      cfg.accessKeyId && cfg.secretAccessKey
+        ? { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey }
+        : undefined;
+    const common = {
       region: cfg.region,
-      endpoint: cfg.endpoint || undefined,
-      forcePathStyle: String(cfg.forcePathStyle) === 'true',
+      forcePathStyle,
       // Don't bake a CRC32 checksum into presigned PUT URLs — third-party
       // clients (browsers/curl) can't send the matching header, and S3-compatible
       // stores (MinIO/R2) reject the mismatch. Only add checksums when required.
-      requestChecksumCalculation: 'WHEN_REQUIRED',
-      responseChecksumValidation: 'WHEN_REQUIRED',
-      credentials:
-        cfg.accessKeyId && cfg.secretAccessKey
-          ? { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey }
-          : undefined,
-    });
+      requestChecksumCalculation: 'WHEN_REQUIRED' as const,
+      responseChecksumValidation: 'WHEN_REQUIRED' as const,
+      credentials,
+    };
+    this.client = new S3Client({ ...common, endpoint: cfg.endpoint || undefined });
+    // Sign presigned URLs with the public host when one is configured, so the
+    // client can actually reach the object (server↔MinIO stays on [client]).
+    this.presignClient = cfg.publicEndpoint
+      ? new S3Client({ ...common, endpoint: cfg.publicEndpoint })
+      : this.client;
   }
 
   async getPresignedUploadUrl(key: string, contentType?: string): Promise<PresignedUpload> {
@@ -66,13 +80,15 @@ export class S3Service {
       Key: key,
       ContentType: contentType,
     });
-    const uploadUrl = await getSignedUrl(this.client, command, { expiresIn: this.presignExpiry });
+    const uploadUrl = await getSignedUrl(this.presignClient, command, {
+      expiresIn: this.presignExpiry,
+    });
     return { key, uploadUrl, expiresInSeconds: this.presignExpiry };
   }
 
   async getPresignedDownloadUrl(key: string): Promise<string> {
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
-    return getSignedUrl(this.client, command, { expiresIn: this.presignExpiry });
+    return getSignedUrl(this.presignClient, command, { expiresIn: this.presignExpiry });
   }
 
   async deleteObject(key: string): Promise<void> {

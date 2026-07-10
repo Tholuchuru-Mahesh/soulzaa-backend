@@ -5,6 +5,7 @@ import { SOCIAL_VERIFIER } from './interfaces/social-identity-verifier.interface
 import { AuthRepository } from './repositories/auth.repository';
 import { AuthService } from './services/auth.service';
 import { LoginSecurityService } from './services/login-security.service';
+import { FirebaseService } from './services/firebase.service';
 import { AppleVerifier } from './services/social/apple.verifier';
 import { GoogleVerifier } from './services/social/google.verifier';
 import { SocialVerifierRegistry } from './services/social/social-verifier.registry';
@@ -24,6 +25,7 @@ import { SocialVerifierRegistry } from './services/social/social-verifier.regist
     AuthRepository,
     AuthService,
     LoginSecurityService,
+    FirebaseService,
     GoogleVerifier,
     AppleVerifier,
     SocialVerifierRegistry,

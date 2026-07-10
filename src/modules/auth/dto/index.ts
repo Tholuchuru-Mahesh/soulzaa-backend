@@ -8,6 +8,7 @@ export * from './forgot-password.dto';
 export * from './reset-password.dto';
 export * from './change-password.dto';
 export * from './social-login.dto';
+export * from './firebase-login.dto';
 export * from './logout.dto';
 export * from './validators/is-strong-password.validator';
 export * from './validators/is-minimum-age.validator';

@@ -41,6 +41,7 @@ import {
 } from 'src/modules/session/interfaces/session.interface';
 import { AuthRepository } from '../repositories/auth.repository';
 import { LoginSecurityService } from './login-security.service';
+import { FirebaseService } from './firebase.service';
 import { randomToken, sha256 } from './hash.util';
 
 /**
@@ -64,6 +65,7 @@ export class AuthService implements IAuthService {
     private readonly repo: AuthRepository,
     private readonly passwords: PasswordService,
     private readonly security: LoginSecurityService,
+    private readonly firebaseService: FirebaseService,
     config: ConfigService,
   ) {
     this.resetTtlSeconds = Number(config.get('security', { infer: true })!.passwordResetTtlSeconds);
@@ -136,14 +138,11 @@ export class AuthService implements IAuthService {
     return this.issue(user, ctx, 'PASSWORD', false);
   }
 
-  async loginWithMobileOtp(input: MobileOtpLoginCommand, ctx: AuthContext): Promise<AuthResult> {
-    await this.otp.verify({
-      destination: input.mobile,
-      purpose: OtpPurpose.LOGIN,
-      code: input.code,
-    });
+  async loginWithFirebaseMobile(idToken: string, ctx: AuthContext): Promise<AuthResult> {
+    const verified = await this.firebaseService.verifyIdToken(idToken);
+    const phoneNumber = verified.phoneNumber;
 
-    const user = await this.users.findByMobile(input.mobile);
+    const user = await this.users.findByMobile(phoneNumber);
     if (!user) {
       throw new BusinessException(
         ERROR_CODES.NOT_FOUND,
@@ -153,7 +152,7 @@ export class AuthService implements IAuthService {
     }
     this.assertActive(user);
 
-    // A successful mobile-OTP login implicitly verifies the number.
+    // A successful Firebase OTP login implicitly verifies the number.
     if (!user.mobileVerifiedAt) {
       await this.users.markMobileVerified(user.id);
       await this.repo.ensureProviderMarker(user.id, AuthProviderType.MOBILE_OTP);

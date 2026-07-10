@@ -11,6 +11,6 @@ export class ConsoleSmsProvider implements ISmsProvider {
   private readonly logger = new Logger(ConsoleSmsProvider.name);
 
   async send(to: string, message: string): Promise<void> {
-    this.logger.warn(`[DEV SMS] → ${to}: ${message}`);
+    // Dev SMS printing disabled. Firebase Phone Auth is used exclusively.
   }
 }
