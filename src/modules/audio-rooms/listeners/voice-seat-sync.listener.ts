@@ -4,15 +4,16 @@ import {
   AUDIO_ROOM_SEAT_EVENTS,
   type SeatJoinedEvent,
   type SeatLeftEvent,
+  type SeatUpdatedEvent,
 } from '../events/audio-room-seat.events';
 import { VoiceService } from '../services/voice.service';
 
 /**
  * Ties voice publish privilege to seat state: when a user takes or leaves a seat
- * (AR-1) their active voice session's role is re-evaluated (publisher on a seat,
- * subscriber in the audience) and a VoiceState event is emitted so the client
- * re-fetches a correctly-privileged ZEGO token. Newly-promoted speakers can talk
- * immediately; demoted ones stop publishing.
+ * (AR-1) or has their speaking permission / room roles updated, their active voice
+ * session's role is re-evaluated (publisher vs subscriber) and a VoiceState event
+ * is emitted so the client re-fetches a correctly-privileged ZEGO token. Newly-promoted
+ * speakers can talk immediately; demoted ones stop publishing.
  */
 @Injectable()
 export class VoiceSeatSyncListener implements OnModuleInit {
@@ -28,5 +29,10 @@ export class VoiceSeatSyncListener implements OnModuleInit {
     this.bus.subscribe<SeatLeftEvent>(AUDIO_ROOM_SEAT_EVENTS.LEFT, (e) =>
       this.voice.syncRoleFromSeat(e.payload.roomId, e.payload.userId),
     );
+    this.bus.subscribe<SeatUpdatedEvent>(AUDIO_ROOM_SEAT_EVENTS.UPDATED, (e) => {
+      if (e.payload.subjectUserId) {
+        this.voice.syncRoleFromSeat(e.payload.roomId, e.payload.subjectUserId);
+      }
+    });
   }
 }
