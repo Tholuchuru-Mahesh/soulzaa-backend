@@ -150,18 +150,21 @@ export class AudioRoomSeatsService {
   async requestSeat(
     actor: RoomActor,
     roomId: string,
-    dto: { seatIndex?: number },
+    dto: { seatIndex?: number; type?: string },
   ): Promise<{ status: 'seated' | 'queued'; seatIndex: number | null; position: number | null }> {
     await this.assertLiveRoom(roomId);
     await this.assertActiveMember(roomId, actor.id);
 
     return this.locks.withLock(roomSeatLockKey(roomId), async () => {
-      if (await this.seats.getSeatByOccupant(roomId, actor.id)) {
-        throw this.err(
-          ERROR_CODES.ALREADY_ON_SEAT,
-          'You are already on a seat.',
-          HttpStatus.CONFLICT,
-        );
+      const requestType = dto.type || 'BECOME_SPEAKER';
+      if (requestType === 'BECOME_SPEAKER') {
+        if (await this.seats.getSeatByOccupant(roomId, actor.id)) {
+          throw this.err(
+            ERROR_CODES.ALREADY_ON_SEAT,
+            'You are already on a seat.',
+            HttpStatus.CONFLICT,
+          );
+        }
       }
       if (await this.seats.findPendingRequestByUser(roomId, actor.id)) {
         throw this.err(
@@ -176,6 +179,7 @@ export class AudioRoomSeatsService {
         roomId,
         actor.id,
         dto.seatIndex ?? null,
+        requestType,
         actor.id,
       );
       await this.seats.appendSeatHistory({
@@ -185,8 +189,8 @@ export class AudioRoomSeatsService {
         seatIndex: dto.seatIndex ?? null,
       });
 
-      // Auto-accept when approval is off and a suitable seat is free.
-      if (!settings.requireApprovalForSeat) {
+      // Auto-accept when approval is off, a suitable seat is free, and the type is BECOME_SPEAKER.
+      if (requestType === 'BECOME_SPEAKER' && !settings.requireApprovalForSeat) {
         const seat = await this.findOpenSeatFor(roomId, actor.id, dto.seatIndex ?? null);
         if (seat) {
           await this.occupy(roomId, seat, actor.id, actor.id);
@@ -213,6 +217,7 @@ export class AudioRoomSeatsService {
           requestId: request.id,
           seatIndex: dto.seatIndex ?? null,
           queuePosition: entry.position,
+          type: requestType,
         }),
       );
       await this.rebuildStage(roomId);
@@ -275,6 +280,33 @@ export class AudioRoomSeatsService {
     }
 
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
+      const requestType = request.type || 'BECOME_SPEAKER';
+      if (requestType === 'REQUEST_TO_SPEAK') {
+        // REQUEST_TO_SPEAK flow: grant temporary speaking permission
+        await this.rooms.setTempSpeakAllowed(roomId, request.userId, true);
+        await this.seats.resolveRequest(requestId, SeatRequestStatus.ACCEPTED, actor.id);
+        await this.seats.dequeue(roomId, request.userId);
+        await this.seats.appendSeatHistory({
+          roomId,
+          actorId: actor.id,
+          subjectUserId: request.userId,
+          action: SeatHistoryAction.REQUEST_ACCEPTED,
+          metadata: { type: 'REQUEST_TO_SPEAK' },
+        });
+        await this.bus.publish(
+          new SeatAcceptedEvent({
+            roomId,
+            userId: request.userId,
+            requestId,
+            actorId: actor.id,
+            seatIndex: null,
+          }),
+        );
+        await this.publishUpdate(roomId, actor.id, 'temp_speak_granted', null, request.userId);
+        return;
+      }
+
+      // BECOME_SPEAKER flow: occupy first available speaker seat
       const seat = await this.findOpenSeatFor(roomId, request.userId, request.seatIndex);
       if (!seat) {
         throw this.err(
@@ -517,8 +549,22 @@ export class AudioRoomSeatsService {
     await this.permissions.assertPermission(roomId, actor, RoomPermission.MANAGE_SPEAKERS);
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
       const seat = await this.seats.getSeatByOccupant(roomId, userId);
-      if (!seat)
+      if (!seat) {
+        const member = await this.rooms.getMember(roomId, userId);
+        if (member?.tempSpeakAllowed) {
+          await this.rooms.setTempSpeakAllowed(roomId, userId, false);
+          await this.seats.appendSeatHistory({
+            roomId,
+            actorId: actor.id,
+            subjectUserId: userId,
+            action: SeatHistoryAction.SPEAKER_REMOVED,
+            metadata: { type: 'REQUEST_TO_SPEAK' },
+          });
+          await this.publishUpdate(roomId, actor.id, 'temp_speak_revoked', null, userId);
+          return;
+        }
         throw this.err(ERROR_CODES.NOT_ON_SEAT, 'That user is not on a seat.', HttpStatus.CONFLICT);
+      }
       if (seat.seatType === SeatType.OWNER) {
         throw this.err(
           ERROR_CODES.SEAT_TYPE_FORBIDDEN,

@@ -198,10 +198,11 @@ export class AudioRoomSeatsRepository {
     roomId: string,
     userId: string,
     seatIndex: number | null,
+    type: string,
     actorId: string,
   ): Promise<SeatRequest> {
     return this.prisma.seatRequest.create({
-      data: { roomId, userId, seatIndex, ...auditCreate(actorId) },
+      data: { roomId, userId, seatIndex, type, ...auditCreate(actorId) },
     });
   }
 

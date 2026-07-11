@@ -30,6 +30,7 @@ export class SeatRequestedEvent extends DomainEvent<{
   requestId: string;
   seatIndex: number | null;
   queuePosition: number | null;
+  type: string;
 }> {
   readonly name = AUDIO_ROOM_SEAT_EVENTS.REQUESTED;
 }
@@ -39,7 +40,7 @@ export class SeatAcceptedEvent extends DomainEvent<{
   userId: string;
   requestId: string;
   actorId: string;
-  seatIndex: number;
+  seatIndex: number | null;
 }> {
   readonly name = AUDIO_ROOM_SEAT_EVENTS.ACCEPTED;
 }
@@ -98,7 +99,9 @@ export type SeatUpdateReason =
   | 'speaker_removed'
   | 'invited'
   | 'request_cancelled'
-  | 'queue_advanced';
+  | 'queue_advanced'
+  | 'temp_speak_granted'
+  | 'temp_speak_revoked';
 
 /** Catch-all seat/stage change: mute, move, layout, role grant/revoke, room-mute. */
 export class SeatUpdatedEvent extends DomainEvent<{

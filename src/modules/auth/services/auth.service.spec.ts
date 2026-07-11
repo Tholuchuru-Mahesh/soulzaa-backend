@@ -1,6 +1,16 @@
 import { ConfigService } from '@nestjs/config';
 import { IEventBus } from 'src/common/events';
 import { PasswordService } from 'src/infra/auth/password.service';
+
+jest.mock('firebase-admin/app', () => ({
+  initializeApp: jest.fn(),
+  getApps: jest.fn(() => []),
+  cert: jest.fn(),
+}));
+jest.mock('firebase-admin/auth', () => ({
+  getAuth: jest.fn(),
+}));
+
 import type {
   IUsersService,
   UserIdentity,
@@ -11,6 +21,7 @@ import type { ISessionService } from 'src/modules/session/interfaces/session.int
 import { AuthRepository } from '../repositories/auth.repository';
 import { AuthService } from './auth.service';
 import { LoginSecurityService } from './login-security.service';
+import { FirebaseService } from './firebase.service';
 
 function makeIdentity(overrides: Partial<UserIdentity> = {}): UserIdentity {
   return {
@@ -54,6 +65,7 @@ describe('AuthService', () => {
       'assertNotLocked' | 'recordFailure' | 'recordSuccess' | 'enforceRateLimit'
     >
   >;
+  let firebase: jest.Mocked<Pick<FirebaseService, 'verifyIdToken'>>;
   let service: AuthService;
 
   beforeEach(() => {
@@ -96,6 +108,9 @@ describe('AuthService', () => {
       recordSuccess: jest.fn().mockResolvedValue(undefined),
       enforceRateLimit: jest.fn().mockResolvedValue(undefined),
     };
+    firebase = {
+      verifyIdToken: jest.fn(),
+    };
     const config = { get: () => ({ passwordResetTtlSeconds: 900 }) } as unknown as ConfigService;
 
     service = new AuthService(
@@ -107,6 +122,7 @@ describe('AuthService', () => {
       repo,
       passwords as unknown as PasswordService,
       security as unknown as LoginSecurityService,
+      firebase as unknown as FirebaseService,
       config,
     );
   });
@@ -189,14 +205,12 @@ describe('AuthService', () => {
     });
   });
 
-  describe('loginWithMobileOtp', () => {
-    it('verifies the OTP, marks the mobile verified and issues tokens', async () => {
+  describe('loginWithFirebaseMobile', () => {
+    it('verifies the Firebase token, marks the mobile verified and issues tokens', async () => {
+      firebase.verifyIdToken.mockResolvedValue({ phoneNumber: '+15551234567', uid: 'f-uid' });
       users.findByMobile.mockResolvedValue(makeIdentity({ mobileVerifiedAt: null }));
-      const result = await service.loginWithMobileOtp(
-        { mobile: '+15551234567', code: '123456' },
-        {},
-      );
-      expect(otp.verify).toHaveBeenCalled();
+      const result = await service.loginWithFirebaseMobile('mock-token', {});
+      expect(firebase.verifyIdToken).toHaveBeenCalledWith('mock-token');
       expect(users.markMobileVerified).toHaveBeenCalledWith('u1');
       expect(result.tokens.refreshToken).toBe('r');
     });

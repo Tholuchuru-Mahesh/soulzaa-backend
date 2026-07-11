@@ -71,9 +71,29 @@ export class RoomPermissionService {
     }
   }
 
-  /** True when the user currently occupies any stage seat. */
+  /**
+   * True when the user currently occupies any stage seat, has temporary speaking
+   * permission, or holds an elevated role grant (OWNER / ADMIN / PREMIUM_ADMIN).
+   * Owners and admins always have PUBLISHER voice rights even without a seat so
+   * that the room owner can speak from the moment they start the room.
+   */
   async isSpeaker(roomId: string, userId: string): Promise<boolean> {
-    return (await this.seats.getSeatByOccupant(roomId, userId)) !== null;
+    const isSeated = (await this.seats.getSeatByOccupant(roomId, userId)) !== null;
+    if (isSeated) return true;
+
+    // Elevated role holders (owner/admin) always have publish rights.
+    const grant = await this.seats.getRole(roomId, userId);
+    if (
+      grant &&
+      (grant.role === RoomMemberRole.OWNER ||
+        grant.role === RoomMemberRole.ADMIN ||
+        grant.role === RoomMemberRole.PREMIUM_ADMIN)
+    ) {
+      return true;
+    }
+
+    const member = await this.rooms.getMember(roomId, userId);
+    return member?.tempSpeakAllowed === true;
   }
 
   /**

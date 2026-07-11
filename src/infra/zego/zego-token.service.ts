@@ -32,13 +32,30 @@ export class ZegoTokenService {
     return { appId, serverSecret: cfg.serverSecret, expiry: Number(cfg.tokenExpirySeconds) };
   }
 
-  /** True when ZEGO credentials are present (so callers can 503 cleanly). */
-  isConfigured(): boolean {
+  private hasRealConfig(): boolean {
     const cfg = this.config.get('zego') as { appId?: number | string; serverSecret?: string };
     return Boolean(Number(cfg?.appId) && cfg?.serverSecret);
   }
 
+  /** True when ZEGO credentials are present (so callers can 503 cleanly). Returns true in dev to fallback. */
+  isConfigured(): boolean {
+    const isDev = this.config.get('NODE_ENV') === 'development';
+    if (isDev) return true;
+    return this.hasRealConfig();
+  }
+
   buildRoomToken(userId: string, roomId: string, canPublish: boolean): ZegoTokenResult {
+    if (!this.hasRealConfig()) {
+      const isDev = this.config.get('NODE_ENV') === 'development';
+      if (isDev) {
+        return {
+          appId: 1,
+          token: 'mock_zego_token_for_dev',
+          expiresInSeconds: 3600,
+        };
+      }
+      throw new InternalServerErrorException('ZEGOCLOUD credentials are not configured');
+    }
     const { appId, serverSecret, expiry } = this.creds();
     // Provide a detailed privilege payload. If ZEGOCLOUD Console has Token Authentication (Strict Mode)
     // enabled, basic empty tokens will 403/1001004. This payload satisfies both standard and strict modes.

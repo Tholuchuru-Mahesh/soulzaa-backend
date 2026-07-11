@@ -283,7 +283,6 @@ export class AudioRoomsRepository {
     return this.prisma.roomMember.findUnique({ where: { roomId_userId: { roomId, userId } } });
   }
 
-  /** Insert or reactivate a member (returning users keep their row). */
   async upsertActiveMember(
     roomId: string,
     userId: string,
@@ -293,14 +292,25 @@ export class AudioRoomsRepository {
     return this.prisma.roomMember.upsert({
       where: { roomId_userId: { roomId, userId } },
       create: { roomId, userId, role, isActive: true, ...auditCreate(actorId) },
-      update: { isActive: true, leftAt: null, joinedAt: new Date(), ...auditUpdate(actorId) },
+      update: { isActive: true, leftAt: null, joinedAt: new Date(), tempSpeakAllowed: false, ...auditUpdate(actorId) },
     });
   }
 
   async deactivateMember(roomId: string, userId: string, actorId: string): Promise<void> {
     await this.prisma.roomMember.updateMany({
       where: { roomId, userId, isActive: true },
-      data: { isActive: false, leftAt: new Date(), ...auditUpdate(actorId) },
+      data: { isActive: false, tempSpeakAllowed: false, leftAt: new Date(), ...auditUpdate(actorId) },
+    });
+  }
+
+  async setTempSpeakAllowed(
+    roomId: string,
+    userId: string,
+    tempSpeakAllowed: boolean,
+  ): Promise<void> {
+    await this.prisma.roomMember.update({
+      where: { roomId_userId: { roomId, userId } },
+      data: { tempSpeakAllowed },
     });
   }
 

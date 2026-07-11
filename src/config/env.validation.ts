@@ -8,6 +8,12 @@ import { z } from 'zod';
 /** Optional URL that also accepts an empty string (treated as unset). */
 const optionalUrl = z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional());
 
+/** Optional coerced positive integer that also accepts an empty string (treated as unset). */
+const optionalCoercedPositiveInt = z.preprocess(
+  (v) => (v === '' ? undefined : v),
+  z.coerce.number().int().positive().optional(),
+);
+
 export const envSchema = z.object({
   // ---- Runtime ----
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -22,7 +28,7 @@ export const envSchema = z.object({
   // Falls back to DATABASE_URL when unset — see databaseConfig.
   DIRECT_URL: optionalUrl,
   // Prisma client-side pool size; unset = Prisma default (num_cpus*2+1).
-  DATABASE_CONNECTION_LIMIT: z.coerce.number().int().positive().optional(),
+  DATABASE_CONNECTION_LIMIT: optionalCoercedPositiveInt,
   // Seconds to wait for a free connection from the pool before erroring.
   DATABASE_POOL_TIMEOUT: z.coerce.number().int().nonnegative().default(10),
   // Seconds to wait to establish a new connection.
@@ -153,7 +159,7 @@ export const envSchema = z.object({
 
   // ---- ZEGOCLOUD (Audio Room voice) ----
   // Numeric ZEGO AppID and the 32-byte server secret (from the ZEGO console).
-  ZEGO_APP_ID: z.coerce.number().int().positive().optional(),
+  ZEGO_APP_ID: optionalCoercedPositiveInt,
   ZEGO_SERVER_SECRET: z.string().optional(),
   ZEGO_TOKEN_EXPIRY_SECONDS: z.coerce.number().int().positive().default(3600),
 

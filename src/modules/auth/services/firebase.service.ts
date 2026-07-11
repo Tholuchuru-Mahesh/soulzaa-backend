@@ -42,13 +42,14 @@ export class FirebaseService implements OnModuleInit {
   }
 
   async verifyIdToken(idToken: string): Promise<{ phoneNumber: string; uid: string }> {
-    if (!this.firebaseApp) {
-      // Mock validation in local environment if credentials are not configured yet
+    const isDev = process.env.NODE_ENV === 'development';
+    if (isDev && idToken.startsWith('mock_otp_token_')) {
       this.logger.warn('Firebase Service running in mock mode. Returning mock number.');
-      if (idToken.startsWith('mock_otp_token_')) {
-        const mockPhone = '+' + idToken.replace('mock_otp_token_', '');
-        return { phoneNumber: mockPhone, uid: `mock_uid_${mockPhone}` };
-      }
+      const mockPhone = '+' + idToken.replace('mock_otp_token_', '');
+      return { phoneNumber: mockPhone, uid: `mock_uid_${mockPhone}` };
+    }
+
+    if (!this.firebaseApp) {
       throw new Error('Firebase Admin SDK is not initialized and invalid mock token format.');
     }
 

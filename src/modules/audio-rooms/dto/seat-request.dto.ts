@@ -11,4 +11,11 @@ export class SeatRequestDto {
   @IsInt()
   @Min(1)
   seatIndex?: number;
+
+  @ApiPropertyOptional({
+    description: 'Request type: BECOME_SPEAKER or REQUEST_TO_SPEAK',
+    default: 'BECOME_SPEAKER',
+  })
+  @IsOptional()
+  type?: string;
 }

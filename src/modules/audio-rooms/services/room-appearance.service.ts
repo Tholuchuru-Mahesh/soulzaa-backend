@@ -95,6 +95,9 @@ export class RoomAppearanceService {
     cosmeticId: string,
     expectedType: CosmeticType,
   ): Promise<{ name: string }> {
+    if (cosmeticId.startsWith('preset_')) {
+      return { name: cosmeticId.substring(7) };
+    }
     const cosmetic = await this.cosmetics.getCosmetic(cosmeticId);
     if (!cosmetic || !cosmetic.enabled) {
       throw new BusinessException(
