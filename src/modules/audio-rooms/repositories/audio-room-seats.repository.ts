@@ -206,9 +206,26 @@ export class AudioRoomSeatsRepository {
     });
   }
 
-  findPendingRequestByUser(roomId: string, userId: string): Promise<SeatRequest | null> {
+  findPendingRequestByUser(roomId: string, userId: string, type?: string): Promise<SeatRequest | null> {
     return this.prisma.seatRequest.findFirst({
-      where: { roomId, userId, status: SeatRequestStatus.PENDING },
+      where: {
+        roomId,
+        userId,
+        status: SeatRequestStatus.PENDING,
+        ...(type ? { type } : {}),
+      },
+    });
+  }
+
+  findPendingRequestsByUser(roomId: string, userId: string, type?: string): Promise<SeatRequest[]> {
+    return this.prisma.seatRequest.findMany({
+      where: {
+        roomId,
+        userId,
+        status: SeatRequestStatus.PENDING,
+        ...(type ? { type } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
     });
   }
 
@@ -231,6 +248,28 @@ export class AudioRoomSeatsRepository {
     await this.prisma.seatRequest.update({
       where: { id: requestId },
       data: { status, resolvedBy, resolvedAt: new Date(), ...auditUpdate(resolvedBy) },
+    });
+  }
+
+  async resolveAllPendingRequestsForUser(
+    roomId: string,
+    userId: string,
+    status: SeatRequestStatus,
+    resolvedBy: string,
+  ): Promise<void> {
+    await this.prisma.seatRequest.updateMany({
+      where: {
+        roomId,
+        userId,
+        status: SeatRequestStatus.PENDING,
+      },
+      data: {
+        status,
+        resolvedBy,
+        resolvedAt: new Date(),
+        updatedBy: resolvedBy,
+        updatedAt: new Date(),
+      },
     });
   }
 

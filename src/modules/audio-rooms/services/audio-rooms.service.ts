@@ -317,6 +317,15 @@ export class AudioRoomsService implements IAudioRoomsService {
       const role = room.ownerId === actor.id ? RoomMemberRole.OWNER : RoomMemberRole.LISTENER;
       await this.repo.upsertActiveMember(roomId, actor.id, role, actor.id);
       await this.repo.upsertPresence(roomId, actor.id);
+
+      if (room.ownerId === actor.id) {
+        try {
+          await this.seatsService.takeSeat(actor, roomId, 0);
+        } catch (e) {
+          // Ignore if they are already seated or if the seat is occupied/locked
+          this.logger.warn(`Could not auto-seat owner ${actor.id} on join: ${(e as Error).message}`);
+        }
+      }
     });
 
     const count = await this.presence.roomMemberCount(roomId);

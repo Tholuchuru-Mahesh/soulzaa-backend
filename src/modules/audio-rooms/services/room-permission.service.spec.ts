@@ -142,4 +142,31 @@ describe('RoomPermissionService', () => {
       ).resolves.toBeUndefined();
     });
   });
+
+  describe('isSpeaker', () => {
+    it('returns true when the user is seated', async () => {
+      seats.getSeatByOccupant.mockResolvedValue({ seatIndex: 3 });
+      expect(await service.isSpeaker('r', 'u')).toBe(true);
+    });
+
+    it('returns false when the user is not seated even if they are the owner', async () => {
+      seats.getSeatByOccupant.mockResolvedValue(null);
+      seats.getRole.mockResolvedValue({ role: RoomMemberRole.OWNER });
+      expect(await service.isSpeaker('r', 'u')).toBe(false);
+    });
+
+    it('returns true when tempSpeakAllowed is true', async () => {
+      seats.getSeatByOccupant.mockResolvedValue(null);
+      seats.getRole.mockResolvedValue(null);
+      rooms.getMember.mockResolvedValue({ tempSpeakAllowed: true });
+      expect(await service.isSpeaker('r', 'u')).toBe(true);
+    });
+
+    it('returns false when not seated and tempSpeakAllowed is false', async () => {
+      seats.getSeatByOccupant.mockResolvedValue(null);
+      seats.getRole.mockResolvedValue(null);
+      rooms.getMember.mockResolvedValue({ tempSpeakAllowed: false });
+      expect(await service.isSpeaker('r', 'u')).toBe(false);
+    });
+  });
 });

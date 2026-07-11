@@ -80,6 +80,11 @@ export class AudioRoomSeatsService {
     return entries.map((e) => ({ userId: e.userId, position: e.position }));
   }
 
+  async listPendingRequests(roomId: string) {
+    await this.assertRoomExists(roomId);
+    return this.seats.listPendingRequests(roomId);
+  }
+
   async isRoomMuted(roomId: string): Promise<boolean> {
     const settings = await this.seats.getSettings(roomId);
     return settings?.isRoomMuted ?? false;
@@ -166,7 +171,7 @@ export class AudioRoomSeatsService {
           );
         }
       }
-      if (await this.seats.findPendingRequestByUser(roomId, actor.id)) {
+      if (await this.seats.findPendingRequestByUser(roomId, actor.id, requestType)) {
         throw this.err(
           ERROR_CODES.SEAT_REQUEST_EXISTS,
           'You already have a pending seat request.',
@@ -225,24 +230,29 @@ export class AudioRoomSeatsService {
     });
   }
 
-  async cancelRequest(actor: RoomActor, roomId: string): Promise<void> {
+  async cancelRequest(actor: RoomActor, roomId: string, type?: string): Promise<void> {
     await this.assertLiveRoom(roomId);
-    const request = await this.seats.findPendingRequestByUser(roomId, actor.id);
-    if (!request) {
+    const requests = await this.seats.findPendingRequestsByUser(roomId, actor.id, type);
+    if (requests.length === 0) {
       throw this.err(
         ERROR_CODES.SEAT_REQUEST_NOT_FOUND,
         'You have no pending seat request.',
         HttpStatus.NOT_FOUND,
       );
     }
-    await this.seats.resolveRequest(request.id, SeatRequestStatus.CANCELLED, actor.id);
-    await this.seats.dequeue(roomId, actor.id);
-    await this.seats.appendSeatHistory({
-      roomId,
-      actorId: actor.id,
-      action: SeatHistoryAction.REQUEST_CANCELLED,
-    });
-    await this.publishUpdate(roomId, actor.id, 'request_cancelled');
+    for (const request of requests) {
+      await this.seats.resolveRequest(request.id, SeatRequestStatus.CANCELLED, actor.id);
+      await this.seats.appendSeatHistory({
+        roomId,
+        actorId: actor.id,
+        action: SeatHistoryAction.REQUEST_CANCELLED,
+      });
+    }
+    const remaining = await this.seats.findPendingRequestsByUser(roomId, actor.id);
+    if (remaining.length === 0) {
+      await this.seats.dequeue(roomId, actor.id);
+    }
+    await this.publishUpdate(roomId, actor.id, 'request_cancelled', null, actor.id);
     await this.rebuildStage(roomId);
   }
 
@@ -739,9 +749,11 @@ export class AudioRoomSeatsService {
   async onMemberLeave(roomId: string, userId: string): Promise<void> {
     if (!(await this.rooms.findLiveRoomRow(roomId))) return;
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
-      const pending = await this.seats.findPendingRequestByUser(roomId, userId);
-      if (pending) {
+      const pendings = await this.seats.findPendingRequestsByUser(roomId, userId);
+      for (const pending of pendings) {
         await this.seats.resolveRequest(pending.id, SeatRequestStatus.CANCELLED, userId);
+      }
+      if (pendings.length > 0) {
         await this.seats.dequeue(roomId, userId);
       }
       const seat = await this.seats.getSeatByOccupant(roomId, userId);
@@ -815,6 +827,12 @@ export class AudioRoomSeatsService {
       action: SeatHistoryAction.SEAT_TAKEN,
       seatIndex: seat.seatIndex,
     });
+    await this.seats.resolveAllPendingRequestsForUser(
+      roomId,
+      userId,
+      SeatRequestStatus.ACCEPTED,
+      actorId,
+    );
   }
 
   /** Vacate a seat + log the given action. */

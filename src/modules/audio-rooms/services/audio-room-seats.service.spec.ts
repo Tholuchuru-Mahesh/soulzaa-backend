@@ -47,6 +47,7 @@ describe('AudioRoomSeatsService', () => {
       getRequest: jest.fn(),
       createRequest: jest.fn().mockResolvedValue({ id: 'req-1' }),
       resolveRequest: jest.fn().mockResolvedValue(undefined),
+      resolveAllPendingRequestsForUser: jest.fn().mockResolvedValue(undefined),
       enqueue: jest.fn().mockResolvedValue({ position: 1 }),
       dequeue: jest.fn().mockResolvedValue(undefined),
       listSeats: jest.fn().mockResolvedValue([seat()]),

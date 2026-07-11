@@ -81,17 +81,6 @@ export class RoomPermissionService {
     const isSeated = (await this.seats.getSeatByOccupant(roomId, userId)) !== null;
     if (isSeated) return true;
 
-    // Elevated role holders (owner/admin) always have publish rights.
-    const grant = await this.seats.getRole(roomId, userId);
-    if (
-      grant &&
-      (grant.role === RoomMemberRole.OWNER ||
-        grant.role === RoomMemberRole.ADMIN ||
-        grant.role === RoomMemberRole.PREMIUM_ADMIN)
-    ) {
-      return true;
-    }
-
     const member = await this.rooms.getMember(roomId, userId);
     return member?.tempSpeakAllowed === true;
   }

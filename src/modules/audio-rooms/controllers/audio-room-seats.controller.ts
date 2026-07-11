@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
@@ -52,6 +53,12 @@ export class AudioRoomSeatsController {
     return this.seats.getQueue(id);
   }
 
+  @Get(':id/seats/requests')
+  @ApiOperation({ summary: 'Get pending seat requests (manage seats)' })
+  async listRequests(@Param('id', ParseUuidPipe) id: string) {
+    return this.seats.listPendingRequests(id);
+  }
+
   // ---- Layout ----
 
   @Patch(':id/seats/layout')
@@ -84,8 +91,9 @@ export class AudioRoomSeatsController {
   async cancelRequest(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) id: string,
+    @Query('type') type?: string,
   ) {
-    await this.seats.cancelRequest(this.actor(user), id);
+    await this.seats.cancelRequest(this.actor(user), id, type);
     return { cancelled: true };
   }
 
