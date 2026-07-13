@@ -242,6 +242,17 @@ export const audioRoomConfig = registerAs('audioRoom', () => ({
   },
 }));
 
+export const chatConfig = registerAs('chat', () => ({
+  messageMaxLength: env.CHAT_MESSAGE_MAX_LENGTH,
+  maxAttachments: env.CHAT_MAX_ATTACHMENTS,
+  rateMax: env.CHAT_RATE_MAX,
+  rateWindowSeconds: env.CHAT_RATE_WINDOW_SECONDS,
+  typingTtlSeconds: env.CHAT_TYPING_TTL_SECONDS,
+  unreadCacheTtlSeconds: env.CHAT_UNREAD_CACHE_TTL_SECONDS,
+  editWindowSeconds: env.CHAT_EDIT_WINDOW_SECONDS,
+  maxPinned: env.CHAT_MAX_PINNED,
+}));
+
 export const giftConfig = registerAs('gift', () => ({
   // Share of the gift value credited to the receiver as creator earnings (%).
   creatorEarningRatePercent: env.GIFT_CREATOR_EARNING_RATE_PERCENT,
@@ -286,6 +297,7 @@ export const configurations = [
   agoraConfig,
   zegoConfig,
   audioRoomConfig,
+  chatConfig,
   giftConfig,
   queueConfig,
 ];

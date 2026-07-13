@@ -1,2 +1,1 @@
-/** chat constants — empty until the module is implemented. */
-export {};
+export * from './chat.constants';

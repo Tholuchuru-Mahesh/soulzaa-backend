@@ -29,6 +29,14 @@ describe('ModerationService', () => {
 
   beforeEach(() => {
     repo = {
+      findActiveKick: jest.fn().mockResolvedValue(null),
+      createKick: jest.fn().mockResolvedValue({ id: 'kick-1', roomId: 'r', userId: TARGET }),
+      liftKick: jest.fn().mockResolvedValue(undefined),
+      listActiveKicks: jest.fn().mockResolvedValue([[], 0]),
+      addKickCache: jest.fn().mockResolvedValue(undefined),
+      removeKickCache: jest.fn().mockResolvedValue(undefined),
+      isKickedCached: jest.fn().mockResolvedValue(false),
+      resolveUserSummaries: jest.fn().mockResolvedValue(new Map()),
       findActiveBan: jest.fn().mockResolvedValue(null),
       getBan: jest.fn(),
       createBan: jest.fn().mockResolvedValue({ id: 'ban-1', roomId: 'r', userId: TARGET }),
@@ -104,6 +112,24 @@ describe('ModerationService', () => {
       );
     });
 
+    it('adds the user to the kick list and the Redis join gate', async () => {
+      await service.kick(MOD, 'r', TARGET, 'spam');
+      expect(repo.createKick).toHaveBeenCalledWith({
+        roomId: 'r',
+        userId: TARGET,
+        moderatorId: MOD.id,
+        reason: 'spam',
+      });
+      expect(repo.addKickCache).toHaveBeenCalledWith('r', TARGET);
+    });
+
+    it('does not stack a second kick row when one is already active', async () => {
+      repo.findActiveKick.mockResolvedValue({ id: 'kick-existing' });
+      await service.kick(MOD, 'r', TARGET, undefined);
+      expect(repo.createKick).not.toHaveBeenCalled();
+      expect(repo.addKickCache).toHaveBeenCalledWith('r', TARGET);
+    });
+
     it('rejects kicking yourself', async () => {
       await expect(service.kick(MOD, 'r', MOD.id, undefined)).rejects.toBeInstanceOf(
         BusinessException,
@@ -120,6 +146,97 @@ describe('ModerationService', () => {
     it('propagates the hierarchy guard (cannot kick the owner)', async () => {
       permissions.assertOutranks.mockRejectedValue(new Error('CANNOT_MODERATE_OWNER'));
       await expect(service.kick(MOD, 'r', TARGET, undefined)).rejects.toBeDefined();
+    });
+  });
+
+  describe('unkick', () => {
+    it('lifts the kick, clears the join gate, audits and broadcasts', async () => {
+      repo.findActiveKick.mockResolvedValue({ id: 'kick-1', roomId: 'r', userId: TARGET });
+      await service.unkick(MOD, 'r', TARGET);
+      expect(repo.liftKick).toHaveBeenCalledWith('kick-1', MOD.id);
+      expect(repo.removeKickCache).toHaveBeenCalledWith('r', TARGET);
+      expect(repo.appendAction).toHaveBeenCalledWith(expect.objectContaining({ action: 'UNKICK' }));
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'audio_room.member_unkicked' }),
+      );
+    });
+
+    it('rejects restoring a user who is not on the kick list', async () => {
+      repo.findActiveKick.mockResolvedValue(null);
+      await expect(service.unkick(MOD, 'r', TARGET)).rejects.toBeInstanceOf(BusinessException);
+    });
+
+    it('requires moderator authority', async () => {
+      permissions.assertCanModerate.mockRejectedValue(new Error('NOT_ROOM_ADMIN'));
+      await expect(service.unkick(MOD, 'r', TARGET)).rejects.toBeDefined();
+    });
+
+    it('does not require outranking the target (they hold no role once kicked)', async () => {
+      repo.findActiveKick.mockResolvedValue({ id: 'kick-1', roomId: 'r', userId: TARGET });
+      await service.unkick(MOD, 'r', TARGET);
+      expect(permissions.assertOutranks).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('isKicked', () => {
+    it('short-circuits on the Redis gate', async () => {
+      repo.isKickedCached.mockResolvedValue(true);
+      await expect(service.isKicked('r', TARGET)).resolves.toBe(true);
+      expect(repo.findActiveKick).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the database on a cache miss', async () => {
+      repo.findActiveKick.mockResolvedValue({ id: 'kick-1' });
+      await expect(service.isKicked('r', TARGET)).resolves.toBe(true);
+    });
+
+    it('is false when neither the cache nor the database has a kick', async () => {
+      await expect(service.isKicked('r', TARGET)).resolves.toBe(false);
+    });
+  });
+
+  describe('listKicks', () => {
+    it('requires moderator authority to read the kick list', async () => {
+      permissions.assertCanModerate.mockRejectedValue(new Error('NOT_ROOM_ADMIN'));
+      await expect(service.listKicks(MOD, 'r', { page: 1, limit: 20, skip: 0 })).rejects.toBeDefined();
+    });
+
+    it('hydrates each row with the target and moderator display data', async () => {
+      repo.listActiveKicks.mockResolvedValue([
+        [
+          {
+            id: 'kick-1',
+            roomId: 'r',
+            userId: TARGET,
+            moderatorId: MOD.id,
+            reason: 'spam',
+            createdAt: new Date('2026-07-13T10:00:00Z'),
+          },
+        ],
+        1,
+      ]);
+      repo.resolveUserSummaries.mockResolvedValue(
+        new Map([
+          [TARGET, { username: 'kicked_user', avatarKey: 'avatars/kicked.png' }],
+          [MOD.id, { username: 'the_mod', avatarKey: null }],
+        ]),
+      );
+
+      const page = await service.listKicks(MOD, 'r', { page: 1, limit: 20, skip: 0 });
+
+      expect(repo.resolveUserSummaries).toHaveBeenCalledWith([TARGET, MOD.id]);
+      expect(page.total).toBe(1);
+      expect(page.items[0]).toEqual({
+        id: 'kick-1',
+        roomId: 'r',
+        targetUserId: TARGET,
+        targetUsername: 'kicked_user',
+        targetAvatarKey: 'avatars/kicked.png',
+        moderatorId: MOD.id,
+        moderatorUsername: 'the_mod',
+        reason: 'spam',
+        createdAt: new Date('2026-07-13T10:00:00Z'),
+      });
     });
   });
 

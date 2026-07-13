@@ -11,6 +11,7 @@ import {
   type MemberMutedEvent,
   type MemberReportedEvent,
   type MemberUnbannedEvent,
+  type MemberUnkickedEvent,
   type MemberUnmutedEvent,
   type MemberWarnedEvent,
 } from '../events/audio-room-moderation.events';
@@ -33,6 +34,10 @@ export class ModerationSocketListener implements OnModuleInit {
     this.bus.subscribe<MemberKickedEvent>(AUDIO_ROOM_MODERATION_EVENTS.KICKED, (e) => {
       this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_KICKED, e.payload);
       this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_KICKED, e.payload);
+    });
+    this.bus.subscribe<MemberUnkickedEvent>(AUDIO_ROOM_MODERATION_EVENTS.UNKICKED, (e) => {
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_UNKICKED, e.payload);
+      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_UNKICKED, e.payload);
     });
     this.bus.subscribe<MemberBannedEvent>(AUDIO_ROOM_MODERATION_EVENTS.BANNED, (e) => {
       this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_BANNED, e.payload);

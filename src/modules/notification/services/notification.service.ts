@@ -29,7 +29,12 @@ export class NotificationService implements INotificationService {
 
   async list(userId: string, page: number, limit: number): Promise<Paginated<NotificationView>> {
     const { rows, total } = await this.repo.page(userId, (page - 1) * limit, limit);
-    return buildPaginated(rows.map((r) => this.toView(r)), total, page, limit);
+    return buildPaginated(
+      rows.map((r) => this.toView(r)),
+      total,
+      page,
+      limit,
+    );
   }
 
   markRead(userId: string, id: string): Promise<void> {

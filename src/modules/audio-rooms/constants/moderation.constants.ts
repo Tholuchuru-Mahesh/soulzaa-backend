@@ -1,11 +1,21 @@
 /**
- * AR-3 moderation Redis keys + tuning. The DB (room_bans / room_mutes) is
- * authoritative; Redis holds the hot enforcement view so the join gate and mute
- * checks are O(1). Two structures per room: a SET of currently-banned/muted user
- * ids (fast membership test), plus a per-user string key with a PX TTL for
- * TEMPORARY actions so they self-expire even before the reconciliation sweep.
- * All keys are `{roomId}` hash-tagged for Cluster-safety.
+ * AR-3 moderation Redis keys + tuning. The DB (room_kicks / room_bans /
+ * room_mutes) is authoritative; Redis holds the hot enforcement view so the join
+ * gate and mute checks are O(1). Two structures per room: a SET of currently
+ * kicked/banned/muted user ids (fast membership test), plus a per-user string key
+ * with a PX TTL for TEMPORARY actions so they self-expire even before the
+ * reconciliation sweep. All keys are `{roomId}` hash-tagged for Cluster-safety.
  */
+
+/** SET of user ids with an active kick in the room (the Kick List join gate). */
+export function roomKickSetKey(roomId: string): string {
+  return `audio-room:{${roomId}}:kicks`;
+}
+
+/** Per-user kick marker. Kicks never expire — they hold until a moderator restores. */
+export function roomKickKey(roomId: string, userId: string): string {
+  return `audio-room:{${roomId}}:kick:${userId}`;
+}
 
 /** SET of user ids with an active ban in the room. */
 export function roomBanSetKey(roomId: string): string {

@@ -51,6 +51,18 @@ export class ModerationController {
     return { kicked: true };
   }
 
+  @Post(':id/moderation/unkick/:userId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Restore a kicked user (remove them from the kick list)' })
+  async unkick(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('userId', ParseUuidPipe) userId: string,
+  ) {
+    await this.moderation.unkick(this.actor(user), id, userId);
+    return { unkicked: true };
+  }
+
   @Post(':id/moderation/ban/:userId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Ban a user (temporary or permanent)' })
@@ -180,7 +192,17 @@ export class ModerationController {
     return { resolved: true };
   }
 
-  // ---- Reads (moderation logs / ban list / kick history) ----
+  // ---- Reads (moderation logs / kick list / ban list) ----
+
+  @Get(':id/moderation/kicks')
+  @ApiOperation({ summary: 'The room kick list — currently-kicked users (moderator only)' })
+  kicks(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Query() q: ListModerationDto,
+  ) {
+    return this.moderation.listKicks(this.actor(user), id, q);
+  }
 
   @Get(':id/moderation/bans')
   @ApiOperation({ summary: 'List active bans' })

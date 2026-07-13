@@ -9,6 +9,7 @@ import { DomainEvent } from 'src/common/events';
  */
 export const AUDIO_ROOM_MODERATION_EVENTS = {
   KICKED: 'audio_room.member_kicked',
+  UNKICKED: 'audio_room.member_unkicked',
   BANNED: 'audio_room.member_banned',
   UNBANNED: 'audio_room.member_unbanned',
   MUTED: 'audio_room.member_muted',
@@ -26,6 +27,16 @@ export class MemberKickedEvent extends DomainEvent<{
   reason: string | null;
 }> {
   readonly name = AUDIO_ROOM_MODERATION_EVENTS.KICKED;
+}
+
+/** A moderator restored a kicked user: they leave the Kick List and may rejoin. */
+export class MemberUnkickedEvent extends DomainEvent<{
+  roomId: string;
+  moderatorId: string;
+  targetUserId: string;
+  kickId: string;
+}> {
+  readonly name = AUDIO_ROOM_MODERATION_EVENTS.UNKICKED;
 }
 
 export class MemberBannedEvent extends DomainEvent<{

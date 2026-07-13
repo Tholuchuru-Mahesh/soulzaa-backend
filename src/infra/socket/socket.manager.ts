@@ -116,15 +116,17 @@ export class SocketManager {
       }
       return last;
     } catch (err) {
-      this.logger.verbose(`Redis presence deregistration failed on disconnect: ${(err as Error).message}`);
-      
+      this.logger.verbose(
+        `Redis presence deregistration failed on disconnect: ${(err as Error).message}`,
+      );
+
       // Still clean up local socket mapping to prevent memory leak
       const sockets = this.socketsByUser.get(userId);
       sockets?.delete(client.id);
       if (sockets && sockets.size === 0) this.socketsByUser.delete(userId);
       this.userBySocket.delete(client.id);
       this.metrics.setConnectedClients(this.userBySocket.size);
-      
+
       return false;
     }
   }

@@ -78,20 +78,12 @@ export class FollowService {
     return { following: false };
   }
 
-  async followers(
-    userId: string,
-    page: number,
-    limit: number,
-  ): Promise<Paginated<SocialUserCard>> {
+  async followers(userId: string, page: number, limit: number): Promise<Paginated<SocialUserCard>> {
     const { ids, total } = await this.repo.pageFollowerIds(userId, (page - 1) * limit, limit);
     return buildPaginated(await this.cards.resolve(ids), total, page, limit);
   }
 
-  async following(
-    userId: string,
-    page: number,
-    limit: number,
-  ): Promise<Paginated<SocialUserCard>> {
+  async following(userId: string, page: number, limit: number): Promise<Paginated<SocialUserCard>> {
     const { ids, total } = await this.repo.pageFollowingIds(userId, (page - 1) * limit, limit);
     return buildPaginated(await this.cards.resolve(ids), total, page, limit);
   }

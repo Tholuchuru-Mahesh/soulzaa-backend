@@ -221,8 +221,7 @@ export class FriendsService {
         const c = byId.get(e.friendId);
         return (
           c !== undefined &&
-          (c.username.toLowerCase().includes(q) ||
-            (c.fullName ?? '').toLowerCase().includes(q))
+          (c.username.toLowerCase().includes(q) || (c.fullName ?? '').toLowerCase().includes(q))
         );
       });
     }

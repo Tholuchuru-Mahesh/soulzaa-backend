@@ -10,6 +10,12 @@ export const STORAGE_CATEGORIES = {
   VIDEO: 'videos',
   THUMBNAIL: 'thumbnails',
   AUDIO: 'audio-assets',
+  // Direct-message media — separate namespaces so retention/ACL policy can
+  // diverge from public assets, and so voice notes get their own size cap.
+  CHAT_IMAGE: 'chat-images',
+  CHAT_VOICE: 'chat-voice',
+  CHAT_VIDEO: 'chat-videos',
+  CHAT_FILE: 'chat-files',
 } as const;
 
 export type MediaCategory = (typeof STORAGE_CATEGORIES)[keyof typeof STORAGE_CATEGORIES];
@@ -61,6 +67,38 @@ export const STORAGE_POLICIES: Record<MediaCategory, StoragePolicy> = {
     isImage: false,
     allowedMime: ['audio/mpeg', 'audio/aac', 'audio/wav', 'audio/webm'],
     maxSizeBytes: 20 * MB,
+  },
+  [STORAGE_CATEGORIES.CHAT_IMAGE]: {
+    prefix: STORAGE_CATEGORIES.CHAT_IMAGE,
+    isImage: true,
+    allowedMime: [...IMAGE_MIME, 'image/gif'],
+    maxSizeBytes: 10 * MB,
+  },
+  [STORAGE_CATEGORIES.CHAT_VOICE]: {
+    prefix: STORAGE_CATEGORIES.CHAT_VOICE,
+    isImage: false,
+    allowedMime: ['audio/mpeg', 'audio/aac', 'audio/wav', 'audio/webm', 'audio/mp4'],
+    maxSizeBytes: 10 * MB,
+  },
+  [STORAGE_CATEGORIES.CHAT_VIDEO]: {
+    prefix: STORAGE_CATEGORIES.CHAT_VIDEO,
+    isImage: false,
+    allowedMime: ['video/mp4', 'video/webm', 'video/quicktime'],
+    maxSizeBytes: 100 * MB,
+  },
+  [STORAGE_CATEGORIES.CHAT_FILE]: {
+    prefix: STORAGE_CATEGORIES.CHAT_FILE,
+    isImage: false,
+    allowedMime: [
+      'application/pdf',
+      'application/zip',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain',
+    ],
+    maxSizeBytes: 25 * MB,
   },
 };
 

@@ -13,7 +13,9 @@ export class FirebaseService implements OnModuleInit {
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit() {
-    const credsPath = this.configService.get<string>('FIREBASE_CREDENTIALS_PATH') || 'firebase-service-account.json';
+    const credsPath =
+      this.configService.get<string>('FIREBASE_CREDENTIALS_PATH') ||
+      'firebase-service-account.json';
     const absolutePath = path.isAbsolute(credsPath)
       ? credsPath
       : path.join(process.cwd(), credsPath);

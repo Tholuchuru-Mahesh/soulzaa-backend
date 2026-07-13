@@ -64,7 +64,9 @@ export class TreasureController {
   }
 
   @Get(':id/treasure/champions')
-  @ApiOperation({ summary: 'Treasure Champions - Top Contributors history for all completed boxes' })
+  @ApiOperation({
+    summary: 'Treasure Champions - Top Contributors history for all completed boxes',
+  })
   champions(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.treasure.champions(id, user.id);
   }

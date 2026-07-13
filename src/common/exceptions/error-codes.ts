@@ -88,6 +88,9 @@ export const ERROR_CODES = {
   NOT_ALLOWED_TO_PUBLISH: 'NOT_ALLOWED_TO_PUBLISH',
 
   // ---- Audio Room moderation (AR-3) ----
+  ROOM_KICKED: 'ROOM_KICKED',
+  ALREADY_KICKED: 'ALREADY_KICKED',
+  KICK_NOT_FOUND: 'KICK_NOT_FOUND',
   ROOM_BANNED: 'ROOM_BANNED',
   ALREADY_BANNED: 'ALREADY_BANNED',
   BAN_NOT_FOUND: 'BAN_NOT_FOUND',
@@ -115,6 +118,30 @@ export const ERROR_CODES = {
   CHAT_REPORT_NOT_FOUND: 'CHAT_REPORT_NOT_FOUND',
   BLOCKED_WORD_NOT_FOUND: 'BLOCKED_WORD_NOT_FOUND',
   INVALID_REGEX: 'INVALID_REGEX',
+
+  // ---- Direct messaging (chat module) ----
+  CONVERSATION_NOT_FOUND: 'CONVERSATION_NOT_FOUND',
+  NOT_A_PARTICIPANT: 'NOT_A_PARTICIPANT',
+  CANNOT_MESSAGE_SELF: 'CANNOT_MESSAGE_SELF',
+  /** The recipient's privacy level (messagePermission) forbids this sender. */
+  MESSAGING_NOT_ALLOWED: 'MESSAGING_NOT_ALLOWED',
+  /** The conversation is still a pending request — the recipient must accept first. */
+  CHAT_REQUEST_PENDING: 'CHAT_REQUEST_PENDING',
+  CHAT_REQUEST_NOT_FOUND: 'CHAT_REQUEST_NOT_FOUND',
+  DM_NOT_FOUND: 'DM_NOT_FOUND',
+  DM_TOO_LONG: 'DM_TOO_LONG',
+  DM_RATE_LIMITED: 'DM_RATE_LIMITED',
+  DM_NOT_EDITABLE: 'DM_NOT_EDITABLE',
+  ATTACHMENT_INVALID: 'ATTACHMENT_INVALID',
+  TOO_MANY_ATTACHMENTS: 'TOO_MANY_ATTACHMENTS',
+  REACTION_NOT_FOUND: 'REACTION_NOT_FOUND',
+  /** The user already has the maximum number of pinned conversations. */
+  PIN_LIMIT_REACHED: 'PIN_LIMIT_REACHED',
+  /** The message's edit window has closed, or it is not the sender's to edit. */
+  DM_EDIT_WINDOW_CLOSED: 'DM_EDIT_WINDOW_CLOSED',
+  /** A rich message (GIFT/ROOM_INVITE/...) is missing the metadata its type requires. */
+  METADATA_INVALID: 'METADATA_INVALID',
+  CANNOT_REPORT_SELF: 'CANNOT_REPORT_SELF',
 
   // ---- Wallet (economy) ----
   WALLET_NOT_FOUND: 'WALLET_NOT_FOUND',

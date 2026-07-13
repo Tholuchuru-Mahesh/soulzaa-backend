@@ -106,6 +106,9 @@ describe('AudioRoomsService', () => {
       getStage: jest.fn().mockResolvedValue({ seats: [], queue: [], settings: {} }),
     };
     moderation = {
+      isKickedCached: jest.fn().mockResolvedValue(false),
+      findActiveKick: jest.fn().mockResolvedValue(null),
+      addKickCache: jest.fn().mockResolvedValue(undefined),
       isBannedCached: jest.fn().mockResolvedValue(false),
       findActiveBan: jest.fn().mockResolvedValue(null),
       addBanCache: jest.fn().mockResolvedValue(undefined),
@@ -203,12 +206,16 @@ describe('AudioRoomsService', () => {
 
     it('bypasses password check for room owner and platform admin', async () => {
       // Owner bypass
-      repo.findRoomRow.mockResolvedValue(roomRow({ ownerId: OWNER.id, isLocked: true, passwordHash: 'hashed' }));
+      repo.findRoomRow.mockResolvedValue(
+        roomRow({ ownerId: OWNER.id, isLocked: true, passwordHash: 'hashed' }),
+      );
       await service.join(OWNER, 'room-1', {});
       expect(presence.joinRoom).toHaveBeenCalledWith('room-1', OWNER.id);
 
       // Platform Admin bypass
-      repo.findRoomRow.mockResolvedValue(roomRow({ ownerId: OWNER.id, isLocked: true, passwordHash: 'hashed' }));
+      repo.findRoomRow.mockResolvedValue(
+        roomRow({ ownerId: OWNER.id, isLocked: true, passwordHash: 'hashed' }),
+      );
       await service.join(ADMIN, 'room-1', {});
       expect(presence.joinRoom).toHaveBeenCalledWith('room-1', ADMIN.id);
     });
@@ -223,6 +230,27 @@ describe('AudioRoomsService', () => {
     it('rejects joining an ended room', async () => {
       repo.findRoomRow.mockResolvedValue(roomRow({ status: 'ENDED' }));
       await expect(service.join(OTHER, 'room-1', {})).rejects.toBeInstanceOf(BusinessException);
+    });
+
+    it('rejects a rejoin by a user on the kick list (Redis gate)', async () => {
+      moderation.isKickedCached.mockResolvedValue(true);
+      await expect(service.join(OTHER, 'room-1', {})).rejects.toBeInstanceOf(BusinessException);
+      expect(presence.joinRoom).not.toHaveBeenCalled();
+    });
+
+    it('rejects a rejoin by a kicked user on a cache miss, and warms the gate', async () => {
+      moderation.isKickedCached.mockResolvedValue(false);
+      moderation.findActiveKick.mockResolvedValue({ id: 'kick-1' });
+      await expect(service.join(OTHER, 'room-1', {})).rejects.toBeInstanceOf(BusinessException);
+      expect(moderation.addKickCache).toHaveBeenCalledWith('room-1', OTHER.id);
+      expect(presence.joinRoom).not.toHaveBeenCalled();
+    });
+
+    it('lets a restored user rejoin once their kick is lifted', async () => {
+      moderation.isKickedCached.mockResolvedValue(false);
+      moderation.findActiveKick.mockResolvedValue(null);
+      await service.join(OTHER, 'room-1', {});
+      expect(presence.joinRoom).toHaveBeenCalledWith('room-1', OTHER.id);
     });
   });
 
@@ -248,9 +276,9 @@ describe('AudioRoomsService', () => {
     });
 
     it('requires password on creation if isLocked is true', async () => {
-      await expect(service.create(OWNER, { name: 'Locked', isLocked: true })).rejects.toBeInstanceOf(
-        BusinessException,
-      );
+      await expect(
+        service.create(OWNER, { name: 'Locked', isLocked: true }),
+      ).rejects.toBeInstanceOf(BusinessException);
     });
 
     it('requires password on update if isLocked is true and no existing password', async () => {

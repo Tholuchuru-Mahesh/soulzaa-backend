@@ -339,7 +339,7 @@ export class TreasureService implements ITreasureBoxesService {
     const hostId = await this.rooms.getOwnerId(box.roomId);
     let hostWalletTxnId: string | null = null;
     const capacity = Number(box.threshold);
-    const hostRewardAmount = Math.floor(capacity * 0.10);
+    const hostRewardAmount = Math.floor(capacity * 0.1);
 
     if (hostId && hostRewardAmount > 0) {
       try {
@@ -618,7 +618,11 @@ export class TreasureService implements ITreasureBoxesService {
    * Takes a cached (user-agnostic) champions payload and re-injects the
    * requesting user's personal position from the DB for personalised display.
    */
-  private async injectMyPosition(cached: any[], roomId: string, currentUserId: string): Promise<any[]> {
+  private async injectMyPosition(
+    cached: any[],
+    roomId: string,
+    currentUserId: string,
+  ): Promise<any[]> {
     if (!currentUserId) return cached;
     // Find the active session boxes (if any) to look up the user position.
     // For fully completed sessions, boxes are all OPENED — we look them up by level.
@@ -640,4 +644,3 @@ export class TreasureService implements ITreasureBoxesService {
     );
   }
 }
-

@@ -1,2 +1,2 @@
-/** chat repositories — empty until the module is implemented. */
-export {};
+export * from './conversation.repository';
+export * from './message.repository';

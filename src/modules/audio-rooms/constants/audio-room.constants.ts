@@ -40,6 +40,7 @@ export const ROOM_SOCKET_EVENTS = {
   VOICE_BACKGROUND: 'voice.background',
   // ---- Moderation (AR-3) ----
   MEMBER_KICKED: 'room.kicked',
+  MEMBER_UNKICKED: 'room.unkicked',
   MEMBER_BANNED: 'room.banned',
   MEMBER_UNBANNED: 'room.unbanned',
   MEMBER_MUTED: 'member.muted',

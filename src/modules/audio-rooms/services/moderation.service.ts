@@ -4,6 +4,7 @@ import {
   ModerationBanType,
   ModerationMuteType,
   RoomBan,
+  RoomKick,
   RoomMute,
 } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
@@ -31,6 +32,7 @@ import {
   MemberMutedEvent,
   MemberReportedEvent,
   MemberUnbannedEvent,
+  MemberUnkickedEvent,
   MemberUnmutedEvent,
   MemberWarnedEvent,
 } from '../events/audio-room-moderation.events';
@@ -38,9 +40,28 @@ import type { IModerationService } from '../interfaces/moderation.service.interf
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repository';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
-import { ModerationRepository } from '../repositories/moderation.repository';
+import {
+  ModerationRepository,
+  type ModeratedUserSummary,
+} from '../repositories/moderation.repository';
 import { RoomPermissionService } from './room-permission.service';
 import { VoiceService } from './voice.service';
+
+/**
+ * A Kick List row, hydrated with the display data the moderator UI needs: who was
+ * kicked (avatar + username), who kicked them, why, and when.
+ */
+export interface RoomKickView {
+  id: string;
+  roomId: string;
+  targetUserId: string;
+  targetUsername: string | null;
+  targetAvatarKey: string | null;
+  moderatorId: string;
+  moderatorUsername: string | null;
+  reason: string | null;
+  createdAt: Date;
+}
 
 /**
  * AR-3 moderation: kick, temporary/permanent ban, member mute (incl. permanent),
@@ -64,8 +85,13 @@ export class ModerationService implements IModerationService {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
 
-  // ======================= Kick =======================
+  // ======================= Kick / restore (the Kick List) =======================
 
+  /**
+   * Kick a member: remove them from the room now and add them to the room's Kick
+   * List, which bars them from rejoining until a moderator restores them. The
+   * durable row (room_kicks) is authoritative; Redis mirrors it for the join gate.
+   */
   async kick(
     actor: RoomActor,
     roomId: string,
@@ -82,6 +108,19 @@ export class ModerationService implements IModerationService {
           HttpStatus.CONFLICT,
         );
       }
+      // An active member cannot already hold an ACTIVE kick (the join gate would
+      // have blocked them), but stay idempotent rather than stacking rows.
+      const existing = await this.repo.findActiveKick(roomId, targetUserId);
+      const kick =
+        existing ??
+        (await this.repo.createKick({
+          roomId,
+          userId: targetUserId,
+          moderatorId: actor.id,
+          reason: reason ?? null,
+        }));
+      await this.repo.addKickCache(roomId, targetUserId);
+
       await this.removeFromRoom(roomId, targetUserId, actor.id);
       await this.repo.appendAction({
         roomId,
@@ -89,6 +128,7 @@ export class ModerationService implements IModerationService {
         targetUserId,
         action: ModerationActionType.KICK,
         reason: reason ?? null,
+        metadata: { kickId: kick.id },
       });
     });
     await this.bus.publish(
@@ -100,6 +140,43 @@ export class ModerationService implements IModerationService {
       }),
     );
     await this.notifyUser(targetUserId, 'audio_room.kicked', { roomId, reason: reason ?? null });
+  }
+
+  /**
+   * Restore ("unkick") a user: lift their ACTIVE kick so they may rejoin the room.
+   * Like unban/unmute this is a restorative action, so it only requires moderator
+   * authority — no self-check, and no outranks check (the target left the room and
+   * therefore holds no role to outrank).
+   */
+  async unkick(actor: RoomActor, roomId: string, targetUserId: string): Promise<void> {
+    await this.permissions.assertCanModerate(roomId, actor);
+    const kick = await this.repo.findActiveKick(roomId, targetUserId);
+    if (!kick) {
+      throw new BusinessException(
+        ERROR_CODES.KICK_NOT_FOUND,
+        'That user is not on the kick list.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    await this.repo.liftKick(kick.id, actor.id);
+    await this.repo.removeKickCache(roomId, targetUserId);
+    await this.repo.appendAction({
+      roomId,
+      moderatorId: actor.id,
+      targetUserId,
+      action: ModerationActionType.UNKICK,
+      metadata: { kickId: kick.id },
+    });
+    await this.bus.publish(
+      new MemberUnkickedEvent({
+        roomId,
+        moderatorId: actor.id,
+        targetUserId,
+        kickId: kick.id,
+      }),
+    );
+    await this.notifyUser(targetUserId, 'audio_room.unkicked', { roomId });
   }
 
   // ======================= Ban / unban =======================
@@ -581,6 +658,25 @@ export class ModerationService implements IModerationService {
 
   // ======================= Reads =======================
 
+  /**
+   * The room's Kick List — currently-kicked users, newest first, hydrated with the
+   * target's avatar/username and the moderator's username. Moderator-only: the
+   * caller must hold MODERATE_USERS (owner / admin / premium admin) in the room.
+   */
+  async listKicks(
+    actor: RoomActor,
+    roomId: string,
+    q: ListModerationDto,
+  ): Promise<Paginated<RoomKickView>> {
+    await this.permissions.assertCanModerate(roomId, actor);
+    const [rows, total] = await this.repo.listActiveKicks(roomId, q.skip, q.limit);
+    const summaries = await this.repo.resolveUserSummaries(
+      rows.flatMap((k) => [k.userId, k.moderatorId]),
+    );
+    const views = rows.map((k) => this.toKickView(k, summaries));
+    return buildPaginated(views, total, q.page, q.limit);
+  }
+
   async listBans(roomId: string, q: ListModerationDto): Promise<Paginated<RoomBan>> {
     const [rows, total] = await this.repo.listActiveBans(roomId, q.skip, q.limit);
     return buildPaginated(rows, total, q.page, q.limit);
@@ -613,6 +709,21 @@ export class ModerationService implements IModerationService {
 
   // ======================= Public contract (IModerationService) =======================
 
+  async isKicked(roomId: string, userId: string): Promise<boolean> {
+    if (await this.repo.isKickedCached(roomId, userId)) return true;
+    return (await this.repo.findActiveKick(roomId, userId)) !== null;
+  }
+
+  async assertNotKicked(roomId: string, userId: string): Promise<void> {
+    if (await this.isKicked(roomId, userId)) {
+      throw new BusinessException(
+        ERROR_CODES.ROOM_KICKED,
+        'You were kicked from this room and cannot rejoin until a moderator restores you.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+  }
+
   async isBanned(roomId: string, userId: string): Promise<boolean> {
     if (await this.repo.isBannedCached(roomId, userId)) return true;
     return (await this.repo.findActiveBan(roomId, userId)) !== null;
@@ -634,6 +745,22 @@ export class ModerationService implements IModerationService {
   }
 
   // ======================= Internals =======================
+
+  private toKickView(kick: RoomKick, summaries: Map<string, ModeratedUserSummary>): RoomKickView {
+    const target = summaries.get(kick.userId);
+    const moderator = summaries.get(kick.moderatorId);
+    return {
+      id: kick.id,
+      roomId: kick.roomId,
+      targetUserId: kick.userId,
+      targetUsername: target?.username ?? null,
+      targetAvatarKey: target?.avatarKey ?? null,
+      moderatorId: kick.moderatorId,
+      moderatorUsername: moderator?.username ?? null,
+      reason: kick.reason,
+      createdAt: kick.createdAt,
+    };
+  }
 
   private resolveExpiry(isTemporary: boolean, durationMinutes?: number): Date | null {
     if (!isTemporary) return null;

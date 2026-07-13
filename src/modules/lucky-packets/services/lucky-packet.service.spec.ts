@@ -42,10 +42,12 @@ function packet(overrides: Partial<LuckyPacket> = {}): LuckyPacket {
 }
 
 describe('LuckyPacketService', () => {
-  let repo: jest.Mocked<Pick<
-    LuckyPacketRepository,
-    'create' | 'findById' | 'findActiveByRoom' | 'applyClaim' | 'setClaimTxn' | 'countClaims'
-  >>;
+  let repo: jest.Mocked<
+    Pick<
+      LuckyPacketRepository,
+      'create' | 'findById' | 'findActiveByRoom' | 'applyClaim' | 'setClaimTxn' | 'countClaims'
+    >
+  >;
   let locks: { withLock: jest.Mock };
   let bus: jest.Mocked<IEventBus>;
   let rooms: Record<string, jest.Mock>;
@@ -147,7 +149,9 @@ describe('LuckyPacketService', () => {
   });
 
   it('rejects claiming an exhausted packet', async () => {
-    repo.findById.mockResolvedValue(packet({ remainingSlots: 0, status: LuckyPacketStatus.COMPLETED }));
+    repo.findById.mockResolvedValue(
+      packet({ remainingSlots: 0, status: LuckyPacketStatus.COMPLETED }),
+    );
     await expect(service.claim(MEMBER, ROOM, PACKET)).rejects.toMatchObject({
       errorCode: 'LUCKY_PACKET_EXHAUSTED',
     });
@@ -157,7 +161,11 @@ describe('LuckyPacketService', () => {
     repo.findById.mockResolvedValue(packet({ remainingSlots: 1, remainingCoins: 37n }));
     repo.applyClaim.mockResolvedValue({
       claim: { id: 'claim-last' } as never,
-      packet: packet({ remainingSlots: 0, remainingCoins: 0n, status: LuckyPacketStatus.COMPLETED }),
+      packet: packet({
+        remainingSlots: 0,
+        remainingCoins: 0n,
+        status: LuckyPacketStatus.COMPLETED,
+      }),
     });
     const result = (await service.claim(MEMBER, ROOM, PACKET)) as { amount: number };
     expect(result.amount).toBe(37);

@@ -64,10 +64,7 @@ export class PkBattleController {
   @HttpCode(HttpStatus.CREATED)
   @NotGuest()
   @ApiOperation({ summary: 'Accept a PK battle invitation' })
-  acceptInvite(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id', ParseUuidPipe) id: string,
-  ) {
+  acceptInvite(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.pk.acceptInvite(user.id, id);
   }
 

@@ -1,2 +1,2 @@
-/** chat controllers — empty until the module is implemented. */
-export {};
+export * from './conversations.controller';
+export * from './messages.controller';

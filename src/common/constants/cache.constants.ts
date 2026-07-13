@@ -14,4 +14,5 @@ export const CACHE_KEYS = {
   RANKING: 'ranking:',
   SESSION: 'session:',
   PRIVACY: 'privacy:',
+  CHAT: 'chat:',
 } as const;

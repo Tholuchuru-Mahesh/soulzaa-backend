@@ -51,6 +51,7 @@ enum AppealStatus {
 /// Actions recorded in the append-only moderation_actions audit trail.
 enum ModerationActionType {
   KICK
+  UNKICK
   BAN_TEMPORARY
   BAN_PERMANENT
   UNBAN
@@ -70,6 +71,33 @@ enum ModerationActionType {
   CHAT_WORD_ESCALATED
   CHAT_AUTO_MUTED
   CHAT_AUTO_KICKED
+}
+
+/// A per-room kick — the durable "Kick List" a room's owner/admins manage. A
+/// kicked user is removed from the room AND barred from rejoining until a
+/// moderator restores them (status → LIFTED), which is what distinguishes a kick
+/// from a plain leave. Unlike a ban there is no expiry: it lasts until restored.
+/// At most one ACTIVE kick per (roomId,userId), enforced in the service under a
+/// lock. Redis mirrors the active set for the fast join-time gate.
+model RoomKick {
+  id          String           @id @default(uuid()) @db.Uuid
+  roomId      String           @db.Uuid
+  userId      String           @db.Uuid
+  moderatorId String           @db.Uuid
+  reason      String?
+  status      ModerationStatus @default(ACTIVE)
+  liftedBy    String?          @db.Uuid
+  liftedAt    DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, status])
+  @@index([userId, status])
+  @@map("room_kicks")
 }
 
 /// A per-room ban. `expiresAt` null ⇒ PERMANENT. At most one ACTIVE ban per

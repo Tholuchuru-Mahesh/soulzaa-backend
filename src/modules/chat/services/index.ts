@@ -1,2 +1,2 @@
-/** chat services — empty until the module is implemented. */
-export {};
+export * from './chat.service';
+export * from './chat-view.mapper';

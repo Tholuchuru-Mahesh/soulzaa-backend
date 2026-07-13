@@ -8,6 +8,7 @@ import {
   ReportStatus,
   RoomAppeal,
   RoomBan,
+  RoomKick,
   RoomMute,
   RoomReport,
 } from '@prisma/client';
@@ -17,16 +18,25 @@ import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
 import {
   roomBanKey,
   roomBanSetKey,
+  roomKickKey,
+  roomKickSetKey,
   roomMuteKey,
   roomMuteSetKey,
 } from '../constants/moderation.constants';
 
+/** Display fields for a moderated user, resolved in one batch for list views. */
+export interface ModeratedUserSummary {
+  username: string | null;
+  avatarKey: string | null;
+}
+
 /**
- * Data layer for AR-3 moderation: Postgres (room_bans, room_mutes, append-only
- * moderation_actions, moderation_notes, room_reports, room_appeals) plus the
- * Redis ban/mute enforcement caches. Pure persistence — permission checks,
- * realtime enforcement and locking live in the service. The DB is authoritative;
- * Redis is the hot join-gate / mute-check view (single-key ops → Cluster-safe).
+ * Data layer for AR-3 moderation: Postgres (room_kicks, room_bans, room_mutes,
+ * append-only moderation_actions, moderation_notes, room_reports, room_appeals)
+ * plus the Redis kick/ban/mute enforcement caches. Pure persistence — permission
+ * checks, realtime enforcement and locking live in the service. The DB is
+ * authoritative; Redis is the hot join-gate / mute-check view (single-key ops →
+ * Cluster-safe).
  */
 @Injectable()
 export class ModerationRepository {
@@ -34,6 +44,44 @@ export class ModerationRepository {
     private readonly prisma: PrismaService,
     @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
   ) {}
+
+  // ---- Kicks (the Kick List) ----
+
+  createKick(input: {
+    roomId: string;
+    userId: string;
+    moderatorId: string;
+    reason: string | null;
+  }): Promise<RoomKick> {
+    return this.prisma.roomKick.create({
+      data: {
+        roomId: input.roomId,
+        userId: input.userId,
+        moderatorId: input.moderatorId,
+        reason: input.reason,
+        ...auditCreate(input.moderatorId),
+      },
+    });
+  }
+
+  findActiveKick(roomId: string, userId: string): Promise<RoomKick | null> {
+    return this.prisma.roomKick.findFirst({ where: { roomId, userId, status: 'ACTIVE' } });
+  }
+
+  listActiveKicks(roomId: string, skip: number, take: number): Promise<[RoomKick[], number]> {
+    const where: Prisma.RoomKickWhereInput = { roomId, status: 'ACTIVE' };
+    return this.prisma.$transaction([
+      this.prisma.roomKick.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
+      this.prisma.roomKick.count({ where }),
+    ]);
+  }
+
+  async liftKick(id: string, liftedBy: string): Promise<void> {
+    await this.prisma.roomKick.update({
+      where: { id },
+      data: { status: 'LIFTED', liftedBy, liftedAt: new Date(), ...auditUpdate(liftedBy) },
+    });
+  }
 
   // ---- Bans ----
 
@@ -314,7 +362,52 @@ export class ModerationRepository {
     });
   }
 
+  // ---- User display data (batch-resolved for list views) ----
+
+  /**
+   * Resolves username + avatar key for the given users in two batched queries.
+   * Used by the Kick List so a moderator sees who was kicked and who kicked them
+   * without an N+1 lookup per row.
+   */
+  async resolveUserSummaries(userIds: string[]): Promise<Map<string, ModeratedUserSummary>> {
+    const ids = [...new Set(userIds)].filter(Boolean);
+    if (ids.length === 0) return new Map();
+
+    const [users, profiles] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, username: true },
+      }),
+      this.prisma.userProfile.findMany({
+        where: { userId: { in: ids } },
+        select: { userId: true, avatarKey: true },
+      }),
+    ]);
+
+    const avatarByUser = new Map(profiles.map((p) => [p.userId, p.avatarKey]));
+    return new Map(
+      users.map((u) => [
+        u.id,
+        { username: u.username, avatarKey: avatarByUser.get(u.id) ?? null },
+      ]),
+    );
+  }
+
   // ---- Redis enforcement caches (hot path) ----
+
+  async addKickCache(roomId: string, userId: string): Promise<void> {
+    await this.redis.sadd(roomKickSetKey(roomId), userId);
+    await this.redis.set(roomKickKey(roomId, userId), '1');
+  }
+
+  async removeKickCache(roomId: string, userId: string): Promise<void> {
+    await this.redis.srem(roomKickSetKey(roomId), userId);
+    await this.redis.del(roomKickKey(roomId, userId));
+  }
+
+  async isKickedCached(roomId: string, userId: string): Promise<boolean> {
+    return (await this.redis.sismember(roomKickSetKey(roomId), userId)) === 1;
+  }
 
   async addBanCache(roomId: string, userId: string, ttlMs: number | null): Promise<void> {
     await this.redis.sadd(roomBanSetKey(roomId), userId);

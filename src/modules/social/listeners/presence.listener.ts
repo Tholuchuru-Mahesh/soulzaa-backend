@@ -3,10 +3,7 @@ import { PresenceStatus } from '@prisma/client';
 import { USER_ROOM_PREFIX } from 'src/common/constants/socket.constants';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { SocketManager } from 'src/infra/socket/socket.manager';
-import {
-  INFRA_PRESENCE_EVENTS,
-  type PresenceChangedEvent,
-} from 'src/infra/socket/presence.events';
+import { INFRA_PRESENCE_EVENTS, type PresenceChangedEvent } from 'src/infra/socket/presence.events';
 import {
   AUDIO_ROOM_EVENTS,
   type RoomJoinedEvent,
@@ -38,7 +35,10 @@ export class PresenceListener implements OnModuleInit {
       this.onOnlineChanged(e),
     );
     this.bus.subscribe<RoomJoinedEvent>(AUDIO_ROOM_EVENTS.JOINED, (e) =>
-      this.apply(e.payload.userId, { status: PresenceStatus.IN_ROOM, currentRoomId: e.payload.roomId }),
+      this.apply(e.payload.userId, {
+        status: PresenceStatus.IN_ROOM,
+        currentRoomId: e.payload.roomId,
+      }),
     );
     this.bus.subscribe<RoomLeftEvent>(AUDIO_ROOM_EVENTS.LEFT, (e) =>
       this.apply(e.payload.userId, { status: PresenceStatus.ONLINE, currentRoomId: null }),

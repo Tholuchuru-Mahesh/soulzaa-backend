@@ -21,6 +21,17 @@ const MANAGER_ROLES: ReadonlySet<RoomMemberRole> = new Set([
   RoomMemberRole.PREMIUM_ADMIN,
 ]);
 
+const THEME_PRESETS = new Map<string, string>([
+  ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab1', 'Sunlight'],
+  ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab2', 'Galaxy'],
+  ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab3', 'Sunset Glow'],
+  ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab4', 'Royal Purple'],
+  ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab5', 'Nature'],
+  ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab6', 'Ocean Breeze'],
+  ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab7', 'Golden Luxury'],
+  ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab8', 'Neon Cyber'],
+]);
+
 /** Max decorations applied to a room at once. */
 const MAX_DECORATIONS = 10;
 
@@ -95,6 +106,10 @@ export class RoomAppearanceService {
     cosmeticId: string,
     expectedType: CosmeticType,
   ): Promise<{ name: string }> {
+    const presetName = THEME_PRESETS.get(cosmeticId);
+    if (presetName) {
+      return { name: presetName };
+    }
     if (cosmeticId.startsWith('preset_')) {
       return { name: cosmeticId.substring(7) };
     }

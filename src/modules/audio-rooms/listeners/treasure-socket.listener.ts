@@ -61,8 +61,9 @@ export class TreasureSocketListener implements OnModuleInit {
     this.bus.subscribe<TreasureReceiverRewardEvent>(TREASURE_EVENTS.RECEIVER_REWARD, (e) =>
       this.room(e.payload.roomId, 'treasure_receiver_reward', e.payload),
     );
-    this.bus.subscribe<ContributionCounterUpdatedEvent>(TREASURE_EVENTS.CONTRIBUTION_COUNTER_UPDATED, (e) =>
-      this.room(e.payload.roomId, 'contribution_counter_updated', e.payload),
+    this.bus.subscribe<ContributionCounterUpdatedEvent>(
+      TREASURE_EVENTS.CONTRIBUTION_COUNTER_UPDATED,
+      (e) => this.room(e.payload.roomId, 'contribution_counter_updated', e.payload),
     );
     this.bus.subscribe<RocketStartedEvent>(TREASURE_EVENTS.ROCKET_STARTED, (e) =>
       this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.ROCKET_STARTED, e.payload),

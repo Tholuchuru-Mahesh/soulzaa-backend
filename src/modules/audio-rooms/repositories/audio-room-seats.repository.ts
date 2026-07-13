@@ -206,7 +206,11 @@ export class AudioRoomSeatsRepository {
     });
   }
 
-  findPendingRequestByUser(roomId: string, userId: string, type?: string): Promise<SeatRequest | null> {
+  findPendingRequestByUser(
+    roomId: string,
+    userId: string,
+    type?: string,
+  ): Promise<SeatRequest | null> {
     return this.prisma.seatRequest.findFirst({
       where: {
         roomId,

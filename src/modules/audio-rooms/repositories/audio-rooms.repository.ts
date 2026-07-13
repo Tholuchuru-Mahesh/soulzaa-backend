@@ -292,14 +292,25 @@ export class AudioRoomsRepository {
     return this.prisma.roomMember.upsert({
       where: { roomId_userId: { roomId, userId } },
       create: { roomId, userId, role, isActive: true, ...auditCreate(actorId) },
-      update: { isActive: true, leftAt: null, joinedAt: new Date(), tempSpeakAllowed: false, ...auditUpdate(actorId) },
+      update: {
+        isActive: true,
+        leftAt: null,
+        joinedAt: new Date(),
+        tempSpeakAllowed: false,
+        ...auditUpdate(actorId),
+      },
     });
   }
 
   async deactivateMember(roomId: string, userId: string, actorId: string): Promise<void> {
     await this.prisma.roomMember.updateMany({
       where: { roomId, userId, isActive: true },
-      data: { isActive: false, tempSpeakAllowed: false, leftAt: new Date(), ...auditUpdate(actorId) },
+      data: {
+        isActive: false,
+        tempSpeakAllowed: false,
+        leftAt: new Date(),
+        ...auditUpdate(actorId),
+      },
     });
   }
 

@@ -200,6 +200,21 @@ export const envSchema = z.object({
   AUDIO_ROOM_PREMIUM_SEAT_PRICE_GOLD: z.coerce.number().int().positive().default(50_000),
   AUDIO_ROOM_PREMIUM_SEAT_DURATION_DAYS: z.coerce.number().int().positive().default(30),
 
+  // ---- Direct messaging (chat module) ----
+  CHAT_MESSAGE_MAX_LENGTH: z.coerce.number().int().positive().default(4000),
+  CHAT_MAX_ATTACHMENTS: z.coerce.number().int().positive().default(10),
+  // Rolling send rate limit: at most RATE_MAX messages per RATE_WINDOW_SECONDS per sender.
+  CHAT_RATE_MAX: z.coerce.number().int().positive().default(30),
+  CHAT_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(10),
+  // How long a broadcast typing/recording indicator stays live before the client expires it.
+  CHAT_TYPING_TTL_SECONDS: z.coerce.number().int().positive().default(5),
+  // TTL for the cached per-user unread badge total.
+  CHAT_UNREAD_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
+  // Window within which a sender may still edit their own message.
+  CHAT_EDIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(900),
+  // Most conversations a user may pin at once.
+  CHAT_MAX_PINNED: z.coerce.number().int().positive().default(5),
+
   // ---- Gifts (AR-5) ----
   GIFT_CREATOR_EARNING_RATE_PERCENT: z.coerce.number().int().min(0).max(100).default(30),
   GIFT_SENDER_EXP_PER_COIN: z.coerce.number().min(0).default(1),
