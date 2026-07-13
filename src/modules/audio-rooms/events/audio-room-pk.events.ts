@@ -11,6 +11,8 @@ export const AUDIO_ROOM_PK_EVENTS = {
   SCORE: 'audio_room.pk_score',
   ENDED: 'audio_room.pk_ended',
   CANCELLED: 'audio_room.pk_cancelled',
+  INVITED: 'audio_room.pk_invited',
+  REJECTED: 'audio_room.pk_rejected',
 } as const;
 
 export interface PkParticipantView {
@@ -58,4 +60,25 @@ export class PkCancelledEvent extends DomainEvent<{
   battleId: string;
 }> {
   readonly name = AUDIO_ROOM_PK_EVENTS.CANCELLED;
+}
+
+export class PkInvitedEvent extends DomainEvent<{
+  roomId: string;
+  mode: PkMode;
+  durationSeconds: number;
+  red: string[];
+  blue: string[];
+  targetUserId: string;
+  inviterId: string;
+  inviterName: string;
+}> {
+  readonly name = AUDIO_ROOM_PK_EVENTS.INVITED;
+}
+
+export class PkRejectedEvent extends DomainEvent<{
+  roomId: string;
+  targetUserId: string;
+  inviterId: string;
+}> {
+  readonly name = AUDIO_ROOM_PK_EVENTS.REJECTED;
 }

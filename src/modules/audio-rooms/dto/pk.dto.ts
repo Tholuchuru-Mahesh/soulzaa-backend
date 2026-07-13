@@ -40,3 +40,10 @@ export class StartPkDto {
   @IsUUID('4', { each: true })
   blue!: string[];
 }
+
+/** Invite a participant to start a PK battle. */
+export class InvitePkDto extends StartPkDto {
+  @ApiProperty({ description: 'The opponent user who must accept the invitation.' })
+  @IsUUID('4')
+  targetUserId!: string;
+}

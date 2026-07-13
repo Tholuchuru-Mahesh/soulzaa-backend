@@ -11,6 +11,8 @@ export const TREASURE_EVENTS = {
   PROGRESS: 'treasure.progress',
   BOX_OPENED: 'treasure.box_opened',
   SESSION_COMPLETED: 'treasure.session_completed',
+  RECEIVER_REWARD: 'treasure.receiver_reward',
+  CONTRIBUTION_COUNTER_UPDATED: 'treasure.contribution_counter_updated',
   ROCKET_STARTED: 'treasure.rocket_started',
   ROCKET_PROGRESS: 'treasure.rocket_progress',
   ROCKET_COMPLETED: 'treasure.rocket_completed',
@@ -47,6 +49,7 @@ export class TreasureProgressEvent extends DomainEvent<{
   level: number;
   progress: number;
   threshold: number;
+  topGifters: RankedContributor[];
 }> {
   readonly name = TREASURE_EVENTS.PROGRESS;
 }
@@ -94,4 +97,24 @@ export class RocketCompletedEvent extends DomainEvent<{
   rewards: RewardSummary[];
 }> {
   readonly name = TREASURE_EVENTS.ROCKET_COMPLETED;
+}
+
+export class TreasureReceiverRewardEvent extends DomainEvent<{
+  roomId: string;
+  boxId: string;
+  level: number;
+  hostId: string;
+  rewardAmount: number;
+  walletTxnId: string | null;
+}> {
+  readonly name = TREASURE_EVENTS.RECEIVER_REWARD;
+}
+
+export class ContributionCounterUpdatedEvent extends DomainEvent<{
+  roomId: string;
+  receiverId: string;
+  roomTotal: number;
+  receiverTotal: number;
+}> {
+  readonly name = TREASURE_EVENTS.CONTRIBUTION_COUNTER_UPDATED;
 }

@@ -129,18 +129,16 @@ describe('GiftService', () => {
   });
 
   describe('sendGift', () => {
-    it('debits sender, credits receiver earnings, persists, and broadcasts', async () => {
+    it('debits sender, does not credit receiver earnings in audio room, persists, and broadcasts', async () => {
       const res = await service.sendGift(SENDER, dto());
       expect(wallet.debit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: SENDER.id, currency: 'GOLD', amount: 100 }),
       );
-      // 30% creator earnings of 100 = 30
-      expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'EARNINGS', amount: 30 }),
-      );
+      // Gifting in audio rooms does NOT credit host's wallet directly
+      expect(wallet.credit).not.toHaveBeenCalled();
       expect(repo.createTransaction).toHaveBeenCalled();
       expect(leaderboards.record).toHaveBeenCalledWith(
-        expect.objectContaining({ giftValue: 100, receiverEarnings: 30 }),
+        expect.objectContaining({ giftValue: 100, receiverEarnings: 0 }),
       );
       expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'gift.sent' }));
       expect(res.id).toBe('gtxn-1');
@@ -183,9 +181,9 @@ describe('GiftService', () => {
     });
 
     it('is idempotent — a prior send with the same key returns the original', async () => {
-      repo.findTxnByIdempotencyKey.mockResolvedValue({ id: 'existing' });
-      const res = await service.sendGift(SENDER, dto({ idempotencyKey: 'k1' }));
-      expect(res).toMatchObject({ id: 'existing' });
+      repo.findTxnByIdempotencyKey.mockResolvedValue({ id: 'gtxn-prior' });
+      const res = await service.sendGift(SENDER, dto({ idempotencyKey: 'idempotent-key' }));
+      expect(res.id).toBe('gtxn-prior');
       expect(wallet.debit).not.toHaveBeenCalled();
     });
 
@@ -205,8 +203,10 @@ describe('GiftService', () => {
 
     it('rejects an unsupported (non audio-room) context', async () => {
       await expect(
-        service.sendGift(SENDER, dto({ contextType: GiftContextType.LIVE_STREAM })),
-      ).rejects.toMatchObject({ errorCode: 'GIFT_CONTEXT_INVALID' });
+        service.sendGift(SENDER, dto({ contextType: 'PRIVATE_CHAT' as any })),
+      ).rejects.toMatchObject({
+        errorCode: 'GIFT_CONTEXT_INVALID',
+      });
     });
 
     it('propagates INSUFFICIENT_BALANCE and does not persist', async () => {
@@ -220,7 +220,7 @@ describe('GiftService', () => {
     it('multiplies value by quantity', async () => {
       await service.sendGift(SENDER, dto({ quantity: 3 }));
       expect(wallet.debit).toHaveBeenCalledWith(expect.objectContaining({ amount: 300 }));
-      expect(wallet.credit).toHaveBeenCalledWith(expect.objectContaining({ amount: 90 }));
+      expect(wallet.credit).not.toHaveBeenCalled();
     });
 
     it('applies combo tier for combo-enabled gifts and emits a combo event', async () => {
@@ -236,11 +236,11 @@ describe('GiftService', () => {
     it('compensates the debit when the ledger write fails', async () => {
       repo.createTransaction.mockRejectedValue(new Error('db down'));
       await expect(service.sendGift(SENDER, dto())).rejects.toBeDefined();
-      // sender refunded gold, receiver earnings reversed
+      // sender refunded gold, receiver is not credited so receiver refund is not called
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: SENDER.id, reason: 'GIFT_REFUND' }),
       );
-      expect(wallet.debit).toHaveBeenCalledWith(
+      expect(wallet.debit).not.toHaveBeenCalledWith(
         expect.objectContaining({ userId: RECEIVER, reason: 'GIFT_REFUND' }),
       );
     });

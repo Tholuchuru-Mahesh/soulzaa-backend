@@ -198,3 +198,19 @@ model RocketReward {
   @@index([userId])
   @@map("rocket_rewards")
 }
+
+model RoomContributionCounter {
+  roomId    String   @id @db.Uuid
+  amount    BigInt   @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("room_contribution_counters")
+}
+
+model UserContributionCounter {
+  userId    String   @id @db.Uuid
+  amount    BigInt   @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("user_contribution_counters")
+}

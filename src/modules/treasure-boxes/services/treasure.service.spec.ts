@@ -59,9 +59,11 @@ describe('TreasureService', () => {
   let repo: Record<string, jest.Mock>;
   let distributor: { distribute: jest.Mock };
   let locks: { withLock: jest.Mock };
+  let cache: { increment: jest.Mock };
   let queue: { enqueue: jest.Mock };
   let bus: jest.Mocked<IEventBus>;
   let rooms: Record<string, jest.Mock>;
+  let wallet: { credit: jest.Mock };
   let service: TreasureService;
 
   beforeEach(() => {
@@ -69,6 +71,7 @@ describe('TreasureService', () => {
       listEnabledConfigs: jest.fn().mockResolvedValue([1, 2, 3, 4, 5].map(config)),
       getConfig: jest.fn().mockImplementation((l: number) => Promise.resolve(config(l))),
       getActiveSession: jest.fn().mockResolvedValue(null),
+      getLatestCompletedSession: jest.fn().mockResolvedValue(null),
       getSession: jest.fn().mockResolvedValue(session()),
       createSession: jest.fn().mockResolvedValue(session()),
       setSessionLevel: jest.fn().mockResolvedValue(undefined),
@@ -86,6 +89,8 @@ describe('TreasureService', () => {
       createReward: jest.fn().mockResolvedValue(undefined),
       listSessions: jest.fn().mockResolvedValue([[], 0]),
       listRewards: jest.fn().mockResolvedValue([[], 0]),
+      incrementRoomContribution: jest.fn().mockResolvedValue(50n),
+      incrementUserContribution: jest.fn().mockResolvedValue(50n),
     };
     distributor = {
       distribute: jest.fn().mockResolvedValue([
@@ -102,19 +107,26 @@ describe('TreasureService', () => {
       ]),
     };
     locks = { withLock: jest.fn(<T>(_k: string, fn: () => Promise<T>) => fn()) };
+    cache = { increment: jest.fn().mockResolvedValue(1) };
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     rooms = {
       getEffectiveRole: jest.fn().mockResolvedValue('OWNER'),
       isRoomLive: jest.fn().mockResolvedValue(true),
+      getOwnerId: jest.fn().mockResolvedValue('owner-id'),
+    };
+    wallet = {
+      credit: jest.fn().mockResolvedValue({ transactionId: 'host-reward-txn' }),
     };
     service = new TreasureService(
       repo as unknown as TreasureRepository,
       distributor as unknown as RewardDistributor,
       locks as unknown as LockService,
+      cache as unknown as any,
       queue as unknown as QueueService,
       bus,
       rooms as unknown as IAudioRoomsService,
+      wallet as unknown as any,
     );
   });
 
@@ -157,7 +169,7 @@ describe('TreasureService', () => {
     it('adds progress and broadcasts without opening below the threshold', async () => {
       repo.getActiveSession.mockResolvedValue(session());
       repo.addProgress.mockResolvedValue(box({ progress: 50n }));
-      await service.handleContribution(ROOM, 'g1', 50, 'gtxn-1');
+      await service.handleContribution(ROOM, 'g1', 'host-1', 50, 'gtxn-1');
       expect(repo.addContribution).toHaveBeenCalled();
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'treasure.progress' }),
@@ -168,7 +180,7 @@ describe('TreasureService', () => {
     it('opens the box, distributes to Top-3, and advances when the threshold is met', async () => {
       repo.getActiveSession.mockResolvedValue(session());
       repo.addProgress.mockResolvedValue(box({ progress: 120n }));
-      await service.handleContribution(ROOM, 'g1', 120, 'gtxn-1');
+      await service.handleContribution(ROOM, 'g1', 'host-1', 120, 'gtxn-1');
       expect(repo.topContributors).toHaveBeenCalledWith('box-1', 3);
       expect(distributor.distribute).toHaveBeenCalledWith(
         expect.objectContaining({ idempotencyPrefix: 'treasure:box-1' }),
@@ -186,7 +198,7 @@ describe('TreasureService', () => {
       repo.getSession.mockResolvedValue(session({ currentLevel: 5 }));
       repo.getBoxByLevel.mockResolvedValue(box({ level: 5 }));
       repo.addProgress.mockResolvedValue(box({ level: 5, progress: 120n }));
-      await service.handleContribution(ROOM, 'g1', 120, 'gtxn-1');
+      await service.handleContribution(ROOM, 'g1', 'host-1', 120, 'gtxn-1');
       expect(repo.finishSession).toHaveBeenCalledWith('sess-1', TreasureSessionStatus.COMPLETED);
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'treasure.session_completed' }),
@@ -195,7 +207,7 @@ describe('TreasureService', () => {
 
     it('is a no-op when there is no active session', async () => {
       repo.getActiveSession.mockResolvedValue(null);
-      await service.handleContribution(ROOM, 'g1', 50, 'gtxn-1');
+      await service.handleContribution(ROOM, 'g1', 'host-1', 50, 'gtxn-1');
       expect(repo.addContribution).not.toHaveBeenCalled();
     });
   });

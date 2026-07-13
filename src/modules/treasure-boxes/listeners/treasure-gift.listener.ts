@@ -34,6 +34,7 @@ export class TreasureGiftListener implements OnModuleInit {
       await this.treasure.handleContribution(
         p.contextId,
         p.senderId,
+        p.receiverId,
         p.totalCoinValue,
         p.transactionId,
       );

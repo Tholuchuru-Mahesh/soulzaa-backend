@@ -130,6 +130,14 @@ export class AudioRoomsService implements IAudioRoomsService {
       if (dto.categoryId) await this.assertCategory(dto.categoryId);
       if (dto.language) await this.assertLanguage(dto.language);
 
+      if (dto.isLocked && !dto.password) {
+        throw new BusinessException(
+          ERROR_CODES.ROOM_PASSWORD_INVALID,
+          'A room password is required when locking the room.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
       const passwordHash = dto.password ? await this.passwords.hash(dto.password) : null;
       const room = await this.repo.createRoomTx({
         ownerId: actor.id,
@@ -167,10 +175,21 @@ export class AudioRoomsService implements IAudioRoomsService {
   }
 
   async update(actor: RoomActor, roomId: string, dto: UpdateRoomDto): Promise<RoomView> {
-    await this.getManageableRoom(roomId, actor);
+    const room = await this.getManageableRoom(roomId, actor);
 
     if (dto.categoryId) await this.assertCategory(dto.categoryId);
     if (dto.language) await this.assertLanguage(dto.language);
+
+    // Validate password requirement
+    const willBeLocked = dto.isLocked !== undefined ? dto.isLocked : room.isLocked;
+    const hasPassword = (dto.password !== undefined ? dto.password !== null : room.passwordHash !== null);
+    if (willBeLocked && !hasPassword) {
+      throw new BusinessException(
+        ERROR_CODES.ROOM_PASSWORD_INVALID,
+        'A room password is required when locking the room.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
     const data: UpdateRoomData = {};
     const changed: string[] = [];
@@ -188,10 +207,21 @@ export class AudioRoomsService implements IAudioRoomsService {
     if (dto.isDiscoverable !== undefined) assign('isDiscoverable', dto.isDiscoverable);
     if (dto.maxParticipants !== undefined)
       assign('maxParticipants', this.clampMax(dto.maxParticipants));
-    if (dto.isLocked !== undefined) assign('isLocked', dto.isLocked);
+    
+    if (dto.isLocked !== undefined) {
+      assign('isLocked', dto.isLocked);
+      if (!dto.isLocked) {
+        assign('passwordHash', null);
+      }
+    }
+    
     if (dto.password !== undefined) {
       assign('passwordHash', dto.password ? await this.passwords.hash(dto.password) : null);
-      changed[changed.length - 1] = 'password';
+      if (changed.length > 0) {
+        changed[changed.length - 1] = 'password';
+      } else {
+        changed.push('password');
+      }
     }
 
     const updated = await this.repo.updateRoom(roomId, data, actor.id);
@@ -254,7 +284,11 @@ export class AudioRoomsService implements IAudioRoomsService {
     // Re-entry restriction: a user with an active ban cannot rejoin (AR-3).
     await this.assertNotBanned(roomId, actor.id);
 
-    if (room.isLocked && room.passwordHash) {
+    const isOwnerOrPlatformAdmin = room.ownerId === actor.id || this.isPlatformAdmin(actor.roles);
+    const existingMember = await this.repo.getMember(roomId, actor.id);
+    const isAlreadyInRoom = existingMember?.isActive === true;
+
+    if (room.isLocked && room.passwordHash && !isAlreadyInRoom && !isOwnerOrPlatformAdmin) {
       const ok = dto.password
         ? await this.passwords.verify(dto.password, room.passwordHash)
         : false;
@@ -553,16 +587,18 @@ export class AudioRoomsService implements IAudioRoomsService {
     return roles.includes(PlatformRole.ADMIN) || roles.includes(PlatformRole.SUPER_ADMIN);
   }
 
-  /** Fetch a non-deleted room and assert the actor may manage it (owner/admin). */
   private async getManageableRoom(roomId: string, actor: RoomActor): Promise<AudioRoom> {
     const room = await this.repo.findRoomRow(roomId);
     if (!room) throw this.roomNotFound();
     if (room.ownerId !== actor.id && !this.isPlatformAdmin(actor.roles)) {
-      throw new BusinessException(
-        ERROR_CODES.NOT_ROOM_OWNER,
-        'Only the room owner or a platform admin can manage this room.',
-        HttpStatus.FORBIDDEN,
-      );
+      const role = await this.permissions.getEffectiveRole(roomId, actor.id);
+      if (role !== RoomMemberRole.ADMIN && role !== RoomMemberRole.PREMIUM_ADMIN) {
+        throw new BusinessException(
+          ERROR_CODES.NOT_ROOM_OWNER,
+          'Only the room owner, admin, or a platform admin can manage this room.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
     }
     return room;
   }

@@ -7,7 +7,7 @@ import { NotGuest } from 'src/common/decorators/not-guest.decorator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
-import { StartPkDto } from '../dto/pk.dto';
+import { InvitePkDto, StartPkDto } from '../dto/pk.dto';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { PkBattleService } from '../services/pk-battle.service';
 
@@ -46,6 +46,41 @@ export class PkBattleController {
     @Body() dto: StartPkDto,
   ) {
     return this.pk.start(this.actor(user), id, dto);
+  }
+
+  @Post('rooms/:id/pk/invite')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Invite an opponent to a PK battle (owner/admin)' })
+  invite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: InvitePkDto,
+  ) {
+    return this.pk.invite(this.actor(user), id, dto);
+  }
+
+  @Post('rooms/:id/pk/invite/accept')
+  @HttpCode(HttpStatus.CREATED)
+  @NotGuest()
+  @ApiOperation({ summary: 'Accept a PK battle invitation' })
+  acceptInvite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+  ) {
+    return this.pk.acceptInvite(user.id, id);
+  }
+
+  @Post('rooms/:id/pk/invite/reject')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Reject a PK battle invitation' })
+  async rejectInvite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+  ) {
+    await this.pk.rejectInvite(user.id, id);
+    return { rejected: true };
   }
 
   @Post('rooms/:id/pk/cancel')

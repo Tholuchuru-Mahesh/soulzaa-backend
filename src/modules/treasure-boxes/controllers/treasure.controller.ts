@@ -63,6 +63,12 @@ export class TreasureController {
     return this.treasure.rewards(id, { skip: q.skip, limit: q.limit, page: q.page });
   }
 
+  @Get(':id/treasure/champions')
+  @ApiOperation({ summary: 'Treasure Champions - Top Contributors history for all completed boxes' })
+  champions(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.treasure.champions(id, user.id);
+  }
+
   @Get(':id/rocket/history')
   @ApiOperation({ summary: 'Rocket events in the room' })
   rocketHistory(@Param('id', ParseUuidPipe) id: string, @Query() q: PaginationQueryDto) {

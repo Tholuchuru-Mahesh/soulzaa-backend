@@ -11,6 +11,10 @@ import { AppModule } from './app.module';
 import { SocketAdapter } from './infra/socket/socket.adapter';
 
 async function bootstrap(): Promise<void> {
+  (BigInt.prototype as any).toJSON = function () {
+    return Number(this);
+  };
+
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
   // Structured logging (pino) as the app logger.

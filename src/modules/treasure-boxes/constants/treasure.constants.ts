@@ -19,6 +19,18 @@ export function treasureRoomLockKey(roomId: string): string {
   return `treasure:room:{${roomId}}`;
 }
 
+/**
+ * Redis key for the completed Treasure Champions snapshot for a room.
+ * Written when a session finishes, cleared when a new session starts.
+ * TTL = 25 hours (enough to bridge daily resets with a safety margin).
+ */
+export function treasureChampionsCacheKey(roomId: string): string {
+  return `treasure:champions:${roomId}`;
+}
+
+/** TTL for the champions cache: 25 hours in seconds. */
+export const TREASURE_CHAMPIONS_CACHE_TTL = 25 * 60 * 60;
+
 /** Lock guarding a rocket event's contribution + completion. */
 export function rocketLockKey(rocketId: string): string {
   return `rocket:{${rocketId}}`;

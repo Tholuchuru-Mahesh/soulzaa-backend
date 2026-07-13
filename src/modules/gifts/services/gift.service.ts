@@ -187,7 +187,7 @@ export class GiftService {
         receiverExp,
         idempotencyKey,
         senderWalletTxnId: debit.transactionId,
-        receiverWalletTxnId: credit.transactionId,
+        receiverWalletTxnId: creditTxnId,
         metadata: { giftName: gift.name } as Prisma.InputJsonValue,
       });
 

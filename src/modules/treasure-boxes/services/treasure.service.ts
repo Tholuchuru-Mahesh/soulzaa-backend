@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import {
   BackpackItemSource,
   Prisma,
@@ -8,6 +8,7 @@ import {
   TreasureRewardKind,
   TreasureSession,
   TreasureSessionStatus,
+  WalletCurrency,
   WalletTxnReason,
 } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
@@ -17,13 +18,20 @@ import { buildPaginated } from 'src/common/utils/pagination.util';
 import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import { QueueService } from 'src/infra/queue/queue.service';
 import { LockService } from 'src/infra/redis/lock.service';
+import { CacheService } from 'src/infra/redis/cache.service';
 import {
   AUDIO_ROOMS_SERVICE,
   type IAudioRoomsService,
 } from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
 import {
+  WALLET_SERVICE,
+  type IWalletService,
+} from 'src/modules/wallet/interfaces/wallet.service.interface';
+import {
   TREASURE_BOX_COUNT,
+  TREASURE_CHAMPIONS_CACHE_TTL,
+  treasureChampionsCacheKey,
   treasureRoomLockKey,
   treasureSessionLockKey,
   type RewardEntry,
@@ -33,6 +41,8 @@ import {
   TreasureProgressEvent,
   TreasureSessionCompletedEvent,
   TreasureSessionStartedEvent,
+  TreasureReceiverRewardEvent,
+  ContributionCounterUpdatedEvent,
   type RankedContributor,
   type RewardSummary,
 } from '../events/treasure.events';
@@ -60,13 +70,17 @@ const MANAGER_ROLES: ReadonlySet<RoomMemberRole> = new Set([
  */
 @Injectable()
 export class TreasureService implements ITreasureBoxesService {
+  private readonly logger = new Logger(TreasureService.name);
+
   constructor(
     private readonly repo: TreasureRepository,
     private readonly distributor: RewardDistributor,
     private readonly locks: LockService,
+    private readonly cache: CacheService,
     private readonly queue: QueueService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(AUDIO_ROOMS_SERVICE) private readonly rooms: IAudioRoomsService,
+    @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
   ) {}
 
   // ---- ITreasureBoxesService ----
@@ -116,6 +130,9 @@ export class TreasureService implements ITreasureBoxesService {
           HttpStatus.CONFLICT,
         );
       }
+      // Clear the previous cycle's champions cache so the new cycle starts fresh.
+      await this.cache.del(treasureChampionsCacheKey(roomId));
+
       const session = await this.repo.createSession(roomId, actor.id, 'AUDIO_ROOM');
       for (let level = 1; level <= TREASURE_BOX_COUNT; level++) {
         const cfg = byLevel.get(level)!;
@@ -159,41 +176,90 @@ export class TreasureService implements ITreasureBoxesService {
   async handleContribution(
     roomId: string,
     userId: string,
+    receiverId: string,
     amount: number,
     giftTxnId: string | null,
   ): Promise<void> {
+    const bigAmount = BigInt(amount);
+
+    // 1. Increment Overall Contribution Counters (PostgreSQL + Redis)
+    const roomTotal = await this.repo.incrementRoomContribution(roomId, bigAmount);
+    const receiverTotal = await this.repo.incrementUserContribution(receiverId, bigAmount);
+
+    const roomRedisKey = `room:contribution_counter:${roomId}`;
+    const userRedisKey = `user:contribution_counter:${receiverId}`;
+    await this.cache.increment(roomRedisKey, { by: amount });
+    await this.cache.increment(userRedisKey, { by: amount });
+
+    // Publish Contribution Counter update event (bridges to Socket.IO)
+    await this.bus.publish(
+      new ContributionCounterUpdatedEvent({
+        roomId,
+        receiverId,
+        roomTotal: Number(roomTotal),
+        receiverTotal: Number(receiverTotal),
+      }),
+    );
+
+    // 2. Process sequential progress overflow
     const session = await this.repo.getActiveSession(roomId);
     if (!session) return;
 
     await this.locks.withLock(treasureSessionLockKey(session.id), async () => {
-      // Re-read under the lock — another gift may have advanced/closed the session.
-      const fresh = await this.repo.getSession(session.id);
-      if (!fresh || fresh.status !== TreasureSessionStatus.ACTIVE) return;
-      const box = await this.repo.getBoxByLevel(fresh.id, fresh.currentLevel);
-      if (!box || box.status !== TreasureBoxStatus.ACTIVE) return;
+      let remainingAmount = bigAmount;
 
-      await this.repo.addContribution({
-        boxId: box.id,
-        sessionId: fresh.id,
-        roomId,
-        userId,
-        amount: BigInt(amount),
-        giftTxnId,
-      });
-      const updated = await this.repo.addProgress(box.id, BigInt(amount));
+      while (remainingAmount > 0n) {
+        // Re-read session state under the lock
+        const fresh = await this.repo.getSession(session.id);
+        if (!fresh || fresh.status !== TreasureSessionStatus.ACTIVE) break;
 
-      await this.bus.publish(
-        new TreasureProgressEvent({
-          roomId,
+        const box = await this.repo.getBoxByLevel(fresh.id, fresh.currentLevel);
+        if (!box || box.status !== TreasureBoxStatus.ACTIVE) break;
+
+        const progress = box.progress;
+        const threshold = box.threshold;
+        const needed = threshold - progress;
+
+        if (needed <= 0n) {
+          await this.openAndAdvance(fresh, box);
+          continue;
+        }
+
+        const added = remainingAmount >= needed ? needed : remainingAmount;
+
+        await this.repo.addContribution({
+          boxId: box.id,
           sessionId: fresh.id,
-          level: box.level,
-          progress: Number(updated.progress),
-          threshold: Number(updated.threshold),
-        }),
-      );
+          roomId,
+          userId,
+          amount: added,
+          giftTxnId,
+        });
 
-      if (updated.progress >= updated.threshold) {
-        await this.openAndAdvance(fresh, updated);
+        const updated = await this.repo.addProgress(box.id, added);
+        remainingAmount -= added;
+
+        const totals = await this.repo.topContributors(box.id, 3);
+        const topGifters = totals.map((t, i) => ({
+          rank: i + 1,
+          userId: t.userId,
+          amount: Number(t.amount),
+        }));
+
+        await this.bus.publish(
+          new TreasureProgressEvent({
+            roomId,
+            sessionId: fresh.id,
+            level: box.level,
+            progress: Number(updated.progress),
+            threshold: Number(updated.threshold),
+            topGifters,
+          }),
+        );
+
+        if (updated.progress >= updated.threshold) {
+          await this.openAndAdvance(fresh, updated);
+        }
       }
     });
   }
@@ -208,7 +274,7 @@ export class TreasureService implements ITreasureBoxesService {
       active: true,
       sessionId: session.id,
       currentLevel: session.currentLevel,
-      boxes: boxes.map((b) => this.boxView(b)),
+      boxes: await Promise.all(boxes.map((b) => this.boxView(b))),
     };
   }
 
@@ -269,6 +335,44 @@ export class TreasureService implements ITreasureBoxesService {
 
     await this.repo.openBox(box.id, topGifters as unknown as Prisma.InputJsonValue);
 
+    // Credit host (room owner) with 10% of the box capacity
+    const hostId = await this.rooms.getOwnerId(box.roomId);
+    let hostWalletTxnId: string | null = null;
+    const capacity = Number(box.threshold);
+    const hostRewardAmount = Math.floor(capacity * 0.10);
+
+    if (hostId && hostRewardAmount > 0) {
+      try {
+        const creditResult = await this.wallet.credit({
+          userId: hostId,
+          currency: WalletCurrency.GOLD,
+          amount: hostRewardAmount,
+          reason: WalletTxnReason.TREASURE_BOX,
+          idempotencyKey: `treasure-host-reward:${box.id}`,
+          referenceType: 'treasure_box',
+          referenceId: box.id,
+          actorId: hostId,
+        });
+        hostWalletTxnId = creditResult.transactionId;
+
+        // Publish receiver reward event (bridges to Socket.IO)
+        await this.bus.publish(
+          new TreasureReceiverRewardEvent({
+            roomId: box.roomId,
+            boxId: box.id,
+            level: box.level,
+            hostId,
+            rewardAmount: hostRewardAmount,
+            walletTxnId: hostWalletTxnId,
+          }),
+        );
+      } catch (err) {
+        this.logger.error(
+          `Failed to credit host ${hostId} for treasure box ${box.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+
     const nextLevel = box.level + 1;
     const completed = nextLevel > TREASURE_BOX_COUNT;
     if (!completed) {
@@ -277,6 +381,21 @@ export class TreasureService implements ITreasureBoxesService {
       if (nextBox) await this.repo.activateBox(nextBox.id);
     } else {
       await this.repo.finishSession(session.id, TreasureSessionStatus.COMPLETED);
+      // Snapshot the completed champions into Redis so the data is visible
+      // immediately after the session ends — without needing a DB round-trip.
+      // This cache persists until the next session starts (or 25-hour TTL).
+      try {
+        const snapshot = await this.buildChampionsPayload(session.id, box.roomId, '');
+        await this.cache.set(
+          treasureChampionsCacheKey(box.roomId),
+          snapshot,
+          TREASURE_CHAMPIONS_CACHE_TTL,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Failed to snapshot champions cache for room ${box.roomId}: ${(err as Error).message}`,
+        );
+      }
     }
 
     await this.bus.publish(
@@ -311,6 +430,7 @@ export class TreasureService implements ITreasureBoxesService {
             level: nextLevel,
             progress: 0,
             threshold: Number(nextBox.threshold),
+            topGifters: [],
           }),
         );
       }
@@ -335,13 +455,24 @@ export class TreasureService implements ITreasureBoxesService {
     }));
   }
 
-  private boxView(b: TreasureBox) {
+  private async boxView(b: TreasureBox) {
+    const topGifters =
+      b.status === TreasureBoxStatus.OPENED
+        ? ((b.topGifters as unknown as RankedContributor[]) ?? [])
+        : await this.repo.topContributors(b.id, 3).then((totals) =>
+            totals.map((t, i) => ({
+              rank: i + 1,
+              userId: t.userId,
+              amount: Number(t.amount),
+            })),
+          );
+
     return {
       level: b.level,
       status: b.status,
       progress: Number(b.progress),
       threshold: Number(b.threshold),
-      topGifters: b.topGifters,
+      topGifters,
       openedAt: b.openedAt,
     };
   }
@@ -356,4 +487,157 @@ export class TreasureService implements ITreasureBoxesService {
       );
     }
   }
+
+  async champions(roomId: string, currentUserId: string): Promise<any> {
+    // For an ACTIVE session, always compute live (leaderboard changes in real-time).
+    const activeSession = await this.repo.getActiveSession(roomId);
+    if (activeSession) {
+      return this.buildChampionsPayload(activeSession.id, roomId, currentUserId);
+    }
+
+    // For a completed session: serve from Redis cache (fast path), fall back to DB.
+    const cacheKey = treasureChampionsCacheKey(roomId);
+    const cached = await this.cache.get<any[]>(cacheKey);
+    if (cached !== null && cached.length > 0) {
+      // Re-inject the user's own position (personalised — not cached).
+      return this.injectMyPosition(cached, roomId, currentUserId);
+    }
+
+    // Cache miss: compute from DB and store for subsequent calls.
+    const completedSession = await this.repo.getLatestCompletedSession(roomId);
+    if (!completedSession) return [];
+
+    const result = await this.buildChampionsPayload(completedSession.id, roomId, currentUserId);
+    // Cache without myPosition so it is user-agnostic (injected per-request above).
+    const toCache = result.map((r: any) => ({ ...r, myPosition: null }));
+    await this.cache.set(cacheKey, toCache, TREASURE_CHAMPIONS_CACHE_TTL);
+    return result;
+  }
+
+  /**
+   * Builds the full champions payload for a session from DB.
+   * Pass an empty string for `currentUserId` when called from the snapshot
+   * (no personal position needed).
+   */
+  private async buildChampionsPayload(
+    sessionId: string,
+    roomId: string,
+    currentUserId: string,
+  ): Promise<any[]> {
+    const boxes = await this.repo.listBoxes(sessionId);
+    const configs = await this.repo.listEnabledConfigs();
+    const configMap = new Map(configs.map((c) => [c.level, c]));
+
+    const userIdsSet = new Set<string>();
+    if (currentUserId) userIdsSet.add(currentUserId);
+
+    for (const box of boxes) {
+      if (box.status === TreasureBoxStatus.OPENED && box.topGifters) {
+        for (const g of box.topGifters as any[]) {
+          if (g.userId) userIdsSet.add(g.userId);
+        }
+      } else if (box.status === TreasureBoxStatus.ACTIVE) {
+        const totals = await this.repo.topContributors(box.id, 3);
+        for (const t of totals) userIdsSet.add(t.userId);
+      }
+    }
+
+    const profileMap = await this.repo.resolveUserProfiles(Array.from(userIdsSet));
+    const result: any[] = [];
+
+    for (const box of boxes) {
+      const cfg = configMap.get(box.level);
+      const rewardEntries = (cfg?.rewards as any[]) ?? [];
+
+      let topGifters: any[] = [];
+      let myPosition = null;
+
+      if (box.status === TreasureBoxStatus.OPENED) {
+        const gifters = (box.topGifters as any[]) ?? [];
+        topGifters = gifters.map((g) => {
+          const profile = profileMap.get(g.userId);
+          const reward = rewardEntries.find((r) => r.rank === g.rank);
+          const rewardLabel = reward
+            ? reward.kind === 'BACKPACK_ITEM'
+              ? reward.itemName
+              : `${reward.coins} Gold`
+            : null;
+          return {
+            rank: g.rank,
+            userId: g.userId,
+            username: profile?.username ?? g.userId.substring(0, 6),
+            avatarUrl: profile?.avatarUrl ?? null,
+            amount: g.amount,
+            rewardLabel,
+          };
+        });
+        if (currentUserId) {
+          const userPos = await this.repo.getUserPositionInBox(box.id, currentUserId);
+          if (userPos) myPosition = { rank: userPos.rank, amount: userPos.amount };
+        }
+      } else if (box.status === TreasureBoxStatus.ACTIVE) {
+        const totals = await this.repo.topContributors(box.id, 3);
+        topGifters = totals.map((t, i) => {
+          const rank = i + 1;
+          const profile = profileMap.get(t.userId);
+          const reward = rewardEntries.find((r) => r.rank === rank);
+          const rewardLabel = reward
+            ? reward.kind === 'BACKPACK_ITEM'
+              ? reward.itemName
+              : `${reward.coins} Gold`
+            : null;
+          return {
+            rank,
+            userId: t.userId,
+            username: profile?.username ?? t.userId.substring(0, 6),
+            avatarUrl: profile?.avatarUrl ?? null,
+            amount: Number(t.amount),
+            rewardLabel,
+          };
+        });
+        if (currentUserId) {
+          const userPos = await this.repo.getUserPositionInBox(box.id, currentUserId);
+          if (userPos) myPosition = { rank: userPos.rank, amount: userPos.amount };
+        }
+      }
+
+      result.push({
+        level: box.level,
+        threshold: Number(box.threshold),
+        status: box.status,
+        topGifters,
+        myPosition,
+        openedAt: box.openedAt ? box.openedAt.toISOString() : null,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Takes a cached (user-agnostic) champions payload and re-injects the
+   * requesting user's personal position from the DB for personalised display.
+   */
+  private async injectMyPosition(cached: any[], roomId: string, currentUserId: string): Promise<any[]> {
+    if (!currentUserId) return cached;
+    // Find the active session boxes (if any) to look up the user position.
+    // For fully completed sessions, boxes are all OPENED — we look them up by level.
+    const session = await this.repo.getLatestCompletedSession(roomId);
+    if (!session) return cached;
+    const boxes = await this.repo.listBoxes(session.id);
+    const boxMap = new Map(boxes.map((b) => [b.level, b]));
+
+    return Promise.all(
+      cached.map(async (entry: any) => {
+        const box = boxMap.get(entry.level);
+        if (!box) return entry;
+        const userPos = await this.repo.getUserPositionInBox(box.id, currentUserId);
+        return {
+          ...entry,
+          myPosition: userPos ? { rank: userPos.rank, amount: userPos.amount } : null,
+        };
+      }),
+    );
+  }
 }
+

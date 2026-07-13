@@ -62,10 +62,10 @@ export class TreasureRepository {
     threshold: bigint,
     rewards: Prisma.InputJsonValue,
   ): Promise<boolean> {
-    const exists = await this.prisma.treasureBoxConfig.count({ where: { level } });
-    if (exists > 0) return false;
-    await this.prisma.treasureBoxConfig.create({
-      data: { level, threshold, rewards, enabled: true },
+    await this.prisma.treasureBoxConfig.upsert({
+      where: { level },
+      create: { level, threshold, rewards, enabled: true },
+      update: { threshold, rewards },
     });
     return true;
   }
@@ -75,6 +75,13 @@ export class TreasureRepository {
   getActiveSession(roomId: string): Promise<TreasureSession | null> {
     return this.prisma.treasureSession.findFirst({
       where: { roomId, status: TreasureSessionStatus.ACTIVE },
+    });
+  }
+
+  getLatestCompletedSession(roomId: string): Promise<TreasureSession | null> {
+    return this.prisma.treasureSession.findFirst({
+      where: { roomId, status: TreasureSessionStatus.COMPLETED },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
@@ -213,4 +220,99 @@ export class TreasureRepository {
       this.prisma.treasureReward.count({ where }),
     ]);
   }
+
+  async incrementRoomContribution(roomId: string, amount: bigint): Promise<bigint> {
+    const res = await this.prisma.roomContributionCounter.upsert({
+      where: { roomId },
+      create: { roomId, amount },
+      update: { amount: { increment: amount } },
+    });
+    return res.amount;
+  }
+
+  async incrementUserContribution(userId: string, amount: bigint): Promise<bigint> {
+    const res = await this.prisma.userContributionCounter.upsert({
+      where: { userId },
+      create: { userId, amount },
+      update: { amount: { increment: amount } },
+    });
+    return res.amount;
+  }
+
+  async getRoomContribution(roomId: string): Promise<bigint> {
+    const res = await this.prisma.roomContributionCounter.findUnique({
+      where: { roomId },
+    });
+    return res?.amount ?? 0n;
+  }
+
+  async getUserContribution(userId: string): Promise<bigint> {
+    const res = await this.prisma.userContributionCounter.findUnique({
+      where: { userId },
+    });
+    return res?.amount ?? 0n;
+  }
+
+  async getUserPositionInBox(
+    boxId: string,
+    userId: string,
+  ): Promise<{ rank: number; amount: number } | null> {
+    const grouped = await this.prisma.treasureContribution.groupBy({
+      by: ['userId'],
+      where: { boxId },
+      _sum: { amount: true },
+      _min: { createdAt: true },
+    });
+
+    const sorted = grouped
+      .map((g) => ({
+        userId: g.userId,
+        amount: Number(g._sum.amount ?? 0n),
+        firstAt: g._min.createdAt ?? new Date(0),
+      }))
+      .sort((a, b) => {
+        if (a.amount !== b.amount) return b.amount - a.amount;
+        return a.firstAt.getTime() - b.firstAt.getTime();
+      });
+
+    const idx = sorted.findIndex((s) => s.userId === userId);
+    if (idx === -1) return null;
+
+    return {
+      rank: idx + 1,
+      amount: sorted[idx].amount,
+    };
+  }
+
+  async resolveUserProfiles(
+    userIds: string[],
+  ): Promise<Map<string, { username: string; avatarUrl: string | null }>> {
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: {
+        id: true,
+        username: true,
+      },
+    });
+
+    const profiles = await this.prisma.userProfile.findMany({
+      where: { userId: { in: userIds } },
+      select: {
+        userId: true,
+        avatarKey: true,
+      },
+    });
+
+    const profileMap = new Map(profiles.map((p) => [p.userId, p.avatarKey]));
+    const map = new Map<string, { username: string; avatarUrl: string | null }>();
+    for (const u of users) {
+      const key = profileMap.get(u.id);
+      map.set(u.id, {
+        username: u.username,
+        avatarUrl: key ?? null,
+      });
+    }
+    return map;
+  }
 }
+

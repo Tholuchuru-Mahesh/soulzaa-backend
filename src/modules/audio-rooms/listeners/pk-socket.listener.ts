@@ -8,6 +8,8 @@ import {
   type PkEndedEvent,
   type PkScoreEvent,
   type PkStartedEvent,
+  type PkInvitedEvent,
+  type PkRejectedEvent,
 } from '../events/audio-room-pk.events';
 
 /**
@@ -34,6 +36,12 @@ export class PkSocketListener implements OnModuleInit {
     );
     this.bus.subscribe<PkCancelledEvent>(AUDIO_ROOM_PK_EVENTS.CANCELLED, (e) =>
       this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.PK_CANCELLED, e.payload),
+    );
+    this.bus.subscribe<PkInvitedEvent>(AUDIO_ROOM_PK_EVENTS.INVITED, (e) =>
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.PK_INVITED, e.payload),
+    );
+    this.bus.subscribe<PkRejectedEvent>(AUDIO_ROOM_PK_EVENTS.REJECTED, (e) =>
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.PK_REJECTED, e.payload),
     );
   }
 

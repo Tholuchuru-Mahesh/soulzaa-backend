@@ -36,8 +36,10 @@ import {
   PkEndedEvent,
   PkScoreEvent,
   PkStartedEvent,
+  PkInvitedEvent,
+  PkRejectedEvent,
 } from '../events/audio-room-pk.events';
-import type { StartPkDto } from '../dto/pk.dto';
+import { InvitePkDto, StartPkDto } from '../dto/pk.dto';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
 import { PkBattleRepository } from '../repositories/pk-battle.repository';
@@ -94,7 +96,10 @@ export class PkBattleService {
         );
       }
     }
+    return this.startInternal(roomId, actor.id, dto);
+  }
 
+  async startInternal(roomId: string, startedBy: string, dto: StartPkDto): Promise<unknown> {
     return this.locks.withLock(pkRoomLockKey(roomId), async () => {
       if (await this.repo.getActive(roomId)) {
         throw new BusinessException(
@@ -108,7 +113,7 @@ export class PkBattleService {
         roomId,
         mode: dto.mode,
         durationSeconds: dto.durationSeconds,
-        startedBy: actor.id,
+        startedBy,
         endsAt,
       });
       await this.repo.createParticipants([
@@ -131,6 +136,92 @@ export class PkBattleService {
       );
       return this.battleView(battle, participants);
     });
+  }
+
+  async invite(actor: RoomActor, roomId: string, dto: InvitePkDto): Promise<unknown> {
+    await this.assertManager(roomId, actor);
+    if (!(await this.rooms.findLiveRoomRow(roomId))) {
+      throw new BusinessException(
+        ERROR_CODES.ROOM_ENDED,
+        'The room is not live.',
+        HttpStatus.CONFLICT,
+      );
+    }
+    this.validateParticipants(dto);
+    for (const userId of [...dto.red, ...dto.blue]) {
+      const member = await this.rooms.getMember(roomId, userId);
+      if (!member?.isActive) {
+        throw new BusinessException(
+          ERROR_CODES.PK_PARTICIPANT_NOT_MEMBER,
+          'All participants must be active members of the room.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+    const targetMember = await this.rooms.getMember(roomId, dto.targetUserId);
+    if (!targetMember?.isActive) {
+      throw new BusinessException(
+        ERROR_CODES.PK_PARTICIPANT_NOT_MEMBER,
+        'The target opponent must be active in the room.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Cache the invitation details in Redis (30 seconds TTL)
+    const cacheKey = `pk-invite:${roomId}`;
+    await this.cache.set(cacheKey, { dto, inviterId: actor.id }, 30);
+
+    // Fetch the inviter's name
+    const inviterUser = await this.users.findById(actor.id);
+    const inviterName = inviterUser?.username || 'Owner';
+
+    // Broadcast pk.invited event to room
+    await this.bus.publish(
+      new PkInvitedEvent({
+        roomId,
+        mode: dto.mode,
+        durationSeconds: dto.durationSeconds,
+        red: dto.red,
+        blue: dto.blue,
+        targetUserId: dto.targetUserId,
+        inviterId: actor.id,
+        inviterName,
+      }),
+    );
+
+    return { invited: true };
+  }
+
+  async acceptInvite(userId: string, roomId: string): Promise<unknown> {
+    const cacheKey = `pk-invite:${roomId}`;
+    const cached = await this.cache.get<{ dto: StartPkDto; inviterId: string }>(cacheKey);
+    if (!cached) {
+      throw new BusinessException(
+        ERROR_CODES.PK_NOT_FOUND,
+        'The PK battle invitation has expired or does not exist.',
+        HttpStatus.GONE,
+      );
+    }
+    await this.cache.del(cacheKey);
+
+    // Run core start logic using the cached invitation payload
+    return this.startInternal(roomId, cached.inviterId, cached.dto);
+  }
+
+  async rejectInvite(userId: string, roomId: string): Promise<void> {
+    const cacheKey = `pk-invite:${roomId}`;
+    const cached = await this.cache.get<{ dto: StartPkDto; inviterId: string }>(cacheKey);
+    if (!cached) return;
+    await this.cache.del(cacheKey);
+
+    // Broadcast pk.rejected event
+    await this.bus.publish(
+      new PkRejectedEvent({
+        roomId,
+        targetUserId: userId,
+        inviterId: cached.inviterId,
+      }),
+    );
   }
 
   // ======================= Score (driven by GiftSentEvent) =======================

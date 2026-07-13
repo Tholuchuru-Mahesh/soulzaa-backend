@@ -171,6 +171,10 @@ describe('AudioRoomsService', () => {
   });
 
   describe('join', () => {
+    beforeEach(() => {
+      repo.getMember.mockResolvedValue(null);
+    });
+
     it('rejects a wrong password on a locked room', async () => {
       repo.findRoomRow.mockResolvedValue(roomRow({ isLocked: true, passwordHash: 'hashed' }));
       passwords.verify.mockResolvedValue(false);
@@ -190,6 +194,25 @@ describe('AudioRoomsService', () => {
       );
     });
 
+    it('bypasses password check for existing active members', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow({ isLocked: true, passwordHash: 'hashed' }));
+      repo.getMember.mockResolvedValue({ isActive: true, role: RoomMemberRole.AUDIENCE } as any);
+      await service.join(OTHER, 'room-1', {});
+      expect(presence.joinRoom).toHaveBeenCalledWith('room-1', OTHER.id);
+    });
+
+    it('bypasses password check for room owner and platform admin', async () => {
+      // Owner bypass
+      repo.findRoomRow.mockResolvedValue(roomRow({ ownerId: OWNER.id, isLocked: true, passwordHash: 'hashed' }));
+      await service.join(OWNER, 'room-1', {});
+      expect(presence.joinRoom).toHaveBeenCalledWith('room-1', OWNER.id);
+
+      // Platform Admin bypass
+      repo.findRoomRow.mockResolvedValue(roomRow({ ownerId: OWNER.id, isLocked: true, passwordHash: 'hashed' }));
+      await service.join(ADMIN, 'room-1', {});
+      expect(presence.joinRoom).toHaveBeenCalledWith('room-1', ADMIN.id);
+    });
+
     it('rejects when the room is full', async () => {
       repo.findRoomRow.mockResolvedValue(roomRow({ maxParticipants: 2 }));
       presence.isInRoom.mockResolvedValue(false);
@@ -205,6 +228,7 @@ describe('AudioRoomsService', () => {
 
   describe('ownership / management', () => {
     it('forbids a non-owner non-admin from editing', async () => {
+      permissions.getEffectiveRole.mockResolvedValue(RoomMemberRole.LISTENER);
       await expect(service.update(OTHER, 'room-1', { name: 'x' })).rejects.toBeInstanceOf(
         BusinessException,
       );
@@ -213,6 +237,37 @@ describe('AudioRoomsService', () => {
     it('allows a platform admin to edit', async () => {
       await expect(service.update(ADMIN, 'room-1', { name: 'x' })).resolves.toBeDefined();
       expect(repo.updateRoom).toHaveBeenCalled();
+    });
+
+    it('allows in-room admin or premium admin to manage settings', async () => {
+      permissions.getEffectiveRole.mockResolvedValue(RoomMemberRole.ADMIN);
+      await expect(service.update(OTHER, 'room-1', { name: 'x' })).resolves.toBeDefined();
+
+      permissions.getEffectiveRole.mockResolvedValue(RoomMemberRole.PREMIUM_ADMIN);
+      await expect(service.update(OTHER, 'room-1', { name: 'y' })).resolves.toBeDefined();
+    });
+
+    it('requires password on creation if isLocked is true', async () => {
+      await expect(service.create(OWNER, { name: 'Locked', isLocked: true })).rejects.toBeInstanceOf(
+        BusinessException,
+      );
+    });
+
+    it('requires password on update if isLocked is true and no existing password', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow({ isLocked: false, passwordHash: null }));
+      await expect(service.update(OWNER, 'room-1', { isLocked: true })).rejects.toBeInstanceOf(
+        BusinessException,
+      );
+    });
+
+    it('clears passwordHash when isLocked is updated to false (unlocked)', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow({ isLocked: true, passwordHash: 'hashed' }));
+      await service.update(OWNER, 'room-1', { isLocked: false });
+      expect(repo.updateRoom).toHaveBeenCalledWith(
+        'room-1',
+        expect.objectContaining({ isLocked: false, passwordHash: null }),
+        OWNER.id,
+      );
     });
 
     it('transfers ownership only to an active member', async () => {
