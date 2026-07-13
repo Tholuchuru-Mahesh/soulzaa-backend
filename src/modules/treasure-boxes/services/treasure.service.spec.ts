@@ -59,7 +59,7 @@ describe('TreasureService', () => {
   let repo: Record<string, jest.Mock>;
   let distributor: { distribute: jest.Mock };
   let locks: { withLock: jest.Mock };
-  let cache: { increment: jest.Mock };
+  let cache: { increment: jest.Mock; del: jest.Mock; set: jest.Mock; get: jest.Mock };
   let queue: { enqueue: jest.Mock };
   let bus: jest.Mocked<IEventBus>;
   let rooms: Record<string, jest.Mock>;
@@ -107,7 +107,12 @@ describe('TreasureService', () => {
       ]),
     };
     locks = { withLock: jest.fn(<T>(_k: string, fn: () => Promise<T>) => fn()) };
-    cache = { increment: jest.fn().mockResolvedValue(1) };
+    cache = {
+      increment: jest.fn().mockResolvedValue(1),
+      del: jest.fn().mockResolvedValue(1),
+      set: jest.fn().mockResolvedValue(undefined),
+      get: jest.fn().mockResolvedValue(null),
+    };
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     rooms = {

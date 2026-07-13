@@ -134,7 +134,10 @@ export class GiftService {
     // Economics.
     const unit = gift.coinValue;
     const total = BigInt(unit) * BigInt(dto.quantity) * BigInt(lucky.multiplier);
-    const creatorEarnings = (total * BigInt(Math.round(cfg.creatorEarningRatePercent))) / 100n;
+    const creatorEarnings =
+      dto.contextType === GiftContextType.AUDIO_ROOM
+        ? 0n
+        : (total * BigInt(Math.round(cfg.creatorEarningRatePercent))) / 100n;
     const totalNum = Number(total);
     const earningsNum = Number(creatorEarnings);
     const senderExp = Math.floor(totalNum * cfg.senderExpPerCoin);
@@ -157,17 +160,19 @@ export class GiftService {
     //    are lost — the send is all-or-nothing.
     let creditTxnId: string | null = null;
     try {
-      const credit = await this.wallet.credit({
-        userId: dto.receiverId,
-        currency: WalletCurrency.EARNINGS,
-        amount: earningsNum > 0 ? earningsNum : 1,
-        reason: WalletTxnReason.GIFT_RECEIVE,
-        idempotencyKey: `gift-credit:${idempotencyKey}`,
-        referenceType: GIFT_WALLET_REFERENCE_TYPE,
-        metadata: { giftId: gift.id, senderId },
-        actorId: senderId,
-      });
-      creditTxnId = credit.transactionId;
+      if (dto.contextType !== GiftContextType.AUDIO_ROOM) {
+        const credit = await this.wallet.credit({
+          userId: dto.receiverId,
+          currency: WalletCurrency.EARNINGS,
+          amount: earningsNum > 0 ? earningsNum : 1,
+          reason: WalletTxnReason.GIFT_RECEIVE,
+          idempotencyKey: `gift-credit:${idempotencyKey}`,
+          referenceType: GIFT_WALLET_REFERENCE_TYPE,
+          metadata: { giftId: gift.id, senderId },
+          actorId: senderId,
+        });
+        creditTxnId = credit.transactionId;
+      }
 
       const txn = await this.repo.createTransaction({
         senderId,
