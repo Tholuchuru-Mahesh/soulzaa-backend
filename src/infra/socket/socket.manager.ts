@@ -99,21 +99,34 @@ export class SocketManager {
     const userId = this.userBySocket.get(client.id) ?? (client.data.user as AuthenticatedUser)?.id;
     if (!userId) return false;
 
-    const last = await this.presence.disconnect(userId, client.id);
+    try {
+      const last = await this.presence.disconnect(userId, client.id);
 
-    const sockets = this.socketsByUser.get(userId);
-    sockets?.delete(client.id);
-    if (sockets && sockets.size === 0) this.socketsByUser.delete(userId);
-    this.userBySocket.delete(client.id);
-    this.metrics.setConnectedClients(this.userBySocket.size);
+      const sockets = this.socketsByUser.get(userId);
+      sockets?.delete(client.id);
+      if (sockets && sockets.size === 0) this.socketsByUser.delete(userId);
+      this.userBySocket.delete(client.id);
+      this.metrics.setConnectedClients(this.userBySocket.size);
 
-    // On the user's last socket, clear their room memberships from the store.
-    if (last) {
-      const rooms = await this.presence.userRooms(userId);
-      await Promise.all(rooms.map((roomId) => this.presence.leaveRoom(roomId, userId)));
-      await this.bus.publish(new PresenceChangedEvent({ userId, online: false }));
+      // On the user's last socket, clear their room memberships from the store.
+      if (last) {
+        const rooms = await this.presence.userRooms(userId);
+        await Promise.all(rooms.map((roomId) => this.presence.leaveRoom(roomId, userId)));
+        await this.bus.publish(new PresenceChangedEvent({ userId, online: false }));
+      }
+      return last;
+    } catch (err) {
+      this.logger.verbose(`Redis presence deregistration failed on disconnect: ${(err as Error).message}`);
+      
+      // Still clean up local socket mapping to prevent memory leak
+      const sockets = this.socketsByUser.get(userId);
+      sockets?.delete(client.id);
+      if (sockets && sockets.size === 0) this.socketsByUser.delete(userId);
+      this.userBySocket.delete(client.id);
+      this.metrics.setConnectedClients(this.userBySocket.size);
+      
+      return false;
     }
-    return last;
   }
 
   /** Join a room: keep the socket room and the Redis presence set in sync. */
