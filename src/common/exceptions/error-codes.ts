@@ -150,6 +150,23 @@ export const ERROR_CODES = {
    */
   PIN_MESSAGE_INVALID: 'PIN_MESSAGE_INVALID',
 
+  // ---- Private calls (1:1 voice / video) ----
+  CALL_NOT_FOUND: 'CALL_NOT_FOUND',
+  /** The callee's privacy settings do not permit a call from this user. */
+  CALL_NOT_ALLOWED: 'CALL_NOT_ALLOWED',
+  /** One of the two users has blocked the other. */
+  CALL_BLOCKED: 'CALL_BLOCKED',
+  /** The callee is already in another call. */
+  CALL_BUSY: 'CALL_BUSY',
+  /** The caller is already in a call and must end it before placing another. */
+  CALL_ALREADY_ACTIVE: 'CALL_ALREADY_ACTIVE',
+  /** The transition is not legal from the call's current status (e.g. accepting an ended call). */
+  CALL_INVALID_STATE: 'CALL_INVALID_STATE',
+  /** The requesting user is neither the caller nor the callee. */
+  CALL_NOT_PARTICIPANT: 'CALL_NOT_PARTICIPANT',
+  CANNOT_CALL_SELF: 'CANNOT_CALL_SELF',
+  CALL_RATE_LIMITED: 'CALL_RATE_LIMITED',
+
   // ---- Wallet (economy) ----
   WALLET_NOT_FOUND: 'WALLET_NOT_FOUND',
   INVALID_AMOUNT: 'INVALID_AMOUNT',

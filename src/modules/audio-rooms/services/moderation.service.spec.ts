@@ -198,7 +198,9 @@ describe('ModerationService', () => {
   describe('listKicks', () => {
     it('requires moderator authority to read the kick list', async () => {
       permissions.assertCanModerate.mockRejectedValue(new Error('NOT_ROOM_ADMIN'));
-      await expect(service.listKicks(MOD, 'r', { page: 1, limit: 20, skip: 0 })).rejects.toBeDefined();
+      await expect(
+        service.listKicks(MOD, 'r', { page: 1, limit: 20, skip: 0 }),
+      ).rejects.toBeDefined();
     });
 
     it('hydrates each row with the target and moderator display data', async () => {

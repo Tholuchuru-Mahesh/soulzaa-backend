@@ -229,6 +229,33 @@ export const envSchema = z.object({
   CHAT_LINK_PREVIEW_TTL_DAYS: z.coerce.number().int().positive().default(7),
   // Hosts the crawler will never fetch, comma-separated.
   CHAT_LINK_PREVIEW_DENYLIST: z.string().default(''),
+  // Delta sync (GET /chat/sync). A client that has been away longer than the window
+  // is told to cold-start instead: past some age, replaying every change costs more
+  // than re-fetching the current state, and the client's cache is mostly stale anyway.
+  CHAT_SYNC_MAX_WINDOW_DAYS: z.coerce.number().int().positive().default(30),
+  // Messages per sync page. The client follows `nextSince` until `hasMore` is false.
+  CHAT_SYNC_MAX_MESSAGES: z.coerce.number().int().positive().max(1000).default(200),
+  // Changed conversations a single sync will carry. Past this, a cold start is cheaper.
+  CHAT_SYNC_MAX_CONVERSATIONS: z.coerce.number().int().positive().default(300),
+
+  // ---- Private calls (calls module) ----
+  // How long the callee's phone rings before the call is marked MISSED. Long
+  // enough to reach a phone in a pocket, short enough that a caller does not sit
+  // watching a dead ring.
+  CALL_RING_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(45),
+  // Hard ceiling on a single call. A call still "connected" after this is a leak
+  // (a client that died without hanging up), not a conversation — the reaper ends it.
+  CALL_MAX_DURATION_SECONDS: z.coerce.number().int().positive().default(14_400),
+  // Grace period after ACCEPTED for media to actually connect. Past it the call is
+  // FAILED: the callee said yes and then nothing happened, which is not a MISSED call.
+  CALL_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(30),
+  // How often the reaper sweeps for calls stranded by a worker or client crash.
+  CALL_REAPER_INTERVAL_SECONDS: z.coerce.number().int().positive().default(60),
+  // Rolling rate limit on placing calls, per caller. Blunts call-spam harassment.
+  CALL_RATE_MAX: z.coerce.number().int().positive().default(10),
+  CALL_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  // Write a CALL_LOG message into the DM thread when a call finishes.
+  CALL_WRITE_CHAT_LOG: z.coerce.boolean().default(true),
 
   // ---- Gifts (AR-5) ----
   GIFT_CREATOR_EARNING_RATE_PERCENT: z.coerce.number().int().min(0).max(100).default(30),

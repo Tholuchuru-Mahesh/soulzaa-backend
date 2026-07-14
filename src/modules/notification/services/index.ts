@@ -1,2 +1,2 @@
-/** notification services — empty until the module is implemented. */
-export {};
+export * from './notification.service';
+export * from './push.policy';

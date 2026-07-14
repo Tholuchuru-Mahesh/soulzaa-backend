@@ -260,6 +260,56 @@ export class ConversationRepository {
       : base;
   }
 
+  // ---- Delta sync ----
+
+  /**
+   * Every conversation the user is in, with their own clear-history floor. The scope
+   * a message delta is taken over — and the check that a sync cannot be used to read
+   * a conversation the caller is not part of, because the scope is derived from
+   * membership rather than supplied by the caller.
+   */
+  async scopesFor(
+    userId: string,
+    take: number,
+  ): Promise<{ conversationId: string; clearedAt: Date | null }[]> {
+    const rows = await this.prisma.conversationParticipant.findMany({
+      where: { userId, leftAt: null },
+      select: { conversationId: true, clearedAt: true },
+      take,
+    });
+    return rows;
+  }
+
+  /** How many conversations the user is in — decides whether a delta is worth it at all. */
+  countFor(userId: string): Promise<number> {
+    return this.prisma.conversationParticipant.count({ where: { userId, leftAt: null } });
+  }
+
+  /**
+   * Conversations whose state changed since `since`, from this user's point of view.
+   *
+   * Two different rows can carry that change and both matter:
+   *  - the **conversation** row (a new last message, an accept, a pinned banner), and
+   *  - **either participant's** row — the user's own (mute, archive, draft, unread) so
+   *    their other devices converge, *and the peer's* (their read/delivery watermark),
+   *    because that is what turns this user's ticks blue. Watching only the user's own
+   *    row would sync their settings perfectly and leave every receipt frozen.
+   */
+  changedSince(userId: string, since: Date, take: number): Promise<ConversationWithParticipants[]> {
+    return this.prisma.conversation.findMany({
+      where: {
+        participants: { some: { userId, leftAt: null } },
+        OR: [
+          { updatedAt: { gte: since } },
+          { participants: { some: { updatedAt: { gte: since } } } },
+        ],
+      },
+      include: { participants: true },
+      orderBy: [{ lastMessageAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+      take,
+    });
+  }
+
   // ---- Participant state ----
 
   participant(conversationId: string, userId: string): Promise<ConversationParticipant | null> {

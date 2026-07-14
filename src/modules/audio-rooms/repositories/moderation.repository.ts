@@ -386,10 +386,7 @@ export class ModerationRepository {
 
     const avatarByUser = new Map(profiles.map((p) => [p.userId, p.avatarKey]));
     return new Map(
-      users.map((u) => [
-        u.id,
-        { username: u.username, avatarKey: avatarByUser.get(u.id) ?? null },
-      ]),
+      users.map((u) => [u.id, { username: u.username, avatarKey: avatarByUser.get(u.id) ?? null }]),
     );
   }
 

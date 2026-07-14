@@ -44,6 +44,8 @@ import {
 } from '../events/chat.events';
 import type {
   CategoryCountsView,
+  ChatSyncInput,
+  ChatSyncView,
   ConversationSettingsInput,
   ConversationView,
   IChatService,
@@ -61,7 +63,7 @@ import {
   ConversationRepository,
   type ConversationWithParticipants,
 } from '../repositories/conversation.repository';
-import { MessageRepository } from '../repositories/message.repository';
+import { MessageRepository, type MessageWithRelations } from '../repositories/message.repository';
 import { ChatViewMapper } from './chat-view.mapper';
 
 /** Resolved chat tuning, read once from the `chat` config namespace. */
@@ -75,6 +77,9 @@ interface ChatConfig {
   editWindowSeconds: number;
   maxPinned: number;
   maxStarred: number;
+  syncMaxWindowDays: number;
+  syncMaxMessages: number;
+  syncMaxConversations: number;
 }
 
 /** Which attachment kinds each media tab shows. LINKS is answered separately. */
@@ -182,6 +187,11 @@ export class ChatService implements IChatService {
     );
 
     return view;
+  }
+
+  async findDirect(userId: string, peerUserId: string): Promise<ConversationView | null> {
+    const existing = await this.conversations.findByPair(userId, peerUserId);
+    return existing ? this.requireView(existing, userId) : null;
   }
 
   async getConversation(userId: string, conversationId: string): Promise<ConversationView> {
@@ -378,6 +388,13 @@ export class ChatService implements IChatService {
     await this.conversations.accept(conversationId);
     const fresh = await this.requireParticipant(conversationId, userId);
     const peerId = this.peerIdOf(fresh, userId);
+
+    // Accepting moves a conversation *between* two counters: out of `requests` and
+    // into `total`, which only counts accepted threads. Both sides' cached badge is
+    // therefore wrong the instant this commits, and the cache has a 60s TTL — so
+    // without this the user watches a stale badge for a minute after tapping Accept.
+    // `declineRequest` already did this; accept was simply missed.
+    await Promise.all([this.invalidateUnread(userId), this.invalidateUnread(peerId)]);
 
     await this.bus.publish(
       new ConversationAcceptedEvent({
@@ -1067,6 +1084,96 @@ export class ChatService implements IChatService {
     const view: UnreadTotalView = { ...totals, requests };
     await this.cache.set(chatUnreadKey(userId), view, this.chatConfig().unreadCacheTtlSeconds);
     return view;
+  }
+
+  // ============================== Recovery ==============================
+
+  /**
+   * Everything that changed for this user since `since`. See {@link ChatSyncView}.
+   *
+   * `serverTime` is captured **before** the reads, not after. Anything committed
+   * while this method is running is therefore >= the cursor the client takes away,
+   * so the next sync sees it again. That re-sends a row at the boundary; taking the
+   * clock afterwards would instead *skip* whatever landed mid-query, and a skipped
+   * message is a message the user never sees. Duplicates are free — every apply is
+   * keyed by id — so the trade is not close.
+   */
+  async sync(userId: string, input: ChatSyncInput): Promise<ChatSyncView> {
+    const serverTime = new Date();
+    const cfg = this.chatConfig();
+    const { since } = input;
+
+    const empty = (resyncRequired: boolean): ChatSyncView => ({
+      serverTime,
+      conversations: [],
+      messages: [],
+      hiddenMessageIds: [],
+      unread: { total: 0, conversations: 0, requests: 0 },
+      hasMore: false,
+      nextSince: serverTime,
+      resyncRequired,
+    });
+
+    // Too far behind to be worth replaying, or too many conversations for a delta to
+    // beat a cold start. Either way the honest answer is "start over", not a delta we
+    // quietly truncate and let the client believe was complete.
+    const windowStart = new Date(serverTime.getTime() - cfg.syncMaxWindowDays * 86_400_000);
+    if (since < windowStart) return empty(true);
+
+    const conversationCount = await this.conversations.countFor(userId);
+    if (conversationCount > cfg.syncMaxConversations) return empty(true);
+
+    const scopes = await this.conversations.scopesFor(userId, cfg.syncMaxConversations);
+
+    // `take + 1` is the truncation probe: getting one more back than we will return is
+    // how we know there is a next page without a second count query.
+    const take = Math.min(input.limit, cfg.syncMaxMessages);
+    const [changedConversations, rows, hiddenMessageIds, unread] = await Promise.all([
+      this.conversations.changedSince(userId, since, cfg.syncMaxConversations),
+      this.messages.changedSince({ viewerId: userId, since, take: take + 1, scopes }),
+      this.messages.hiddenSince(userId, since),
+      this.unreadTotal(userId),
+    ]);
+
+    const hasMore = rows.length > take;
+    const page = hasMore ? rows.slice(0, take) : rows;
+
+    const [conversations, messages] = await Promise.all([
+      this.views.conversations(changedConversations, userId),
+      this.views.messagesFor(
+        page,
+        userId,
+        await this.messages.starredIdsAmong(
+          page.map((m) => m.id),
+          userId,
+        ),
+      ),
+    ]);
+
+    return {
+      serverTime,
+      conversations,
+      messages,
+      hiddenMessageIds,
+      unread,
+      hasMore,
+      nextSince: hasMore ? this.nextCursor(page, since) : serverTime,
+      resyncRequired: false,
+    };
+  }
+
+  /**
+   * Where the next page starts: the last change we returned, re-sent next time
+   * (`changedSince` is inclusive) so nothing can fall between the pages.
+   *
+   * The guard is for the pathological case where an entire page shares one
+   * millisecond — the cursor would not advance and the client would page forever.
+   * It cannot happen with a 200-message page and a millisecond clock, and a loop
+   * that never terminates is not a failure mode worth leaving to chance.
+   */
+  private nextCursor(page: MessageWithRelations[], since: Date): Date {
+    const last = page[page.length - 1]?.updatedAt ?? since;
+    return last > since ? last : new Date(since.getTime() + 1);
   }
 
   // ============================== Guards ==============================

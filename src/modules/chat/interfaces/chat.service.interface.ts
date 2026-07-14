@@ -168,6 +168,55 @@ export interface UnreadTotalView {
   requests: number;
 }
 
+export interface ChatSyncInput {
+  /** The client's last successful sync point — `nextSince` from the previous call. */
+  since: Date;
+  limit: number;
+}
+
+/**
+ * Everything that changed for one user since a point in time.
+ *
+ * The socket is the fast path and this is the *correct* path: sockets deliver
+ * while you are connected, and nothing at all while you are not. Every realtime
+ * event this module emits is recoverable from here, so a client that was asleep for
+ * an hour converges on exactly the state it would have had if it had never
+ * disconnected — which is the only definition of "reliable" that means anything.
+ *
+ * Two things are deliberately *not* recoverable, because they should not be:
+ * typing indicators (a typing notification from an hour ago is a lie), and the fact
+ * that a message was starred and then unstarred back to where it began (the state
+ * is what syncs, not the journey).
+ */
+export interface ChatSyncView {
+  /**
+   * The server's clock when this snapshot was taken. The client stores it and sends
+   * it back as the next `since`. Taken from the *server* because the client's clock
+   * is not trustworthy, and a phone that is thirty seconds fast would silently skip
+   * thirty seconds of its own history.
+   */
+  serverTime: Date;
+  /** Conversations whose shared state, or either side's per-user state, moved. */
+  conversations: ConversationView[];
+  /** Messages created, edited, deleted, reacted to or starred. Oldest change first. */
+  messages: MessageView[];
+  /** Messages the user deleted for themselves elsewhere. These leave no tombstone. */
+  hiddenMessageIds: string[];
+  /** The badge, so a client returning from the dead needs exactly one round trip. */
+  unread: UnreadTotalView;
+  /** The delta was truncated. Call again with `since = nextSince` until this is false. */
+  hasMore: boolean;
+  /** The cursor for the next page — equal to `serverTime` once the delta is complete. */
+  nextSince: Date;
+  /**
+   * `since` was older than the retained window, or the user has more conversations
+   * than a delta is worth. Everything else is empty: discard local caches and
+   * cold-start. Past some age, replaying every change costs more than re-fetching
+   * the current state — and the cache being replayed into is mostly stale anyway.
+   */
+  resyncRequired: boolean;
+}
+
 export interface AttachmentInput {
   type: AttachmentType;
   storageKey: string;
@@ -243,6 +292,14 @@ export interface CategoryCountsView {
 export interface IChatService {
   // ---- Conversations ----
   openDirect(userId: string, peerUserId: string): Promise<ConversationView>;
+  /**
+   * The existing DIRECT thread between two users, or null — without creating one.
+   *
+   * The read half of `openDirect`, and the difference matters: the calls module
+   * logs a finished call into the thread the two already have, but a missed call
+   * from a stranger must not manufacture a chat request on their behalf.
+   */
+  findDirect(userId: string, peerUserId: string): Promise<ConversationView | null>;
   getConversation(userId: string, conversationId: string): Promise<ConversationView>;
   listConversations(
     userId: string,
@@ -325,4 +382,8 @@ export interface IChatService {
 
   // ---- Badge ----
   unreadTotal(userId: string): Promise<UnreadTotalView>;
+
+  // ---- Recovery ----
+  /** Everything that changed for this user since `since`. See {@link ChatSyncView}. */
+  sync(userId: string, input: ChatSyncInput): Promise<ChatSyncView>;
 }

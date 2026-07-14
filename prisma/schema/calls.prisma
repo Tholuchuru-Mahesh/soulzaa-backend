@@ -1,0 +1,121 @@
+// ============================================================
+// Calls — 1:1 private voice & video calling.
+// Owned by the "calls" module. Authoritative store for call lifecycle
+// and history. No cross-module relations — users are referenced by id and
+// coordinated via the event bus / service tokens (PRIVACY_SERVICE gates who
+// may call whom; PROFILE_SERVICE hydrates the peer card; CHAT_SERVICE turns a
+// finished call into a CALL_LOG message; DEVICE_SERVICE rings the callee's
+// phones). Media never touches the backend: ZEGO carries the audio/video and
+// this module only issues the room token and arbitrates the signalling.
+// ============================================================
+
+enum CallType {
+  VOICE
+  VIDEO
+}
+
+/// The lifecycle of a call. Exactly one row per call attempt, moving forward
+/// only — there is no path back out of a terminal state, which is what makes
+/// "who won the race between accept and cancel" decidable with a conditional
+/// UPDATE instead of a lock.
+///
+/// Live states: RINGING → ACCEPTED → CONNECTED.
+/// Terminal states: ENDED, REJECTED, CANCELLED, MISSED, BUSY, FAILED.
+enum CallStatus {
+  /// Invitation delivered; the callee's phone is ringing.
+  RINGING
+  /// The callee accepted. Both sides now hold a token and are joining the room.
+  ACCEPTED
+  /// Media is flowing — the billing/duration clock starts here, not at ACCEPTED,
+  /// because a call that never connected lasted zero seconds no matter how long
+  /// the SDK spent trying.
+  CONNECTED
+  /// Completed normally — someone hung up after connecting.
+  ENDED
+  /// The callee declined.
+  REJECTED
+  /// The caller hung up before the callee answered.
+  CANCELLED
+  /// The ring timeout expired with no answer.
+  MISSED
+  /// The callee was already in another call.
+  BUSY
+  /// The RTC session failed (SDK or network) after the invitation was accepted.
+  FAILED
+}
+
+/// Why a call left its live state. Narrower than `status`: it records the cause,
+/// where status records the outcome. A MISSED call and a CANCELLED call both end
+/// without connecting, but only one of them is the caller's doing.
+enum CallEndReason {
+  /// A participant deliberately hung up.
+  HANGUP
+  /// The callee declined the invitation.
+  DECLINED
+  /// The caller withdrew before it was answered.
+  CANCELLED
+  /// Nobody answered within the ring window.
+  TIMEOUT
+  /// The callee was busy on another call.
+  BUSY
+  /// Media could not be established or was lost past recovery.
+  NETWORK
+  /// An unrecoverable SDK/server error.
+  FAILED
+}
+
+/// One call attempt. Created at invitation time — a call that is never answered
+/// is still a row, because "you missed a call" is information the callee is owed.
+///
+/// `zegoRoomId` is minted fresh per call and never reused: reusing a room id
+/// across calls would let a peer who kept a stale token rejoin a later
+/// conversation between the same two people.
+///
+/// `clientId` is the caller-generated idempotency key behind the call button —
+/// a double-tap, or a retry after a flaky network, resolves to the same row
+/// instead of ringing the callee twice.
+model Call {
+  id       String     @id @default(uuid()) @db.Uuid
+  callerId String     @db.Uuid
+  calleeId String     @db.Uuid
+  type     CallType
+  status   CallStatus @default(RINGING)
+
+  /// Ad-hoc ZEGO room for this call alone. Unique — see the model doc.
+  zegoRoomId String @unique
+  /// Caller-generated idempotency key — makes the call button retry-safe.
+  clientId   String
+
+  /// The DM thread this call belongs to, so the finished call can be written
+  /// back as a CALL_LOG message. Null when the two users have never had a thread
+  /// (the conversation is opened lazily on the first call that connects).
+  conversationId String? @db.Uuid
+
+  /// When the ring window closes. A delayed job fires at this instant and marks
+  /// the call MISSED if it is still RINGING — the deadline is persisted rather
+  /// than left to the job alone so a lost job cannot strand a call ringing forever.
+  ringingExpiresAt DateTime
+
+  acceptedAt      DateTime?
+  connectedAt     DateTime?
+  endedAt         DateTime?
+  /// Who ended it. Null for TIMEOUT and BUSY — nobody hung up those.
+  endedBy         String?        @db.Uuid
+  endReason       CallEndReason?
+  /// Wall-clock seconds between connectedAt and endedAt. Zero for a call that
+  /// never connected, which is exactly what the history screen should show.
+  durationSeconds Int            @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([callerId, clientId])
+  @@index([callerId, createdAt(sort: Desc)])
+  @@index([calleeId, createdAt(sort: Desc)])
+  /// Busy-check reads: "is this user in a live call right now", both directions.
+  @@index([status, calleeId])
+  @@index([status, callerId])
+  /// Sweep for calls whose ring window lapsed while the worker was down.
+  @@index([status, ringingExpiresAt])
+  @@map("calls")
+}

@@ -9,4 +9,6 @@ export const DEVICE_QUEUES = {
 
 export const DEVICE_JOBS = {
   LOGIN_ALERT: 'device:login-alert',
+  /** A push addressed to every device of one user — the generic seam other domains use. */
+  USER_PUSH: 'device:user-push',
 } as const;

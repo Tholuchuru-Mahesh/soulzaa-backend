@@ -3,14 +3,17 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { NotGuest } from 'src/common/decorators/not-guest.decorator';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
-import { EditMessageDto, ListStarredDto, ReactDto } from '../dto/chat.dto';
+import { ChatSyncDto, EditMessageDto, ListStarredDto, ReactDto } from '../dto/chat.dto';
 import { ChatService } from '../services/chat.service';
 
+/** Matches the DTO default; the service clamps it to the configured ceiling regardless. */
+const DEFAULT_SYNC_LIMIT = 200;
+
 /**
- * Message-scoped actions and the unread badge. Addressed by message id rather
- * than nested under a conversation, because the client already holds the id and
- * a second path segment would buy nothing — participation is verified in the
- * service from the message's own conversation either way.
+ * Message-scoped actions, the unread badge, and offline catch-up. Addressed by
+ * message id rather than nested under a conversation, because the client already
+ * holds the id and a second path segment would buy nothing — participation is
+ * verified in the service from the message's own conversation either way.
  */
 @ApiTags('chat')
 @ApiBearerAuth()
@@ -130,5 +133,27 @@ export class MessagesController {
   @ApiOperation({ summary: 'Unread totals for the Chats tab badge' })
   unread(@CurrentUser('id') userId: string) {
     return this.chat.unreadTotal(userId);
+  }
+
+  @Get('sync')
+  @ApiOperation({
+    summary: 'Everything that changed since a point in time',
+    description:
+      'Offline catch-up. The `/chat` socket only delivers while a client is connected; ' +
+      'this is how one that was not converges on the state it would have had if it never ' +
+      'disconnected. Returns changed conversations, messages (created / edited / deleted / ' +
+      'reacted / starred), messages hidden on another device, and the unread badge.\n\n' +
+      'Loop while `hasMore`, passing `nextSince` back as `since`. Persist `serverTime` as the ' +
+      'next cold cursor. `resyncRequired: true` means `since` is older than the retained window ' +
+      '(or the account is too large for a delta to beat a cold start) — discard local caches ' +
+      'and re-fetch instead.\n\n' +
+      'The cursor is inclusive: rows on the boundary are re-sent rather than skipped, so every ' +
+      'apply must be idempotent by id. Typing indicators are deliberately not recoverable.',
+  })
+  sync(@CurrentUser('id') userId: string, @Query() q: ChatSyncDto) {
+    return this.chat.sync(userId, {
+      since: new Date(q.since),
+      limit: q.limit ?? DEFAULT_SYNC_LIMIT,
+    });
   }
 }

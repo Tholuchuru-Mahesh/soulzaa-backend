@@ -146,12 +146,20 @@ model ConversationParticipant {
   joinedAt DateTime  @default(now())
   leftAt   DateTime?
 
+  /// Bumped by every write to this row — watermarks, unread, mute/pin/archive,
+  /// draft, wallpaper. This is what makes the row deltable: `GET /chat/sync?since=`
+  /// finds per-user state that changed while a device was offline, which
+  /// `Conversation.updatedAt` cannot see (settings and receipts never touch the
+  /// conversation row).
+  updatedAt DateTime @updatedAt
+
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, userId])
   @@index([userId, isArchived, leftAt])
   @@index([userId, isPinned])
   @@index([userId, isFavorite])
+  @@index([userId, updatedAt])
   @@map("conversation_participants")
 }
 
@@ -180,6 +188,15 @@ model DirectMessage {
   editedAt  DateTime?
   createdAt DateTime  @default(now())
 
+  /// The single column `GET /chat/sync?since=` pages on. Bumped on create, edit and
+  /// soft-delete by Prisma, and *deliberately* bumped by hand when a reaction is
+  /// added or removed (see `MessageRepository.touch`) — a reaction lives in its own
+  /// table, so without that the removal of one would be invisible to a delta (the
+  /// row is gone; there is nothing left to timestamp). Touching the parent makes the
+  /// message the unit of change, and `MessageView` already carries the collapsed
+  /// reactions, so one delta row re-states the whole truth about that message.
+  updatedAt DateTime @updatedAt
+
   /// Open Graph metadata for the first URL in the body, resolved asynchronously
   /// after the message is sent. Null when the body carries no link — which is the
   /// overwhelming majority of messages, so this costs nothing on the hot path.
@@ -194,6 +211,7 @@ model DirectMessage {
 
   @@unique([conversationId, clientId])
   @@index([conversationId, createdAt])
+  @@index([conversationId, updatedAt])
   @@index([senderId])
   @@index([linkPreviewId])
   @@map("direct_messages")
@@ -239,6 +257,9 @@ model HiddenMessage {
 
   @@unique([messageId, userId])
   @@index([userId, conversationId])
+  /// Delta support: "which messages did I hide while this device was offline".
+  /// A hide leaves no tombstone on the message, so the hide row *is* the event.
+  @@index([userId, createdAt])
   @@map("hidden_messages")
 }
 

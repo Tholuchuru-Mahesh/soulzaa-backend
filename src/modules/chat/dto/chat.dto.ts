@@ -298,6 +298,31 @@ export class ListMessagesDto extends PaginationQueryDto {
   before?: string;
 }
 
+/** Query for `GET /chat/sync` — the offline-catch-up read. */
+export class ChatSyncDto {
+  @ApiProperty({
+    description:
+      "The client's last sync point: `nextSince` from the previous response, or the " +
+      'time of its last cold start. Inclusive — the boundary is re-sent rather than skipped.',
+    example: '2026-07-14T09:30:00.000Z',
+  })
+  @IsDateString()
+  since!: string;
+
+  @ApiPropertyOptional({
+    description: 'Messages per page. Clamped to the server ceiling (`CHAT_SYNC_MAX_MESSAGES`).',
+    default: 200,
+    minimum: 1,
+    maximum: 500,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  limit?: number = 200;
+}
+
 export class ReactDto {
   @ApiProperty({ example: '❤️' })
   @IsString()

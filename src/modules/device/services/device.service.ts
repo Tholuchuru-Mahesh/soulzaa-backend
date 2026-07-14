@@ -18,9 +18,11 @@ import type {
   IDeviceService,
   RegisterDeviceResult,
 } from '../interfaces/device.interface';
+import type { PushMessage } from '../interfaces/push-provider.interface';
 import { DEVICE_JOBS, DEVICE_QUEUES } from '../device.constants';
+import { PUSH_CATEGORIES, PUSH_CHANNELS } from '../interfaces/push.constants';
 import { DeviceRepository } from '../repositories/device.repository';
-import type { LoginAlertJob } from '../processors/push.processor';
+import type { UserPushJob } from '../processors/push.processor';
 
 /**
  * Device Management domain service. Owns the device registry, trust ledger and
@@ -132,9 +134,15 @@ export class DeviceService implements IDeviceService {
     );
 
     if (this.alertsEnabled) {
-      const job: LoginAlertJob = {
+      // The one push that skips the preference gate. A break-in alert the intruder
+      // could have silenced from inside the account is not an alert — so this is
+      // built here, resolved, rather than going through PushPolicy like everything
+      // else. SECURITY rides the default channel and always makes a sound.
+      const job: UserPushJob = {
         userId,
         excludeDeviceId: device.id,
+        category: PUSH_CATEGORIES.SECURITY,
+        channelId: PUSH_CHANNELS.DEFAULT,
         title: 'New login detected',
         body: `A new sign-in from ${info.deviceName ?? info.platform}${info.country ? ` (${info.country})` : ''}. If this wasn't you, secure your account.`,
         data: { type: 'login_alert', deviceId: device.id },
@@ -207,6 +215,15 @@ export class DeviceService implements IDeviceService {
     await this.assertOwned(userId, deviceId);
     await this.repo.updatePushToken(deviceId, pushToken);
     await this.repo.recordEvent({ userId, deviceId, event: DeviceEventType.PUSH_TOKEN_UPDATED });
+  }
+
+  /**
+   * Push to every device a user owns. Enqueue-and-return by design: the caller
+   * (a ringing call, say) must not wait on FCM, and must not fail because FCM did.
+   */
+  async pushToUser(userId: string, message: PushMessage): Promise<void> {
+    const job: UserPushJob = { userId, ...message };
+    await this.pushQueue.add(DEVICE_JOBS.USER_PUSH, job);
   }
 
   async renameDevice(userId: string, deviceId: string, name: string): Promise<void> {

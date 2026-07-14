@@ -2,6 +2,13 @@
 export const SOCKET_NAMESPACES = {
   NOTIFICATIONS: '/notifications',
   CHAT: '/chat',
+  /**
+   * 1:1 call signalling. Its own namespace rather than a lane on `/chat` because
+   * a call must reach a user who has no chat open, and because a client that
+   * disconnects from chat to save battery must still be reachable by a ringing
+   * phone. Clients connect it at login and keep it up for the session.
+   */
+  CALL: '/call',
   AUDIO_ROOM: '/audio-room',
   VIDEO_ROOM: '/video-room',
   LIVE: '/live',

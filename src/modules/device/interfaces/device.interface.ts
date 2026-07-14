@@ -1,4 +1,5 @@
 import type { DevicePlatform } from '@prisma/client';
+import type { PushMessage } from './push-provider.interface';
 
 /**
  * Public contract for the device module — the ONLY surface other modules
@@ -73,4 +74,14 @@ export interface IDeviceService {
   removeDevice(userId: string, deviceId: string): Promise<void>;
   updatePushToken(userId: string, deviceId: string, pushToken: string | null): Promise<void>;
   renameDevice(userId: string, deviceId: string, name: string): Promise<void>;
+
+  /**
+   * Push a message to every registered device of a user.
+   *
+   * The seam other domains use to reach a phone: they describe *what* to say and
+   * this module decides *how* — token resolution, provider selection and retry all
+   * stay behind the queue. Enqueues and returns; delivery is asynchronous, so a
+   * push that cannot be sent never fails the call that requested it.
+   */
+  pushToUser(userId: string, message: PushMessage): Promise<void>;
 }

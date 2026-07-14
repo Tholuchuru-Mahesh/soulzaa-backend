@@ -28,6 +28,14 @@ export class ChatGateway extends BaseGateway {
   }
 }
 
+@WebSocketGateway({ namespace: '/call' })
+export class CallGateway extends BaseGateway {
+  @WebSocketServer() protected readonly server!: Server;
+  constructor(manager: SocketManager) {
+    super(manager);
+  }
+}
+
 @WebSocketGateway({ namespace: '/audio-room' })
 export class AudioRoomGateway extends BaseGateway {
   @WebSocketServer() protected readonly server!: Server;
@@ -72,6 +80,7 @@ export class GamesGateway extends BaseGateway {
 export const SOCKET_GATEWAYS = [
   NotificationsGateway,
   ChatGateway,
+  CallGateway,
   AudioRoomGateway,
   VideoRoomGateway,
   LiveGateway,

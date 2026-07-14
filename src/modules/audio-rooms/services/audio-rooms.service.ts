@@ -182,7 +182,8 @@ export class AudioRoomsService implements IAudioRoomsService {
 
     // Validate password requirement
     const willBeLocked = dto.isLocked !== undefined ? dto.isLocked : room.isLocked;
-    const hasPassword = (dto.password !== undefined ? dto.password !== null : room.passwordHash !== null);
+    const hasPassword =
+      dto.password !== undefined ? dto.password !== null : room.passwordHash !== null;
     if (willBeLocked && !hasPassword) {
       throw new BusinessException(
         ERROR_CODES.ROOM_PASSWORD_INVALID,
@@ -207,14 +208,14 @@ export class AudioRoomsService implements IAudioRoomsService {
     if (dto.isDiscoverable !== undefined) assign('isDiscoverable', dto.isDiscoverable);
     if (dto.maxParticipants !== undefined)
       assign('maxParticipants', this.clampMax(dto.maxParticipants));
-    
+
     if (dto.isLocked !== undefined) {
       assign('isLocked', dto.isLocked);
       if (!dto.isLocked) {
         assign('passwordHash', null);
       }
     }
-    
+
     if (dto.password !== undefined) {
       assign('passwordHash', dto.password ? await this.passwords.hash(dto.password) : null);
       if (changed.length > 0) {
@@ -325,7 +326,9 @@ export class AudioRoomsService implements IAudioRoomsService {
           await this.seatsService.takeSeat(actor, roomId, 0);
         } catch (e) {
           // Ignore if they are already seated or if the seat is occupied/locked
-          this.logger.warn(`Could not auto-seat owner ${actor.id} on join: ${(e as Error).message}`);
+          this.logger.warn(
+            `Could not auto-seat owner ${actor.id} on join: ${(e as Error).message}`,
+          );
         }
       }
     });

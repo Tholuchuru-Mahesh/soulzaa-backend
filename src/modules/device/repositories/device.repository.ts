@@ -99,6 +99,24 @@ export class DeviceRepository {
     return this.prisma.userDevice.update({ where: { id }, data: { pushToken } });
   }
 
+  /**
+   * Retire push tokens the provider has told us are permanently dead (app
+   * uninstalled, token rotated).
+   *
+   * Matched by *token*, not by device id, and deliberately not scoped to a user:
+   * FCM issues a token per app-install, so the one that just came back dead is the
+   * one to clear wherever it appears. The device row survives — the user still owns
+   * that phone, it simply cannot be reached until the app registers a fresh token.
+   */
+  async clearPushTokens(tokens: string[]): Promise<number> {
+    if (tokens.length === 0) return 0;
+    const { count } = await this.prisma.userDevice.updateMany({
+      where: { pushToken: { in: tokens } },
+      data: { pushToken: null },
+    });
+    return count;
+  }
+
   rename(id: string, deviceName: string): Promise<UserDevice> {
     return this.prisma.userDevice.update({ where: { id }, data: { deviceName } });
   }

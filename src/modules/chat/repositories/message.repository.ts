@@ -194,12 +194,39 @@ export class MessageRepository {
     return this.prisma.directMessageReport.create({ data: input });
   }
 
+  // ---- Delta support ----
+
+  /**
+   * Bump a message's `updatedAt` because something in one of its *child* tables
+   * changed — a reaction, a star.
+   *
+   * This is what makes those changes visible to `GET /chat/sync`. A removed
+   * reaction leaves no row behind to timestamp, so a delta over the reactions table
+   * could never see it; touching the parent instead makes the message the unit of
+   * change, and `MessageView` already carries the collapsed reactions, so one delta
+   * row re-states the whole truth about that message.
+   *
+   * The cost is that a star (which is private) also re-sends the message to the
+   * peer. That is a redundant but *identical* row — the peer's `isStarred` is
+   * resolved per-viewer and stays false — so it leaks nothing, and applying it twice
+   * is a no-op.
+   */
+  private touch(messageId: string, tx?: Prisma.TransactionClient): Promise<unknown> {
+    return (tx ?? this.prisma).directMessage.update({
+      where: { id: messageId },
+      data: { updatedAt: new Date() },
+    });
+  }
+
   // ---- Reactions ----
 
   /** Idempotent: reacting twice with the same emoji is a no-op, not an error. */
   async addReaction(messageId: string, userId: string, emoji: string): Promise<boolean> {
     try {
-      await this.prisma.messageReaction.create({ data: { messageId, userId, emoji } });
+      await this.prisma.$transaction(async (tx) => {
+        await tx.messageReaction.create({ data: { messageId, userId, emoji } });
+        await this.touch(messageId, tx);
+      });
       return true;
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return false;
@@ -208,10 +235,15 @@ export class MessageRepository {
   }
 
   async removeReaction(messageId: string, userId: string, emoji: string): Promise<boolean> {
-    const { count } = await this.prisma.messageReaction.deleteMany({
-      where: { messageId, userId, emoji },
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.messageReaction.deleteMany({
+        where: { messageId, userId, emoji },
+      });
+      // Only touch when something actually changed; a no-op unreact must not
+      // manufacture a delta row for every client watching the conversation.
+      if (count > 0) await this.touch(messageId, tx);
+      return count > 0;
     });
-    return count > 0;
   }
 
   // ---- Starring (private to one user) ----
@@ -219,8 +251,9 @@ export class MessageRepository {
   /** Idempotent: starring twice is a no-op, not a 409. */
   async star(messageId: string, userId: string, conversationId: string): Promise<boolean> {
     try {
-      await this.prisma.starredMessage.create({
-        data: { messageId, userId, conversationId },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.starredMessage.create({ data: { messageId, userId, conversationId } });
+        await this.touch(messageId, tx);
       });
       return true;
     } catch (e) {
@@ -230,10 +263,11 @@ export class MessageRepository {
   }
 
   async unstar(messageId: string, userId: string): Promise<boolean> {
-    const { count } = await this.prisma.starredMessage.deleteMany({
-      where: { messageId, userId },
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.starredMessage.deleteMany({ where: { messageId, userId } });
+      if (count > 0) await this.touch(messageId, tx);
+      return count > 0;
     });
-    return count > 0;
   }
 
   countStars(userId: string): Promise<number> {
@@ -475,6 +509,77 @@ export class MessageRepository {
 
   findLinkPreview(id: string): Promise<LinkPreview | null> {
     return this.prisma.linkPreview.findUnique({ where: { id } });
+  }
+
+  // ---- Delta sync ----
+
+  /**
+   * Every message that changed since `since`, across the conversations named.
+   *
+   * "Changed" is one column — `updatedAt` — and that is the entire trick. Creation,
+   * edit, soft-delete and (via {@link touch}) reactions and stars all land on it, so
+   * one indexed scan replaces four separate deltas that would each have needed their
+   * own cursor and their own way of representing a deletion.
+   *
+   * `>=` rather than `>`: the boundary re-sends whatever shares the cursor's exact
+   * millisecond. Applying a message twice is a no-op keyed by id; *missing* one is a
+   * message the user never sees. At-least-once is the only safe direction here.
+   *
+   * `clearedAt` is per-conversation, so conversations the user cleared history in get
+   * their own floor. They are rare, so they cost an extra OR branch each and the rest
+   * of the conversations share one cheap `IN`.
+   */
+  async changedSince(opts: {
+    viewerId: string;
+    since: Date;
+    take: number;
+    /** Conversations the viewer is in, each with their own clear-history floor. */
+    scopes: { conversationId: string; clearedAt: Date | null }[];
+  }): Promise<MessageWithRelations[]> {
+    if (opts.scopes.length === 0) return [];
+
+    const plain = opts.scopes.filter((s) => !s.clearedAt).map((s) => s.conversationId);
+    const cleared = opts.scopes.filter(
+      (s): s is { conversationId: string; clearedAt: Date } => s.clearedAt !== null,
+    );
+
+    const scopeClause: Prisma.DirectMessageWhereInput[] = [
+      ...(plain.length ? [{ conversationId: { in: plain } }] : []),
+      ...cleared.map((s) => ({
+        conversationId: s.conversationId,
+        createdAt: { gt: s.clearedAt },
+      })),
+    ];
+
+    return this.prisma.directMessage.findMany({
+      where: {
+        OR: scopeClause,
+        updatedAt: { gte: opts.since },
+        // A message the viewer deleted for themselves must not come back just because
+        // the peer reacted to it.
+        NOT: { hiddenBy: { some: { userId: opts.viewerId } } },
+      },
+      include: WITH_RELATIONS,
+      // Oldest change first: the client applies the delta in the order it happened, and
+      // the last row it applies is the one its next cursor is taken from.
+      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+      take: opts.take,
+    });
+  }
+
+  /**
+   * Messages the viewer hid since `since`, on any device.
+   *
+   * Delete-for-me leaves no tombstone on the message — that is the whole point of it
+   * — so the hide row *is* the event, and it is the only way another of this user's
+   * devices can learn the message is gone.
+   */
+  async hiddenSince(userId: string, since: Date): Promise<string[]> {
+    const rows = await this.prisma.hiddenMessage.findMany({
+      where: { userId, createdAt: { gte: since } },
+      select: { messageId: true },
+    });
+    return rows.map((r) => r.messageId);
   }
 
   // ---- Anti-abuse ----

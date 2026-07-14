@@ -5,6 +5,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AudioRoomsModule } from './audio-rooms/audio-rooms.module';
 import { AuthModule } from './auth/auth.module';
 import { BackpackModule } from './backpack/backpack.module';
+import { CallsModule } from './calls/calls.module';
 import { CosmeticsModule } from './cosmetics/cosmetics.module';
 import { ChatModule } from './chat/chat.module';
 import { DeviceModule } from './device/device.module';
@@ -39,6 +40,7 @@ export const DOMAIN_MODULES = [
   WalletModule,
   PaymentsModule,
   ChatModule,
+  CallsModule,
   AudioRoomsModule,
   GiftsModule,
   BackpackModule,
