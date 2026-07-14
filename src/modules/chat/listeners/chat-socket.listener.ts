@@ -11,13 +11,17 @@ import {
   type ConversationCreatedEvent,
   type ConversationDeclinedEvent,
   type ConversationDraftChangedEvent,
+  type ConversationPinnedMessageEvent,
   type ConversationSettingsChangedEvent,
   type MessageDeletedEvent,
   type MessageDeliveredEvent,
   type MessageEditedEvent,
+  type MessageHiddenEvent,
+  type MessagePreviewEvent,
   type MessageReactionEvent,
   type MessageReadEvent,
   type MessageSentEvent,
+  type MessageStarredEvent,
 } from '../events/chat.events';
 
 /**
@@ -117,6 +121,44 @@ export class ChatSocketListener implements OnModuleInit {
         userId: e.payload.userId,
         emoji: e.payload.emoji,
         added: e.payload.added,
+      }),
+    );
+
+    this.bus.subscribe<ConversationPinnedMessageEvent>(
+      CHAT_EVENTS.CONVERSATION_PINNED_MESSAGE,
+      (e) =>
+        this.fanOut(e.payload.recipientIds, CHAT_SOCKET_EVENTS.CONVERSATION_PINNED_MESSAGE, {
+          conversationId: e.payload.conversationId,
+          message: e.payload.message,
+          pinnedBy: e.payload.pinnedBy,
+          pinnedAt: e.payload.pinnedAt,
+        }),
+    );
+
+    // Star and hide carry `recipientIds` of length one — the owner. The listener
+    // does not need to know that; the service already decided the audience, which
+    // is exactly why "who sees what" lives there and not here.
+    this.bus.subscribe<MessageStarredEvent>(CHAT_EVENTS.MESSAGE_STARRED, (e) =>
+      this.fanOut(e.payload.recipientIds, CHAT_SOCKET_EVENTS.MESSAGE_STARRED, {
+        conversationId: e.payload.conversationId,
+        messageId: e.payload.messageId,
+        starred: e.payload.starred,
+        starredAt: e.payload.starredAt,
+      }),
+    );
+
+    this.bus.subscribe<MessageHiddenEvent>(CHAT_EVENTS.MESSAGE_HIDDEN, (e) =>
+      this.fanOut(e.payload.recipientIds, CHAT_SOCKET_EVENTS.MESSAGE_HIDDEN, {
+        conversationId: e.payload.conversationId,
+        messageId: e.payload.messageId,
+      }),
+    );
+
+    this.bus.subscribe<MessagePreviewEvent>(CHAT_EVENTS.MESSAGE_PREVIEW, (e) =>
+      this.fanOut(e.payload.recipientIds, CHAT_SOCKET_EVENTS.MESSAGE_PREVIEW, {
+        conversationId: e.payload.conversationId,
+        messageId: e.payload.messageId,
+        preview: e.payload.preview,
       }),
     );
 

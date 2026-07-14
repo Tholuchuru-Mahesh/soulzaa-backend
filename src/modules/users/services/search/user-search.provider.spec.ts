@@ -1,5 +1,5 @@
 import { PrismaService } from 'src/infra/prisma/prisma.service';
-import { MediaUrlResolver } from '../media-url.resolver';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import { PostgresUserSearchProvider } from './user-search.provider';
 
 describe('PostgresUserSearchProvider', () => {

@@ -36,7 +36,7 @@ import type {
 } from '../interfaces/profile.interface';
 import { ProfileRepository } from '../repositories/profile.repository';
 import { UsersRepository } from '../repositories/users.repository';
-import { MediaUrlResolver } from './media-url.resolver';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import {
   USER_SEARCH_PROVIDER,
   type IUserSearchProvider,

@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { MediaService } from './media.service';
+import { MediaUrlResolver } from './media-url.resolver';
 import { S3Service } from './s3.service';
 import { StorageController } from './storage.controller';
 import { UploadService } from './upload.service';
@@ -12,7 +13,7 @@ import { UploadService } from './upload.service';
 @Global()
 @Module({
   controllers: [StorageController],
-  providers: [S3Service, MediaService, UploadService],
-  exports: [S3Service, MediaService, UploadService],
+  providers: [S3Service, MediaService, UploadService, MediaUrlResolver],
+  exports: [S3Service, MediaService, UploadService, MediaUrlResolver],
 })
 export class StorageModule {}

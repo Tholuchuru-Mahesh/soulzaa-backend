@@ -4,10 +4,13 @@ import {
   DirectMessage,
   DirectMessageReport,
   DirectMessageType,
+  HiddenMessage,
+  LinkPreview,
   MessageAttachment,
   MessageReaction,
   Prisma,
   ReportReason,
+  StarredMessage,
 } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
@@ -17,11 +20,15 @@ import { chatRateKey } from '../constants/chat.constants';
 export type MessageWithRelations = DirectMessage & {
   attachments: MessageAttachment[];
   reactions: MessageReaction[];
+  linkPreview: LinkPreview | null;
 };
 
 const WITH_RELATIONS = {
   attachments: true,
   reactions: true,
+  // Joined rather than fetched per message: a preview is a shared row, and a page
+  // of thirty messages quoting the same link resolves it once.
+  linkPreview: true,
 } satisfies Prisma.DirectMessageInclude;
 
 export interface CreateMessageInput {
@@ -114,9 +121,22 @@ export class MessageRepository {
    */
   async list(
     conversationId: string,
-    opts: { skip: number; take: number; before?: string; clearedAt: Date | null },
+    opts: {
+      skip: number;
+      take: number;
+      before?: string;
+      clearedAt: Date | null;
+      /** The reader. Their "delete for me" rows are excluded. */
+      viewerId: string;
+    },
   ): Promise<[MessageWithRelations[], number]> {
-    const where: Prisma.DirectMessageWhereInput = { conversationId };
+    const where: Prisma.DirectMessageWhereInput = {
+      conversationId,
+      // "Delete for me", per message. `clearedAt` below hides everything before a
+      // cut-off; this hides individual messages the user removed for themselves.
+      // Served by the unique index on (messageId, userId).
+      NOT: { hiddenBy: { some: { userId: opts.viewerId } } },
+    };
     if (opts.clearedAt) where.createdAt = { gt: opts.clearedAt };
 
     if (opts.before) {
@@ -192,6 +212,269 @@ export class MessageRepository {
       where: { messageId, userId, emoji },
     });
     return count > 0;
+  }
+
+  // ---- Starring (private to one user) ----
+
+  /** Idempotent: starring twice is a no-op, not a 409. */
+  async star(messageId: string, userId: string, conversationId: string): Promise<boolean> {
+    try {
+      await this.prisma.starredMessage.create({
+        data: { messageId, userId, conversationId },
+      });
+      return true;
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return false;
+      throw e;
+    }
+  }
+
+  async unstar(messageId: string, userId: string): Promise<boolean> {
+    const { count } = await this.prisma.starredMessage.deleteMany({
+      where: { messageId, userId },
+    });
+    return count > 0;
+  }
+
+  countStars(userId: string): Promise<number> {
+    return this.prisma.starredMessage.count({ where: { userId } });
+  }
+
+  /**
+   * Which of these messages the viewer starred. One query per page, never one per
+   * row — the N+1 that would otherwise creep into every history read.
+   */
+  async starredIdsAmong(messageIds: string[], userId: string): Promise<Set<string>> {
+    if (messageIds.length === 0) return new Set();
+    const rows = await this.prisma.starredMessage.findMany({
+      where: { userId, messageId: { in: messageIds } },
+      select: { messageId: true },
+    });
+    return new Set(rows.map((r) => r.messageId));
+  }
+
+  /**
+   * The user's starred messages, newest first. Deleted and self-hidden messages are
+   * excluded: a Starred screen that lists tombstones is listing nothing.
+   */
+  async listStarred(
+    userId: string,
+    opts: { skip: number; take: number; conversationId?: string; cursor?: string },
+  ): Promise<[(StarredMessage & { message: MessageWithRelations })[], number]> {
+    const where: Prisma.StarredMessageWhereInput = {
+      userId,
+      ...(opts.conversationId ? { conversationId: opts.conversationId } : {}),
+      message: {
+        isDeleted: false,
+        NOT: { hiddenBy: { some: { userId } } },
+      },
+    };
+
+    if (opts.cursor) {
+      const cursor = await this.prisma.starredMessage.findUnique({
+        where: { id: opts.cursor },
+        select: { createdAt: true },
+      });
+      if (cursor) where.createdAt = { lt: cursor.createdAt };
+    }
+
+    return this.prisma.$transaction([
+      this.prisma.starredMessage.findMany({
+        where,
+        include: { message: { include: WITH_RELATIONS } },
+        take: opts.take,
+        ...(opts.cursor ? {} : { skip: opts.skip }),
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.starredMessage.count({ where }),
+    ]);
+  }
+
+  // ---- Delete for me ----
+
+  /**
+   * Hide one message from one user. Idempotent, and it drops the user's star in
+   * the same transaction — a starred message the user then deleted for themselves
+   * must not survive in their Starred list.
+   */
+  async hide(messageId: string, userId: string, conversationId: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.hiddenMessage.upsert({
+        where: { messageId_userId: { messageId, userId } },
+        create: { messageId, userId, conversationId },
+        update: {},
+      }),
+      this.prisma.starredMessage.deleteMany({ where: { messageId, userId } }),
+    ]);
+  }
+
+  /** Which of these messages the user hid. One query per page, never one per row. */
+  async hiddenIdsAmong(messageIds: string[], userId: string): Promise<Set<string>> {
+    if (messageIds.length === 0) return new Set();
+    const rows = await this.prisma.hiddenMessage.findMany({
+      where: { userId, messageId: { in: messageIds } },
+      select: { messageId: true },
+    });
+    return new Set(rows.map((r) => r.messageId));
+  }
+
+  isHidden(messageId: string, userId: string): Promise<HiddenMessage | null> {
+    return this.prisma.hiddenMessage.findUnique({
+      where: { messageId_userId: { messageId, userId } },
+    });
+  }
+
+  /**
+   * The newest message in a conversation that this user has NOT hidden.
+   *
+   * Only called when the conversation's denormalised `lastMessageId` is one the
+   * user hid — a rare path, and the reason there is no per-user preview column:
+   * the fallback is cheap precisely because it almost never runs.
+   */
+  newestVisible(conversationId: string, userId: string): Promise<MessageWithRelations | null> {
+    return this.prisma.directMessage.findFirst({
+      where: {
+        conversationId,
+        NOT: { hiddenBy: { some: { userId } } },
+      },
+      include: WITH_RELATIONS,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  // ---- Conversation media ----
+
+  /**
+   * The media in one conversation, newest first, filtered by kind.
+   *
+   * Queries the *attachments*, not the messages, because that is the question being
+   * asked — "show me the photos in this chat" is about files, and a message-first
+   * query would have to fetch and discard every text message between them.
+   *
+   * Honours the same visibility rules as history: nothing deleted, nothing the
+   * viewer hid for themselves, nothing before their clear-history cut-off. A media
+   * tab that surfaces a photo the user deleted is a privacy bug.
+   */
+  async listMedia(
+    conversationId: string,
+    opts: {
+      skip: number;
+      take: number;
+      viewerId: string;
+      clearedAt: Date | null;
+      types: AttachmentType[];
+    },
+  ): Promise<[MessageWithRelations[], number]> {
+    const where: Prisma.DirectMessageWhereInput = {
+      conversationId,
+      isDeleted: false,
+      NOT: { hiddenBy: { some: { userId: opts.viewerId } } },
+      attachments: { some: { type: { in: opts.types } } },
+      ...(opts.clearedAt ? { createdAt: { gt: opts.clearedAt } } : {}),
+    };
+
+    return this.prisma.$transaction([
+      this.prisma.directMessage.findMany({
+        where,
+        include: WITH_RELATIONS,
+        take: opts.take,
+        skip: opts.skip,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.directMessage.count({ where }),
+    ]);
+  }
+
+  /**
+   * Messages in a conversation that carry a link, newest first.
+   *
+   * The Links tab. Driven off `linkPreviewId` rather than scanning message bodies
+   * for `http`: the preview row is only created when a link was actually found and
+   * accepted at send time, so this is an indexed lookup instead of a table scan
+   * with a LIKE.
+   */
+  async listLinks(
+    conversationId: string,
+    opts: { skip: number; take: number; viewerId: string; clearedAt: Date | null },
+  ): Promise<[MessageWithRelations[], number]> {
+    const where: Prisma.DirectMessageWhereInput = {
+      conversationId,
+      isDeleted: false,
+      linkPreviewId: { not: null },
+      NOT: { hiddenBy: { some: { userId: opts.viewerId } } },
+      ...(opts.clearedAt ? { createdAt: { gt: opts.clearedAt } } : {}),
+    };
+
+    return this.prisma.$transaction([
+      this.prisma.directMessage.findMany({
+        where,
+        include: WITH_RELATIONS,
+        take: opts.take,
+        skip: opts.skip,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.directMessage.count({ where }),
+    ]);
+  }
+
+  // ---- Link previews ----
+
+  /**
+   * Find a fresh preview for a URL, or claim a PENDING row to scrape.
+   *
+   * Returns `{ preview, needsFetch }`. `needsFetch` is false when a READY row is
+   * still inside its TTL — a link shared a thousand times is scraped once, for the
+   * whole platform. A FAILED row inside its TTL also needs no fetch: a dead link
+   * must not be re-crawled on every render.
+   */
+  async claimLinkPreview(
+    urlHash: string,
+    url: string,
+    ttlDays: number,
+  ): Promise<{ preview: LinkPreview; needsFetch: boolean }> {
+    const now = new Date();
+    const existing = await this.prisma.linkPreview.findUnique({ where: { urlHash } });
+
+    if (existing && existing.expiresAt && existing.expiresAt > now) {
+      return { preview: existing, needsFetch: existing.status === 'PENDING' };
+    }
+
+    const expiresAt = new Date(now.getTime() + ttlDays * 86_400_000);
+    const preview = await this.prisma.linkPreview.upsert({
+      where: { urlHash },
+      create: { urlHash, url, status: 'PENDING', expiresAt },
+      update: { status: 'PENDING', url, expiresAt },
+    });
+    return { preview, needsFetch: true };
+  }
+
+  attachLinkPreview(messageId: string, linkPreviewId: string): Promise<DirectMessage> {
+    return this.prisma.directMessage.update({
+      where: { id: messageId },
+      data: { linkPreviewId },
+    });
+  }
+
+  finishLinkPreview(
+    id: string,
+    data: {
+      status: 'READY' | 'FAILED';
+      title?: string | null;
+      description?: string | null;
+      siteName?: string | null;
+      imageKey?: string | null;
+      imageWidth?: number | null;
+      imageHeight?: number | null;
+    },
+  ): Promise<LinkPreview> {
+    return this.prisma.linkPreview.update({
+      where: { id },
+      data: { ...data, fetchedAt: new Date() },
+    });
+  }
+
+  findLinkPreview(id: string): Promise<LinkPreview | null> {
+    return this.prisma.linkPreview.findUnique({ where: { id } });
   }
 
   // ---- Anti-abuse ----

@@ -214,6 +214,21 @@ export const envSchema = z.object({
   CHAT_EDIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(900),
   // Most conversations a user may pin at once.
   CHAT_MAX_PINNED: z.coerce.number().int().positive().default(5),
+  // Most messages a user may star. Capped so a per-user table cannot grow without
+  // bound — an uncapped one is an availability incident waiting to happen.
+  CHAT_MAX_STARRED: z.coerce.number().int().positive().default(5000),
+  // Link previews: the crawler fetches an attacker-chosen URL, so every bound here
+  // is a security control, not a tuning knob. See ChatLinkPreviewService.
+  CHAT_LINK_PREVIEW_ENABLED: z.coerce.boolean().default(true),
+  CHAT_LINK_PREVIEW_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  CHAT_LINK_PREVIEW_MAX_BYTES: z.coerce.number().int().positive().default(524_288),
+  CHAT_LINK_PREVIEW_MAX_REDIRECTS: z.coerce.number().int().nonnegative().default(3),
+  // How long a scraped preview stays fresh. A confidently stale title is worse
+  // than none, and FAILED is cached for the same span so a dead link is not
+  // re-fetched on every render.
+  CHAT_LINK_PREVIEW_TTL_DAYS: z.coerce.number().int().positive().default(7),
+  // Hosts the crawler will never fetch, comma-separated.
+  CHAT_LINK_PREVIEW_DENYLIST: z.string().default(''),
 
   // ---- Gifts (AR-5) ----
   GIFT_CREATOR_EARNING_RATE_PERCENT: z.coerce.number().int().min(0).max(100).default(30),

@@ -4,7 +4,7 @@ import { PROFILE_SERVICE } from './interfaces/profile.interface';
 import { USERS_SERVICE } from './interfaces/users.service.interface';
 import { ProfileRepository } from './repositories/profile.repository';
 import { UsersRepository } from './repositories/users.repository';
-import { MediaUrlResolver } from './services/media-url.resolver';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import { ProfileService } from './services/profile.service';
 import {
   PostgresUserSearchProvider,

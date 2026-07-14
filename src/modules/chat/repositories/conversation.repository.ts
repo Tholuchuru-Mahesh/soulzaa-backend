@@ -279,6 +279,28 @@ export class ConversationRepository {
     });
   }
 
+  // ---- Pinned thread banner ----
+
+  /**
+   * Set (or clear) the message pinned to the top of the thread.
+   *
+   * Single-slot: pinning replaces whatever was pinned before. This is the *shared*
+   * pin both participants see — not `ConversationParticipant.isPinned`, which pins
+   * the conversation in one user's Chats list.
+   */
+  setPinnedMessage(
+    conversationId: string,
+    pin: { messageId: string; pinnedBy: string } | null,
+  ): Promise<ConversationWithParticipants> {
+    return this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: pin
+        ? { pinnedMessageId: pin.messageId, pinnedBy: pin.pinnedBy, pinnedAt: new Date() }
+        : { pinnedMessageId: null, pinnedBy: null, pinnedAt: null },
+      include: { participants: true },
+    });
+  }
+
   /**
    * Advance a watermark, never rewind it. Guarding on the timestamp makes the
    * write idempotent and immune to out-of-order receipts — a late "read up to an

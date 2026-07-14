@@ -28,12 +28,20 @@ export const CHAT_SOCKET_EVENTS = {
   CONVERSATION_SETTINGS: 'conversation.settings',
   /** Composer draft changed — syncs the owner's other devices. */
   CONVERSATION_DRAFT: 'conversation.draft',
+  /** The thread's pinned banner changed. Shared: goes to both participants. */
+  CONVERSATION_PINNED_MESSAGE: 'conversation.pinned_message',
 
   // ---- Messages ----
   MESSAGE_NEW: 'message.new',
   MESSAGE_DELETED: 'message.deleted',
   MESSAGE_EDITED: 'message.edited',
   MESSAGE_REACTION: 'message.reaction',
+  /** Starred / unstarred. Private — delivered to the owner's devices only. */
+  MESSAGE_STARRED: 'message.starred',
+  /** Deleted for me. Private — the peer is never told. */
+  MESSAGE_HIDDEN: 'message.hidden',
+  /** A link preview finished resolving; patch the bubble in place. */
+  MESSAGE_PREVIEW: 'message.preview',
 
   // ---- Receipts & indicators ----
   MESSAGE_DELIVERED: 'message.delivered',

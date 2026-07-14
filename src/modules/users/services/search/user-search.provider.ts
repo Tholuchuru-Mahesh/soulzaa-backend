@@ -4,7 +4,7 @@ import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated, normalizePagination } from 'src/common/utils/pagination.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import type { UserCard } from '../../interfaces/profile.interface';
-import { MediaUrlResolver } from '../media-url.resolver';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 
 export const USER_SEARCH_PROVIDER = Symbol('USER_SEARCH_PROVIDER');
 

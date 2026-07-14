@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ConversationParticipant } from '@prisma/client';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import {
   PROFILE_SERVICE,
   type IProfileService,
@@ -10,7 +11,9 @@ import type { MessageWithRelations } from '../repositories/message.repository';
 import type {
   AttachmentView,
   ConversationView,
+  LinkPreviewView,
   MessageView,
+  PinnedMessageView,
   ReactionView,
 } from '../interfaces/chat.service.interface';
 
@@ -22,7 +25,10 @@ import type {
  */
 @Injectable()
 export class ChatViewMapper {
-  constructor(@Inject(PROFILE_SERVICE) private readonly profiles: IProfileService) {}
+  constructor(
+    @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
+    private readonly mediaUrls: MediaUrlResolver,
+  ) {}
 
   /** Batch-resolve peer cards for a page of conversations. */
   async conversations(
@@ -48,11 +54,12 @@ export class ChatViewMapper {
   async conversation(
     conversation: ConversationWithParticipants,
     viewerId: string,
+    pinned: PinnedMessageView | null = null,
   ): Promise<ConversationView | null> {
     const peer = this.peerOf(conversation, viewerId);
     if (!peer) return null;
     const cards = await this.cards([peer.userId]);
-    return this.buildConversation(conversation, viewerId, cards);
+    return this.buildConversation(conversation, viewerId, cards, null, pinned);
   }
 
   /** Build a conversation view from already-resolved cards (no I/O). */
@@ -61,6 +68,7 @@ export class ChatViewMapper {
     viewerId: string,
     cards: Map<string, SocialUserCard>,
     lastMessage: MessageView | null = null,
+    pinned: PinnedMessageView | null = null,
   ): ConversationView | null {
     const self = conversation.participants.find((p) => p.userId === viewerId);
     const peer = this.peerOf(conversation, viewerId);
@@ -87,6 +95,7 @@ export class ChatViewMapper {
         draft: self.draft,
         lastReadMessageId: self.lastReadMessageId,
         manualUnread: self.manualUnread,
+        wallpaper: self.wallpaper,
       },
       peerState: {
         lastReadMessageAt: peer.lastReadMessageAt,
@@ -96,12 +105,84 @@ export class ChatViewMapper {
       isRequest: isUnaccepted && conversation.requestedBy !== viewerId,
       // Outbound request: this user asked and the peer has not accepted yet.
       isPendingOutbound: isUnaccepted && conversation.requestedBy === viewerId,
+      // A pin the *viewer* cleared away is not shown back to them. The pin is
+      // shared, but this user's history is not, and resurrecting a message they
+      // deleted for themselves inside a banner would undo the delete.
+      pinned: this.visiblePin(pinned, self),
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
     };
   }
 
-  message(message: MessageWithRelations, viewerId: string): MessageView {
+  /** Suppress a pin that predates this user's "clear history" cut-off. */
+  private visiblePin(
+    pinned: PinnedMessageView | null,
+    self: ConversationParticipant,
+  ): PinnedMessageView | null {
+    if (!pinned) return null;
+    if (self.clearedAt && pinned.message.createdAt <= self.clearedAt) return null;
+    return pinned;
+  }
+
+  /**
+   * Map a page of messages, resolving the viewer's stars in **one** query.
+   *
+   * `isStarred` is per-viewer, so it cannot be baked into the row — and resolving
+   * it per message would be an N+1 on the hottest read in the module.
+   */
+  async messagesFor(
+    messages: MessageWithRelations[],
+    viewerId: string,
+    starredIds: Set<string>,
+  ): Promise<MessageView[]> {
+    const urls = await this.attachmentUrls(messages);
+    return messages.map((m) => this.message(m, viewerId, starredIds.has(m.id), urls));
+  }
+
+  /** One message, with its media URLs resolved. For the single-message paths. */
+  async messageWithMedia(
+    message: MessageWithRelations,
+    viewerId: string,
+    isStarred = false,
+  ): Promise<MessageView> {
+    const urls = await this.attachmentUrls([message]);
+    return this.message(message, viewerId, isStarred, urls);
+  }
+
+  /**
+   * Resolve every attachment key on a page to a servable URL, in one pass.
+   *
+   * Deduped across the page, because the same key can appear twice (a message and
+   * the thumbnail of another), and because without a CDN base each resolution is a
+   * presigned-GET signature — cheap, but not free, and not worth doing twice.
+   */
+  private async attachmentUrls(messages: MessageWithRelations[]): Promise<Map<string, string>> {
+    const keys = new Set<string>();
+    for (const message of messages) {
+      for (const attachment of message.attachments) {
+        keys.add(attachment.storageKey);
+        if (attachment.thumbnailKey) keys.add(attachment.thumbnailKey);
+      }
+    }
+    if (keys.size === 0) return new Map();
+
+    const resolved = await Promise.all(
+      [...keys].map(async (key) => [key, await this.mediaUrls.resolve(key)] as const),
+    );
+
+    return new Map(
+      resolved
+        .filter((entry): entry is readonly [string, string] => Boolean(entry[1]))
+        .map(([key, url]) => [key, url]),
+    );
+  }
+
+  message(
+    message: MessageWithRelations,
+    viewerId: string,
+    isStarred = false,
+    urls: Map<string, string> = new Map(),
+  ): MessageView {
     return {
       id: message.id,
       conversationId: message.conversationId,
@@ -115,6 +196,8 @@ export class ChatViewMapper {
         type: a.type,
         storageKey: a.storageKey,
         thumbnailKey: a.thumbnailKey,
+        url: urls.get(a.storageKey) ?? null,
+        thumbnailUrl: a.thumbnailKey ? (urls.get(a.thumbnailKey) ?? null) : null,
         mimeType: a.mimeType,
         sizeBytes: a.sizeBytes,
         durationMs: a.durationMs,
@@ -128,11 +211,36 @@ export class ChatViewMapper {
       isDeleted: message.isDeleted,
       editedAt: message.editedAt,
       createdAt: message.createdAt,
+      isStarred,
+      linkPreview: this.linkPreview(message),
     };
   }
 
   messages(messages: MessageWithRelations[], viewerId: string): MessageView[] {
     return messages.map((m) => this.message(m, viewerId));
+  }
+
+  /**
+   * The link card, or null when the message carries no link.
+   *
+   * A PENDING or FAILED preview is reported as such rather than flattened to null:
+   * "still resolving" and "this link has no preview" are different facts, and a
+   * client that cannot tell them apart either flickers or lies.
+   */
+  private linkPreview(message: MessageWithRelations): LinkPreviewView | null {
+    const preview = message.linkPreview;
+    if (!preview) return null;
+
+    return {
+      url: preview.url,
+      status: preview.status,
+      title: preview.title,
+      description: preview.description,
+      siteName: preview.siteName,
+      imageKey: preview.imageKey,
+      imageWidth: preview.imageWidth,
+      imageHeight: preview.imageHeight,
+    };
   }
 
   /** Resolve ids into cards, keyed for O(1) lookup. Unresolvable ids are absent. */
@@ -210,6 +318,11 @@ export class ChatViewMapper {
       isDeleted: false,
       editedAt: null,
       createdAt: conversation.lastMessageAt,
+      // A list preview is a denormalised snapshot, not the message. It carries no
+      // star (which is per-viewer and not on the row) and no link card (which the
+      // list does not render). Both would need a read the list exists to avoid.
+      isStarred: false,
+      linkPreview: null,
     };
   }
 }

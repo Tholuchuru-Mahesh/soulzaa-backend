@@ -31,13 +31,16 @@ import {
   ConversationCreatedEvent,
   ConversationDeclinedEvent,
   ConversationDraftChangedEvent,
+  ConversationPinnedMessageEvent,
   ConversationSettingsChangedEvent,
   MessageDeletedEvent,
   MessageDeliveredEvent,
   MessageEditedEvent,
+  MessageHiddenEvent,
   MessageReactionEvent,
   MessageReadEvent,
   MessageSentEvent,
+  MessageStarredEvent,
 } from '../events/chat.events';
 import type {
   CategoryCountsView,
@@ -45,8 +48,13 @@ import type {
   ConversationView,
   IChatService,
   ListConversationsInput,
+  ListMediaInput,
+  ListStarredInput,
+  MediaTab,
   MessageView,
+  PinnedMessageView,
   SendMessageInput,
+  StarredMessageView,
   UnreadTotalView,
 } from '../interfaces/chat.service.interface';
 import {
@@ -66,7 +74,16 @@ interface ChatConfig {
   unreadCacheTtlSeconds: number;
   editWindowSeconds: number;
   maxPinned: number;
+  maxStarred: number;
 }
+
+/** Which attachment kinds each media tab shows. LINKS is answered separately. */
+const MEDIA_TAB_TYPES: Record<Exclude<MediaTab, 'LINKS'>, AttachmentType[]> = {
+  IMAGES: [AttachmentType.IMAGE],
+  VIDEOS: [AttachmentType.VIDEO],
+  VOICE: [AttachmentType.VOICE],
+  FILES: [AttachmentType.FILE],
+};
 
 /** Attachment kinds each media message type accepts. */
 const TYPE_ATTACHMENT: Partial<Record<DirectMessageType, AttachmentType>> = {
@@ -211,8 +228,44 @@ export class ChatService implements IChatService {
     });
 
     const views = await this.views.conversations(rows, userId);
+    await this.repairHiddenPreviews(views, userId);
     const ordered = input.filter === 'INBOX' ? this.pinnedFirst(views) : views;
     return buildPaginated(ordered, total, page, limit);
+  }
+
+  /**
+   * Replace the list preview of any conversation whose last message this user
+   * hid for themselves.
+   *
+   * `Conversation.lastMessage*` is denormalised and **shared** — so without this,
+   * a user who deletes the newest message for themselves still sees it as their
+   * Chats-list preview, which quietly undoes the delete on the one screen they are
+   * most likely to be looking at.
+   *
+   * Deliberately not a per-user preview column. The lookup below is one batched
+   * read for the page, and the repair itself only runs for the rare row that
+   * actually needs it — so the common case pays nothing.
+   */
+  private async repairHiddenPreviews(views: ConversationView[], userId: string): Promise<void> {
+    const lastIds = views.map((v) => v.lastMessage?.id).filter((id): id is string => Boolean(id));
+    if (lastIds.length === 0) return;
+
+    const hidden = await this.messages.hiddenIdsAmong(lastIds, userId);
+    if (hidden.size === 0) return;
+
+    await Promise.all(
+      views.map(async (view) => {
+        const lastId = view.lastMessage?.id;
+        if (!lastId || !hidden.has(lastId)) return;
+
+        const replacement = await this.messages.newestVisible(view.id, userId);
+        // No visible message left at all — the row shows no preview rather than
+        // one the user has deleted.
+        view.lastMessage = replacement
+          ? await this.views.messageWithMedia(replacement, userId)
+          : null;
+      }),
+    );
   }
 
   async categoryCounts(userId: string): Promise<CategoryCountsView> {
@@ -257,6 +310,7 @@ export class ChatService implements IChatService {
       ...(input.isFavorite !== undefined ? { isFavorite: input.isFavorite } : {}),
       ...(input.isMuted !== undefined ? { isMuted: input.isMuted } : {}),
       ...(input.mutedUntil !== undefined ? { mutedUntil: input.mutedUntil } : {}),
+      ...(input.wallpaper !== undefined ? { wallpaper: input.wallpaper } : {}),
     });
 
     await this.invalidateUnread(userId);
@@ -403,7 +457,7 @@ export class ChatService implements IChatService {
       })),
     });
 
-    const view = this.views.message(message, userId);
+    const view = await this.views.messageWithMedia(message, userId);
 
     // A retried send resolves to the existing row. Return it, but do not
     // re-run the side effects — otherwise one flaky network would double the
@@ -449,9 +503,18 @@ export class ChatService implements IChatService {
       take: limit,
       before: opts.before,
       clearedAt: self?.clearedAt ?? null,
+      // Excludes the messages this user deleted for themselves. The peer's copy of
+      // each is untouched — that is the whole point of "delete for me".
+      viewerId: userId,
     });
 
-    return buildPaginated(this.views.messages(rows, userId), total, page, limit);
+    // One query for the whole page, never one per row.
+    const starred = await this.messages.starredIdsAmong(
+      rows.map((m) => m.id),
+      userId,
+    );
+
+    return buildPaginated(await this.views.messagesFor(rows, userId, starred), total, page, limit);
   }
 
   async deleteMessage(userId: string, messageId: string): Promise<void> {
@@ -474,14 +537,278 @@ export class ChatService implements IChatService {
     const conversation = await this.requireParticipant(message.conversationId, userId);
     await this.messages.softDelete(messageId);
 
+    const recipientIds = conversation.participants.map((p) => p.userId);
+
     await this.bus.publish(
       new MessageDeletedEvent({
-        recipientIds: conversation.participants.map((p) => p.userId),
+        recipientIds,
         conversationId: message.conversationId,
         messageId,
         deletedBy: userId,
       }),
     );
+
+    // A banner must not outlive the message it pins. Deleting a pinned message for
+    // everyone implicitly unpins it — otherwise both participants keep staring at a
+    // tombstone at the top of the thread.
+    if (conversation.pinnedMessageId === messageId) {
+      await this.conversations.setPinnedMessage(message.conversationId, null);
+      await this.bus.publish(
+        new ConversationPinnedMessageEvent({
+          recipientIds,
+          conversationId: message.conversationId,
+          message: null,
+          pinnedBy: null,
+          pinnedAt: null,
+        }),
+      );
+    }
+  }
+
+  /**
+   * Delete for me. Hides one message from one user, leaving the peer's copy alone.
+   *
+   * Any participant may hide any message — their own or the peer's. That is what
+   * separates this from {@link deleteMessage}, which is the sender's alone and
+   * removes the message for both sides. No tombstone is left: the message simply
+   * ceases to exist for this user.
+   */
+  async hideMessage(userId: string, messageId: string): Promise<void> {
+    const { message } = await this.requireMessageAccess(userId, messageId);
+
+    await this.messages.hide(messageId, userId, message.conversationId);
+
+    // Addressed to the owner alone. The peer must never learn their message was
+    // hidden — a "delete for me" the other side can observe is not one.
+    await this.bus.publish(
+      new MessageHiddenEvent({
+        recipientIds: [userId],
+        conversationId: message.conversationId,
+        messageId,
+      }),
+    );
+  }
+
+  /**
+   * The conversation's media, by tab.
+   *
+   * Same visibility rules as history — nothing deleted, nothing this user hid, and
+   * nothing before their clear-history cut-off. A media tab that surfaces a photo
+   * the user deleted for themselves would quietly undo the delete.
+   */
+  async listMedia(
+    userId: string,
+    conversationId: string,
+    input: ListMediaInput,
+  ): Promise<Paginated<MessageView>> {
+    await this.requireParticipant(conversationId, userId);
+    const { page, limit, skip } = normalizePagination(input);
+
+    const self = await this.conversations.participant(conversationId, userId);
+    const clearedAt = self?.clearedAt ?? null;
+
+    const [rows, total] =
+      input.tab === 'LINKS'
+        ? await this.messages.listLinks(conversationId, {
+            skip,
+            take: limit,
+            viewerId: userId,
+            clearedAt,
+          })
+        : await this.messages.listMedia(conversationId, {
+            skip,
+            take: limit,
+            viewerId: userId,
+            clearedAt,
+            types: MEDIA_TAB_TYPES[input.tab],
+          });
+
+    const starred = await this.messages.starredIdsAmong(
+      rows.map((m) => m.id),
+      userId,
+    );
+
+    return buildPaginated(await this.views.messagesFor(rows, userId, starred), total, page, limit);
+  }
+
+  // ============================== Starring ==============================
+
+  async star(userId: string, messageId: string): Promise<void> {
+    const { message } = await this.requireMessageAccess(userId, messageId);
+
+    if (message.isDeleted) {
+      throw new BusinessException(
+        ERROR_CODES.DM_NOT_FOUND,
+        'Message not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // Starring something you already deleted for yourself would put it back in
+    // front of you, in the Starred screen.
+    if (await this.messages.isHidden(messageId, userId)) {
+      throw new BusinessException(
+        ERROR_CODES.DM_NOT_FOUND,
+        'Message not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // An uncapped per-user table is an availability incident waiting to happen.
+    const count = await this.messages.countStars(userId);
+    if (count >= this.chatConfig().maxStarred) {
+      throw new BusinessException(
+        ERROR_CODES.STAR_LIMIT_REACHED,
+        `You can star at most ${this.chatConfig().maxStarred} messages`,
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const added = await this.messages.star(messageId, userId, message.conversationId);
+    if (!added) return; // Already starred — idempotent, not a conflict.
+
+    await this.publishStarred(userId, message.conversationId, messageId, true);
+  }
+
+  async unstar(userId: string, messageId: string): Promise<void> {
+    const { message } = await this.requireMessageAccess(userId, messageId);
+
+    const removed = await this.messages.unstar(messageId, userId);
+    if (!removed) return;
+
+    await this.publishStarred(userId, message.conversationId, messageId, false);
+  }
+
+  /** The owner's devices only — a star is private, and its echo must be too. */
+  private publishStarred(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+    starred: boolean,
+  ): Promise<void> {
+    return this.bus.publish(
+      new MessageStarredEvent({
+        recipientIds: [userId],
+        conversationId,
+        messageId,
+        starred,
+        starredAt: starred ? new Date().toISOString() : null,
+      }),
+    );
+  }
+
+  async listStarred(
+    userId: string,
+    input: ListStarredInput,
+  ): Promise<Paginated<StarredMessageView>> {
+    const { page, limit, skip } = normalizePagination(input);
+
+    const [rows, total] = await this.messages.listStarred(userId, {
+      skip,
+      take: limit,
+      conversationId: input.conversationId,
+      cursor: input.cursor,
+    });
+
+    // The Starred screen has to say which chat each message came from, so the peer
+    // cards are resolved in one batched call for the page — not one per row.
+    const conversationIds = [...new Set(rows.map((r) => r.conversationId))];
+    const conversations = await Promise.all(
+      conversationIds.map((id) => this.conversations.findById(id)),
+    );
+
+    const peerByConversation = new Map<string, string>();
+    for (const conversation of conversations) {
+      if (!conversation) continue;
+      const peer = this.views.peerOf(conversation, userId);
+      if (peer) peerByConversation.set(conversation.id, peer.userId);
+    }
+
+    const cards = await this.views.cards([...peerByConversation.values()]);
+
+    const views: StarredMessageView[] = [];
+    for (const row of rows) {
+      const peerId = peerByConversation.get(row.conversationId);
+      const card = peerId ? cards.get(peerId) : undefined;
+      // A conversation whose peer no longer resolves (deleted account) is dropped
+      // rather than rendered as a starred message from nobody.
+      if (!card) continue;
+
+      views.push({
+        message: await this.views.messageWithMedia(row.message, userId, true),
+        conversationId: row.conversationId,
+        peer: card,
+        starredAt: row.createdAt,
+      });
+    }
+
+    return buildPaginated(views, total, page, limit);
+  }
+
+  // ========================= Pinned thread banner =========================
+
+  async pinMessage(
+    userId: string,
+    conversationId: string,
+    messageId: string,
+  ): Promise<ConversationView> {
+    const conversation = await this.requireParticipant(conversationId, userId);
+    const message = await this.messages.findById(messageId);
+
+    // The message must belong to *this* conversation, still exist, and not be one
+    // the pinner deleted for themselves — pinning something you cannot see is
+    // pinning it for the peer alone, which nobody asked for.
+    if (
+      !message ||
+      message.conversationId !== conversationId ||
+      message.isDeleted ||
+      (await this.messages.isHidden(messageId, userId))
+    ) {
+      throw new BusinessException(
+        ERROR_CODES.PIN_MESSAGE_INVALID,
+        'That message cannot be pinned',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Single slot: pinning replaces whatever was pinned before.
+    const updated = await this.conversations.setPinnedMessage(conversationId, {
+      messageId,
+      pinnedBy: userId,
+    });
+
+    const view = await this.views.messageWithMedia(message, userId);
+
+    await this.bus.publish(
+      new ConversationPinnedMessageEvent({
+        // Shared, unlike a star: both participants see the banner.
+        recipientIds: conversation.participants.map((p) => p.userId),
+        conversationId,
+        message: view,
+        pinnedBy: userId,
+        pinnedAt: (updated.pinnedAt ?? new Date()).toISOString(),
+      }),
+    );
+
+    return this.getConversation(userId, conversationId);
+  }
+
+  async unpinMessage(userId: string, conversationId: string): Promise<ConversationView> {
+    const conversation = await this.requireParticipant(conversationId, userId);
+
+    await this.conversations.setPinnedMessage(conversationId, null);
+
+    await this.bus.publish(
+      new ConversationPinnedMessageEvent({
+        recipientIds: conversation.participants.map((p) => p.userId),
+        conversationId,
+        message: null,
+        pinnedBy: null,
+        pinnedAt: null,
+      }),
+    );
+
+    return this.getConversation(userId, conversationId);
   }
 
   async react(userId: string, messageId: string, emoji: string): Promise<void> {
@@ -585,7 +912,7 @@ export class ChatService implements IChatService {
     }
 
     const updated = await this.messages.edit(messageId, trimmed);
-    const view = this.views.message(updated, userId);
+    const view = await this.views.messageWithMedia(updated, userId);
 
     // If it was the newest message, the list preview is now stale.
     if (conversation.lastMessageId === messageId) {
@@ -917,11 +1244,37 @@ export class ChatService implements IChatService {
 
   // ============================== Helpers ==============================
 
+  /**
+   * The thread's pinned banner as *this* user should see it.
+   *
+   * Null when nothing is pinned, when the pinned message has since been deleted
+   * for everyone, or when this user hid it for themselves — a "delete for me" that
+   * a banner then resurrects is not a delete.
+   */
+  private async pinnedView(
+    conversation: ConversationWithParticipants,
+    userId: string,
+  ): Promise<PinnedMessageView | null> {
+    const { pinnedMessageId, pinnedBy, pinnedAt } = conversation;
+    if (!pinnedMessageId || !pinnedBy || !pinnedAt) return null;
+
+    const message = await this.messages.findById(pinnedMessageId);
+    if (!message || message.isDeleted) return null;
+    if (await this.messages.isHidden(pinnedMessageId, userId)) return null;
+
+    return {
+      message: await this.views.messageWithMedia(message, userId),
+      pinnedBy,
+      pinnedAt,
+    };
+  }
+
   private async requireView(
     conversation: ConversationWithParticipants,
     userId: string,
   ): Promise<ConversationView> {
-    const view = await this.views.conversation(conversation, userId);
+    const pinned = await this.pinnedView(conversation, userId);
+    const view = await this.views.conversation(conversation, userId, pinned);
     if (!view) {
       throw new BusinessException(
         ERROR_CODES.CONVERSATION_NOT_FOUND,

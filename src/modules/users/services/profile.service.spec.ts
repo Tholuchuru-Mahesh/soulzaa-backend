@@ -6,7 +6,7 @@ import { UploadService } from 'src/infra/storage/upload.service';
 import type { IPrivacyService } from 'src/modules/privacy/interfaces/privacy.interface';
 import { ProfileRepository } from '../repositories/profile.repository';
 import { UsersRepository } from '../repositories/users.repository';
-import { MediaUrlResolver } from './media-url.resolver';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import { ProfileService } from './profile.service';
 import type { IUserSearchProvider } from './search/user-search.provider';
 

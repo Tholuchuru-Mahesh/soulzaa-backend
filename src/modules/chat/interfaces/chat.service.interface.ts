@@ -11,12 +11,27 @@ import type { TypingKind } from '../constants/chat.constants';
  */
 export const CHAT_SERVICE = Symbol('CHAT_SERVICE');
 
-/** Media attached to a message. Keys are resolved to URLs against the client's CDN base. */
+/**
+ * Media attached to a message.
+ *
+ * `url` and `thumbnailUrl` are resolved **server-side**, and that is a deliberate
+ * authorisation decision rather than a convenience. `GET /storage/download-url`
+ * authorises by key *ownership* — it would refuse to serve a user their peer's
+ * image, which is every inbound attachment in every conversation. Resolving here
+ * means access is granted by conversation participation, which is the right
+ * question to ask, and a page of thirty images costs no extra round trips.
+ *
+ * The keys are still sent: they are what a message references, and what a delete
+ * names. The URLs are how the media is *fetched*, and they may be short-lived
+ * presigned GETs when no public CDN base is configured.
+ */
 export interface AttachmentView {
   id: string;
   type: AttachmentType;
   storageKey: string;
   thumbnailKey: string | null;
+  url: string | null;
+  thumbnailUrl: string | null;
   mimeType: string;
   sizeBytes: number;
   durationMs: number | null;
@@ -32,6 +47,25 @@ export interface ReactionView {
   count: number;
   /** Whether the requesting user is one of the reactors. */
   reactedByMe: boolean;
+}
+
+/**
+ * Open Graph metadata for the first link in a message body.
+ *
+ * `PENDING` while the crawler is still working and `FAILED` when it gave up —
+ * both are reported honestly rather than being flattened to null, so a client can
+ * tell "no preview yet" from "this link has no preview".
+ */
+export interface LinkPreviewView {
+  url: string;
+  status: 'PENDING' | 'READY' | 'FAILED';
+  title: string | null;
+  description: string | null;
+  siteName: string | null;
+  /** Resolved against the CDN base by the client, exactly like an attachment key. */
+  imageKey: string | null;
+  imageWidth: number | null;
+  imageHeight: number | null;
 }
 
 export interface MessageView {
@@ -50,6 +84,28 @@ export interface MessageView {
   isDeleted: boolean;
   editedAt: Date | null;
   createdAt: Date;
+  /**
+   * Whether the *requesting* user starred this message — never whether the peer
+   * did. Starring is private, and leaking it here would leak it everywhere.
+   */
+  isStarred: boolean;
+  linkPreview: LinkPreviewView | null;
+}
+
+/** A starred message, with the conversation it lives in. */
+export interface StarredMessageView {
+  message: MessageView;
+  conversationId: string;
+  /** The other participant, so the Starred screen can say which chat this came from. */
+  peer: SocialUserCard;
+  starredAt: Date;
+}
+
+/** The message pinned to the top of a thread. Shared by both participants. */
+export interface PinnedMessageView {
+  message: MessageView;
+  pinnedBy: string;
+  pinnedAt: Date;
 }
 
 /**
@@ -71,6 +127,8 @@ export interface ConversationSelfView {
   lastReadMessageId: string | null;
   /** The user pressed "mark unread"; the badge shows even though they did read it. */
   manualUnread: boolean;
+  /** Preset id or storage key. Per-user: the peer sees their own. */
+  wallpaper: string | null;
 }
 
 /** The peer's read/delivery watermarks — what drives the sender's ticks. */
@@ -90,6 +148,13 @@ export interface ConversationView {
   isRequest: boolean;
   /** True while this is a request the requesting user sent, still unaccepted. */
   isPendingOutbound: boolean;
+  /**
+   * The thread's pinned banner, or null.
+   *
+   * Null for a user whose `clearedAt` cut-off is newer than the pinned message:
+   * they deleted that history for themselves, and it must not reappear in a banner.
+   */
+  pinned: PinnedMessageView | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -143,6 +208,25 @@ export interface ConversationSettingsInput {
   isFavorite?: boolean;
   isMuted?: boolean;
   mutedUntil?: Date | null;
+  wallpaper?: string | null;
+}
+
+/** The tabs on the conversation-media screen. */
+export type MediaTab = 'IMAGES' | 'VIDEOS' | 'VOICE' | 'FILES' | 'LINKS';
+
+export interface ListMediaInput {
+  page: number;
+  limit: number;
+  tab: MediaTab;
+}
+
+export interface ListStarredInput {
+  page: number;
+  limit: number;
+  /** Narrow to one conversation. Omit for every starred message the user has. */
+  conversationId?: string;
+  /** Keyset cursor: the id of the last starred row on the previous page. */
+  cursor?: string;
 }
 
 /** Per-category badge counts for the Chats screen's category chips. */
@@ -188,10 +272,39 @@ export interface IChatService {
     conversationId: string,
     opts: { page: number; limit: number; before?: string },
   ): Promise<Paginated<MessageView>>;
+  /** Delete for everyone. Sender-only; leaves an `isDeleted` tombstone both sides see. */
   deleteMessage(userId: string, messageId: string): Promise<void>;
+  /**
+   * Delete for me. Any participant may hide any message — that is what separates
+   * this from `deleteMessage`, which is the sender's alone. No tombstone: the
+   * message simply ceases to exist for this user, and the peer's copy is untouched.
+   */
+  hideMessage(userId: string, messageId: string): Promise<void>;
   editMessage(userId: string, messageId: string, content: string): Promise<MessageView>;
   react(userId: string, messageId: string, emoji: string): Promise<void>;
   unreact(userId: string, messageId: string, emoji: string): Promise<void>;
+
+  // ---- Starring (private to the user) ----
+  star(userId: string, messageId: string): Promise<void>;
+  unstar(userId: string, messageId: string): Promise<void>;
+  listStarred(userId: string, input: ListStarredInput): Promise<Paginated<StarredMessageView>>;
+
+  /**
+   * The media in one conversation, by tab.
+   *
+   * Returns whole messages rather than bare attachments: the gallery needs to know
+   * who sent each item and when, and tapping one has to be able to jump back to it
+   * in the thread.
+   */
+  listMedia(
+    userId: string,
+    conversationId: string,
+    input: ListMediaInput,
+  ): Promise<Paginated<MessageView>>;
+
+  // ---- Pinned thread banner (shared by both participants) ----
+  pinMessage(userId: string, conversationId: string, messageId: string): Promise<ConversationView>;
+  unpinMessage(userId: string, conversationId: string): Promise<ConversationView>;
   report(
     userId: string,
     conversationId: string,

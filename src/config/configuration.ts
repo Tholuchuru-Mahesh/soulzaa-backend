@@ -251,6 +251,15 @@ export const chatConfig = registerAs('chat', () => ({
   unreadCacheTtlSeconds: env.CHAT_UNREAD_CACHE_TTL_SECONDS,
   editWindowSeconds: env.CHAT_EDIT_WINDOW_SECONDS,
   maxPinned: env.CHAT_MAX_PINNED,
+  maxStarred: env.CHAT_MAX_STARRED,
+  linkPreviewEnabled: env.CHAT_LINK_PREVIEW_ENABLED,
+  linkPreviewTimeoutMs: env.CHAT_LINK_PREVIEW_TIMEOUT_MS,
+  linkPreviewMaxBytes: env.CHAT_LINK_PREVIEW_MAX_BYTES,
+  linkPreviewMaxRedirects: env.CHAT_LINK_PREVIEW_MAX_REDIRECTS,
+  linkPreviewTtlDays: env.CHAT_LINK_PREVIEW_TTL_DAYS,
+  linkPreviewDenylist: env.CHAT_LINK_PREVIEW_DENYLIST.split(',')
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean),
 }));
 
 export const giftConfig = registerAs('gift', () => ({

@@ -142,6 +142,13 @@ export const ERROR_CODES = {
   /** A rich message (GIFT/ROOM_INVITE/...) is missing the metadata its type requires. */
   METADATA_INVALID: 'METADATA_INVALID',
   CANNOT_REPORT_SELF: 'CANNOT_REPORT_SELF',
+  /** The user has starred as many messages as they are allowed to. */
+  STAR_LIMIT_REACHED: 'STAR_LIMIT_REACHED',
+  /**
+   * The message cannot be pinned to the thread: it belongs to another
+   * conversation, is deleted, or the pinner has hidden it for themselves.
+   */
+  PIN_MESSAGE_INVALID: 'PIN_MESSAGE_INVALID',
 
   // ---- Wallet (economy) ----
   WALLET_NOT_FOUND: 'WALLET_NOT_FOUND',

@@ -16,9 +16,11 @@ import { NotGuest } from 'src/common/decorators/not-guest.decorator';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import {
   ListConversationsDto,
+  ListMediaDto,
   ListMessagesDto,
   MarkReadDto,
   OpenConversationDto,
+  PinMessageDto,
   ReportConversationDto,
   SaveDraftDto,
   SendMessageDto,
@@ -94,6 +96,7 @@ export class ConversationsController {
       isFavorite: dto.isFavorite,
       isMuted: dto.isMuted,
       mutedUntil: dto.mutedUntil ? new Date(dto.mutedUntil) : undefined,
+      wallpaper: dto.wallpaper,
     });
   }
 
@@ -108,6 +111,36 @@ export class ConversationsController {
   ) {
     await this.chat.saveDraft(userId, id, dto.text ?? null);
     return { ok: true };
+  }
+
+  /**
+   * The message pinned to the top of the thread.
+   *
+   * Deliberately NOT called "pin": `PUT :id/settings` already carries `isPinned`,
+   * which pins the *conversation* in the Chats list. Two different features, and
+   * overloading the word would confuse them forever.
+   *
+   * Single-slot and shared: either participant may pin, both see the banner, and
+   * pinning replaces whatever was pinned before.
+   */
+  @Post(':id/pinned-message')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Pin a message to the top of the thread' })
+  pinMessage(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: PinMessageDto,
+  ) {
+    return this.chat.pinMessage(userId, id, dto.messageId);
+  }
+
+  @Delete(':id/pinned-message')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Remove the thread’s pinned message' })
+  unpinMessage(@CurrentUser('id') userId: string, @Param('id', ParseUuidPipe) id: string) {
+    return this.chat.unpinMessage(userId, id);
   }
 
   @Delete(':id')
@@ -169,6 +202,16 @@ export class ConversationsController {
     @Query() q: ListMessagesDto,
   ) {
     return this.chat.history(userId, id, { page: q.page, limit: q.limit, before: q.before });
+  }
+
+  @Get(':id/media')
+  @ApiOperation({ summary: "The conversation's media, by tab" })
+  media(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Query() q: ListMediaDto,
+  ) {
+    return this.chat.listMedia(userId, id, { page: q.page, limit: q.limit, tab: q.tab });
   }
 
   // ---- Receipts & indicators ----

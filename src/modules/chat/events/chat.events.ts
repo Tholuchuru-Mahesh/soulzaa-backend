@@ -1,6 +1,10 @@
 import { DomainEvent } from 'src/common/events';
 import type { TypingKind } from '../constants/chat.constants';
-import type { ConversationView, MessageView } from '../interfaces/chat.service.interface';
+import type {
+  ConversationView,
+  LinkPreviewView,
+  MessageView,
+} from '../interfaces/chat.service.interface';
 
 /**
  * Chat events on the EVENT_BUS. The chat socket listener bridges them to the
@@ -20,10 +24,14 @@ export const CHAT_EVENTS = {
   CONVERSATION_CLEARED: 'chat.conversation_cleared',
   CONVERSATION_SETTINGS: 'chat.conversation_settings',
   CONVERSATION_DRAFT: 'chat.conversation_draft',
+  CONVERSATION_PINNED_MESSAGE: 'chat.conversation_pinned_message',
   MESSAGE_SENT: 'chat.message_sent',
   MESSAGE_DELETED: 'chat.message_deleted',
   MESSAGE_EDITED: 'chat.message_edited',
   MESSAGE_REACTION: 'chat.message_reaction',
+  MESSAGE_STARRED: 'chat.message_starred',
+  MESSAGE_HIDDEN: 'chat.message_hidden',
+  MESSAGE_PREVIEW: 'chat.message_preview',
   MESSAGE_DELIVERED: 'chat.message_delivered',
   MESSAGE_READ: 'chat.message_read',
   TYPING: 'chat.typing',
@@ -147,6 +155,66 @@ export class MessageReadEvent extends DomainEvent<
   }
 > {
   readonly name = CHAT_EVENTS.MESSAGE_READ;
+}
+
+/**
+ * The thread's pinned banner changed. Addressed to **both** participants — unlike
+ * a star, a pin is shared, and either side may set it.
+ *
+ * `message: null` means unpinned, including the implicit unpin that follows
+ * deleting the pinned message for everyone.
+ */
+export class ConversationPinnedMessageEvent extends DomainEvent<
+  Addressed & {
+    conversationId: string;
+    message: MessageView | null;
+    pinnedBy: string | null;
+    pinnedAt: string | null;
+  }
+> {
+  readonly name = CHAT_EVENTS.CONVERSATION_PINNED_MESSAGE;
+}
+
+/**
+ * A message was starred or unstarred. Addressed to the **owner only**.
+ *
+ * Starring is private. Telling the peer that their message was starred would leak
+ * an action the user took about them, not with them.
+ */
+export class MessageStarredEvent extends DomainEvent<
+  Addressed & {
+    conversationId: string;
+    messageId: string;
+    starred: boolean;
+    starredAt: string | null;
+  }
+> {
+  readonly name = CHAT_EVENTS.MESSAGE_STARRED;
+}
+
+/**
+ * A message was deleted *for this user only*. Addressed to the owner's devices —
+ * the peer must never learn their message was hidden, which is the whole
+ * distinction between this and delete-for-everyone.
+ */
+export class MessageHiddenEvent extends DomainEvent<
+  Addressed & { conversationId: string; messageId: string }
+> {
+  readonly name = CHAT_EVENTS.MESSAGE_HIDDEN;
+}
+
+/**
+ * A link preview finished resolving. Addressed to both participants, who patch the
+ * bubble in place. `preview` is null when the scrape failed.
+ */
+export class MessagePreviewEvent extends DomainEvent<
+  Addressed & {
+    conversationId: string;
+    messageId: string;
+    preview: LinkPreviewView | null;
+  }
+> {
+  readonly name = CHAT_EVENTS.MESSAGE_PREVIEW;
 }
 
 /** Ephemeral — never persisted, never pushed. */

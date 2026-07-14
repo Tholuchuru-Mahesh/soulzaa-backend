@@ -192,7 +192,14 @@ describe('ChatService', () => {
         .mockResolvedValue({ items: [], total: 0, page: 1, limit: 20, totalPages: 1 }),
     };
 
-    const views = new ChatViewMapper(profiles as never);
+    // No CDN base in tests, and no S3 — the resolver is stubbed to echo the key
+    // back as a URL, which is all the view assertions need.
+    const mediaUrls = {
+      isStable: true,
+      resolve: jest.fn(async (key: string | null) => (key ? `https://cdn.test/${key}` : null)),
+    };
+
+    const views = new ChatViewMapper(profiles as never, mediaUrls as never);
 
     service = new ChatService(
       conversations as unknown as ConversationRepository,

@@ -73,6 +73,18 @@ model Conversation {
   lastMessageType    DirectMessageType?
   lastMessageSender  String?            @db.Uuid
 
+  /// The message pinned to the top of the thread, shown as a banner. Shared: both
+  /// participants see it, and either may pin — unlike a star, which is private.
+  /// Referenced by id with no FK, exactly like `lastMessageId`: chat's own
+  /// denormalised pointers stay pointers, so deleting a message can never cascade
+  /// a conversation row away.
+  ///
+  /// NOT to be confused with `ConversationParticipant.isPinned`, which pins the
+  /// *conversation* to the top of the Chats list. Different feature, different row.
+  pinnedMessageId String?   @db.Uuid
+  pinnedBy        String?   @db.Uuid
+  pinnedAt        DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -125,8 +137,14 @@ model ConversationParticipant {
 
   /// "Delete for me" cut-off — messages older than this are hidden from this user.
   clearedAt DateTime?
-  joinedAt  DateTime  @default(now())
-  leftAt    DateTime?
+
+  /// Per-user chat wallpaper: a preset id, or an S3 key for a custom upload.
+  /// Synced across the owner's devices by the existing settings event — a
+  /// wallpaper that resets on reinstall reads as a bug, not a feature.
+  wallpaper String?
+
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
@@ -162,14 +180,102 @@ model DirectMessage {
   editedAt  DateTime?
   createdAt DateTime  @default(now())
 
+  /// Open Graph metadata for the first URL in the body, resolved asynchronously
+  /// after the message is sent. Null when the body carries no link — which is the
+  /// overwhelming majority of messages, so this costs nothing on the hot path.
+  linkPreviewId String?      @db.Uuid
+  linkPreview   LinkPreview? @relation(fields: [linkPreviewId], references: [id], onDelete: SetNull)
+
   conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   attachments  MessageAttachment[]
   reactions    MessageReaction[]
+  starredBy    StarredMessage[]
+  hiddenBy     HiddenMessage[]
 
   @@unique([conversationId, clientId])
   @@index([conversationId, createdAt])
   @@index([senderId])
+  @@index([linkPreviewId])
   @@map("direct_messages")
+}
+
+/// A message a user has starred. Private to that user — the peer is never told,
+/// so the fan-out is addressed to the owner's devices only (multi-device sync),
+/// exactly like a draft or a pin/archive setting.
+///
+/// `conversationId` is denormalised so "list my starred messages", optionally
+/// scoped to one chat, is a single indexed read with no join back to the message
+/// table just to order or filter.
+model StarredMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  messageId      String   @db.Uuid
+  userId         String   @db.Uuid
+  conversationId String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  message DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, conversationId, createdAt(sort: Desc)])
+  @@map("starred_messages")
+}
+
+/// "Delete for me" at message granularity. `ConversationParticipant.clearedAt`
+/// already hides everything before a cut-off; this hides a single message for a
+/// single user without touching the peer's copy.
+///
+/// There is no un-hide, and no tombstone: the message simply ceases to exist for
+/// this user. That is what separates it from delete-for-everyone, which leaves an
+/// `isDeleted` marker both sides can see.
+model HiddenMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  messageId      String   @db.Uuid
+  userId         String   @db.Uuid
+  conversationId String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  message DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, conversationId])
+  @@map("hidden_messages")
+}
+
+enum LinkPreviewStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+/// Cached Open Graph metadata for a URL, keyed by a hash of the normalised URL so
+/// a link shared a thousand times is scraped once for the whole platform.
+///
+/// FAILED is cached too — a dead link must not be re-fetched on every render.
+model LinkPreview {
+  id          String            @id @default(uuid()) @db.Uuid
+  /// SHA-256 of the normalised URL. Hashed because a raw URL is too long to index.
+  urlHash     String            @unique
+  url         String
+  title       String?
+  description String?
+  siteName    String?
+  /// S3 key of the thumbnail *we re-hosted*, never a remote URL: hotlinking would
+  /// leak every reader's IP to the link's origin and rot when the origin does.
+  imageKey    String?
+  imageWidth  Int?
+  imageHeight Int?
+  status      LinkPreviewStatus @default(PENDING)
+  fetchedAt   DateTime?
+  /// Re-scrape after this instant. A confidently stale title is worse than none.
+  expiresAt   DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  messages DirectMessage[]
+
+  @@index([expiresAt])
+  @@map("link_previews")
 }
 
 /// Media carried by a message. `storageKey` is the S3 object key produced by

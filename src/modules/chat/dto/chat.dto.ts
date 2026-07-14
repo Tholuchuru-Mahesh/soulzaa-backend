@@ -80,6 +80,35 @@ export class ListConversationsDto extends PaginationQueryDto {
   cursor?: string;
 }
 
+export class PinMessageDto {
+  @ApiProperty({ description: 'The message to pin to the top of the thread' })
+  @IsUUID()
+  messageId!: string;
+}
+
+export const MEDIA_TABS = ['IMAGES', 'VIDEOS', 'VOICE', 'FILES', 'LINKS'] as const;
+
+export class ListMediaDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ enum: MEDIA_TABS, default: 'IMAGES' })
+  @IsOptional()
+  @IsEnum(MEDIA_TABS)
+  tab: (typeof MEDIA_TABS)[number] = 'IMAGES';
+}
+
+export class ListStarredDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ description: 'Narrow to the starred messages in one conversation' })
+  @IsOptional()
+  @IsUUID()
+  conversationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Keyset cursor — the id of the last starred row on the previous page.',
+  })
+  @IsOptional()
+  @IsUUID()
+  cursor?: string;
+}
+
 export class UpdateConversationSettingsDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -105,6 +134,16 @@ export class UpdateConversationSettingsDto {
   @IsOptional()
   @IsDateString()
   mutedUntil?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Chat wallpaper: a preset id, or a storage key from the presign/confirm flow. ' +
+      "Per-user and synced across the owner's devices — the peer keeps their own.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  wallpaper?: string;
 }
 
 export class EditMessageDto {
