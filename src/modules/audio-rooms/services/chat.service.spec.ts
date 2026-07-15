@@ -381,4 +381,28 @@ describe('ChatService', () => {
       ).rejects.toMatchObject({ errorCode: 'DUPLICATE_REPORT' });
     });
   });
+
+  describe('announce', () => {
+    it('creates an announcement message, unpins active pins, and pins the new announcement', async () => {
+      const msg = message({ type: 'ANNOUNCEMENT' });
+      chatRepo.createMessage.mockResolvedValue(msg);
+      chatRepo.countActivePins.mockResolvedValue(5);
+      chatRepo.listActivePins.mockResolvedValue([{ id: 'pin-1', messageId: 'old-msg' }]);
+
+      await service.announce(ACTOR, ROOM, { content: 'hello announcement' });
+
+      expect(chatRepo.createMessage).toHaveBeenCalled();
+      expect(chatRepo.unpin).toHaveBeenCalledWith('pin-1', ACTOR.id);
+      expect(chatRepo.pin).toHaveBeenCalledWith(expect.objectContaining({ messageId: msg.id }));
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'audio_room.chat_announcement' }),
+      );
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'audio_room.chat_message_pinned' }),
+      );
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'audio_room.chat_message_unpinned' }),
+      );
+    });
+  });
 });

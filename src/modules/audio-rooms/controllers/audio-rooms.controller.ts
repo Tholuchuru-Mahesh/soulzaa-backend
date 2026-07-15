@@ -112,6 +112,13 @@ export class AudioRoomsController {
     return { ended: true };
   }
 
+  @Post(':id/start')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Start/Go live in an existing audio room (owner/admin)' })
+  async start(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.rooms.start(this.actor(user), id);
+  }
+
   @Post(':id/join')
   @HttpCode(HttpStatus.OK)
   @NotGuest()

@@ -279,6 +279,25 @@ export class AudioRoomsService implements IAudioRoomsService {
     );
   }
 
+  async start(actor: RoomActor, roomId: string): Promise<RoomView> {
+    const room = await this.getManageableRoom(roomId, actor);
+    const updated = await this.repo.updateRoom(
+      roomId,
+      { status: 'LIVE', endedAt: null },
+      actor.id,
+    );
+    const view = await this.toView(updated);
+    await this.repo.setCachedSnapshot(view, this.cacheTtl);
+    await this.bus.publish(
+      new RoomUpdatedEvent({
+        roomId,
+        actorId: actor.id,
+        changed: ['status'],
+      }),
+    );
+    return view;
+  }
+
   async join(actor: RoomActor, roomId: string, dto: JoinRoomDto): Promise<RoomDetailView> {
     const room = await this.getLiveRoomOrThrow(roomId);
 

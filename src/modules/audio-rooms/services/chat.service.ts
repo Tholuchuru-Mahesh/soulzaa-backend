@@ -334,6 +334,25 @@ export class ChatService implements IAudioRoomChatService {
       mentions: [],
       replyToId: null,
     });
+
+    await this.locks.withLock(chatPinLockKey(roomId), async () => {
+      const cfg = this.chatConfig();
+      const activePinsCount = await this.chatRepo.countActivePins(roomId);
+      if (activePinsCount >= cfg.maxPins) {
+        const activePins = await this.chatRepo.listActivePins(roomId);
+        for (const pin of activePins) {
+          await this.chatRepo.unpin(pin.id, actor.id);
+          await this.bus.publish(
+            new ChatMessageUnpinnedEvent({ roomId, messageId: pin.messageId, unpinnedBy: actor.id }),
+          );
+        }
+      }
+      await this.chatRepo.pin({ roomId, messageId: message.id, pinnedBy: actor.id });
+      await this.bus.publish(
+        new ChatMessagePinnedEvent({ roomId, messageId: message.id, pinnedBy: actor.id }),
+      );
+    });
+
     await this.bus.publish(new ChatAnnouncementEvent(this.toPayload(message)));
     return message;
   }
@@ -443,8 +462,17 @@ export class ChatService implements IAudioRoomChatService {
     return buildPaginated(rows, total, q.page, q.limit);
   }
 
-  async listPins(roomId: string): Promise<PinnedMessage[]> {
-    return this.chatRepo.listActivePins(roomId);
+  async listPins(roomId: string): Promise<any[]> {
+    const pins = await this.chatRepo.listActivePins(roomId);
+    const result = [];
+    for (const pin of pins) {
+      const message = await this.chatRepo.getMessage(pin.messageId);
+      result.push({
+        ...pin,
+        message: message ? this.toPayload(message) : null,
+      });
+    }
+    return result;
   }
 
   async listReports(

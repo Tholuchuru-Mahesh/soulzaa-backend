@@ -7,6 +7,7 @@ import {
   RoomLogAction,
   RoomMember,
   RoomMemberRole,
+  RoomStatus,
   RoomVisibility,
 } from '@prisma/client';
 import { auditCreate, auditUpdate, auditSoftDelete } from 'src/common/utils/audit.util';
@@ -54,6 +55,8 @@ export interface UpdateRoomData {
   passwordHash?: string | null;
   isDiscoverable?: boolean;
   maxParticipants?: number;
+  status?: RoomStatus;
+  endedAt?: Date | null;
 }
 
 /**
@@ -183,17 +186,17 @@ export class AudioRoomsRepository {
 
   countActiveRoomsOwnedBy(ownerId: string): Promise<number> {
     return this.prisma.audioRoom.count({
-      where: { ownerId, deletedAt: null, status: 'LIVE' },
+      where: { ownerId, deletedAt: null },
     });
   }
 
   /**
-   * The caller's active (LIVE, non-deleted) owned room, or null. At most one row
+   * The caller's owned room (non-deleted), or null. At most one row
    * exists — one standard room per user is enforced on create.
    */
   findOwnedLiveRoom(ownerId: string): Promise<AudioRoom | null> {
     return this.prisma.audioRoom.findFirst({
-      where: { ownerId, deletedAt: null, status: 'LIVE' },
+      where: { ownerId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
   }
