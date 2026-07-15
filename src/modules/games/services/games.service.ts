@@ -1,16 +1,19 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import { randomInt } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import {
   GameCode,
   GameCurrency,
   GameDefinition,
   GameLobby,
   GameLobbyStatus,
+  GameMode,
   GameParticipant,
   GameParticipantStatus,
   GameSession,
   GameSessionStatus,
+  GameTeam,
   GameTxnType,
+  Prisma,
   WalletCurrency,
   WalletTxnReason,
 } from '@prisma/client';
@@ -23,6 +26,7 @@ import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import { QueueService } from 'src/infra/queue/queue.service';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { LockService } from 'src/infra/redis/lock.service';
+import { safeEqualHex, sha256 } from 'src/modules/auth/services/hash.util';
 import {
   USERS_SERVICE,
   type IUsersService,
@@ -34,25 +38,59 @@ import {
 import {
   GAME_JOIN_CODE_ALPHABET,
   GAME_JOIN_CODE_LENGTH,
+  GAME_LIVE_STATE_TTL_SECONDS,
   GAME_LOBBY_TTL_MS,
+  GAME_MATCH_BUCKET_INDEX_KEY,
+  GAME_MATCH_READY_INDEX_KEY,
+  GAME_TURN_SECONDS,
   GAME_WINS_LEADERBOARD_KEY,
+  MATCHMAKING_PROTOCOL_VERSION,
+  TEAM_2V2_CAPABLE_GAMES,
+  gameLiveStateKey,
   gameLobbyLockKey,
+  gameMatchBucketLockKey,
+  gameMatchQueueKey,
+  gameMatchReadyKey,
+  gameMatchReadyLockKey,
+  gameMatchReadyUserKey,
+  gameMatchUserKey,
   gameSessionLockKey,
   gameWinningsLeaderboardKey,
+  matchMaxRetries,
+  matchQueueTtlSeconds,
+  matchReadySeconds,
+  matchmakingEnabled,
 } from '../constants/games.constants';
 import type { CreateLobbyDto, ListSessionsDto, UpdateGameDefinitionDto } from '../dto/games.dto';
 import {
   GameCancelledEvent,
+  GameForfeitEvent,
   GameLobbyCancelledEvent,
   GameLobbyCreatedEvent,
   GameLobbyJoinedEvent,
   GameLobbyLeftEvent,
+  GameLobbyMemberKickedEvent,
+  GameLobbyTeamChangedEvent,
+  GameMatchCancelledEvent,
+  GameMatchFoundEvent,
+  GameMatchReadyProgressEvent,
+  GameMoveEvent,
   GameSettledEvent,
   GameStartedEvent,
   type GameLobbyView,
 } from '../events/game.events';
 import type { GameActor } from '../interfaces/game-actor.interface';
 import { GamesRepository } from '../repositories/games.repository';
+import { applyMove, initLiveState, type GameLiveState } from './game-live-state';
+import {
+  assignTeamsAndSeats,
+  expandTeamWinners,
+  matchModeFor,
+  requiredSize,
+  type MatchCancelReason,
+  type MatchType,
+  type SeatAssignment,
+} from './matchmaking-core';
 
 /** Roles trusted to submit match results and force-cancel sessions. */
 const ADMIN_ROLES: ReadonlySet<PlatformRole> = new Set<PlatformRole>(['SUPER_ADMIN', 'ADMIN']);
@@ -64,6 +102,31 @@ export interface SettleResultInput {
   payouts: { userId: string; amount: number }[];
   resultData?: Record<string, unknown>;
   settledBy?: string | null;
+}
+
+/** Per-user queue pointer (Redis JSON) — dedupe, O(1) leave, and retry carry-over. */
+interface MatchQueuePointer {
+  bucketKey: string;
+  retries: number;
+  firstQueuedAt: number;
+}
+
+/** Ephemeral ready-check state (Redis JSON). Nothing financial until finalize. */
+interface ReadyCheckState {
+  matchId: string;
+  v: number;
+  gameCode: GameCode;
+  stake: number;
+  matchType: MatchType;
+  currency: GameCurrency;
+  mode: GameMode;
+  bucketKey: string;
+  players: string[];
+  ready: string[];
+  hostId: string;
+  retriesByUser: Record<string, number>;
+  expiresAt: number;
+  createdAt: number;
 }
 
 /**
@@ -130,6 +193,8 @@ export class GamesService {
   async createLobby(actor: GameActor, dto: CreateLobbyDto): Promise<unknown> {
     const def = await this.requireEnabledDefinition(dto.gameCode);
     this.assertStakeInRange(def, dto.stake);
+    const mode = dto.mode ?? GameMode.CLASSIC;
+    if (mode === GameMode.TEAM_2V2) this.assert2v2Supported(dto.gameCode);
 
     const code = await this.generateJoinCode();
     const lobby = await this.repo.createLobby({
@@ -141,6 +206,9 @@ export class GamesService {
       currency: def.currency,
       stake: BigInt(dto.stake),
       maxPlayers: def.maxPlayers,
+      mode,
+      isPrivate: dto.isPrivate ?? false,
+      passwordHash: dto.password ? sha256(dto.password) : null,
       status: GameLobbyStatus.OPEN,
       expiresAt: new Date(Date.now() + GAME_LOBBY_TTL_MS),
       createdBy: actor.id,
@@ -158,7 +226,7 @@ export class GamesService {
     return view;
   }
 
-  async joinLobby(actor: GameActor, code: string): Promise<unknown> {
+  async joinLobby(actor: GameActor, code: string, password?: string): Promise<unknown> {
     const lobby = await this.requireLobby(code);
     if (lobby.status !== GameLobbyStatus.OPEN) {
       throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
@@ -167,6 +235,9 @@ export class GamesService {
       const fresh = await this.repo.getLobbyById(lobby.id);
       if (!fresh || fresh.status !== GameLobbyStatus.OPEN) {
         throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
+      }
+      if (fresh.passwordHash && !safeEqualHex(sha256(password ?? ''), fresh.passwordHash)) {
+        throw this.conflict(ERROR_CODES.GAME_LOBBY_BAD_PASSWORD, 'Incorrect lobby password.');
       }
       if (await this.repo.getMember(fresh.id, actor.id)) {
         throw this.conflict(ERROR_CODES.GAME_ALREADY_IN_LOBBY, 'You are already in this lobby.');
@@ -225,6 +296,145 @@ export class GamesService {
     });
   }
 
+  /** Host removes a member from an OPEN lobby (to leave yourself, use close/leave). */
+  async kickMember(actor: GameActor, code: string, targetUserId: string): Promise<unknown> {
+    const lobby = await this.requireLobby(code);
+    this.assertHost(lobby.hostId, actor.id, 'Only the host can kick members.');
+    if (targetUserId === actor.id) {
+      throw new BusinessException(
+        ERROR_CODES.VALIDATION_ERROR,
+        'The host cannot kick themselves — close the lobby instead.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.locks.withLock(gameLobbyLockKey(lobby.id), async () => {
+      const fresh = await this.repo.getLobbyById(lobby.id);
+      if (!fresh || fresh.status !== GameLobbyStatus.OPEN) {
+        throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
+      }
+      if (!(await this.repo.getMember(fresh.id, targetUserId))) {
+        throw this.conflict(ERROR_CODES.GAME_NOT_LOBBY_MEMBER, 'That user is not in this lobby.');
+      }
+      await this.repo.removeMember(fresh.id, targetUserId);
+      await this.repo.logEvent({
+        lobbyId: fresh.id,
+        userId: targetUserId,
+        action: 'lobby.kicked',
+        detail: { by: actor.id },
+      });
+      const members = await this.repo.listMemberIds(fresh.id);
+      await this.bus.publish(
+        new GameLobbyMemberKickedEvent({
+          lobbyId: fresh.id,
+          code: fresh.code,
+          userId: targetUserId,
+          members,
+        }),
+      );
+      return { kicked: targetUserId, members };
+    });
+  }
+
+  /** Host closes (disbands) an OPEN lobby. */
+  async closeLobby(actor: GameActor, code: string): Promise<{ closed: boolean }> {
+    const lobby = await this.requireLobby(code);
+    this.assertHost(lobby.hostId, actor.id, 'Only the host can close the lobby.');
+    return this.locks.withLock(gameLobbyLockKey(lobby.id), async () => {
+      const fresh = await this.repo.getLobbyById(lobby.id);
+      if (!fresh || fresh.status !== GameLobbyStatus.OPEN) {
+        throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
+      }
+      await this.repo.markLobbyClosed(fresh.id, GameLobbyStatus.CANCELLED, actor.id);
+      await this.repo.logEvent({ lobbyId: fresh.id, userId: actor.id, action: 'lobby.closed' });
+      await this.bus.publish(
+        new GameLobbyCancelledEvent({ lobbyId: fresh.id, code: fresh.code, reason: 'host_closed' }),
+      );
+      return { closed: true };
+    });
+  }
+
+  /** Host edits OPEN-lobby settings (stake / maxPlayers / password). */
+  async updateLobbySettings(
+    actor: GameActor,
+    code: string,
+    dto: { stake?: number; maxPlayers?: number; password?: string },
+  ): Promise<unknown> {
+    const lobby = await this.requireLobby(code);
+    this.assertHost(lobby.hostId, actor.id, 'Only the host can edit lobby settings.');
+    return this.locks.withLock(gameLobbyLockKey(lobby.id), async () => {
+      const fresh = await this.repo.getLobbyById(lobby.id);
+      if (!fresh || fresh.status !== GameLobbyStatus.OPEN) {
+        throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
+      }
+      const def = await this.requireEnabledDefinition(await this.gameCodeOf(fresh.definitionId));
+      const data: Prisma.GameLobbyUncheckedUpdateInput = { updatedBy: actor.id };
+      if (dto.stake !== undefined) {
+        this.assertStakeInRange(def, dto.stake);
+        data.stake = BigInt(dto.stake);
+      }
+      if (dto.maxPlayers !== undefined) {
+        const memberCount = await this.repo.countMembers(fresh.id);
+        if (dto.maxPlayers < memberCount || dto.maxPlayers > def.maxPlayers) {
+          throw new BusinessException(
+            ERROR_CODES.VALIDATION_ERROR,
+            `maxPlayers must be between ${memberCount} and ${def.maxPlayers}.`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+        data.maxPlayers = dto.maxPlayers;
+      }
+      if (dto.password !== undefined) {
+        data.passwordHash = dto.password ? sha256(dto.password) : null;
+      }
+      const updated = await this.repo.updateLobby(fresh.id, data);
+      await this.repo.logEvent({
+        lobbyId: fresh.id,
+        userId: actor.id,
+        action: 'lobby.settings_updated',
+        detail: {
+          stake: dto.stake,
+          maxPlayers: dto.maxPlayers,
+          password: dto.password !== undefined,
+        },
+      });
+      return this.lobbyView(updated, await this.gameCodeOf(updated.definitionId));
+    });
+  }
+
+  /** Host adds a bot seat to an OPEN lobby. Bots fill seats but never stake. */
+  async addBot(
+    actor: GameActor,
+    code: string,
+    opts: { name?: string; team?: GameTeam },
+  ): Promise<unknown> {
+    const lobby = await this.requireLobby(code);
+    this.assertHost(lobby.hostId, actor.id, 'Only the host can add bots.');
+    return this.locks.withLock(gameLobbyLockKey(lobby.id), async () => {
+      const fresh = await this.repo.getLobbyById(lobby.id);
+      if (!fresh || fresh.status !== GameLobbyStatus.OPEN) {
+        throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
+      }
+      if ((await this.repo.countMembers(fresh.id)) >= fresh.maxPlayers) {
+        throw this.conflict(ERROR_CODES.GAME_LOBBY_FULL, 'This lobby is full.');
+      }
+      const botId = randomUUID();
+      const botName = opts.name ?? `Bot ${botId.slice(0, 4)}`;
+      await this.repo.addBotMember(fresh.id, botId, botName);
+      if (opts.team && fresh.mode === GameMode.TEAM_2V2) {
+        await this.repo.setMemberTeam(fresh.id, botId, opts.team);
+      }
+      await this.repo.logEvent({
+        lobbyId: fresh.id,
+        userId: botId,
+        action: 'lobby.bot_added',
+        detail: { botName },
+      });
+      const view = await this.lobbyView(fresh, await this.gameCodeOf(fresh.definitionId));
+      await this.bus.publish(new GameLobbyJoinedEvent({ ...view, userId: botId }));
+      return { botId, botName };
+    });
+  }
+
   async startLobby(actor: GameActor, code: string): Promise<unknown> {
     const lobby = await this.requireLobby(code);
     if (lobby.hostId !== actor.id) {
@@ -237,8 +447,21 @@ export class GamesService {
     if (lobby.status !== GameLobbyStatus.OPEN) {
       throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
     }
-    return this.locks.withLock(gameLobbyLockKey(lobby.id), async () => {
-      const fresh = await this.repo.getLobbyById(lobby.id);
+    return this.startSessionFromLobby(lobby.id, actor.id);
+  }
+
+  /**
+   * The single authoritative session-creation + escrow path. Reached two ways:
+   * the REST host-start (`startLobby`, which asserts the caller is the host) and
+   * the matchmaking finalize (which trusts the first-queued host). Escrows every
+   * stake with idempotency keys, refunds + aborts on any failed debit, fixes the
+   * pot, and publishes GameStartedEvent. For TEAM_2V2 it freezes team + seat
+   * assignment so the engines read the positional {0,2}/{1,3} split. Matchmaking
+   * does NOT get a parallel start implementation — it calls this.
+   */
+  async startSessionFromLobby(lobbyId: string, actorId: string): Promise<unknown> {
+    return this.locks.withLock(gameLobbyLockKey(lobbyId), async () => {
+      const fresh = await this.repo.getLobbyById(lobbyId);
       if (!fresh || fresh.status !== GameLobbyStatus.OPEN) {
         throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
       }
@@ -255,6 +478,15 @@ export class GamesService {
         throw this.conflict(ERROR_CODES.GAME_LOBBY_FULL, 'This lobby exceeds the player limit.');
       }
 
+      // Bots fill seats but hold no wallet: they stake 0, are skipped at escrow,
+      // and the pot is the sum of HUMAN stakes only.
+      const memberRows = await this.repo.listMembersWithTeams(fresh.id);
+      const botIds = new Set(memberRows.filter((m) => m.isBot).map((m) => m.userId));
+      const humanCount = members.length - botIds.size;
+
+      // Freeze seat order (CLASSIC = join order; TEAM_2V2 = positional A/B split).
+      const seats = this.resolveSeats(fresh, members, memberRows);
+
       // Create the session + participants, then escrow each stake. Any failed
       // debit refunds everything already taken and aborts the session.
       const session = await this.repo.createSession({
@@ -267,16 +499,20 @@ export class GamesService {
         category: def.category,
         currency: def.currency,
         stake: fresh.stake,
+        mode: fresh.mode,
         playerCount: members.length,
         status: GameSessionStatus.ACTIVE,
-        createdBy: actor.id,
+        createdBy: actorId,
       });
       await this.repo.createParticipants(
-        members.map((userId) => ({
+        seats.map((s) => ({
           sessionId: session.id,
           definitionId: def.id,
-          userId,
-          stake: fresh.stake,
+          userId: s.userId,
+          seat: s.seat,
+          team: s.team,
+          isBot: botIds.has(s.userId),
+          stake: botIds.has(s.userId) ? 0n : fresh.stake,
         })),
       );
       const participants = await this.repo.listParticipants(session.id);
@@ -284,6 +520,7 @@ export class GamesService {
       const escrowed: GameParticipant[] = [];
       try {
         for (const p of participants) {
+          if (p.isBot) continue; // bots don't stake
           const debit = await this.wallet.debit({
             userId: p.userId,
             currency: this.walletCurrency(session.currency),
@@ -310,7 +547,7 @@ export class GamesService {
         }
       } catch (err) {
         await this.refundParticipants(session, escrowed);
-        await this.repo.closeSession(session.id, GameSessionStatus.ABORTED, actor.id);
+        await this.repo.closeSession(session.id, GameSessionStatus.ABORTED, actorId);
         await this.repo.logEvent({
           sessionId: session.id,
           lobbyId: fresh.id,
@@ -320,15 +557,20 @@ export class GamesService {
         throw err;
       }
 
-      const potAmount = session.stake * BigInt(members.length);
+      const potAmount = session.stake * BigInt(humanCount);
       await this.repo.setSessionPot(session.id, potAmount);
-      await this.repo.markLobbyStarted(fresh.id, session.id, actor.id);
+      await this.repo.markLobbyStarted(fresh.id, session.id, actorId);
       await this.repo.logEvent({
         sessionId: session.id,
         lobbyId: fresh.id,
-        userId: actor.id,
+        userId: actorId,
         action: 'session.started',
-        detail: { potAmount: Number(potAmount), players: members.length },
+        detail: {
+          potAmount: Number(potAmount),
+          players: members.length,
+          bots: botIds.size,
+          mode: fresh.mode,
+        },
       });
 
       await this.bus.publish(
@@ -352,6 +594,31 @@ export class GamesService {
       });
       return this.sessionView({ ...session, potAmount }, participants);
     });
+  }
+
+  /** Freeze seat + team layout for a session. TEAM_2V2 uses the positional split. */
+  private resolveSeats(
+    lobby: GameLobby,
+    members: string[],
+    memberRows: { userId: string; team: GameTeam | null }[],
+  ): SeatAssignment[] {
+    if (lobby.mode !== GameMode.TEAM_2V2) {
+      return members.map((userId, seat) => ({ userId, team: null, seat }));
+    }
+    const picks = new Map<string, GameTeam>();
+    for (const m of memberRows) if (m.team) picks.set(m.userId, m.team);
+    const result = assignTeamsAndSeats(members, picks, GameMode.TEAM_2V2);
+    if (!result.ok) {
+      if (result.error === 'WRONG_PLAYER_COUNT') {
+        throw new BusinessException(
+          ERROR_CODES.GAME_INSUFFICIENT_PLAYERS,
+          'A 2v2 match needs exactly 4 players.',
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw this.conflict(ERROR_CODES.GAME_TEAM_UNBALANCED, 'Teams must be balanced 2 v 2.');
+    }
+    return result.seats;
   }
 
   // ======================= Cancel / settle =======================
@@ -527,6 +794,769 @@ export class GamesService {
     });
   }
 
+  // ======================= In-session board relay =======================
+
+  /**
+   * Relay a board-game move to the other participants. The platform does NOT
+   * validate game rules (peer-relay model preserved from the legacy backend) — it
+   * authorises the sender, updates the live move log + turn pointer, and fans the
+   * move out over the session room via the socket listener.
+   */
+  async relayMove(
+    actor: GameActor,
+    sessionId: string,
+    moveData: Record<string, unknown>,
+    onBehalfOf?: string,
+  ): Promise<{ accepted: true; currentTurnUserId: string | null; isOver: boolean }> {
+    const session = await this.repo.getSession(sessionId);
+    if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
+    if (session.status !== GameSessionStatus.ACTIVE) {
+      throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
+    }
+
+    // A bot has no client — the host drives its turn via onBehalfOf. Otherwise the
+    // sender must be an active participant relaying their own move.
+    let moverId = actor.id;
+    if (onBehalfOf && onBehalfOf !== actor.id) {
+      if (session.hostId !== actor.id) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_NOT_HOST,
+          'Only the host may relay a move for a bot.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      const bot = await this.repo.getParticipant(sessionId, onBehalfOf);
+      if (!bot || !bot.isBot || bot.status !== GameParticipantStatus.PLAYING) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_NOT_PARTICIPANT,
+          'That seat is not an active bot in this session.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      moverId = onBehalfOf;
+    } else {
+      const participant = await this.repo.getParticipant(sessionId, actor.id);
+      if (!participant || participant.status !== GameParticipantStatus.PLAYING) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_NOT_PARTICIPANT,
+          'You are not an active participant of this session.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+    }
+
+    const frame = { playerId: moverId, moveData, timestamp: Date.now() };
+    const state = await this.locks.withLock(gameSessionLockKey(sessionId), async () => {
+      const current = await this.loadOrInitLiveState(session);
+      const next = applyMove(current, frame);
+      await this.cache.set(gameLiveStateKey(sessionId), next, GAME_LIVE_STATE_TTL_SECONDS);
+      return next;
+    });
+
+    await this.bus.publish(
+      new GameMoveEvent({
+        sessionId,
+        roomId: session.roomId,
+        playerId: moverId,
+        moveData,
+        timestamp: frame.timestamp,
+        currentTurnUserId: state.currentTurnUserId,
+      }),
+    );
+    return { accepted: true, currentTurnUserId: state.currentTurnUserId, isOver: state.isOver };
+  }
+
+  /**
+   * Host-reported match result for a board game. Peer-relay games are not
+   * server-validated, so the host reports the winner(s); the platform derives the
+   * payout from the escrowed pot (never a client-sent amount) — the winner takes
+   * the pot minus house rake, or a winning team splits it — and settles via the
+   * trusted seam, which caps payouts at the pot (escrow-bounded).
+   */
+  async reportMatchResult(
+    actor: GameActor,
+    sessionId: string,
+    input: { winners?: string[]; winningTeam?: GameTeam; resultData?: Record<string, unknown> },
+  ): Promise<unknown> {
+    const session = await this.repo.getSession(sessionId);
+    if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
+    if (session.hostId !== actor.id) {
+      throw new BusinessException(
+        ERROR_CODES.GAME_NOT_HOST,
+        'Only the session host can report the match result.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    if (session.status !== GameSessionStatus.ACTIVE) {
+      throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
+    }
+
+    // 2v2: the host reports the winning TEAM; the platform expands it to both
+    // teammates so a lopsided/incomplete team report is impossible. CLASSIC keeps
+    // the explicit winner list. Either way the pot is split via the single path.
+    let winners: string[];
+    if (session.mode === GameMode.TEAM_2V2) {
+      if (!input.winningTeam) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_INVALID_PAYOUT,
+          'A 2v2 result must name the winning team.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      const participants = await this.repo.listParticipants(sessionId);
+      winners = expandTeamWinners(participants, input.winningTeam);
+    } else {
+      winners = input.winners ?? [];
+    }
+    if (winners.length === 0) {
+      throw new BusinessException(
+        ERROR_CODES.GAME_INVALID_PAYOUT,
+        'At least one winner is required to settle a match.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    return this.settleToHumanWinners(session, winners, input.resultData ?? {}, actor.id);
+  }
+
+  /** Live board state for a reconnecting client (move log + turn + remaining seconds). */
+  async getLiveState(sessionId: string): Promise<unknown> {
+    const session = await this.repo.getSession(sessionId);
+    if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
+    const state = await this.loadOrInitLiveState(session);
+    const elapsed = Math.floor((Date.now() - state.turnStartedAt) / 1000);
+    return {
+      sessionId,
+      currentTurnUserId: state.currentTurnUserId,
+      turnRemainingSeconds: Math.max(0, state.turnSeconds - elapsed),
+      isOver: state.isOver,
+      moves: state.moves,
+    };
+  }
+
+  /**
+   * A participant forfeits/leaves an active match. Unlike a game outcome (which
+   * the platform never derives), a forfeit is deterministic — the leaver forfeits
+   * their claim — so the platform resolves it directly: if exactly one PLAYING
+   * participant remains they take the pot (escrow-bounded via settleResult); if
+   * none remain everyone is refunded; if 2+ remain the match continues without
+   * the forfeiter (clients withdraw the seat). Always relays a forfeit event so
+   * in-progress boards withdraw the seat.
+   */
+  async forfeit(actor: GameActor, sessionId: string): Promise<unknown> {
+    const session = await this.repo.getSession(sessionId);
+    if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
+    if (session.status !== GameSessionStatus.ACTIVE) {
+      throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
+    }
+    const participant = await this.repo.getParticipant(sessionId, actor.id);
+    if (!participant || participant.status !== GameParticipantStatus.PLAYING) {
+      throw new BusinessException(
+        ERROR_CODES.GAME_NOT_PARTICIPANT,
+        'You are not an active participant of this session.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const participants = await this.repo.listParticipants(sessionId);
+    const seat = participants.findIndex((p) => p.userId === actor.id);
+    const remaining = participants.filter(
+      (p) => p.status === GameParticipantStatus.PLAYING && p.userId !== actor.id,
+    );
+
+    await this.repo.logEvent({
+      sessionId,
+      userId: actor.id,
+      action: 'session.forfeit',
+      detail: { seat, remaining: remaining.length },
+    });
+    await this.bus.publish(
+      new GameForfeitEvent({
+        sessionId,
+        gameCode: session.code,
+        roomId: session.roomId,
+        userId: actor.id,
+        seat,
+      }),
+    );
+
+    // TEAM_2V2 forfeits are team-aware: the match ends only when a whole team is
+    // out, and the surviving team's still-PLAYING members split the pot.
+    if (session.mode === GameMode.TEAM_2V2) {
+      return this.forfeitTeamMatch(session, participant, actor.id, remaining);
+    }
+
+    if (remaining.length === 0) {
+      // Everyone has left — refund all remaining stakes.
+      return this.abortSession(sessionId, GameSessionStatus.CANCELLED, actor.id, 'all_forfeited');
+    }
+    if (remaining.length === 1) {
+      // Sole survivor takes the pot (minus house rake). Deterministic → the
+      // platform settles it directly; settleResult still caps payout at the pot.
+      return this.settleToHumanWinners(
+        session,
+        [remaining[0].userId],
+        { reason: 'forfeit', forfeitedBy: actor.id },
+        actor.id,
+      );
+    }
+    // 2+ remain — the match continues without the forfeiter; mark them out so
+    // they can no longer relay moves, and let the winner be reported normally.
+    await this.repo.updateParticipant(participant.id, {
+      status: GameParticipantStatus.LOST,
+      settledAt: new Date(),
+    });
+    return { forfeitedBy: actor.id, remaining: remaining.length };
+  }
+
+  /**
+   * Resolve a forfeit in a TEAM_2V2 match. `remaining` are the still-PLAYING
+   * participants other than the forfeiter. If no team retains a player everyone is
+   * refunded; if exactly one team retains players it wins (its survivors split the
+   * pot — a forfeiter forfeits their claim, so a lone survivor takes the team's
+   * whole share); if both teams retain players the match continues.
+   */
+  private async forfeitTeamMatch(
+    session: GameSession,
+    participant: GameParticipant,
+    actorId: string,
+    remaining: GameParticipant[],
+  ): Promise<unknown> {
+    const teamsLeft = new Set(remaining.map((p) => p.team));
+    if (teamsLeft.size === 0) {
+      return this.abortSession(session.id, GameSessionStatus.CANCELLED, actorId, 'all_forfeited');
+    }
+    if (teamsLeft.size === 1) {
+      return this.settleToHumanWinners(
+        session,
+        remaining.map((p) => p.userId),
+        { reason: 'forfeit', forfeitedBy: actorId },
+        actorId,
+      );
+    }
+    // Both teams still have players — continue without the forfeiter.
+    await this.repo.updateParticipant(participant.id, {
+      status: GameParticipantStatus.LOST,
+      settledAt: new Date(),
+    });
+    return { forfeitedBy: actorId, remaining: remaining.length };
+  }
+
+  /**
+   * Split the escrowed pot (minus house rake) across the HUMAN winners and settle.
+   * Bots hold no wallet, so a bot's share collapses into its human co-winners; if
+   * every winner is a bot, no human can collect and the human stakers are refunded.
+   */
+  private async settleToHumanWinners(
+    session: GameSession,
+    winners: string[],
+    resultData: Record<string, unknown>,
+    actorId: string,
+  ): Promise<unknown> {
+    const participants = await this.repo.listParticipants(session.id);
+    const botIds = new Set(participants.filter((p) => p.isBot).map((p) => p.userId));
+    const humanWinners = winners.filter((w) => !botIds.has(w));
+    if (humanWinners.length === 0) {
+      return this.abortSession(session.id, GameSessionStatus.CANCELLED, actorId, 'bot_won_refund');
+    }
+    const def = await this.repo.getDefinitionByCode(session.code);
+    const rakeBps = def?.houseRakeBps ?? 0;
+    const pot = Number(session.potAmount);
+    const distributable = pot - Math.floor((pot * rakeBps) / 10_000);
+    return this.settleResult({
+      sessionId: session.id,
+      winners: humanWinners,
+      payouts: this.splitPot(distributable, humanWinners),
+      resultData,
+      settledBy: actorId,
+    });
+  }
+
+  /**
+   * Presence-driven auto-forfeit: when a player fully disconnects (their last
+   * socket across all namespaces drops), forfeit their active match. A no-op if
+   * they aren't currently playing; forfeit errors are swallowed (best-effort).
+   */
+  async forfeitOnDisconnect(userId: string): Promise<void> {
+    const sessionId = await this.repo.findActiveSessionForParticipant(userId);
+    if (!sessionId) return;
+    try {
+      await this.forfeit({ id: userId, roles: [] }, sessionId);
+    } catch (err) {
+      this.logger.warn(
+        `Auto-forfeit for ${userId} in session ${sessionId} failed: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  // ======================= Matchmaking =======================
+
+  /**
+   * Join a matchmaking bucket (game + stake + matchType). Under the bucket lock,
+   * add the player and — if the bucket now holds the required count — pop the
+   * earliest players and open a ready-check. Redis-ephemeral: no money moves until
+   * every matched player accepts and `startSessionFromLobby` runs.
+   */
+  async joinQueue(
+    actor: GameActor,
+    input: { gameCode: GameCode; stake: number; matchType: MatchType },
+  ): Promise<{ status: 'QUEUED' | 'MATCHED'; matchType: MatchType; matchId?: string }> {
+    await this.assertRateLimit(actor.id, 'queue', 10, 60);
+    if (!matchmakingEnabled()) {
+      throw this.conflict(
+        ERROR_CODES.GAME_MATCHMAKING_DISABLED,
+        'Matchmaking is temporarily unavailable.',
+      );
+    }
+    const def = await this.requireEnabledDefinition(input.gameCode);
+    this.assertStakeInRange(def, input.stake);
+    if (input.matchType === 'TEAM_2V2') this.assert2v2Supported(input.gameCode);
+    await this.assertCanAfford(actor.id, def.currency, BigInt(input.stake));
+
+    if (await this.cache.get(gameMatchReadyUserKey(actor.id))) {
+      throw this.conflict(ERROR_CODES.GAME_ALREADY_QUEUED, 'You already have a pending match.');
+    }
+    if (await this.cache.get<MatchQueuePointer>(gameMatchUserKey(actor.id))) {
+      throw this.conflict(ERROR_CODES.GAME_ALREADY_QUEUED, 'You are already in the queue.');
+    }
+
+    const bucketKey = gameMatchQueueKey(input.gameCode, input.stake, input.matchType);
+    const ttl = matchQueueTtlSeconds() + 30;
+    return this.locks.withLock(gameMatchBucketLockKey(bucketKey), async () => {
+      const now = Date.now();
+      await this.cache.setScore(bucketKey, actor.id, now);
+      await this.cache.set(
+        gameMatchUserKey(actor.id),
+        { bucketKey, retries: 0, firstQueuedAt: now } satisfies MatchQueuePointer,
+        ttl,
+      );
+      await this.cache.setAdd(GAME_MATCH_BUCKET_INDEX_KEY, bucketKey);
+
+      const need = requiredSize(input.matchType);
+      if ((await this.cache.sortedCount(bucketKey)) >= need) {
+        const lowest = await this.cache.sortedLowest(bucketKey, need);
+        const playerIds = lowest.map((e) => e.member);
+        const retriesByUser: Record<string, number> = {};
+        for (const id of playerIds) {
+          const ptr = await this.cache.get<MatchQueuePointer>(gameMatchUserKey(id));
+          retriesByUser[id] = ptr?.retries ?? 0;
+        }
+        await this.cache.sortedRemove(bucketKey, ...playerIds);
+        for (const id of playerIds) await this.cache.del(gameMatchUserKey(id));
+        const matchId = await this.openReadyCheck(def, input, bucketKey, playerIds, retriesByUser);
+        void this.enqueueMmTelemetry('matchmaking.matched', {
+          gameCode: def.code,
+          stake: input.stake,
+          matchType: input.matchType,
+          bucketDepth: need,
+          waitedMs: lowest.map((e) => now - e.score),
+        });
+        if (playerIds.includes(actor.id)) {
+          return { status: 'MATCHED', matchType: input.matchType, matchId };
+        }
+      }
+      void this.enqueueMmTelemetry('matchmaking.queued', {
+        gameCode: def.code,
+        stake: input.stake,
+        matchType: input.matchType,
+      });
+      return { status: 'QUEUED', matchType: input.matchType };
+    });
+  }
+
+  /** Persist a ready-check + index it + notify each matched player. Freezes hostId. */
+  private async openReadyCheck(
+    def: GameDefinition,
+    input: { gameCode: GameCode; stake: number; matchType: MatchType },
+    bucketKey: string,
+    playerIds: string[],
+    retriesByUser: Record<string, number>,
+  ): Promise<string> {
+    const matchId = this.generatePublicId();
+    const now = Date.now();
+    const readySeconds = matchReadySeconds();
+    const expiresAt = now + readySeconds * 1000;
+    const state: ReadyCheckState = {
+      matchId,
+      v: MATCHMAKING_PROTOCOL_VERSION,
+      gameCode: input.gameCode,
+      stake: input.stake,
+      matchType: input.matchType,
+      currency: def.currency,
+      mode: matchModeFor(input.matchType),
+      bucketKey,
+      players: playerIds,
+      ready: [],
+      hostId: playerIds[0],
+      retriesByUser,
+      expiresAt,
+      createdAt: now,
+    };
+    const ttl = readySeconds + 30;
+    await this.cache.set(gameMatchReadyKey(matchId), state, ttl);
+    await this.cache.setScore(GAME_MATCH_READY_INDEX_KEY, matchId, expiresAt);
+    for (const id of playerIds) await this.cache.set(gameMatchReadyUserKey(id), matchId, ttl);
+    await this.bus.publish(
+      new GameMatchFoundEvent({
+        v: MATCHMAKING_PROTOCOL_VERSION,
+        matchId,
+        gameCode: input.gameCode,
+        stake: input.stake,
+        matchType: input.matchType,
+        players: playerIds,
+        readySeconds,
+        expiresAt,
+      }),
+    );
+    return matchId;
+  }
+
+  /** A matched player readies up. When all are ready, finalize into a real session. */
+  async acceptMatch(actor: GameActor, matchId: string): Promise<unknown> {
+    await this.assertRateLimit(actor.id, 'accept', 20, 60);
+    return this.locks.withLock(gameMatchReadyLockKey(matchId), async () => {
+      const state = await this.cache.get<ReadyCheckState>(gameMatchReadyKey(matchId));
+      if (!state || !state.players.includes(actor.id)) {
+        throw this.notFound(ERROR_CODES.GAME_MATCH_NOT_FOUND, 'Match not found.');
+      }
+      if (Date.now() > state.expiresAt) {
+        throw this.conflict(ERROR_CODES.GAME_MATCH_EXPIRED, 'This match has expired.');
+      }
+      if (!state.ready.includes(actor.id)) state.ready.push(actor.id);
+
+      if (state.ready.length >= state.players.length) {
+        const session = await this.finalizeMatch(state);
+        return { status: 'STARTED', session };
+      }
+      const ttl = Math.max(1, Math.ceil((state.expiresAt - Date.now()) / 1000));
+      await this.cache.set(gameMatchReadyKey(matchId), state, ttl);
+      const remaining = state.players.filter((p) => !state.ready.includes(p));
+      await this.bus.publish(
+        new GameMatchReadyProgressEvent({
+          v: MATCHMAKING_PROTOCOL_VERSION,
+          matchId,
+          players: state.players,
+          ready: state.ready,
+          remaining,
+        }),
+      );
+      return { status: 'WAITING', ready: state.ready.length, total: state.players.length };
+    });
+  }
+
+  /**
+   * Turn a fully-ready match into a real lobby + session. Creates the matchmade
+   * lobby with all players (host = first-queued), then delegates to the single
+   * `startSessionFromLobby` seam for escrow + start. If escrow aborts, the
+   * transient lobby is closed and the players are told (no parallel start path).
+   */
+  private async finalizeMatch(state: ReadyCheckState): Promise<unknown> {
+    const def = await this.requireEnabledDefinition(state.gameCode);
+    const code = await this.generateJoinCode();
+    const lobby = await this.repo.createLobby({
+      definitionId: def.id,
+      code,
+      hostId: state.hostId,
+      roomId: null,
+      category: def.category,
+      currency: def.currency,
+      stake: BigInt(state.stake),
+      maxPlayers: def.maxPlayers,
+      mode: state.mode,
+      isMatchmade: true,
+      status: GameLobbyStatus.OPEN,
+      expiresAt: new Date(Date.now() + GAME_LOBBY_TTL_MS),
+      createdBy: state.hostId,
+    });
+    for (const id of state.players) await this.repo.addMember(lobby.id, id);
+    await this.clearReadyCheck(state);
+    void this.enqueueMmTelemetry('matchmaking.ready_result', {
+      matchType: state.matchType,
+      result: 'all_ready',
+      elapsedMs: Date.now() - state.createdAt,
+    });
+    try {
+      return await this.startSessionFromLobby(lobby.id, state.hostId);
+    } catch (err) {
+      await this.repo.markLobbyClosed(lobby.id, GameLobbyStatus.CANCELLED, state.hostId);
+      await this.bus.publish(
+        new GameMatchCancelledEvent({
+          v: MATCHMAKING_PROTOCOL_VERSION,
+          matchId: state.matchId,
+          reason: 'stake_failed',
+          players: state.players,
+          requeued: [],
+        }),
+      );
+      throw err;
+    }
+  }
+
+  /** Explicit decline — dissolves the ready-check immediately (decliner dropped). */
+  async declineMatch(actor: GameActor, matchId: string): Promise<{ declined: boolean }> {
+    await this.assertRateLimit(actor.id, 'decline', 20, 60);
+    await this.locks.withLock(gameMatchReadyLockKey(matchId), async () => {
+      const state = await this.cache.get<ReadyCheckState>(gameMatchReadyKey(matchId));
+      if (!state || !state.players.includes(actor.id)) {
+        throw this.notFound(ERROR_CODES.GAME_MATCH_NOT_FOUND, 'Match not found.');
+      }
+      await this.dissolveReadyCheck(state, 'declined', actor.id);
+    });
+    return { declined: true };
+  }
+
+  /**
+   * Dissolve a ready-check: re-queue the consenting (ready, non-decliner) players
+   * up to the retry cap, drop the rest, clear all state, and fan out a cancel.
+   */
+  private async dissolveReadyCheck(
+    state: ReadyCheckState,
+    reason: MatchCancelReason,
+    declinerId?: string,
+  ): Promise<void> {
+    const maxRetries = matchMaxRetries();
+    const ttl = matchQueueTtlSeconds() + 30;
+    const now = Date.now();
+    const requeued: string[] = [];
+    for (const playerId of state.players) {
+      const consented = state.ready.includes(playerId) && playerId !== declinerId;
+      const nextRetries = (state.retriesByUser[playerId] ?? 0) + 1;
+      if (consented && nextRetries <= maxRetries) {
+        await this.cache.setScore(state.bucketKey, playerId, now);
+        await this.cache.set(
+          gameMatchUserKey(playerId),
+          { bucketKey: state.bucketKey, retries: nextRetries, firstQueuedAt: now },
+          ttl,
+        );
+        await this.cache.setAdd(GAME_MATCH_BUCKET_INDEX_KEY, state.bucketKey);
+        requeued.push(playerId);
+        await this.repo.logEvent({
+          userId: playerId,
+          action: 'matchmaking.queue_exit',
+          detail: { reason, retries: nextRetries, requeued: true },
+        });
+      } else {
+        const exit = consented ? 'exhausted' : playerId === declinerId ? 'declined' : 'dropped';
+        await this.repo.logEvent({
+          userId: playerId,
+          action: 'matchmaking.queue_exit',
+          detail: { reason: exit },
+        });
+      }
+    }
+    await this.clearReadyCheck(state);
+    await this.bus.publish(
+      new GameMatchCancelledEvent({
+        v: MATCHMAKING_PROTOCOL_VERSION,
+        matchId: state.matchId,
+        reason,
+        players: state.players,
+        requeued,
+      }),
+    );
+    void this.enqueueMmTelemetry('matchmaking.ready_result', {
+      matchType: state.matchType,
+      result: reason,
+      acceptedCount: state.ready.length,
+      declinedCount: state.players.length - state.ready.length,
+      elapsedMs: Date.now() - state.createdAt,
+    });
+  }
+
+  /** Delete a ready-check's Redis footprint (state blob, index entry, user pointers). */
+  private async clearReadyCheck(state: ReadyCheckState): Promise<void> {
+    await this.cache.del(gameMatchReadyKey(state.matchId));
+    await this.cache.sortedRemove(GAME_MATCH_READY_INDEX_KEY, state.matchId);
+    for (const id of state.players) await this.cache.del(gameMatchReadyUserKey(id));
+  }
+
+  /** Current matchmaking state for a (reconnecting) user: READY_CHECK | QUEUED | IDLE. */
+  async getMatchmakingStatus(actor: GameActor): Promise<unknown> {
+    const matchId = await this.cache.get<string>(gameMatchReadyUserKey(actor.id));
+    if (matchId) {
+      const state = await this.cache.get<ReadyCheckState>(gameMatchReadyKey(matchId));
+      if (state) {
+        return {
+          state: 'READY_CHECK',
+          matchId,
+          players: state.players,
+          ready: state.ready,
+          expiresAt: state.expiresAt,
+        };
+      }
+    }
+    const ptr = await this.cache.get<MatchQueuePointer>(gameMatchUserKey(actor.id));
+    if (ptr) {
+      const position = await this.cache.sortedRank(ptr.bucketKey, actor.id);
+      return { state: 'QUEUED', bucketKey: ptr.bucketKey, position, retries: ptr.retries };
+    }
+    return { state: 'IDLE' };
+  }
+
+  /** Leave the queue (idempotent). Records the exit reason + waited time for analytics. */
+  async leaveQueue(actor: GameActor, reason = 'left'): Promise<{ left: boolean }> {
+    await this.assertRateLimit(actor.id, 'leave', 20, 60);
+    const ptr = await this.cache.get<MatchQueuePointer>(gameMatchUserKey(actor.id));
+    if (!ptr) return { left: false };
+    await this.locks.withLock(gameMatchBucketLockKey(ptr.bucketKey), async () => {
+      await this.cache.sortedRemove(ptr.bucketKey, actor.id);
+      await this.cache.del(gameMatchUserKey(actor.id));
+    });
+    await this.repo.logEvent({
+      userId: actor.id,
+      action: 'matchmaking.queue_exit',
+      detail: { reason, retries: ptr.retries, waitedMs: Date.now() - ptr.firstQueuedAt },
+    });
+    return { left: true };
+  }
+
+  /** Pick a team in a TEAM_2V2 lobby (self-assign). Frozen once the lobby leaves OPEN. */
+  async setPlayerTeam(actor: GameActor, code: string, team: GameTeam): Promise<unknown> {
+    await this.assertRateLimit(actor.id, 'team', 30, 60);
+    const lobby = await this.requireLobby(code);
+    if (lobby.status !== GameLobbyStatus.OPEN) {
+      throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
+    }
+    if (lobby.mode !== GameMode.TEAM_2V2) {
+      throw this.conflict(ERROR_CODES.GAME_NOT_TEAM_MODE, 'This lobby is not a 2v2 lobby.');
+    }
+    return this.locks.withLock(gameLobbyLockKey(lobby.id), async () => {
+      const fresh = await this.repo.getLobbyById(lobby.id);
+      if (!fresh || fresh.status !== GameLobbyStatus.OPEN) {
+        throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
+      }
+      if (!(await this.repo.getMember(fresh.id, actor.id))) {
+        throw this.conflict(ERROR_CODES.GAME_NOT_IN_LOBBY, 'You are not in this lobby.');
+      }
+      const members = await this.repo.listMembersWithTeams(fresh.id);
+      const onTeam = members.filter((m) => m.team === team && m.userId !== actor.id).length;
+      if (onTeam >= 2) {
+        throw this.conflict(ERROR_CODES.GAME_TEAM_FULL, `Team ${team} is already full.`);
+      }
+      await this.repo.setMemberTeam(fresh.id, actor.id, team);
+      const updated = (await this.repo.listMembersWithTeams(fresh.id)).map((m) =>
+        m.userId === actor.id ? { ...m, team } : m,
+      );
+      const teams = {
+        A: updated.filter((m) => m.team === GameTeam.A).map((m) => m.userId),
+        B: updated.filter((m) => m.team === GameTeam.B).map((m) => m.userId),
+      };
+      await this.repo.logEvent({
+        lobbyId: fresh.id,
+        userId: actor.id,
+        action: 'lobby.team_changed',
+        detail: { team },
+      });
+      await this.bus.publish(
+        new GameLobbyTeamChangedEvent({
+          v: MATCHMAKING_PROTOCOL_VERSION,
+          code: fresh.code,
+          userId: actor.id,
+          team,
+          teams,
+        }),
+      );
+      return { userId: actor.id, team, teams };
+    });
+  }
+
+  // ======================= Matchmaking sweeps (monitor + shutdown) =======================
+
+  /** Dissolve ready-checks past their deadline (index-driven, no SCAN). */
+  async sweepExpiredReadyChecks(now: Date): Promise<void> {
+    const due = await this.cache.sortedRangeByScore(GAME_MATCH_READY_INDEX_KEY, 0, now.getTime());
+    for (const matchId of due) {
+      try {
+        await this.locks.withLock(gameMatchReadyLockKey(matchId), async () => {
+          const state = await this.cache.get<ReadyCheckState>(gameMatchReadyKey(matchId));
+          if (!state) {
+            await this.cache.sortedRemove(GAME_MATCH_READY_INDEX_KEY, matchId);
+            return;
+          }
+          if (Date.now() <= state.expiresAt) return; // rescheduled; not actually due
+          await this.dissolveReadyCheck(state, 'timeout');
+        });
+      } catch (err) {
+        this.logger.warn(`Failed to sweep ready-check ${matchId}: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /** Prune queue entries whose owners went stale (disconnected during downtime). */
+  async sweepStaleQueueEntries(now: Date): Promise<void> {
+    const cutoff = now.getTime() - matchQueueTtlSeconds() * 1000;
+    const buckets = await this.cache.setMembers(GAME_MATCH_BUCKET_INDEX_KEY);
+    for (const bucketKey of buckets) {
+      try {
+        await this.locks.withLock(gameMatchBucketLockKey(bucketKey), async () => {
+          const stale = await this.cache.sortedRangeByScore(bucketKey, 0, cutoff);
+          for (const id of stale) {
+            await this.cache.sortedRemove(bucketKey, id);
+            await this.cache.del(gameMatchUserKey(id));
+            await this.repo.logEvent({
+              userId: id,
+              action: 'matchmaking.queue_exit',
+              detail: { reason: 'stale' },
+            });
+          }
+          if ((await this.cache.sortedCount(bucketKey)) === 0) {
+            await this.cache.setRemove(GAME_MATCH_BUCKET_INDEX_KEY, bucketKey);
+          }
+        });
+      } catch (err) {
+        this.logger.warn(`Failed to prune bucket ${bucketKey}: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /** Best-effort graceful-shutdown drain: dissolve live ready-checks, re-queue the ready. */
+  async drainMatchmaking(): Promise<void> {
+    const all = await this.cache.sortedRangeByScore(
+      GAME_MATCH_READY_INDEX_KEY,
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
+    for (const matchId of all) {
+      try {
+        const state = await this.cache.get<ReadyCheckState>(gameMatchReadyKey(matchId));
+        if (state) await this.dissolveReadyCheck(state, 'server_shutdown');
+      } catch {
+        // best-effort — another instance's monitor will sweep what we miss
+      }
+    }
+  }
+
+  private generatePublicId(): string {
+    return randomBytes(16).toString('base64url');
+  }
+
+  private async enqueueMmTelemetry(event: string, payload: Record<string, unknown>): Promise<void> {
+    try {
+      await this.queue.enqueue(QUEUE_NAMES.ANALYTICS_PROCESSING, event, payload);
+    } catch (err) {
+      this.logger.warn(`Matchmaking telemetry failed (${event}): ${(err as Error).message}`);
+    }
+  }
+
+  /** Fixed-window per-user rate limit for a matchmaking action (mirrors auth's limiter). */
+  private async assertRateLimit(
+    userId: string,
+    action: string,
+    limit: number,
+    windowSeconds: number,
+  ): Promise<void> {
+    const count = await this.cache.increment(`game:mmrl:${action}:${userId}`, {
+      ttlSeconds: windowSeconds,
+    });
+    if (count > limit) {
+      throw new BusinessException(
+        ERROR_CODES.RATE_LIMITED,
+        'Too many matchmaking requests. Please slow down.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
   // ======================= Expiry sweep =======================
 
   async sweepExpiredLobbies(now: Date): Promise<void> {
@@ -602,6 +1632,24 @@ export class GamesService {
   }
 
   // ======================= Internals =======================
+
+  private async loadOrInitLiveState(session: GameSession): Promise<GameLiveState> {
+    const cached = await this.cache.get<GameLiveState>(gameLiveStateKey(session.id));
+    if (cached) return cached;
+    const participants = await this.repo.listParticipants(session.id);
+    return initLiveState(
+      participants.map((p) => p.userId),
+      session.startedAt.getTime(),
+      GAME_TURN_SECONDS,
+    );
+  }
+
+  /** Even split of `total` across winners; any remainder goes to the earliest winners. */
+  private splitPot(total: number, winners: string[]): { userId: string; amount: number }[] {
+    const base = Math.floor(total / winners.length);
+    const remainder = total - base * winners.length;
+    return winners.map((userId, i) => ({ userId, amount: base + (i < remainder ? 1 : 0) }));
+  }
 
   private async refundParticipants(
     session: GameSession,
@@ -715,6 +1763,20 @@ export class GamesService {
       throw this.conflict(ERROR_CODES.GAME_DISABLED, 'This game is currently disabled.');
     }
     return def;
+  }
+
+  /** Host-only guard shared by kick/close/settings. */
+  private assertHost(hostId: string, actorId: string, message: string): void {
+    if (hostId !== actorId) {
+      throw new BusinessException(ERROR_CODES.GAME_NOT_HOST, message, HttpStatus.FORBIDDEN);
+    }
+  }
+
+  /** Gate TEAM_2V2 to games whose engine actually implements the positional split. */
+  private assert2v2Supported(gameCode: GameCode): void {
+    if (!TEAM_2V2_CAPABLE_GAMES.has(gameCode)) {
+      throw this.conflict(ERROR_CODES.GAME_2V2_UNSUPPORTED, 'This game does not support 2v2.');
+    }
   }
 
   private assertStakeInRange(def: GameDefinition, stake: number): void {
@@ -840,15 +1902,22 @@ export class GamesService {
       currency: session.currency,
       stake: Number(session.stake),
       potAmount: Number(session.potAmount),
+      mode: session.mode,
       status: session.status,
       startedAt: session.startedAt,
       settledAt: session.settledAt,
-      participants: participants.map((p) => ({
-        userId: p.userId,
-        status: p.status,
-        isWinner: p.isWinner,
-        payoutAmount: Number(p.payoutAmount),
-      })),
+      // seat order is authoritative (turn order + positional 2v2 team split).
+      participants: [...participants]
+        .sort((a, b) => a.seat - b.seat)
+        .map((p) => ({
+          userId: p.userId,
+          seat: p.seat,
+          team: p.team,
+          isBot: p.isBot,
+          status: p.status,
+          isWinner: p.isWinner,
+          payoutAmount: Number(p.payoutAmount),
+        })),
     };
   }
 

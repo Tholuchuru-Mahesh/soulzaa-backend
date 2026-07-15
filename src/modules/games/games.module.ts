@@ -3,6 +3,7 @@ import { GamesAdminController } from './controllers/games-admin.controller';
 import { GamesController } from './controllers/games.controller';
 import { GAMES_SERVICE } from './interfaces/games.service.interface';
 import { GameSocketListener } from './listeners/game-socket.listener';
+import { PresenceForfeitListener } from './listeners/presence-forfeit.listener';
 import { GamesRepository } from './repositories/games.repository';
 import { GameCatalogSeeder } from './services/game-catalog.seeder';
 import { GameExpiryMonitor } from './services/game-expiry.monitor';
@@ -34,6 +35,7 @@ import { GamesService } from './services/games.service';
     GameCatalogSeeder,
     GameExpiryMonitor,
     GameSocketListener,
+    PresenceForfeitListener,
     { provide: GAMES_SERVICE, useExisting: GamesService },
   ],
   exports: [GAMES_SERVICE],

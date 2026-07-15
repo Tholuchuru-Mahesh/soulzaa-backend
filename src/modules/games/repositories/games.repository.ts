@@ -10,6 +10,7 @@ import {
   GameParticipantStatus,
   GameSession,
   GameSessionStatus,
+  GameTeam,
   GameTxnType,
   Prisma,
 } from '@prisma/client';
@@ -72,7 +73,13 @@ export class GamesRepository {
   }
 
   listOpenLobbies(skip: number, take: number): Promise<[GameLobby[], number]> {
-    const where: Prisma.GameLobbyWhereInput = { status: GameLobbyStatus.OPEN };
+    // Matchmade lobbies are transient + auto-started; private lobbies are join-by-code —
+    // neither is surfaced in the public browse.
+    const where: Prisma.GameLobbyWhereInput = {
+      status: GameLobbyStatus.OPEN,
+      isMatchmade: false,
+      isPrivate: false,
+    };
     return this.prisma.$transaction([
       this.prisma.gameLobby.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take }),
       this.prisma.gameLobby.count({ where }),
@@ -106,8 +113,39 @@ export class GamesRepository {
     return rows.map((r) => r.userId);
   }
 
+  /** Members with team + bot flag (join order) — drives seating + escrow-skip. */
+  listMembersWithTeams(
+    lobbyId: string,
+  ): Promise<{ userId: string; team: GameTeam | null; isBot: boolean }[]> {
+    return this.prisma.gameLobbyMember.findMany({
+      where: { lobbyId },
+      orderBy: { joinedAt: 'asc' },
+      select: { userId: true, team: true, isBot: true },
+    });
+  }
+
+  setMemberTeam(lobbyId: string, userId: string, team: GameTeam): Promise<{ id: string }> {
+    return this.prisma.gameLobbyMember.update({
+      where: { lobbyId_userId: { lobbyId, userId } },
+      data: { team },
+      select: { id: true },
+    });
+  }
+
+  /** Add a bot seat (synthetic userId, isBot=true) to a lobby. */
+  addBotMember(lobbyId: string, botUserId: string, botName: string): Promise<{ id: string }> {
+    return this.prisma.gameLobbyMember.create({
+      data: { lobbyId, userId: botUserId, isBot: true, botName },
+      select: { id: true },
+    });
+  }
+
   countMembers(lobbyId: string): Promise<number> {
     return this.prisma.gameLobbyMember.count({ where: { lobbyId } });
+  }
+
+  updateLobby(id: string, data: Prisma.GameLobbyUncheckedUpdateInput): Promise<GameLobby> {
+    return this.prisma.gameLobby.update({ where: { id }, data });
   }
 
   markLobbyStarted(id: string, sessionId: string, actorId: string): Promise<GameLobby> {
@@ -153,9 +191,10 @@ export class GamesRepository {
   }
 
   listParticipants(sessionId: string): Promise<GameParticipant[]> {
+    // Seat order is authoritative (deterministic turn order; TEAM_2V2 positions).
     return this.prisma.gameParticipant.findMany({
       where: { sessionId },
-      orderBy: { joinedAt: 'asc' },
+      orderBy: { seat: 'asc' },
     });
   }
 
@@ -208,6 +247,20 @@ export class GamesRepository {
       this.prisma.gameSession.findMany({ where, orderBy: { startedAt: 'desc' }, skip, take }),
       this.prisma.gameSession.count({ where }),
     ]);
+  }
+
+  /** The active session a user is currently a PLAYING participant of, if any. */
+  async findActiveSessionForParticipant(userId: string): Promise<string | null> {
+    const parts = await this.prisma.gameParticipant.findMany({
+      where: { userId, status: GameParticipantStatus.PLAYING },
+      select: { sessionId: true },
+    });
+    if (parts.length === 0) return null;
+    const session = await this.prisma.gameSession.findFirst({
+      where: { id: { in: parts.map((p) => p.sessionId) }, status: GameSessionStatus.ACTIVE },
+      select: { id: true },
+    });
+    return session?.id ?? null;
   }
 
   /** Session ids a user has taken part in (optionally filtered to one game). */

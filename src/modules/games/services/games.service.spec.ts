@@ -3,10 +3,20 @@ import {
   GameCode,
   GameCurrency,
   GameLobbyStatus,
+  GameMode,
   GameParticipantStatus,
   GameSessionStatus,
+  GameTeam,
 } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
+import { sha256 } from 'src/modules/auth/services/hash.util';
+import {
+  GAME_MATCH_READY_INDEX_KEY,
+  gameMatchQueueKey,
+  gameMatchReadyKey,
+  gameMatchReadyUserKey,
+  gameMatchUserKey,
+} from '../constants/games.constants';
 import { IEventBus } from 'src/common/events';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { LockService } from 'src/infra/redis/lock.service';
@@ -20,6 +30,7 @@ import { GamesService } from './games.service';
 const HOST = '11111111-1111-1111-1111-111111111111';
 const P2 = '22222222-2222-2222-2222-222222222222';
 const STRANGER = '33333333-3333-3333-3333-333333333333';
+const P3 = '44444444-4444-4444-4444-444444444444';
 const ACTOR: GameActor = { id: HOST, roles: ['USER'] };
 const ADMIN: GameActor = { id: 'admin-1', roles: ['ADMIN'] };
 
@@ -131,6 +142,7 @@ describe('GamesService', () => {
       listParticipants: jest
         .fn()
         .mockResolvedValue([participant('p1', HOST), participant('p2', P2)]),
+      getParticipant: jest.fn().mockResolvedValue(participant('p1', HOST)),
       updateParticipant: jest.fn().mockResolvedValue(participant('p1', HOST)),
       setSessionPot: jest.fn().mockResolvedValue(session()),
       completeSession: jest.fn().mockResolvedValue(session()),
@@ -141,12 +153,44 @@ describe('GamesService', () => {
       createMatchResult: jest.fn().mockResolvedValue({ id: 'r1' }),
       createTransaction: jest.fn().mockResolvedValue({ id: 't1' }),
       logEvent: jest.fn().mockResolvedValue({ id: 'e1' }),
+      listMembersWithTeams: jest.fn().mockResolvedValue([]),
+      setMemberTeam: jest.fn().mockResolvedValue({ id: 'm1' }),
+      findActiveSessionForParticipant: jest.fn().mockResolvedValue(null),
+      updateLobby: jest.fn().mockResolvedValue(lobby()),
+      addBotMember: jest.fn().mockResolvedValue({ id: 'bm1' }),
     };
     locks = {
       withLock: jest.fn(<T>(_k: string, fn: () => Promise<T>) => fn()),
       acquire: jest.fn().mockResolvedValue(async () => undefined),
     };
-    cache = { addScore: jest.fn().mockResolvedValue(1), top: jest.fn().mockResolvedValue([]) };
+    // Map-backed JSON store so get/set/del behave like real Redis (dedup-then-read
+    // in the matchmaking flow depends on it); sorted-set + set ops stay assertable.
+    const store = new Map<string, unknown>();
+    cache = {
+      addScore: jest.fn().mockResolvedValue(1),
+      top: jest.fn().mockResolvedValue([]),
+      get: jest.fn((k: string) => Promise.resolve(store.has(k) ? store.get(k) : null)),
+      set: jest.fn((k: string, v: unknown) => {
+        store.set(k, v);
+        return Promise.resolve(undefined);
+      }),
+      del: jest.fn((...keys: string[]) => {
+        keys.forEach((k) => store.delete(k));
+        return Promise.resolve(keys.length);
+      }),
+      exists: jest.fn((k: string) => Promise.resolve(store.has(k))),
+      increment: jest.fn().mockResolvedValue(1), // rate-limit counter (under the limit)
+      setScore: jest.fn().mockResolvedValue(undefined),
+      sortedCount: jest.fn().mockResolvedValue(0),
+      sortedRank: jest.fn().mockResolvedValue(null),
+      sortedLowest: jest.fn().mockResolvedValue([]),
+      sortedRemove: jest.fn().mockResolvedValue(1),
+      sortedRangeByScore: jest.fn().mockResolvedValue([]),
+      sortedRemoveByScore: jest.fn().mockResolvedValue(0),
+      setAdd: jest.fn().mockResolvedValue(1),
+      setMembers: jest.fn().mockResolvedValue([]),
+      setRemove: jest.fn().mockResolvedValue(1),
+    };
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     wallet = {
@@ -343,6 +387,141 @@ describe('GamesService', () => {
     });
   });
 
+  describe('relayMove', () => {
+    it('relays a participant move, persists live state, and publishes game.move', async () => {
+      const res = (await service.relayMove(ACTOR, 'sess-1', {
+        action: 'roll_dice',
+        value: 6,
+        seat: 0,
+      })) as Record<string, unknown>;
+      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.move' }));
+      expect(cache.set).toHaveBeenCalled();
+      expect(res).toMatchObject({ accepted: true });
+    });
+
+    it('rejects a mover who is not a participant of the session', async () => {
+      repo.getParticipant.mockResolvedValue(null);
+      await expect(
+        service.relayMove({ id: STRANGER, roles: ['USER'] }, 'sess-1', { action: 'roll_dice' }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_NOT_PARTICIPANT });
+    });
+
+    it('rejects a move on a non-active session', async () => {
+      repo.getSession.mockResolvedValue(session({ status: GameSessionStatus.COMPLETED }));
+      await expect(
+        service.relayMove(ACTOR, 'sess-1', { action: 'roll_dice' }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_SESSION_NOT_ACTIVE });
+    });
+  });
+
+  describe('reportMatchResult', () => {
+    it('host reports a solo winner → the whole pot is paid via settleResult', async () => {
+      await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] });
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: HOST, amount: 200, reason: 'GAME_PAYOUT' }),
+      );
+      expect(repo.createMatchResult).toHaveBeenCalledWith(
+        expect.objectContaining({ payoutTotal: 200n, rakeAmount: 0n, winners: [HOST] }),
+      );
+    });
+
+    it('splits the pot evenly across multiple winners', async () => {
+      await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST, P2] });
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: HOST, amount: 100 }),
+      );
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: P2, amount: 100 }),
+      );
+    });
+
+    it('applies the house rake before paying the winner', async () => {
+      repo.getDefinitionByCode.mockResolvedValue(def({ houseRakeBps: 500 })); // 5%
+      await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] });
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: HOST, amount: 190 }),
+      );
+      expect(repo.createMatchResult).toHaveBeenCalledWith(
+        expect.objectContaining({ payoutTotal: 190n, rakeAmount: 10n }),
+      );
+    });
+
+    it('rejects a non-host reporter', async () => {
+      await expect(
+        service.reportMatchResult({ id: P2, roles: ['USER'] }, 'sess-1', { winners: [P2] }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_NOT_HOST });
+    });
+
+    it('rejects a report with no winners', async () => {
+      await expect(
+        service.reportMatchResult(ACTOR, 'sess-1', { winners: [] }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_INVALID_PAYOUT });
+    });
+  });
+
+  describe('getLiveState', () => {
+    it('returns the live state with the current turn and remaining seconds', async () => {
+      const res = (await service.getLiveState('sess-1')) as Record<string, unknown>;
+      expect(res).toMatchObject({ sessionId: 'sess-1', isOver: false, currentTurnUserId: HOST });
+      expect(res).toHaveProperty('turnRemainingSeconds');
+      expect(res).toHaveProperty('moves');
+    });
+
+    it('rejects an unknown session', async () => {
+      repo.getSession.mockResolvedValue(null);
+      await expect(service.getLiveState('nope')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.GAME_SESSION_NOT_FOUND,
+      });
+    });
+  });
+
+  describe('forfeit', () => {
+    it('settles the pot to the sole survivor when a player forfeits (2-player)', async () => {
+      const res = (await service.forfeit(ACTOR, 'sess-1')) as Record<string, unknown>;
+      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.forfeited' }));
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: P2, amount: 200, reason: 'GAME_PAYOUT' }),
+      );
+      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.settled' }));
+      expect(res).toBeTruthy();
+    });
+
+    it('continues the match and marks the leaver lost when 2+ players remain', async () => {
+      repo.getSession.mockResolvedValue(session({ playerCount: 3, potAmount: 300n }));
+      repo.getParticipant.mockResolvedValue(participant('p1', HOST));
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('p2', P2),
+        participant('p3', P3),
+      ]);
+      await service.forfeit(ACTOR, 'sess-1');
+      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.forfeited' }));
+      expect(repo.updateParticipant).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({ status: GameParticipantStatus.LOST }),
+      );
+      // No settlement while the match continues.
+      expect(repo.createMatchResult).not.toHaveBeenCalled();
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.settled' }),
+      );
+    });
+
+    it('rejects a non-participant forfeiter', async () => {
+      repo.getParticipant.mockResolvedValue(null);
+      await expect(
+        service.forfeit({ id: STRANGER, roles: ['USER'] }, 'sess-1'),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_NOT_PARTICIPANT });
+    });
+
+    it('rejects forfeit on a non-active session', async () => {
+      repo.getSession.mockResolvedValue(session({ status: GameSessionStatus.COMPLETED }));
+      await expect(service.forfeit(ACTOR, 'sess-1')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.GAME_SESSION_NOT_ACTIVE,
+      });
+    });
+  });
+
   describe('admin + reads', () => {
     it('blocks a non-admin from editing a definition', async () => {
       await expect(
@@ -354,6 +533,541 @@ describe('GamesService', () => {
       cache.top.mockResolvedValue([{ member: HOST, score: 3 }]);
       const board = (await service.leaderboard(10)) as Array<Record<string, unknown>>;
       expect(board[0]).toMatchObject({ rank: 1, userId: HOST, username: 'host', wins: 3 });
+    });
+  });
+
+  describe('matchmaking — joinQueue', () => {
+    it('queues a lone player and reports QUEUED', async () => {
+      cache.sortedCount.mockResolvedValue(1); // below the DUEL requirement (2)
+      const res = (await service.joinQueue(ACTOR, {
+        gameCode: GameCode.GREEDY,
+        stake: 500,
+        matchType: 'DUEL',
+      })) as Record<string, unknown>;
+      expect(res).toMatchObject({ status: 'QUEUED' });
+      expect(cache.setScore).toHaveBeenCalledWith(
+        gameMatchQueueKey(GameCode.GREEDY, 500, 'DUEL'),
+        HOST,
+        expect.any(Number),
+      );
+      expect(cache.setAdd).toHaveBeenCalled(); // registers the bucket for stale sweeps
+    });
+
+    it('forms a match and opens a ready-check when the bucket fills', async () => {
+      cache.sortedCount.mockResolvedValue(2);
+      cache.sortedLowest.mockResolvedValue([
+        { member: HOST, score: 1 },
+        { member: P2, score: 2 },
+      ]);
+      const res = (await service.joinQueue(ACTOR, {
+        gameCode: GameCode.GREEDY,
+        stake: 500,
+        matchType: 'DUEL',
+      })) as Record<string, unknown>;
+      expect(res).toMatchObject({ status: 'MATCHED' });
+      expect(res.matchId).toEqual(expect.any(String));
+      expect(cache.sortedRemove).toHaveBeenCalledWith(
+        gameMatchQueueKey(GameCode.GREEDY, 500, 'DUEL'),
+        HOST,
+        P2,
+      );
+      expect(cache.setScore).toHaveBeenCalledWith(
+        GAME_MATCH_READY_INDEX_KEY,
+        expect.any(String),
+        expect.any(Number),
+      );
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.match_found' }),
+      );
+    });
+
+    it('rejects a player who is already queued', async () => {
+      await cache.set(gameMatchUserKey(HOST), { bucketKey: 'b', retries: 0, firstQueuedAt: 1 });
+      await expect(
+        service.joinQueue(ACTOR, { gameCode: GameCode.GREEDY, stake: 500, matchType: 'DUEL' }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_ALREADY_QUEUED });
+    });
+
+    it('rejects TEAM_2V2 for a game whose engine does not support it', async () => {
+      // GREEDY seats 8, but its engine has no 2v2 — capability gates, not seat count.
+      await expect(
+        service.joinQueue(ACTOR, { gameCode: GameCode.GREEDY, stake: 500, matchType: 'TEAM_2V2' }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_2V2_UNSUPPORTED });
+    });
+
+    it('allows TEAM_2V2 for a 2v2-capable game (Ludo)', async () => {
+      repo.getDefinitionByCode.mockResolvedValue(def({ code: GameCode.LUDO }));
+      const res = (await service.joinQueue(ACTOR, {
+        gameCode: GameCode.LUDO,
+        stake: 500,
+        matchType: 'TEAM_2V2',
+      })) as Record<string, unknown>;
+      expect(res).toMatchObject({ status: 'QUEUED' });
+    });
+
+    it('rate-limits repeated queue requests', async () => {
+      cache.increment.mockResolvedValue(11); // over the 10/min limit
+      await expect(
+        service.joinQueue(ACTOR, { gameCode: GameCode.GREEDY, stake: 500, matchType: 'DUEL' }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.RATE_LIMITED });
+    });
+  });
+
+  describe('matchmaking — acceptMatch', () => {
+    const MATCH = 'match-abc';
+    function seedReadyCheck(overrides: Record<string, unknown> = {}) {
+      return cache.set(gameMatchReadyKey(MATCH), {
+        matchId: MATCH,
+        v: 1,
+        gameCode: GameCode.GREEDY,
+        stake: 100,
+        matchType: 'DUEL',
+        currency: GameCurrency.GOLD,
+        mode: GameMode.CLASSIC,
+        bucketKey: gameMatchQueueKey(GameCode.GREEDY, 100, 'DUEL'),
+        players: [HOST, P2],
+        ready: [],
+        hostId: HOST,
+        retriesByUser: { [HOST]: 0, [P2]: 0 },
+        expiresAt: Date.now() + 10000,
+        createdAt: Date.now(),
+        ...overrides,
+      });
+    }
+
+    it('records readiness and waits for the other player', async () => {
+      await seedReadyCheck();
+      const res = (await service.acceptMatch(ACTOR, MATCH)) as Record<string, unknown>;
+      expect(res).toMatchObject({ status: 'WAITING' });
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.match_ready_progress' }),
+      );
+    });
+
+    it('finalizes when all are ready: creates the matchmade lobby, escrows, starts', async () => {
+      await seedReadyCheck({ ready: [P2] }); // P2 ready; HOST accepting makes it all-ready
+      repo.createLobby.mockResolvedValue(
+        lobby({ id: 'mm-lobby', mode: GameMode.CLASSIC, isMatchmade: true, hostId: HOST }),
+      );
+      repo.getLobbyById.mockResolvedValue(
+        lobby({ id: 'mm-lobby', mode: GameMode.CLASSIC, isMatchmade: true, hostId: HOST }),
+      );
+      repo.listMemberIds.mockResolvedValue([HOST, P2]);
+      const res = (await service.acceptMatch(ACTOR, MATCH)) as Record<string, unknown>;
+      expect(res).toMatchObject({ status: 'STARTED' });
+      expect(repo.createLobby).toHaveBeenCalledWith(
+        expect.objectContaining({ isMatchmade: true, hostId: HOST }),
+      );
+      expect(repo.addMember).toHaveBeenCalledWith('mm-lobby', HOST);
+      expect(repo.addMember).toHaveBeenCalledWith('mm-lobby', P2);
+      expect(wallet.debit).toHaveBeenCalledTimes(2); // escrow via startSessionFromLobby
+      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.started' }));
+      expect(cache.del).toHaveBeenCalledWith(gameMatchReadyKey(MATCH)); // ready-check cleared
+    });
+
+    it('rejects an unknown match', async () => {
+      await expect(service.acceptMatch(ACTOR, 'nope')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.GAME_MATCH_NOT_FOUND,
+      });
+    });
+
+    it('rejects an expired match', async () => {
+      await seedReadyCheck({ expiresAt: Date.now() - 1000 });
+      await expect(service.acceptMatch(ACTOR, MATCH)).rejects.toMatchObject({
+        errorCode: ERROR_CODES.GAME_MATCH_EXPIRED,
+      });
+    });
+  });
+
+  describe('matchmaking — leaveQueue / status', () => {
+    it('removes the player from the bucket and clears the pointer', async () => {
+      const bucketKey = gameMatchQueueKey(GameCode.GREEDY, 100, 'DUEL');
+      await cache.set(gameMatchUserKey(HOST), { bucketKey, retries: 0, firstQueuedAt: Date.now() });
+      const res = await service.leaveQueue(ACTOR);
+      expect(res).toEqual({ left: true });
+      expect(cache.sortedRemove).toHaveBeenCalledWith(bucketKey, HOST);
+      expect(cache.del).toHaveBeenCalledWith(gameMatchUserKey(HOST));
+    });
+
+    it('is a no-op when the player is not queued', async () => {
+      expect(await service.leaveQueue(ACTOR)).toEqual({ left: false });
+    });
+
+    it('reports IDLE when neither queued nor in a ready-check', async () => {
+      expect(await service.getMatchmakingStatus(ACTOR)).toMatchObject({ state: 'IDLE' });
+    });
+
+    it('reports READY_CHECK when the player is in a ready-check', async () => {
+      await cache.set(gameMatchReadyUserKey(HOST), 'm1');
+      await cache.set(gameMatchReadyKey('m1'), {
+        matchId: 'm1',
+        players: [HOST, P2],
+        ready: [P2],
+        expiresAt: Date.now() + 5000,
+      });
+      expect(await service.getMatchmakingStatus(ACTOR)).toMatchObject({
+        state: 'READY_CHECK',
+        matchId: 'm1',
+      });
+    });
+  });
+
+  describe('matchmaking — dissolve', () => {
+    it('re-queues the ready players and drops the rest on decline', async () => {
+      const bucketKey = gameMatchQueueKey(GameCode.GREEDY, 100, 'TEAM_2V2');
+      await cache.set(gameMatchReadyKey('m2'), {
+        matchId: 'm2',
+        v: 1,
+        gameCode: GameCode.GREEDY,
+        stake: 100,
+        matchType: 'TEAM_2V2',
+        currency: GameCurrency.GOLD,
+        mode: GameMode.TEAM_2V2,
+        bucketKey,
+        players: [HOST, P2, STRANGER, P3],
+        ready: [HOST, P2],
+        hostId: HOST,
+        retriesByUser: { [HOST]: 0, [P2]: 0, [STRANGER]: 0, [P3]: 0 },
+        expiresAt: Date.now() + 5000,
+        createdAt: Date.now(),
+      });
+      await service.declineMatch({ id: P3, roles: ['USER'] }, 'm2');
+      expect(cache.setScore).toHaveBeenCalledWith(bucketKey, HOST, expect.any(Number));
+      expect(cache.setScore).toHaveBeenCalledWith(bucketKey, P2, expect.any(Number));
+      expect(cache.setScore).not.toHaveBeenCalledWith(bucketKey, STRANGER, expect.any(Number));
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.match_cancelled' }),
+      );
+      expect(cache.del).toHaveBeenCalledWith(gameMatchReadyKey('m2'));
+    });
+  });
+
+  describe('matchmaking — sweepExpiredReadyChecks', () => {
+    it('dissolves ready-checks past their deadline and re-queues the ready', async () => {
+      const bucketKey = gameMatchQueueKey(GameCode.GREEDY, 100, 'DUEL');
+      cache.sortedRangeByScore.mockResolvedValue(['m3']);
+      await cache.set(gameMatchReadyKey('m3'), {
+        matchId: 'm3',
+        v: 1,
+        gameCode: GameCode.GREEDY,
+        stake: 100,
+        matchType: 'DUEL',
+        currency: GameCurrency.GOLD,
+        mode: GameMode.CLASSIC,
+        bucketKey,
+        players: [HOST, P2],
+        ready: [HOST],
+        hostId: HOST,
+        retriesByUser: { [HOST]: 0, [P2]: 0 },
+        expiresAt: Date.now() - 1000,
+        createdAt: Date.now() - 20000,
+      });
+      await service.sweepExpiredReadyChecks(new Date());
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.match_cancelled' }),
+      );
+      expect(cache.setScore).toHaveBeenCalledWith(bucketKey, HOST, expect.any(Number));
+    });
+  });
+
+  describe('2v2 — setPlayerTeam', () => {
+    beforeEach(() => {
+      repo.getLobbyByCode.mockResolvedValue(lobby({ mode: GameMode.TEAM_2V2 }));
+      repo.getLobbyById.mockResolvedValue(lobby({ mode: GameMode.TEAM_2V2 }));
+      repo.getMember.mockResolvedValue({ id: 'm1' });
+      repo.listMembersWithTeams.mockResolvedValue([
+        { userId: HOST, team: null },
+        { userId: P2, team: null },
+      ]);
+    });
+
+    it('sets the callers own team and broadcasts', async () => {
+      await service.setPlayerTeam(ACTOR, 'ABCDEF', GameTeam.A);
+      expect(repo.setMemberTeam).toHaveBeenCalledWith('lobby-1', HOST, GameTeam.A);
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.lobby_team_changed' }),
+      );
+    });
+
+    it('rejects when the chosen team is already full', async () => {
+      repo.listMembersWithTeams.mockResolvedValue([
+        { userId: P2, team: GameTeam.A },
+        { userId: STRANGER, team: GameTeam.A },
+      ]);
+      await expect(service.setPlayerTeam(ACTOR, 'ABCDEF', GameTeam.A)).rejects.toMatchObject({
+        errorCode: ERROR_CODES.GAME_TEAM_FULL,
+      });
+    });
+
+    it('rejects team selection in a non-team lobby', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby({ mode: GameMode.CLASSIC }));
+      await expect(service.setPlayerTeam(ACTOR, 'ABCDEF', GameTeam.A)).rejects.toMatchObject({
+        errorCode: ERROR_CODES.GAME_NOT_TEAM_MODE,
+      });
+    });
+  });
+
+  describe('2v2 — reportMatchResult (team expansion)', () => {
+    it('expands the winning team and splits the pot between its members', async () => {
+      repo.getSession.mockResolvedValue(
+        session({ mode: GameMode.TEAM_2V2, potAmount: 400n, playerCount: 4 }),
+      );
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST, { team: GameTeam.A, seat: 0 }),
+        participant('p2', P2, { team: GameTeam.B, seat: 1 }),
+        participant('p3', STRANGER, { team: GameTeam.A, seat: 2 }),
+        participant('p4', P3, { team: GameTeam.B, seat: 3 }),
+      ]);
+      await service.reportMatchResult(ACTOR, 'sess-1', { winningTeam: GameTeam.A });
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: HOST, amount: 200 }),
+      );
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: STRANGER, amount: 200 }),
+      );
+      expect(repo.createMatchResult).toHaveBeenCalledWith(
+        expect.objectContaining({ winners: expect.arrayContaining([HOST, STRANGER]) }),
+      );
+    });
+
+    it('requires a winningTeam for a 2v2 session', async () => {
+      repo.getSession.mockResolvedValue(session({ mode: GameMode.TEAM_2V2 }));
+      await expect(
+        service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_INVALID_PAYOUT });
+    });
+  });
+
+  describe('2v2 — forfeit', () => {
+    it('awards the pot to the surviving team when a forfeit empties the other team', async () => {
+      repo.getSession.mockResolvedValue(
+        session({ mode: GameMode.TEAM_2V2, potAmount: 400n, playerCount: 4 }),
+      );
+      repo.getParticipant.mockResolvedValue(participant('p1', HOST, { team: GameTeam.A }));
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST, { team: GameTeam.A, status: GameParticipantStatus.PLAYING }),
+        participant('p2', STRANGER, { team: GameTeam.A, status: GameParticipantStatus.LOST }),
+        participant('p3', P2, { team: GameTeam.B, status: GameParticipantStatus.PLAYING }),
+        participant('p4', P3, { team: GameTeam.B, status: GameParticipantStatus.PLAYING }),
+      ]);
+      await service.forfeit(ACTOR, 'sess-1');
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: P2, amount: 200 }),
+      );
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: P3, amount: 200 }),
+      );
+      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.settled' }));
+    });
+
+    it('continues a 2v2 match while both teams still have players', async () => {
+      repo.getSession.mockResolvedValue(
+        session({ mode: GameMode.TEAM_2V2, potAmount: 400n, playerCount: 4 }),
+      );
+      repo.getParticipant.mockResolvedValue(participant('p1', HOST, { team: GameTeam.A }));
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST, { team: GameTeam.A, status: GameParticipantStatus.PLAYING }),
+        participant('p2', STRANGER, { team: GameTeam.A, status: GameParticipantStatus.PLAYING }),
+        participant('p3', P2, { team: GameTeam.B, status: GameParticipantStatus.PLAYING }),
+        participant('p4', P3, { team: GameTeam.B, status: GameParticipantStatus.PLAYING }),
+      ]);
+      await service.forfeit(ACTOR, 'sess-1');
+      expect(repo.createMatchResult).not.toHaveBeenCalled();
+      expect(repo.updateParticipant).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({ status: GameParticipantStatus.LOST }),
+      );
+    });
+  });
+
+  describe('private / password lobbies + host controls', () => {
+    it('creates a private password lobby, storing a hash (not the plaintext)', async () => {
+      await service.createLobby(ACTOR, {
+        gameCode: GameCode.GREEDY,
+        stake: 500,
+        isPrivate: true,
+        password: 'secret',
+      });
+      expect(repo.createLobby).toHaveBeenCalledWith(
+        expect.objectContaining({ isPrivate: true, passwordHash: expect.any(String) }),
+      );
+      const arg = repo.createLobby.mock.calls[0][0] as { passwordHash: string };
+      expect(arg.passwordHash).not.toBe('secret');
+    });
+
+    it('rejects joining a password lobby with the wrong password', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby({ passwordHash: sha256('right') }));
+      repo.getLobbyById.mockResolvedValue(lobby({ passwordHash: sha256('right') }));
+      await expect(
+        service.joinLobby({ id: P2, roles: ['USER'] }, 'ABCDEF', 'wrong'),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_LOBBY_BAD_PASSWORD });
+    });
+
+    it('allows joining a password lobby with the correct password', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby({ passwordHash: sha256('right') }));
+      repo.getLobbyById.mockResolvedValue(lobby({ passwordHash: sha256('right') }));
+      await service.joinLobby({ id: P2, roles: ['USER'] }, 'ABCDEF', 'right');
+      expect(repo.addMember).toHaveBeenCalledWith('lobby-1', P2);
+    });
+
+    it('lets the host kick a member and broadcasts', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby());
+      repo.getLobbyById.mockResolvedValue(lobby());
+      repo.getMember.mockResolvedValue({ id: 'm2' });
+      repo.listMemberIds.mockResolvedValue([HOST]);
+      await service.kickMember(ACTOR, 'ABCDEF', P2);
+      expect(repo.removeMember).toHaveBeenCalledWith('lobby-1', P2);
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.lobby_member_kicked' }),
+      );
+    });
+
+    it('rejects a non-host kicker', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby());
+      await expect(
+        service.kickMember({ id: P2, roles: ['USER'] }, 'ABCDEF', HOST),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_NOT_HOST });
+    });
+
+    it('lets the host close (disband) the lobby', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby());
+      repo.getLobbyById.mockResolvedValue(lobby());
+      await service.closeLobby(ACTOR, 'ABCDEF');
+      expect(repo.markLobbyClosed).toHaveBeenCalledWith('lobby-1', GameLobbyStatus.CANCELLED, HOST);
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.lobby_cancelled' }),
+      );
+    });
+
+    it('lets the host update stake while the lobby is open', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby());
+      repo.getLobbyById.mockResolvedValue(lobby());
+      await service.updateLobbySettings(ACTOR, 'ABCDEF', { stake: 800 });
+      expect(repo.updateLobby).toHaveBeenCalledWith(
+        'lobby-1',
+        expect.objectContaining({ stake: 800n }),
+      );
+    });
+
+    it('rejects a non-host editing settings', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby());
+      await expect(
+        service.updateLobbySettings({ id: P2, roles: ['USER'] }, 'ABCDEF', { stake: 800 }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_NOT_HOST });
+    });
+  });
+
+  describe('staked-seat bots', () => {
+    const BOT = '99999999-9999-9999-9999-999999999999';
+
+    it('lets the host add a bot and broadcasts it as a member', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby());
+      repo.getLobbyById.mockResolvedValue(lobby());
+      repo.countMembers.mockResolvedValue(1);
+      const res = (await service.addBot(ACTOR, 'ABCDEF', {})) as Record<string, unknown>;
+      expect(repo.addBotMember).toHaveBeenCalled();
+      expect(res).toHaveProperty('botId');
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.lobby_joined' }),
+      );
+    });
+
+    it('rejects a non-host adding a bot', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby());
+      await expect(service.addBot({ id: P2, roles: ['USER'] }, 'ABCDEF', {})).rejects.toMatchObject(
+        { errorCode: ERROR_CODES.GAME_NOT_HOST },
+      );
+    });
+
+    it('skips escrow for bots and sets the pot from human stakes only', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby());
+      repo.getLobbyById.mockResolvedValue(lobby());
+      repo.listMemberIds.mockResolvedValue([HOST, BOT]);
+      repo.listMembersWithTeams.mockResolvedValue([
+        { userId: HOST, team: null, isBot: false },
+        { userId: BOT, team: null, isBot: true },
+      ]);
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST, { stake: 100n, isBot: false }),
+        participant('pb', BOT, { stake: 0n, isBot: true }),
+      ]);
+      await service.startSessionFromLobby('lobby-1', HOST);
+      expect(wallet.debit).toHaveBeenCalledTimes(1); // only the human staked
+      expect(repo.setSessionPot).toHaveBeenCalledWith('sess-1', 100n); // 1 human × 100
+    });
+
+    it('redistributes a bot teammate’s share to the human on a winning 2v2 team', async () => {
+      repo.getSession.mockResolvedValue(
+        session({ mode: GameMode.TEAM_2V2, potAmount: 300n, playerCount: 4 }),
+      );
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST, { team: GameTeam.A, isBot: false, stake: 100n }),
+        participant('pb', BOT, { team: GameTeam.A, isBot: true, stake: 0n }),
+        participant('p3', P2, { team: GameTeam.B, isBot: false, stake: 100n }),
+        participant('p4', P3, { team: GameTeam.B, isBot: false, stake: 100n }),
+      ]);
+      await service.reportMatchResult(ACTOR, 'sess-1', { winningTeam: GameTeam.A });
+      // Only the human on team A is paid — the whole distributable pot.
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: HOST, amount: 300 }),
+      );
+      expect(wallet.credit).not.toHaveBeenCalledWith(expect.objectContaining({ userId: BOT }));
+      expect(repo.createMatchResult).toHaveBeenCalledWith(
+        expect.objectContaining({ winners: [HOST] }),
+      );
+    });
+
+    it('refunds the humans when only a bot is left to win', async () => {
+      repo.getSession.mockResolvedValue(session({ potAmount: 100n, playerCount: 2 }));
+      repo.getParticipant.mockResolvedValue(participant('p1', HOST, { stakeTxnId: 'wtx' }));
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST, { isBot: false, stakeTxnId: 'wtx' }),
+        participant('pb', BOT, { isBot: true, stake: 0n }),
+      ]);
+      await service.forfeit(ACTOR, 'sess-1'); // HOST forfeits, only the bot remains
+      expect(repo.closeSession).toHaveBeenCalledWith('sess-1', GameSessionStatus.CANCELLED, HOST);
+      expect(repo.createMatchResult).not.toHaveBeenCalled(); // no settlement to a bot
+    });
+
+    it('lets the host relay a move on a bot’s behalf', async () => {
+      repo.getParticipant.mockResolvedValue(participant('pb', BOT, { isBot: true }));
+      const res = (await service.relayMove(
+        ACTOR,
+        'sess-1',
+        { action: 'roll_dice' },
+        BOT,
+      )) as Record<string, unknown>;
+      expect(res).toMatchObject({ accepted: true });
+      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.move' }));
+    });
+
+    it('rejects a non-host relaying for a bot', async () => {
+      await expect(
+        service.relayMove({ id: P2, roles: ['USER'] }, 'sess-1', { action: 'roll_dice' }, BOT),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_NOT_HOST });
+    });
+  });
+
+  describe('presence auto-forfeit — forfeitOnDisconnect', () => {
+    it('auto-forfeits a disconnected player who is in an active session', async () => {
+      repo.findActiveSessionForParticipant.mockResolvedValue('sess-1');
+      await service.forfeitOnDisconnect(HOST);
+      expect(repo.findActiveSessionForParticipant).toHaveBeenCalledWith(HOST);
+      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.forfeited' }));
+    });
+
+    it('is a no-op when the player is not in any active session', async () => {
+      repo.findActiveSessionForParticipant.mockResolvedValue(null);
+      await service.forfeitOnDisconnect(HOST);
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.forfeited' }),
+      );
+    });
+
+    it('swallows a forfeit error (e.g. the player already left the session)', async () => {
+      repo.findActiveSessionForParticipant.mockResolvedValue('sess-1');
+      repo.getParticipant.mockResolvedValue(null); // forfeit() throws GAME_NOT_PARTICIPANT
+      await expect(service.forfeitOnDisconnect(HOST)).resolves.toBeUndefined();
     });
   });
 });

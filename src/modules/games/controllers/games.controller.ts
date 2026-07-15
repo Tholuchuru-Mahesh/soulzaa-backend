@@ -7,10 +7,18 @@ import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import {
+  AddBotDto,
   CreateLobbyDto,
   GameLeaderboardDto,
+  JoinLobbyDto,
+  JoinQueueDto,
+  KickMemberDto,
   ListSessionsDto,
+  ReportMatchResultDto,
+  SetPlayerTeamDto,
   SettleResultDto,
+  SubmitMoveDto,
+  UpdateLobbySettingsDto,
 } from '../dto/games.dto';
 import type { GameActor } from '../interfaces/game-actor.interface';
 import { GamesService } from '../services/games.service';
@@ -61,9 +69,45 @@ export class GamesController {
   @Post('lobbies/:code/join')
   @HttpCode(HttpStatus.OK)
   @NotGuest()
-  @ApiOperation({ summary: 'Join a lobby by code' })
-  join(@CurrentUser() user: AuthenticatedUser, @Param('code') code: string) {
-    return this.games.joinLobby(this.actor(user), code);
+  @ApiOperation({ summary: 'Join a lobby by code (with optional password)' })
+  join(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('code') code: string,
+    @Body() dto: JoinLobbyDto,
+  ) {
+    return this.games.joinLobby(this.actor(user), code, dto.password);
+  }
+
+  @Post('lobbies/:code/kick')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Kick a member (host only)' })
+  kick(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('code') code: string,
+    @Body() dto: KickMemberDto,
+  ) {
+    return this.games.kickMember(this.actor(user), code, dto.userId);
+  }
+
+  @Post('lobbies/:code/close')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Close (disband) the lobby (host only)' })
+  close(@CurrentUser() user: AuthenticatedUser, @Param('code') code: string) {
+    return this.games.closeLobby(this.actor(user), code);
+  }
+
+  @Post('lobbies/:code/settings')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Edit open-lobby settings: stake / maxPlayers / password (host only)' })
+  updateSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('code') code: string,
+    @Body() dto: UpdateLobbySettingsDto,
+  ) {
+    return this.games.updateLobbySettings(this.actor(user), code, dto);
   }
 
   @Post('lobbies/:code/leave')
@@ -82,10 +126,113 @@ export class GamesController {
     return this.games.startLobby(this.actor(user), code);
   }
 
+  @Post('lobbies/:code/bots')
+  @HttpCode(HttpStatus.CREATED)
+  @NotGuest()
+  @ApiOperation({ summary: 'Add a bot to the lobby (host only)' })
+  addBot(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('code') code: string,
+    @Body() dto: AddBotDto,
+  ) {
+    return this.games.addBot(this.actor(user), code, { name: dto.name, team: dto.team });
+  }
+
+  @Post('lobbies/:code/team')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Pick your team in a 2v2 lobby' })
+  setTeam(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('code') code: string,
+    @Body() dto: SetPlayerTeamDto,
+  ) {
+    return this.games.setPlayerTeam(this.actor(user), code, dto.team);
+  }
+
+  // ---- Matchmaking (auto-pair queue + all-ready ready-check) ----
+
+  @Post('matchmaking/queue')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Join the matchmaking queue (DUEL or TEAM_2V2)' })
+  joinQueue(@CurrentUser() user: AuthenticatedUser, @Body() dto: JoinQueueDto) {
+    return this.games.joinQueue(this.actor(user), {
+      gameCode: dto.gameCode,
+      stake: dto.stake,
+      matchType: dto.matchType,
+    });
+  }
+
+  @Post('matchmaking/leave')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Leave the matchmaking queue' })
+  leaveQueue(@CurrentUser() user: AuthenticatedUser) {
+    return this.games.leaveQueue(this.actor(user));
+  }
+
+  @Get('matchmaking/status')
+  @NotGuest()
+  @ApiOperation({ summary: 'My current matchmaking state (queued / ready-check / idle)' })
+  matchmakingStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.games.getMatchmakingStatus(this.actor(user));
+  }
+
+  @Post('matchmaking/:matchId/accept')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Ready up for a found match — starts once all accept' })
+  acceptMatch(@CurrentUser() user: AuthenticatedUser, @Param('matchId') matchId: string) {
+    return this.games.acceptMatch(this.actor(user), matchId);
+  }
+
+  @Post('matchmaking/:matchId/decline')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Decline a found match — dissolves the ready-check' })
+  declineMatch(@CurrentUser() user: AuthenticatedUser, @Param('matchId') matchId: string) {
+    return this.games.declineMatch(this.actor(user), matchId);
+  }
+
   @Get('sessions/:id')
   @ApiOperation({ summary: 'Session detail' })
   session(@Param('id', ParseUuidPipe) id: string) {
     return this.games.getSession(id);
+  }
+
+  @Post('sessions/:id/moves')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Relay a board-game move to the session (peer-relay)' })
+  submitMove(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: SubmitMoveDto,
+  ) {
+    return this.games.relayMove(this.actor(user), id, dto.moveData, dto.onBehalfOf);
+  }
+
+  @Get('sessions/:id/live')
+  @ApiOperation({ summary: 'Live board state (move log + turn) for reconnect/restore' })
+  liveState(@Param('id', ParseUuidPipe) id: string) {
+    return this.games.getLiveState(id);
+  }
+
+  @Post('sessions/:id/report-result')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Host reports the winner — settles from the escrowed pot' })
+  reportResult(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: ReportMatchResultDto,
+  ) {
+    return this.games.reportMatchResult(this.actor(user), id, {
+      winners: dto.winners,
+      winningTeam: dto.winningTeam,
+      resultData: dto.resultData,
+    });
   }
 
   @Post('sessions/:id/cancel')
@@ -94,6 +241,14 @@ export class GamesController {
   @ApiOperation({ summary: 'Cancel an active session (host/admin) — refunds stakes' })
   cancel(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.games.cancelSession(this.actor(user), id);
+  }
+
+  @Post('sessions/:id/forfeit')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Forfeit/leave a match — sole survivor takes the pot' })
+  forfeit(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.games.forfeit(this.actor(user), id);
   }
 
   @Post('sessions/:id/result')

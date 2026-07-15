@@ -1,16 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { GameCode } from '@prisma/client';
+import { GameCode, GameMode, GameTeam } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsObject,
   IsOptional,
+  IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -32,6 +35,91 @@ export class CreateLobbyDto {
   @IsOptional()
   @IsUUID('4')
   roomId?: string;
+
+  @ApiPropertyOptional({
+    enum: GameMode,
+    description: 'Play mode (default CLASSIC; TEAM_2V2 splits four players into two teams).',
+  })
+  @IsOptional()
+  @IsEnum(GameMode)
+  mode?: GameMode;
+
+  @ApiPropertyOptional({
+    description: 'Hide the lobby from the public browse (join by code only).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isPrivate?: boolean;
+
+  @ApiPropertyOptional({ description: 'Optional join password (stored hashed).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  password?: string;
+}
+
+/** Optional password when joining a gated lobby. */
+export class JoinLobbyDto {
+  @ApiPropertyOptional({ description: 'Lobby password, if the lobby is password-gated.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  password?: string;
+}
+
+/** Host kicks a member from their lobby. */
+export class KickMemberDto {
+  @ApiProperty({ description: 'User id of the member to remove.' })
+  @IsUUID('4')
+  userId!: string;
+}
+
+/** Host edits open-lobby settings (all optional). */
+export class UpdateLobbySettingsDto {
+  @ApiPropertyOptional({ description: 'New entry stake per player.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  stake?: number;
+
+  @ApiPropertyOptional({ description: 'New max player cap.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  maxPlayers?: number;
+
+  @ApiPropertyOptional({ description: 'Set/replace the join password ("" clears it).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  password?: string;
+}
+
+/** Join the matchmaking queue for a game at a stake, as a DUEL (2) or TEAM_2V2 (4). */
+export class JoinQueueDto {
+  @ApiProperty({ enum: GameCode })
+  @IsEnum(GameCode)
+  gameCode!: GameCode;
+
+  @ApiProperty({ description: 'Entry stake per player (game currency).' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  stake!: number;
+
+  @ApiProperty({ enum: ['DUEL', 'TEAM_2V2'], description: 'DUEL pairs 2; TEAM_2V2 pairs 4.' })
+  @IsIn(['DUEL', 'TEAM_2V2'])
+  matchType!: 'DUEL' | 'TEAM_2V2';
+}
+
+/** Pick a team in a TEAM_2V2 lobby. */
+export class SetPlayerTeamDto {
+  @ApiProperty({ enum: GameTeam })
+  @IsEnum(GameTeam)
+  team!: GameTeam;
 }
 
 /** One player's payout in a settlement submission. */
@@ -68,6 +156,66 @@ export class SettleResultDto {
 
   @ApiPropertyOptional({
     description: 'Opaque result payload (scoreboard/seed/proof) stored for audit.',
+  })
+  @IsOptional()
+  @IsObject()
+  resultData?: Record<string, unknown>;
+}
+
+/** A board-game move relayed in-session (opaque per-game envelope; not rule-validated). */
+export class SubmitMoveDto {
+  @ApiProperty({ description: 'Opaque per-game move payload (action + fields).' })
+  @IsObject()
+  moveData!: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: "Bot seat id — the host relays a move on the bot's behalf (host only).",
+  })
+  @IsOptional()
+  @IsUUID('4')
+  onBehalfOf?: string;
+}
+
+/** Host adds a bot seat to a lobby. */
+export class AddBotDto {
+  @ApiPropertyOptional({ description: 'Bot display name (auto-generated if omitted).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  name?: string;
+
+  @ApiPropertyOptional({ enum: GameTeam, description: 'Team for the bot in a 2v2 lobby.' })
+  @IsOptional()
+  @IsEnum(GameTeam)
+  team?: GameTeam;
+}
+
+/**
+ * Host-reported match result for a board game. The host reports only the
+ * winner(s); the platform derives the pot-share payout server-side and settles
+ * (escrow-bounded — a client never sends an amount).
+ */
+export class ReportMatchResultDto {
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Winning participant user ids (CLASSIC mode).',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(64)
+  @IsUUID('4', { each: true })
+  winners?: string[];
+
+  @ApiPropertyOptional({
+    enum: GameTeam,
+    description: 'Winning team (required for a TEAM_2V2 session; expanded to both members).',
+  })
+  @IsOptional()
+  @IsEnum(GameTeam)
+  winningTeam?: GameTeam;
+
+  @ApiPropertyOptional({
+    description: 'Opaque result payload (scoreboard/reason) stored for audit.',
   })
   @IsOptional()
   @IsObject()

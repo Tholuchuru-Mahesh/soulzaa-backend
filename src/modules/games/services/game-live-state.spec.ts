@@ -1,0 +1,95 @@
+import { applyMove, GameLiveState, GameMoveFrame, initLiveState } from './game-live-state';
+
+const SEATS = ['u1', 'u2', 'u3', 'u4'];
+
+function frame(playerId: string, moveData: Record<string, unknown>): GameMoveFrame {
+  return { playerId, moveData, timestamp: 1000 };
+}
+
+function baseState(overrides: Partial<GameLiveState> = {}): GameLiveState {
+  return { ...initLiveState(SEATS, 500, 30), ...overrides };
+}
+
+describe('game-live-state', () => {
+  describe('initLiveState', () => {
+    it('seats the first player as the current turn with an empty move log', () => {
+      const state = initLiveState(SEATS, 500, 30);
+      expect(state.currentTurnUserId).toBe('u1');
+      expect(state.seatOrder).toEqual(SEATS);
+      expect(state.moves).toEqual([]);
+      expect(state.isOver).toBe(false);
+      expect(state.turnStartedAt).toBe(500);
+      expect(state.turnSeconds).toBe(30);
+    });
+  });
+
+  describe('applyMove turn rotation', () => {
+    it('does NOT rotate the turn for a whitelisted action (client owns turn order)', () => {
+      const next = applyMove(baseState(), frame('u1', { action: 'roll_dice', value: 6 }));
+      expect(next.currentTurnUserId).toBe('u1');
+    });
+
+    it('rotates to the next seat for a non-whitelisted action', () => {
+      const next = applyMove(baseState(), frame('u1', { action: 'pass' }));
+      expect(next.currentTurnUserId).toBe('u2');
+      expect(next.turnStartedAt).toBe(1000);
+    });
+
+    it('wraps rotation around to the first seat', () => {
+      const next = applyMove(
+        baseState({ currentTurnUserId: 'u4' }),
+        frame('u4', { action: 'pass' }),
+      );
+      expect(next.currentTurnUserId).toBe('u1');
+    });
+
+    it('honors an explicit truthy nextTurnPlayerId over rotation', () => {
+      const next = applyMove(
+        baseState(),
+        frame('u1', { action: 'move_token', nextTurnPlayerId: 'u3' }),
+      );
+      expect(next.currentTurnUserId).toBe('u3');
+    });
+
+    it('suppresses rotation when noTurnChange is set', () => {
+      const next = applyMove(baseState(), frame('u1', { action: 'pass', noTurnChange: true }));
+      expect(next.currentTurnUserId).toBe('u1');
+    });
+  });
+
+  describe('applyMove move log', () => {
+    it('appends an ordinary move to the log', () => {
+      const next = applyMove(baseState(), frame('u1', { action: 'roll_dice', value: 6 }));
+      expect(next.moves).toHaveLength(1);
+      expect(next.moves[0].moveData).toMatchObject({ action: 'roll_dice', value: 6 });
+    });
+
+    it('replaces the whole log with the snapshot on sync_state', () => {
+      const state = baseState({
+        moves: [frame('u1', { action: 'roll_dice' }), frame('u2', { action: 'move_token' })],
+      });
+      const next = applyMove(state, frame('u1', { action: 'sync_state', scores: { u1: 3 } }));
+      expect(next.moves).toHaveLength(1);
+      expect(next.moves[0].moveData).toMatchObject({ action: 'sync_state' });
+    });
+
+    it('does NOT store an aim frame in the log', () => {
+      const next = applyMove(baseState(), frame('u1', { action: 'aim', angle: 42 }));
+      expect(next.moves).toHaveLength(0);
+    });
+  });
+
+  describe('applyMove game_over', () => {
+    it('latches isOver on a game_over action', () => {
+      const next = applyMove(baseState(), frame('u1', { action: 'game_over', winnerId: 'u1' }));
+      expect(next.isOver).toBe(true);
+    });
+  });
+
+  it('never mutates the input state (returns a new object)', () => {
+    const state = baseState();
+    const next = applyMove(state, frame('u1', { action: 'roll_dice' }));
+    expect(state.moves).toHaveLength(0);
+    expect(next).not.toBe(state);
+  });
+});

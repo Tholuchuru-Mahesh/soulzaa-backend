@@ -1,5 +1,12 @@
-import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
-import type { Server } from 'socket.io';
+import {
+  ConnectedSocket,
+  MessageBody,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
+import type { Server, Socket } from 'socket.io';
+import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
 import { BaseGateway } from './base.gateway';
 import { SocketManager } from './socket.manager';
 
@@ -74,7 +81,78 @@ export class GamesGateway extends BaseGateway {
   constructor(manager: SocketManager) {
     super(manager);
   }
+
+  /**
+   * Ephemeral board-game "aim" preview relay (Carrom striker aim, etc.). Unlike
+   * committed moves — which go through `POST /games/sessions/:id/moves` so they
+   * are validated + logged for reconnect — an aim frame is high-frequency, not
+   * stored, and carries no game authority, so it is a pure socket-to-socket
+   * broadcast to the session room. Kept in the gateway (not the games module) so
+   * the infra→module boundary holds: there is no domain logic here, only fan-out.
+   * The sender must already be in the target room (it joined via `room:join`),
+   * which bars cross-room spam. The frame echoes to everyone in the room EXCEPT
+   * the sender (its own client already renders its aim).
+   */
+  @SubscribeMessage('game:aim')
+  onGameAim(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { sessionId?: unknown } & Record<string, unknown>,
+  ): void {
+    const sessionId = typeof body?.sessionId === 'string' ? body.sessionId : null;
+    if (!sessionId || !client.rooms.has(sessionId)) return;
+    const user = client.data.user as AuthenticatedUser | undefined;
+    client.to(sessionId).emit('game.aim_received', { ...body, playerId: user?.id });
+  }
+
+  /**
+   * In-match quick-chat emote relay. Like `game:aim`, an emote carries no game
+   * authority and is not stored, so it is a pure room broadcast — kept in the
+   * gateway so the boundary holds. Only allowlisted ids cross the wire (never
+   * free text), matching the legacy anti-abuse rule; the id is resolved to text
+   * client-side. Broadcast to the room EXCEPT the sender (its client echoes its
+   * own emote optimistically).
+   */
+  @SubscribeMessage('game:emote')
+  onGameEmote(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { sessionId?: unknown; emoteId?: unknown },
+  ): void {
+    const sessionId = typeof body?.sessionId === 'string' ? body.sessionId : null;
+    const emoteId = typeof body?.emoteId === 'string' ? body.emoteId : null;
+    if (
+      !sessionId ||
+      !emoteId ||
+      !client.rooms.has(sessionId) ||
+      !GAME_EMOTE_IDS.has(emoteId)
+    ) {
+      return;
+    }
+    const user = client.data.user as AuthenticatedUser | undefined;
+    client
+      .to(sessionId)
+      .emit('game.emote_received', { sessionId, playerId: user?.id, emoteId });
+  }
 }
+
+/** Allowlisted quick-chat emote ids (id-only wire; text resolved client-side). */
+const GAME_EMOTE_IDS: ReadonlySet<string> = new Set<string>([
+  'good_luck',
+  'nice_move',
+  'well_played',
+  'oops',
+  'good_game',
+  'hurry_up',
+  'thanks',
+  'close_one',
+  'e_smile',
+  'e_thumbs',
+  'e_clap',
+  'e_party',
+  'e_sweat',
+  'e_cry',
+  'e_heart',
+  'e_fire',
+]);
 
 /** All namespace gateways — registered as providers in SocketModule. */
 export const SOCKET_GATEWAYS = [

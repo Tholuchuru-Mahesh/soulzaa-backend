@@ -132,4 +132,62 @@ export class CacheService {
     const s = await this.client.zscore(key, member);
     return s === null ? null : Number(s);
   }
+
+  // ---- Sorted-set primitives (matchmaking queue + ready-check index) ----
+  // Single-key, so Cluster-safe. Callers serialize multi-step reads/writes with
+  // LockService where ordering matters (e.g. read-lowest-then-remove).
+
+  /** Number of members in a sorted set (0 if absent). */
+  async sortedCount(key: string): Promise<number> {
+    return this.client.zcard(key);
+  }
+
+  /** Ascending rank of a member (0 = lowest score), or null if absent. */
+  async sortedRank(key: string, member: string): Promise<number | null> {
+    const r = await this.client.zrank(key, member);
+    return r === null ? null : r;
+  }
+
+  /** The `count` lowest-scored members with their scores, ascending. */
+  async sortedLowest(key: string, count: number): Promise<RankedEntry[]> {
+    if (count <= 0) return [];
+    const flat = await this.client.zrange(key, 0, count - 1, 'WITHSCORES');
+    const entries: RankedEntry[] = [];
+    for (let i = 0; i < flat.length; i += 2) {
+      entries.push({ member: flat[i], score: Number(flat[i + 1]) });
+    }
+    return entries;
+  }
+
+  /** Remove members from a sorted set; returns how many were removed. */
+  async sortedRemove(key: string, ...members: string[]): Promise<number> {
+    if (members.length === 0) return 0;
+    return this.client.zrem(key, ...members);
+  }
+
+  /** Members with score in [min, max], ascending (used by the expiry sweep). */
+  async sortedRangeByScore(key: string, min: number, max: number): Promise<string[]> {
+    return this.client.zrangebyscore(key, min, max);
+  }
+
+  /** Drop members with score in [min, max] (stale-entry prune); returns count removed. */
+  async sortedRemoveByScore(key: string, min: number, max: number): Promise<number> {
+    return this.client.zremrangebyscore(key, min, max);
+  }
+
+  // ---- Set primitives (matchmaking bucket index — enumerate active buckets) ----
+
+  async setAdd(key: string, ...members: string[]): Promise<number> {
+    if (members.length === 0) return 0;
+    return this.client.sadd(key, ...members);
+  }
+
+  async setMembers(key: string): Promise<string[]> {
+    return this.client.smembers(key);
+  }
+
+  async setRemove(key: string, ...members: string[]): Promise<number> {
+    if (members.length === 0) return 0;
+    return this.client.srem(key, ...members);
+  }
 }
