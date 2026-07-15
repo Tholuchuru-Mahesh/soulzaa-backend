@@ -12,6 +12,7 @@ export const GIFT_EVENTS = {
   SENT: 'gift.sent',
   COMBO: 'gift.combo',
   LUCKY_WIN: 'gift.lucky_win',
+  REFUNDED: 'gift.refunded',
 } as const;
 
 /** Full snapshot of a completed gift send (broadcast + analytics + exp seam). */
@@ -59,4 +60,18 @@ export class GiftLuckyWinEvent extends DomainEvent<{
   totalCoinValue: number;
 }> {
   readonly name = GIFT_EVENTS.LUCKY_WIN;
+}
+
+export interface GiftRefundedPayload {
+  transactionId: string;
+  senderId: string;
+  roomId: string;
+  giftId: string;
+  giftName: string;
+  totalRefundAmount: number;
+  createdAt: string;
+}
+
+export class GiftRefundedEvent extends DomainEvent<GiftRefundedPayload> {
+  readonly name = GIFT_EVENTS.REFUNDED;
 }

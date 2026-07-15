@@ -51,8 +51,8 @@ export interface IWalletService {
    * Deduct `amount` of `currency`. Throws INSUFFICIENT_BALANCE if the balance
    * would go negative. Idempotent on `idempotencyKey`.
    */
-  debit(input: WalletMovementInput): Promise<WalletMovementResult>;
+  debit(input: WalletMovementInput, tx?: any): Promise<WalletMovementResult>;
 
   /** Add `amount` of `currency`. Idempotent on `idempotencyKey`. */
-  credit(input: WalletMovementInput): Promise<WalletMovementResult>;
+  credit(input: WalletMovementInput, tx?: any): Promise<WalletMovementResult>;
 }

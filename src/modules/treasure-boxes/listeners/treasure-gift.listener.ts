@@ -31,19 +31,6 @@ export class TreasureGiftListener implements OnModuleInit {
   private async handle(e: GiftSentEvent): Promise<void> {
     const p = e.payload;
     try {
-      await this.treasure.handleContribution(
-        p.contextId,
-        p.senderId,
-        p.receiverId,
-        p.totalCoinValue,
-        p.transactionId,
-      );
-    } catch (err) {
-      this.logger.warn(
-        `Treasure contribution failed for gift ${p.transactionId}: ${(err as Error).message}`,
-      );
-    }
-    try {
       await this.rocket.maybeTrigger({
         roomId: p.contextId,
         giftId: p.giftId,

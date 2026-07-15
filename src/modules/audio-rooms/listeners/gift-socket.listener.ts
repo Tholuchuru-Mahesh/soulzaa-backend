@@ -7,6 +7,7 @@ import {
   type GiftComboEvent,
   type GiftLuckyWinEvent,
   type GiftSentEvent,
+  type GiftRefundedEvent,
 } from 'src/modules/gifts/events/gift.events';
 import { AUDIO_ROOM_NAMESPACE, ROOM_SOCKET_EVENTS } from '../constants/audio-room.constants';
 
@@ -43,6 +44,13 @@ export class GiftSocketListener implements OnModuleInit {
     this.bus.subscribe<GiftLuckyWinEvent>(GIFT_EVENTS.LUCKY_WIN, (e) => {
       if (e.payload.contextType !== GiftContextType.AUDIO_ROOM) return;
       this.room(e.payload.contextId, ROOM_SOCKET_EVENTS.GIFT_LUCKY, e.payload);
+    });
+    this.bus.subscribe<GiftRefundedEvent>(GIFT_EVENTS.REFUNDED, (e) => {
+      this.sockets.emitToUserEverywhere(
+        e.payload.senderId,
+        ROOM_SOCKET_EVENTS.GIFT_REFUNDED,
+        e.payload,
+      );
     });
   }
 

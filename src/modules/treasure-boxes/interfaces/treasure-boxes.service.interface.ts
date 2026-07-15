@@ -6,6 +6,8 @@
  */
 export const TREASURE_BOXES_SERVICE = Symbol('TREASURE_BOXES_SERVICE');
 
+import type { Prisma } from '@prisma/client';
+
 /** A live treasure-session snapshot for a room. */
 export interface ActiveTreasureSession {
   sessionId: string;
@@ -18,4 +20,24 @@ export interface ActiveTreasureSession {
 export interface ITreasureBoxesService {
   /** The room's active treasure session, or null. */
   getActiveSession(roomId: string): Promise<ActiveTreasureSession | null>;
+
+  /**
+   * Process contribution atomically inside a database transaction.
+   * Calculates capacity, returns the accepted/refund amounts, and applies the DB updates.
+   */
+  processTreasureContribution(
+    tx: Prisma.TransactionClient,
+    roomId: string,
+    senderId: string,
+    receiverId: string,
+    amount: number,
+    giftTxnId: string,
+  ): Promise<{
+    acceptedAmount: number;
+    refundAmount: number;
+    events: any[];
+    postCommit?: () => Promise<void>;
+    boxId?: string;
+    level?: number;
+  }>;
 }

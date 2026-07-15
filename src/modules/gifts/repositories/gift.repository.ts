@@ -94,32 +94,37 @@ export class GiftRepository {
 
   // ---- Gift ledger (immutable) ----
 
-  findTxnByIdempotencyKey(idempotencyKey: string): Promise<GiftTransaction | null> {
-    return this.prisma.giftTransaction.findUnique({ where: { idempotencyKey } });
+  findTxnByIdempotencyKey(idempotencyKey: string, tx?: Prisma.TransactionClient): Promise<GiftTransaction | null> {
+    const client = tx || this.prisma;
+    return client.giftTransaction.findUnique({ where: { idempotencyKey } });
   }
 
-  createTransaction(data: {
-    senderId: string;
-    receiverId: string;
-    giftId: string;
-    giftType: GiftType;
-    contextType: GiftContextType;
-    contextId: string;
-    quantity: number;
-    comboTier: number;
-    unitCoinValue: number;
-    totalCoinValue: bigint;
-    creatorEarnings: bigint;
-    luckyMultiplier: number;
-    isLuckyWin: boolean;
-    senderExp: number;
-    receiverExp: number;
-    idempotencyKey: string;
-    senderWalletTxnId: string | null;
-    receiverWalletTxnId: string | null;
-    metadata?: Prisma.InputJsonValue;
-  }): Promise<GiftTransaction> {
-    return this.prisma.giftTransaction.create({
+  createTransaction(
+    data: {
+      senderId: string;
+      receiverId: string;
+      giftId: string;
+      giftType: GiftType;
+      contextType: GiftContextType;
+      contextId: string;
+      quantity: number;
+      comboTier: number;
+      unitCoinValue: number;
+      totalCoinValue: bigint;
+      creatorEarnings: bigint;
+      luckyMultiplier: number;
+      isLuckyWin: boolean;
+      senderExp: number;
+      receiverExp: number;
+      idempotencyKey: string;
+      senderWalletTxnId: string | null;
+      receiverWalletTxnId: string | null;
+      metadata?: Prisma.InputJsonValue;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<GiftTransaction> {
+    const client = tx || this.prisma;
+    return client.giftTransaction.create({
       data: { ...data, status: GiftTxnStatus.COMPLETED },
     });
   }

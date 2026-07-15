@@ -40,7 +40,7 @@ export interface EquippedItemView {
 
 export interface IBackpackService {
   /** Deposit a reward item (idempotent on `grantKey`). */
-  grant(input: GrantItemInput): Promise<GrantItemResult>;
+  grant(input: GrantItemInput, tx?: any): Promise<GrantItemResult>;
 
   /** The user's currently-equipped item of a type, or null. */
   getEquipped(userId: string, type: BackpackItemType): Promise<EquippedItemView | null>;

@@ -14,8 +14,10 @@ import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
-import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { LockService } from 'src/infra/redis/lock.service';
 import { QueueService } from 'src/infra/queue/queue.service';
+import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import {
   AUDIO_ROOMS_SERVICE,
   type IAudioRoomsService,
@@ -28,10 +30,17 @@ import {
   WALLET_SERVICE,
   type IWalletService,
 } from 'src/modules/wallet/interfaces/wallet.service.interface';
+import {
+  TREASURE_BOXES_SERVICE,
+  type ITreasureBoxesService,
+} from 'src/modules/treasure-boxes/interfaces/treasure-boxes.service.interface';
 import { VIP_SERVICE, type IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
 import { GIFT_WALLET_REFERENCE_TYPE } from '../constants/gifts.constants';
+import { walletLockKey } from 'src/modules/wallet/constants/wallet.constants';
+import { treasureRoomLockKey } from 'src/modules/treasure-boxes/constants/treasure.constants';
 import type { GiftHistoryDto, SendGiftDto } from '../dto/gift.dto';
-import { GiftComboEvent, GiftLuckyWinEvent, GiftSentEvent } from '../events/gift.events';
+import { GiftComboEvent, GiftLuckyWinEvent, GiftSentEvent, GiftRefundedEvent } from '../events/gift.events';
+import { TreasureReceiverRewardEvent } from 'src/modules/treasure-boxes/events/treasure.events';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
 import { GiftRepository } from '../repositories/gift.repository';
 import { GiftCatalogService } from './gift-catalog.service';
@@ -65,11 +74,14 @@ export class GiftService {
     private readonly leaderboards: GiftLeaderboardService,
     private readonly config: ConfigService,
     private readonly queue: QueueService,
+    private readonly prisma: PrismaService,
+    private readonly locks: LockService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
     @Inject(AUDIO_ROOMS_SERVICE) private readonly rooms: IAudioRoomsService,
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
     @Inject(VIP_SERVICE) private readonly vip: IVipService,
+    @Inject(TREASURE_BOXES_SERVICE) private readonly treasure: ITreasureBoxesService,
   ) {}
 
   async sendGift(actor: RoomActor, dto: SendGiftDto): Promise<GiftTransaction> {
@@ -143,72 +155,166 @@ export class GiftService {
     const senderExp = Math.floor(totalNum * cfg.senderExpPerCoin);
     const receiverExp = Math.floor(totalNum * cfg.receiverExpPerCoin);
 
-    // 1) Debit the sender (throws INSUFFICIENT_BALANCE). Idempotent on the key.
-    const debit = await this.wallet.debit({
-      userId: senderId,
-      currency: WalletCurrency.GOLD,
-      amount: totalNum,
-      reason: WalletTxnReason.GIFT_SEND,
-      idempotencyKey: `gift-debit:${idempotencyKey}`,
-      referenceType: GIFT_WALLET_REFERENCE_TYPE,
-      metadata: { giftId: gift.id, quantity: dto.quantity, contextId: dto.contextId },
-      actorId: senderId,
+    // Lock keys sorted to prevent deadlocks
+    const [userLock1, userLock2] = [senderId, dto.receiverId].sort();
+    const locksToAcquire = [
+      walletLockKey(userLock1),
+      walletLockKey(userLock2),
+      treasureRoomLockKey(dto.contextId),
+    ];
+
+    const txnId = randomUUID();
+    const eventsToPublish: any[] = [];
+    let postCommitFn: (() => Promise<void>) | undefined;
+
+    const transactionResult = await this.locks.withLock(locksToAcquire[0], async () => {
+      return this.locks.withLock(locksToAcquire[1], async () => {
+        return this.locks.withLock(locksToAcquire[2], async () => {
+          return this.prisma.$transaction(async (tx) => {
+            // Check idempotency inside transaction again to be absolutely bulletproof
+            const existingPrior = await this.repo.findTxnByIdempotencyKey(idempotencyKey, tx);
+            if (existingPrior) return existingPrior;
+
+            // 1. Debit the sender's wallet for the full totalNum
+            const debit = await this.wallet.debit({
+              userId: senderId,
+              currency: WalletCurrency.GOLD,
+              amount: totalNum,
+              reason: WalletTxnReason.GIFT_SEND,
+              idempotencyKey: `gift-debit:${idempotencyKey}`,
+              referenceType: GIFT_WALLET_REFERENCE_TYPE,
+              metadata: { giftId: gift.id, quantity: dto.quantity, contextId: dto.contextId },
+              actorId: senderId,
+            }, tx);
+
+            let acceptedAmount = totalNum;
+            let refundAmount = 0;
+            let creditTxnId: string | null = null;
+
+            // 2. Process Treasure Box contribution if in an audio room
+            if (dto.contextType === GiftContextType.AUDIO_ROOM) {
+              const contributionResult = await this.treasure.processTreasureContribution(
+                tx,
+                dto.contextId,
+                senderId,
+                dto.receiverId,
+                totalNum,
+                txnId,
+              );
+              acceptedAmount = contributionResult.acceptedAmount;
+              refundAmount = contributionResult.refundAmount;
+              eventsToPublish.push(...contributionResult.events);
+              postCommitFn = contributionResult.postCommit;
+
+              // Immediately credit 10% of the accepted amount to the host/room owner
+              const hostId = await this.rooms.getOwnerId(dto.contextId);
+              const hostRewardAmount = Math.floor(acceptedAmount * 0.1);
+              if (hostId && hostRewardAmount > 0) {
+                const hostCredit = await this.wallet.credit({
+                  userId: hostId,
+                  currency: WalletCurrency.GOLD,
+                  amount: hostRewardAmount,
+                  reason: WalletTxnReason.TREASURE_BOX,
+                  idempotencyKey: `gift-host-reward:${idempotencyKey}`,
+                  referenceType: GIFT_WALLET_REFERENCE_TYPE,
+                  referenceId: txnId,
+                  actorId: senderId,
+                }, tx);
+
+                eventsToPublish.push(
+                  new TreasureReceiverRewardEvent({
+                    roomId: dto.contextId,
+                    boxId: contributionResult.boxId ?? txnId,
+                    level: contributionResult.level ?? 0,
+                    hostId,
+                    rewardAmount: hostRewardAmount,
+                    walletTxnId: hostCredit.transactionId,
+                  }),
+                );
+              }
+
+              // Refund excess coins to sender immediately
+              if (refundAmount > 0) {
+                await this.wallet.credit({
+                  userId: senderId,
+                  currency: WalletCurrency.GOLD,
+                  amount: refundAmount,
+                  reason: WalletTxnReason.GIFT_REFUND,
+                  idempotencyKey: `gift-refund:${idempotencyKey}`,
+                  referenceType: GIFT_WALLET_REFERENCE_TYPE,
+                  referenceId: txnId,
+                  actorId: senderId,
+                }, tx);
+
+                eventsToPublish.push(
+                  new GiftRefundedEvent({
+                    transactionId: txnId,
+                    senderId,
+                    roomId: dto.contextId,
+                    giftId: gift.id,
+                    giftName: gift.name,
+                    totalRefundAmount: refundAmount,
+                    createdAt: new Date().toISOString(),
+                  }),
+                );
+              }
+            } else {
+              // Non-AUDIO_ROOM contexts
+              if (earningsNum > 0) {
+                const creditResult = await this.wallet.credit({
+                  userId: dto.receiverId,
+                  currency: WalletCurrency.EARNINGS,
+                  amount: earningsNum,
+                  reason: WalletTxnReason.GIFT_RECEIVE,
+                  idempotencyKey: `gift-credit:${idempotencyKey}`,
+                  referenceType: GIFT_WALLET_REFERENCE_TYPE,
+                  metadata: { giftId: gift.id, senderId },
+                  actorId: senderId,
+                }, tx);
+                creditTxnId = creditResult.transactionId;
+              }
+            }
+
+            // Create gift transaction in Postgres
+            return this.repo.createTransaction({
+              senderId,
+              receiverId: dto.receiverId,
+              giftId: gift.id,
+              giftType: gift.type,
+              contextType: dto.contextType,
+              contextId: dto.contextId,
+              quantity: dto.quantity,
+              comboTier,
+              unitCoinValue: unit,
+              totalCoinValue: total,
+              creatorEarnings,
+              luckyMultiplier: lucky.multiplier,
+              isLuckyWin: lucky.win,
+              senderExp,
+              receiverExp,
+              idempotencyKey,
+              senderWalletTxnId: debit.transactionId,
+              receiverWalletTxnId: creditTxnId,
+              metadata: { giftName: gift.name, acceptedAmount, refundAmount } as Prisma.InputJsonValue,
+            }, tx);
+          });
+        });
+      });
     });
 
-    // 2) Credit the receiver's earnings + 3) persist the ledger row. On any
-    //    failure, compensate the debit (and the credit if it landed) so no coins
-    //    are lost — the send is all-or-nothing.
-    let creditTxnId: string | null = null;
-    try {
-      if (dto.contextType !== GiftContextType.AUDIO_ROOM) {
-        const credit = await this.wallet.credit({
-          userId: dto.receiverId,
-          currency: WalletCurrency.EARNINGS,
-          amount: earningsNum > 0 ? earningsNum : 1,
-          reason: WalletTxnReason.GIFT_RECEIVE,
-          idempotencyKey: `gift-credit:${idempotencyKey}`,
-          referenceType: GIFT_WALLET_REFERENCE_TYPE,
-          metadata: { giftId: gift.id, senderId },
-          actorId: senderId,
-        });
-        creditTxnId = credit.transactionId;
-      }
+    // Execute post-persist side-effects
+    await this.afterSend(gift, transactionResult);
 
-      const txn = await this.repo.createTransaction({
-        senderId,
-        receiverId: dto.receiverId,
-        giftId: gift.id,
-        giftType: gift.type,
-        contextType: dto.contextType,
-        contextId: dto.contextId,
-        quantity: dto.quantity,
-        comboTier,
-        unitCoinValue: unit,
-        totalCoinValue: total,
-        creatorEarnings,
-        luckyMultiplier: lucky.multiplier,
-        isLuckyWin: lucky.win,
-        senderExp,
-        receiverExp,
-        idempotencyKey,
-        senderWalletTxnId: debit.transactionId,
-        receiverWalletTxnId: creditTxnId,
-        metadata: { giftName: gift.name } as Prisma.InputJsonValue,
-      });
-
-      await this.afterSend(gift, txn);
-      return txn;
-    } catch (err) {
-      await this.compensate(
-        idempotencyKey,
-        senderId,
-        dto.receiverId,
-        totalNum,
-        earningsNum,
-        creditTxnId,
-      );
-      throw err;
+    // Publish all collected treasure / refund events
+    for (const event of eventsToPublish) {
+      await this.bus.publish(event);
     }
+
+    if (postCommitFn) {
+      await postCommitFn();
+    }
+
+    return transactionResult;
   }
 
   async history(userId: string, q: GiftHistoryDto): Promise<Paginated<unknown>> {

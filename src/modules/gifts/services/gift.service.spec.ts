@@ -3,9 +3,12 @@ import { ConfigService } from '@nestjs/config';
 import { IEventBus } from 'src/common/events';
 import { BusinessException } from 'src/common/exceptions';
 import { QueueService } from 'src/infra/queue/queue.service';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { LockService } from 'src/infra/redis/lock.service';
 import type { IAudioRoomsService } from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
 import type { IUsersService } from 'src/modules/users/interfaces/users.service.interface';
 import type { IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
+import type { ITreasureBoxesService } from 'src/modules/treasure-boxes/interfaces/treasure-boxes.service.interface';
 import type { IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
 import type { SendGiftDto } from '../dto/gift.dto';
@@ -74,6 +77,9 @@ describe('GiftService', () => {
   let rooms: Record<string, jest.Mock>;
   let users: Record<string, jest.Mock>;
   let vip: Record<string, jest.Mock>;
+  let prisma: Record<string, jest.Mock>;
+  let locks: Record<string, jest.Mock>;
+  let treasure: Record<string, jest.Mock>;
   let service: GiftService;
 
   beforeEach(() => {
@@ -110,9 +116,24 @@ describe('GiftService', () => {
       isRoomLive: jest.fn().mockResolvedValue(true),
       assertMember: jest.fn().mockResolvedValue(undefined),
       isMember: jest.fn().mockResolvedValue(true),
+      getOwnerId: jest.fn().mockResolvedValue('owner-id'),
     };
     users = { findById: jest.fn().mockResolvedValue({ id: RECEIVER, username: 'bob' }) };
     vip = { getLevelOrdinal: jest.fn().mockResolvedValue(0) };
+    prisma = {
+      $transaction: jest.fn().mockImplementation((cb) => cb(prisma)),
+    };
+    locks = {
+      withLock: jest.fn().mockImplementation((key, cb) => cb()),
+    };
+    treasure = {
+      processTreasureContribution: jest.fn().mockImplementation((tx, roomId, senderId, receiverId, amount) => Promise.resolve({
+        acceptedAmount: amount,
+        refundAmount: 0,
+        events: [],
+        postCommit: undefined,
+      })),
+    };
 
     service = new GiftService(
       repo as unknown as GiftRepository,
@@ -120,22 +141,29 @@ describe('GiftService', () => {
       leaderboards as unknown as GiftLeaderboardService,
       config as unknown as ConfigService,
       queue as unknown as QueueService,
+      prisma as unknown as PrismaService,
+      locks as unknown as LockService,
       bus,
       wallet as unknown as IWalletService,
       rooms as unknown as IAudioRoomsService,
       users as unknown as IUsersService,
       vip as unknown as IVipService,
+      treasure as unknown as ITreasureBoxesService,
     );
   });
 
   describe('sendGift', () => {
-    it('debits sender, does not credit receiver earnings in audio room, persists, and broadcasts', async () => {
+    it('debits sender, credits host 10% in audio room, persists, and broadcasts', async () => {
       const res = await service.sendGift(SENDER, dto());
       expect(wallet.debit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: SENDER.id, currency: 'GOLD', amount: 100 }),
+        expect.anything(),
       );
-      // Gifting in audio rooms does NOT credit host's wallet directly
-      expect(wallet.credit).not.toHaveBeenCalled();
+      // Gifting in audio rooms credits host's wallet directly with 10% (10 coins)
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'owner-id', currency: 'GOLD', amount: 10 }),
+        expect.anything(),
+      );
       expect(repo.createTransaction).toHaveBeenCalled();
       expect(leaderboards.record).toHaveBeenCalledWith(
         expect.objectContaining({ giftValue: 100, receiverEarnings: 0 }),
@@ -219,8 +247,11 @@ describe('GiftService', () => {
 
     it('multiplies value by quantity', async () => {
       await service.sendGift(SENDER, dto({ quantity: 3 }));
-      expect(wallet.debit).toHaveBeenCalledWith(expect.objectContaining({ amount: 300 }));
-      expect(wallet.credit).not.toHaveBeenCalled();
+      expect(wallet.debit).toHaveBeenCalledWith(expect.objectContaining({ amount: 300 }), expect.anything());
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'owner-id', currency: 'GOLD', amount: 30 }),
+        expect.anything(),
+      );
     });
 
     it('applies combo tier for combo-enabled gifts and emits a combo event', async () => {
@@ -229,19 +260,16 @@ describe('GiftService', () => {
       await service.sendGift(SENDER, dto());
       expect(repo.createTransaction).toHaveBeenCalledWith(
         expect.objectContaining({ comboTier: 3 }),
+        expect.anything(),
       );
       expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'gift.combo' }));
     });
 
-    it('compensates the debit when the ledger write fails', async () => {
+    it('rolls back the transaction when the ledger write fails', async () => {
       repo.createTransaction.mockRejectedValue(new Error('db down'));
-      await expect(service.sendGift(SENDER, dto())).rejects.toBeDefined();
-      // sender refunded gold, receiver is not credited so receiver refund is not called
-      expect(wallet.credit).toHaveBeenCalledWith(
+      await expect(service.sendGift(SENDER, dto())).rejects.toThrow('db down');
+      expect(wallet.credit).not.toHaveBeenCalledWith(
         expect.objectContaining({ userId: SENDER.id, reason: 'GIFT_REFUND' }),
-      );
-      expect(wallet.debit).not.toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, reason: 'GIFT_REFUND' }),
       );
     });
   });

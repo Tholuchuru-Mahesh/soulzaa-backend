@@ -15,8 +15,9 @@ export class BackpackRepository {
     return this.prisma.backpackItem.findUnique({ where: { id } });
   }
 
-  findByGrantKey(grantKey: string): Promise<BackpackItem | null> {
-    return this.prisma.backpackItem.findUnique({ where: { grantKey } });
+  findByGrantKey(grantKey: string, tx?: Prisma.TransactionClient): Promise<BackpackItem | null> {
+    const client = tx || this.prisma;
+    return client.backpackItem.findUnique({ where: { grantKey } });
   }
 
   /** The user's currently-equipped item of a type (one-per-type), or null. */
@@ -36,8 +37,9 @@ export class BackpackRepository {
     return count > 0;
   }
 
-  create(data: Prisma.BackpackItemUncheckedCreateInput): Promise<BackpackItem> {
-    return this.prisma.backpackItem.create({ data });
+  create(data: Prisma.BackpackItemUncheckedCreateInput, tx?: Prisma.TransactionClient): Promise<BackpackItem> {
+    const client = tx || this.prisma;
+    return client.backpackItem.create({ data });
   }
 
   listItems(
@@ -83,8 +85,10 @@ export class BackpackRepository {
     action: string,
     itemId: string | null,
     metadata?: Prisma.InputJsonValue,
+    tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    await this.prisma.backpackLog.create({
+    const client = tx || this.prisma;
+    await client.backpackLog.create({
       data: { userId, action, itemId, ...(metadata !== undefined ? { metadata } : {}) },
     });
   }

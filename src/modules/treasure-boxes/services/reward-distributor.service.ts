@@ -48,15 +48,18 @@ export class RewardDistributor {
     @Inject(BACKPACK_SERVICE) private readonly backpack: IBackpackService,
   ) {}
 
-  async distribute(input: {
-    recipients: RankedRecipient[];
-    rewards: RewardEntry[];
-    idempotencyPrefix: string;
-    walletReason: WalletTxnReason;
-    backpackSource: BackpackItemSource;
-    referenceType: string;
-    referenceId: string;
-  }): Promise<DistributedReward[]> {
+  async distribute(
+    input: {
+      recipients: RankedRecipient[];
+      rewards: RewardEntry[];
+      idempotencyPrefix: string;
+      walletReason: WalletTxnReason;
+      backpackSource: BackpackItemSource;
+      referenceType: string;
+      referenceId: string;
+    },
+    tx?: any,
+  ): Promise<DistributedReward[]> {
     const byRank = new Map(input.recipients.map((r) => [r.rank, r.userId]));
     const distributed: DistributedReward[] = [];
 
@@ -73,7 +76,7 @@ export class RewardDistributor {
           idempotencyKey: `${input.idempotencyPrefix}:r${reward.rank}:coins`,
           referenceType: input.referenceType,
           referenceId: input.referenceId,
-        });
+        }, tx);
         distributed.push({
           userId,
           rank: reward.rank,
@@ -94,7 +97,7 @@ export class RewardDistributor {
           transferable: reward.transferable ?? false,
           grantKey: `${input.idempotencyPrefix}:r${reward.rank}:item`,
           metadata: { referenceType: input.referenceType, referenceId: input.referenceId },
-        });
+        }, tx);
         distributed.push({
           userId,
           rank: reward.rank,

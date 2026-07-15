@@ -66,6 +66,7 @@ describe('WalletService', () => {
       const res = await service.debit(debitInput);
       expect(repo.applyMovement).toHaveBeenCalledWith(
         expect.objectContaining({ type: WalletEntryType.DEBIT, amount: 100n }),
+        undefined,
       );
       expect(res).toMatchObject({ transactionId: 'txn-1', balanceAfter: 400, duplicate: false });
       expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'wallet.debited' }));

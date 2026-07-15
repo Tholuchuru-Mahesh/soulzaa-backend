@@ -39,8 +39,8 @@ export class BackpackService implements IBackpackService {
 
   // ---- IBackpackService (cross-module grant seam) ----
 
-  async grant(input: GrantItemInput): Promise<GrantItemResult> {
-    const existing = await this.repo.findByGrantKey(input.grantKey);
+  async grant(input: GrantItemInput, tx?: Prisma.TransactionClient): Promise<GrantItemResult> {
+    const existing = await this.repo.findByGrantKey(input.grantKey, tx);
     if (existing) return { itemId: existing.id, duplicate: true };
 
     const item = await this.repo.create({
@@ -56,11 +56,11 @@ export class BackpackService implements IBackpackService {
         ? { metadata: input.metadata as Prisma.InputJsonValue }
         : {}),
       expiresAt: input.expiresAt ?? null,
-    });
+    }, tx);
     await this.repo.log(input.userId, BACKPACK_ACTIONS.GRANTED, item.id, {
       type: item.type,
       source: item.source,
-    });
+    }, tx);
     await this.bus.publish(
       new BackpackItemGrantedEvent({
         userId: item.userId,

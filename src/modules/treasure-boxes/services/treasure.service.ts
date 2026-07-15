@@ -173,6 +173,287 @@ export class TreasureService implements ITreasureBoxesService {
 
   // ---- Contribution (driven by GiftSentEvent) ----
 
+  async processTreasureContribution(
+    tx: Prisma.TransactionClient,
+    roomId: string,
+    senderId: string,
+    receiverId: string,
+    amount: number,
+    giftTxnId: string,
+  ): Promise<{
+    acceptedAmount: number;
+    refundAmount: number;
+    events: any[];
+    postCommit?: () => Promise<void>;
+    boxId?: string;
+    level?: number;
+  }> {
+    const bigAmount = BigInt(amount);
+    const events: any[] = [];
+    let postCommitCallback: (() => Promise<void>) | undefined;
+
+    // Find the active session
+    const session = await tx.treasureSession.findFirst({
+      where: { roomId, status: TreasureSessionStatus.ACTIVE },
+    });
+
+    if (!session) {
+      // Check if there is a completed session in this room
+      const latestCompleted = await tx.treasureSession.findFirst({
+        where: { roomId, status: TreasureSessionStatus.COMPLETED },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (latestCompleted) {
+        // If completed, refund everything
+        return {
+          acceptedAmount: 0,
+          refundAmount: amount,
+          events,
+        };
+      }
+
+      // If no active or completed session, it's a normal gift. No refund.
+      return {
+        acceptedAmount: amount,
+        refundAmount: 0,
+        events,
+      };
+    }
+
+    // Get all boxes for the session
+    const boxes = await tx.treasureBox.findMany({
+      where: { sessionId: session.id },
+      orderBy: { level: 'asc' },
+    });
+
+    const activeBox = boxes.find((b) => b.level === session.currentLevel);
+
+    const totalProgress = boxes.reduce((sum, b) => sum + b.progress, 0n);
+    const maxCapacity = 995000n;
+    const remainingCapacity = maxCapacity - totalProgress;
+
+    if (remainingCapacity <= 0n) {
+      // Completed, refund everything
+      return {
+        acceptedAmount: 0,
+        refundAmount: amount,
+        events,
+      };
+    }
+
+    const accepted = bigAmount < remainingCapacity ? bigAmount : remainingCapacity;
+    const refund = bigAmount - accepted;
+
+    const acceptedNum = Number(accepted);
+    const refundNum = Number(refund);
+
+    if (accepted > 0n) {
+      // Increment overall contribution counters in DB using tx client
+      const roomTotal = await this.repo.incrementRoomContribution(roomId, accepted, tx);
+      const receiverTotal = await this.repo.incrementUserContribution(receiverId, accepted, tx);
+
+      // Publish Contribution Counter update event (bridges to Socket.IO)
+      events.push(
+        new ContributionCounterUpdatedEvent({
+          roomId,
+          receiverId,
+          roomTotal: Number(roomTotal),
+          receiverTotal: Number(receiverTotal),
+        }),
+      );
+
+      // Process sequential progress overflow
+      let remainingToContribute = accepted;
+      let currentLevel = session.currentLevel;
+
+      while (remainingToContribute > 0n && currentLevel <= 5) {
+        const box = await tx.treasureBox.findFirst({
+          where: { sessionId: session.id, level: currentLevel },
+        });
+        if (!box || box.status === TreasureBoxStatus.OPENED) {
+          currentLevel++;
+          continue;
+        }
+
+        const needed = box.threshold - box.progress;
+        if (needed <= 0n) {
+          currentLevel++;
+          continue;
+        }
+
+        const added = remainingToContribute >= needed ? needed : remainingToContribute;
+
+        // Record contribution
+        await this.repo.addContribution({
+          boxId: box.id,
+          sessionId: session.id,
+          roomId,
+          userId: senderId,
+          amount: added,
+          giftTxnId,
+        }, tx);
+
+        // Update progress
+        const updatedBox = await tx.treasureBox.update({
+          where: { id: box.id },
+          data: { progress: box.progress + added },
+        });
+
+        remainingToContribute -= added;
+
+        // Fetch top contributors
+        const totals = await this.repo.topContributors(box.id, 3, tx);
+        const topGifters: RankedContributor[] = totals.map((t, i) => ({
+          rank: i + 1,
+          userId: t.userId,
+          amount: Number(t.amount),
+        }));
+
+        events.push(
+          new TreasureProgressEvent({
+            roomId,
+            sessionId: session.id,
+            level: box.level,
+            progress: Number(updatedBox.progress),
+            threshold: Number(updatedBox.threshold),
+            topGifters,
+          }),
+        );
+
+        if (updatedBox.progress >= updatedBox.threshold) {
+          const advanceRes = await this.openAndAdvanceInTx(tx, session, updatedBox, topGifters);
+          events.push(...advanceRes.events);
+          if (advanceRes.postCommit) {
+            postCommitCallback = advanceRes.postCommit;
+          }
+          currentLevel++;
+        }
+      }
+    }
+
+    return {
+      acceptedAmount: acceptedNum,
+      refundAmount: refundNum,
+      events,
+      postCommit: postCommitCallback,
+      boxId: activeBox?.id,
+      level: session.currentLevel,
+    };
+  }
+
+  private async openAndAdvanceInTx(
+    tx: Prisma.TransactionClient,
+    session: TreasureSession,
+    box: TreasureBox,
+    topGifters: RankedContributor[],
+  ): Promise<{ events: any[]; postCommit?: () => Promise<void> }> {
+    const events: any[] = [];
+    let postCommit: (() => Promise<void>) | undefined;
+
+    const cfg = await tx.treasureBoxConfig.findUnique({ where: { level: box.level } });
+    const rewards = (cfg?.rewards as unknown as RewardEntry[]) ?? [];
+
+    const distributed = await this.distributor.distribute({
+      recipients: topGifters.map((g) => ({ rank: g.rank, userId: g.userId })),
+      rewards,
+      idempotencyPrefix: `treasure:${box.id}`,
+      walletReason: WalletTxnReason.TREASURE_BOX,
+      backpackSource: BackpackItemSource.TREASURE_BOX,
+      referenceType: 'treasure_box',
+      referenceId: box.id,
+    }, tx);
+
+    for (const d of distributed) {
+      await tx.treasureReward.create({
+        data: {
+          sessionId: session.id,
+          boxId: box.id,
+          roomId: box.roomId,
+          level: box.level,
+          userId: d.userId,
+          rank: d.rank,
+          kind: d.kind,
+          coins: d.coins,
+          itemType: d.itemType,
+          itemName: d.itemName,
+          walletTxnId: d.walletTxnId,
+          backpackItemId: d.backpackItemId,
+        },
+      });
+    }
+
+    await tx.treasureBox.update({
+      where: { id: box.id },
+      data: {
+        status: TreasureBoxStatus.OPENED,
+        openedAt: new Date(),
+        topGifters: topGifters as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+
+
+    const nextLevel = box.level + 1;
+    const completed = nextLevel > TREASURE_BOX_COUNT;
+    if (!completed) {
+      await tx.treasureSession.update({
+        where: { id: session.id },
+        data: { currentLevel: nextLevel },
+      });
+      const nextBox = await tx.treasureBox.findUnique({
+        where: { sessionId_level: { sessionId: session.id, level: nextLevel } },
+      });
+      if (nextBox) {
+        await tx.treasureBox.update({
+          where: { id: nextBox.id },
+          data: { status: TreasureBoxStatus.ACTIVE },
+        });
+      }
+    } else {
+      await tx.treasureSession.update({
+        where: { id: session.id },
+        data: { status: TreasureSessionStatus.COMPLETED, completedAt: new Date() },
+      });
+
+      postCommit = async () => {
+        try {
+          const snapshot = await this.buildChampionsPayload(session.id, box.roomId, '');
+          await this.cache.set(
+            treasureChampionsCacheKey(box.roomId),
+            snapshot,
+            TREASURE_CHAMPIONS_CACHE_TTL,
+          );
+        } catch (err) {
+          this.logger.warn(
+            `Failed to snapshot champions cache for room ${box.roomId}: ${(err as Error).message}`,
+          );
+        }
+      };
+    }
+
+    events.push(
+      new TreasureBoxOpenedEvent({
+        roomId: box.roomId,
+        sessionId: session.id,
+        level: box.level,
+        topGifters,
+        rewards: this.rewardSummaries(distributed),
+        nextLevel: completed ? null : nextLevel,
+      }),
+    );
+
+    if (completed) {
+      events.push(
+        new TreasureSessionCompletedEvent({ roomId: box.roomId, sessionId: session.id }),
+      );
+    }
+
+    return { events, postCommit };
+  }
+
+  // ---- Contribution (driven by GiftSentEvent) ----
+
   async handleContribution(
     roomId: string,
     userId: string,
@@ -335,43 +616,7 @@ export class TreasureService implements ITreasureBoxesService {
 
     await this.repo.openBox(box.id, topGifters as unknown as Prisma.InputJsonValue);
 
-    // Credit host (room owner) with 10% of the box capacity
-    const hostId = await this.rooms.getOwnerId(box.roomId);
-    let hostWalletTxnId: string | null = null;
-    const capacity = Number(box.threshold);
-    const hostRewardAmount = Math.floor(capacity * 0.1);
 
-    if (hostId && hostRewardAmount > 0) {
-      try {
-        const creditResult = await this.wallet.credit({
-          userId: hostId,
-          currency: WalletCurrency.GOLD,
-          amount: hostRewardAmount,
-          reason: WalletTxnReason.TREASURE_BOX,
-          idempotencyKey: `treasure-host-reward:${box.id}`,
-          referenceType: 'treasure_box',
-          referenceId: box.id,
-          actorId: hostId,
-        });
-        hostWalletTxnId = creditResult.transactionId;
-
-        // Publish receiver reward event (bridges to Socket.IO)
-        await this.bus.publish(
-          new TreasureReceiverRewardEvent({
-            roomId: box.roomId,
-            boxId: box.id,
-            level: box.level,
-            hostId,
-            rewardAmount: hostRewardAmount,
-            walletTxnId: hostWalletTxnId,
-          }),
-        );
-      } catch (err) {
-        this.logger.error(
-          `Failed to credit host ${hostId} for treasure box ${box.id}: ${(err as Error).message}`,
-        );
-      }
-    }
 
     const nextLevel = box.level + 1;
     const completed = nextLevel > TREASURE_BOX_COUNT;

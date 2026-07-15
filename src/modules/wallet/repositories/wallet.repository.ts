@@ -50,8 +50,9 @@ export class WalletRepository {
     await this.prisma.wallet.upsert({ where: { userId }, create: { userId }, update: {} });
   }
 
-  findByIdempotencyKey(idempotencyKey: string): Promise<WalletTransaction | null> {
-    return this.prisma.walletTransaction.findUnique({ where: { idempotencyKey } });
+  findByIdempotencyKey(idempotencyKey: string, tx?: Prisma.TransactionClient): Promise<WalletTransaction | null> {
+    const client = tx || this.prisma;
+    return client.walletTransaction.findUnique({ where: { idempotencyKey } });
   }
 
   listTransactions(
@@ -72,15 +73,16 @@ export class WalletRepository {
    * balance, guard against going negative (debits), update the balance + rolling
    * totals, and insert the immutable ledger row — all in one transaction.
    */
-  applyMovement(input: ApplyMovementInput): Promise<WalletTransaction> {
+  applyMovement(input: ApplyMovementInput, tx?: Prisma.TransactionClient): Promise<WalletTransaction> {
     const field = BALANCE_FIELD[input.currency];
-    return this.prisma.$transaction(async (tx) => {
-      await tx.wallet.upsert({
+
+    const run = async (t: Prisma.TransactionClient) => {
+      await t.wallet.upsert({
         where: { userId: input.userId },
         create: { userId: input.userId },
         update: {},
       });
-      const wallet = await tx.wallet.findUniqueOrThrow({ where: { userId: input.userId } });
+      const wallet = await t.wallet.findUniqueOrThrow({ where: { userId: input.userId } });
 
       const before = wallet[field];
       const delta = input.type === WalletEntryType.DEBIT ? -input.amount : input.amount;
@@ -109,9 +111,9 @@ export class WalletRepository {
       if (input.type === WalletEntryType.DEBIT && input.currency === WalletCurrency.GOLD) {
         data.totalSpent = { increment: input.amount };
       }
-      await tx.wallet.update({ where: { userId: input.userId }, data });
+      await t.wallet.update({ where: { userId: input.userId }, data });
 
-      return tx.walletTransaction.create({
+      return t.walletTransaction.create({
         data: {
           userId: input.userId,
           currency: input.currency,
@@ -127,6 +129,12 @@ export class WalletRepository {
           createdBy: input.actorId,
         },
       });
-    });
+    };
+
+    if (tx) {
+      return run(tx);
+    } else {
+      return this.prisma.$transaction(async (t) => run(t));
+    }
   }
 }

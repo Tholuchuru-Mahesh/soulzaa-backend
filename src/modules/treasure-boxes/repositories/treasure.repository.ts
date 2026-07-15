@@ -93,12 +93,14 @@ export class TreasureRepository {
     return this.prisma.treasureSession.create({ data: { roomId, startedBy, contextType } });
   }
 
-  async setSessionLevel(id: string, currentLevel: number): Promise<void> {
-    await this.prisma.treasureSession.update({ where: { id }, data: { currentLevel } });
+  async setSessionLevel(id: string, currentLevel: number, tx?: Prisma.TransactionClient): Promise<void> {
+    const client = tx || this.prisma;
+    await client.treasureSession.update({ where: { id }, data: { currentLevel } });
   }
 
-  async finishSession(id: string, status: TreasureSessionStatus): Promise<void> {
-    await this.prisma.treasureSession.update({
+  async finishSession(id: string, status: TreasureSessionStatus, tx?: Prisma.TransactionClient): Promise<void> {
+    const client = tx || this.prisma;
+    await client.treasureSession.update({
       where: { id },
       data: { status, completedAt: new Date() },
     });
@@ -146,15 +148,17 @@ export class TreasureRepository {
     });
   }
 
-  async activateBox(boxId: string): Promise<void> {
-    await this.prisma.treasureBox.update({
+  async activateBox(boxId: string, tx?: Prisma.TransactionClient): Promise<void> {
+    const client = tx || this.prisma;
+    await client.treasureBox.update({
       where: { id: boxId },
       data: { status: TreasureBoxStatus.ACTIVE },
     });
   }
 
-  async openBox(boxId: string, topGifters: Prisma.InputJsonValue): Promise<void> {
-    await this.prisma.treasureBox.update({
+  async openBox(boxId: string, topGifters: Prisma.InputJsonValue, tx?: Prisma.TransactionClient): Promise<void> {
+    const client = tx || this.prisma;
+    await client.treasureBox.update({
       where: { id: boxId },
       data: { status: TreasureBoxStatus.OPENED, openedAt: new Date(), topGifters },
     });
@@ -162,20 +166,25 @@ export class TreasureRepository {
 
   // ---- Contributions ----
 
-  addContribution(data: {
-    boxId: string;
-    sessionId: string;
-    roomId: string;
-    userId: string;
-    amount: bigint;
-    giftTxnId: string | null;
-  }): Promise<void> {
-    return this.prisma.treasureContribution.create({ data }).then(() => undefined);
+  addContribution(
+    data: {
+      boxId: string;
+      sessionId: string;
+      roomId: string;
+      userId: string;
+      amount: bigint;
+      giftTxnId: string | null;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const client = tx || this.prisma;
+    return client.treasureContribution.create({ data }).then(() => undefined);
   }
 
   /** Contributor totals for a box, highest first, ties broken by earliest. */
-  async topContributors(boxId: string, limit: number): Promise<BoxContributorTotal[]> {
-    const grouped = await this.prisma.treasureContribution.groupBy({
+  async topContributors(boxId: string, limit: number, tx?: Prisma.TransactionClient): Promise<BoxContributorTotal[]> {
+    const client = tx || this.prisma;
+    const grouped = await client.treasureContribution.groupBy({
       by: ['userId'],
       where: { boxId },
       _sum: { amount: true },
@@ -196,21 +205,25 @@ export class TreasureRepository {
 
   // ---- Rewards (immutable) ----
 
-  createReward(data: {
-    sessionId: string;
-    boxId: string;
-    roomId: string;
-    level: number;
-    userId: string;
-    rank: number;
-    kind: TreasureRewardKind;
-    coins: bigint | null;
-    itemType: string | null;
-    itemName: string | null;
-    walletTxnId: string | null;
-    backpackItemId: string | null;
-  }): Promise<void> {
-    return this.prisma.treasureReward.create({ data }).then(() => undefined);
+  createReward(
+    data: {
+      sessionId: string;
+      boxId: string;
+      roomId: string;
+      level: number;
+      userId: string;
+      rank: number;
+      kind: TreasureRewardKind;
+      coins: bigint | null;
+      itemType: string | null;
+      itemName: string | null;
+      walletTxnId: string | null;
+      backpackItemId: string | null;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const client = tx || this.prisma;
+    return client.treasureReward.create({ data }).then(() => undefined);
   }
 
   listRewards(roomId: string, skip: number, take: number): Promise<[unknown[], number]> {
@@ -221,8 +234,9 @@ export class TreasureRepository {
     ]);
   }
 
-  async incrementRoomContribution(roomId: string, amount: bigint): Promise<bigint> {
-    const res = await this.prisma.roomContributionCounter.upsert({
+  async incrementRoomContribution(roomId: string, amount: bigint, tx?: Prisma.TransactionClient): Promise<bigint> {
+    const client = tx || this.prisma;
+    const res = await client.roomContributionCounter.upsert({
       where: { roomId },
       create: { roomId, amount },
       update: { amount: { increment: amount } },
@@ -230,8 +244,9 @@ export class TreasureRepository {
     return res.amount;
   }
 
-  async incrementUserContribution(userId: string, amount: bigint): Promise<bigint> {
-    const res = await this.prisma.userContributionCounter.upsert({
+  async incrementUserContribution(userId: string, amount: bigint, tx?: Prisma.TransactionClient): Promise<bigint> {
+    const client = tx || this.prisma;
+    const res = await client.userContributionCounter.upsert({
       where: { userId },
       create: { userId, amount },
       update: { amount: { increment: amount } },

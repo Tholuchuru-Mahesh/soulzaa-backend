@@ -49,12 +49,12 @@ export class WalletService implements IWalletService {
     };
   }
 
-  debit(input: WalletMovementInput): Promise<WalletMovementResult> {
-    return this.move(WalletEntryType.DEBIT, input);
+  debit(input: WalletMovementInput, tx?: Prisma.TransactionClient): Promise<WalletMovementResult> {
+    return this.move(WalletEntryType.DEBIT, input, tx);
   }
 
-  credit(input: WalletMovementInput): Promise<WalletMovementResult> {
-    return this.move(WalletEntryType.CREDIT, input);
+  credit(input: WalletMovementInput, tx?: Prisma.TransactionClient): Promise<WalletMovementResult> {
+    return this.move(WalletEntryType.CREDIT, input, tx);
   }
 
   async listTransactions(
@@ -75,6 +75,7 @@ export class WalletService implements IWalletService {
   private async move(
     type: WalletEntryType,
     input: WalletMovementInput,
+    tx?: Prisma.TransactionClient,
   ): Promise<WalletMovementResult> {
     if (!Number.isInteger(input.amount) || input.amount <= 0) {
       throw new BusinessException(
@@ -84,9 +85,9 @@ export class WalletService implements IWalletService {
       );
     }
 
-    return this.locks.withLock(walletLockKey(input.userId), async () => {
+    const run = async (t?: Prisma.TransactionClient) => {
       // Idempotent replay: return the stored result without re-applying.
-      const existing = await this.repo.findByIdempotencyKey(input.idempotencyKey);
+      const existing = await this.repo.findByIdempotencyKey(input.idempotencyKey, t);
       if (existing) {
         return {
           transactionId: existing.id,
@@ -107,7 +108,7 @@ export class WalletService implements IWalletService {
         idempotencyKey: input.idempotencyKey,
         metadata: input.metadata as Prisma.InputJsonValue | undefined,
         actorId: input.actorId ?? input.userId,
-      });
+      }, t);
 
       await this.publish(type, txn);
       return {
@@ -116,7 +117,15 @@ export class WalletService implements IWalletService {
         balanceAfter: Number(txn.balanceAfter),
         duplicate: false,
       };
-    });
+    };
+
+    if (tx) {
+      return run(tx);
+    } else {
+      return this.locks.withLock(walletLockKey(input.userId), async () => {
+        return run();
+      });
+    }
   }
 
   private async publish(type: WalletEntryType, txn: WalletTransaction): Promise<void> {

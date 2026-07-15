@@ -64,6 +64,7 @@ export const ROOM_SOCKET_EVENTS = {
   GIFT_COMBO: 'gift.combo',
   GIFT_LUCKY: 'gift.lucky',
   GIFT_RECEIVED: 'gift.received',
+  GIFT_REFUNDED: 'gift.refunded',
   // ---- Treasure boxes & rocket events (AR-6) ----
   TREASURE_STARTED: 'treasure.started',
   TREASURE_PROGRESS: 'treasure.progress',
