@@ -8,4 +8,4 @@ export const TREASURE_BOX_COSTS = [15_000, 60_000, 200_000, 350_000] as const;
 export const COIN_PACKAGE_PRICES = [99, 199, 499, 999, 1999, 4999, 9999] as const;
 
 /** Free Coins are only usable in these casual games. */
-export const FREE_COIN_GAMES = ['UNO', 'LUDO', 'CARROM', 'DOMINO'] as const;
+export const FREE_COIN_GAMES = ['LUDO', 'CARROM'] as const;

@@ -28,6 +28,11 @@ export class UsersRepository {
     return this.prisma.user.findFirst({ where: { username, deletedAt: null } });
   }
 
+  /** Batch lookup for cross-module identity resolution (e.g. games player panels). */
+  findByIds(ids: string[]): Promise<User[]> {
+    return this.prisma.user.findMany({ where: { id: { in: ids }, deletedAt: null } });
+  }
+
   /**
    * Create the identity row and its default profile/statistics/verification
    * rows in a single transaction, so a user always has a complete aggregate.

@@ -40,6 +40,17 @@ export const GAME_LIVE_STATE_TTL_SECONDS = 60 * 60;
 /** Per-turn clock (advisory — clients drive the timeout, as in the legacy backend). */
 export const GAME_TURN_SECONDS = 30;
 
+/**
+ * Reconnect grace period (seconds) before a disconnected player is auto-forfeited
+ * from an active match. A brief network blip / socket drop should not instantly
+ * forfeit or cancel a match (especially a bet match, where a forfeit refunds and
+ * cancels the pot) — the player has this long to reconnect first. Configurable
+ * via the `GAME_DISCONNECT_GRACE_SECONDS` env var (defaults to 20s).
+ */
+export const GAME_DISCONNECT_GRACE_SECONDS = Number(
+  process.env.GAME_DISCONNECT_GRACE_SECONDS ?? 20,
+);
+
 /** Redis lock keys — hash-tagged so a lobby and its derived session share a slot. */
 export const gameLobbyLockKey = (lobbyId: string): string => `game:lock:lobby:{${lobbyId}}`;
 export const gameSessionLockKey = (sessionId: string): string => `game:lock:session:{${sessionId}}`;
@@ -102,7 +113,26 @@ export const matchmakingEnabled = (): boolean => process.env.GAMES_MATCHMAKING_D
  * catalog but its engine is 2-player-only). Add a game here once its client engine
  * genuinely supports the positional {0,2}/{1,3} team split.
  */
-export const TEAM_2V2_CAPABLE_GAMES: ReadonlySet<GameCode> = new Set([GameCode.LUDO]);
+export const TEAM_2V2_CAPABLE_GAMES: ReadonlySet<GameCode> = new Set([
+  GameCode.LUDO,
+  GameCode.CARROM,
+]);
+
+/**
+ * Games that seat fewer players in CLASSIC mode than their catalog `maxPlayers`
+ * (which is sized for TEAM_2V2). Carrom's engine only crowns seat 0/1, so a
+ * CLASSIC Carrom match is strictly 1v1; its 4 seats exist only for 2v2.
+ */
+export const CLASSIC_MAX_PLAYERS: Partial<Record<GameCode, number>> = {
+  [GameCode.CARROM]: 2,
+};
+
+/** Effective max players for a lobby of `gameCode` in the given mode. */
+export const effectiveMaxPlayers = (
+  gameCode: GameCode,
+  mode: 'CLASSIC' | 'TEAM_2V2',
+  catalogMax: number,
+): number => (mode === 'TEAM_2V2' ? 4 : (CLASSIC_MAX_PLAYERS[gameCode] ?? catalogMax));
 
 /** Immutable per-game catalog defaults (PRD Vol.3 §16 currency mapping). */
 export interface GameCatalogSeed {
@@ -117,58 +147,12 @@ export interface GameCatalogSeed {
 }
 
 export const GAME_CATALOG_SEED: readonly GameCatalogSeed[] = [
-  // Premium games — Gold Coins.
-  {
-    code: GameCode.GREEDY,
-    name: 'Greedy',
-    category: GameCategory.PREMIUM,
-    currency: GameCurrency.GOLD,
-    minPlayers: 2,
-    maxPlayers: 8,
-    minStake: 100,
-    maxStake: 1_000_000,
-  },
-  {
-    code: GameCode.ROULETTE,
-    name: 'Roulette',
-    category: GameCategory.PREMIUM,
-    currency: GameCurrency.GOLD,
-    minPlayers: 1,
-    maxPlayers: 8,
-    minStake: 100,
-    maxStake: 1_000_000,
-  },
-  {
-    code: GameCode.SLOTS,
-    name: 'Slots',
-    category: GameCategory.PREMIUM,
-    currency: GameCurrency.GOLD,
-    minPlayers: 1,
-    maxPlayers: 1,
-    minStake: 100,
-    maxStake: 1_000_000,
-  },
-  {
-    code: GameCode.JACKPOT,
-    name: 'Jackpot',
-    category: GameCategory.PREMIUM,
-    currency: GameCurrency.GOLD,
-    minPlayers: 2,
-    maxPlayers: 50,
-    minStake: 100,
-    maxStake: 1_000_000,
-  },
-  // Casual games — Free Coins.
-  {
-    code: GameCode.UNO,
-    name: 'UNO',
-    category: GameCategory.CASUAL,
-    currency: GameCurrency.FREE,
-    minPlayers: 2,
-    maxPlayers: 4,
-    minStake: 10,
-    maxStake: 100_000,
-  },
+  // Casual games — Free Coins. GREEDY, ROULETTE, SLOTS, JACKPOT, UNO and DOMINO
+  // were removed from the catalog (dead games, never shipped a real engine) —
+  // only seed/serve Ludo + Carrom. Their GameCode enum values are left in place
+  // (dropping them needs a migration and risks historical rows); see
+  // prisma/disable_dead_games.ts for the one-time script that disabled their
+  // pre-existing GameDefinition rows in already-seeded environments.
   {
     code: GameCode.LUDO,
     name: 'Ludo',
@@ -182,16 +166,6 @@ export const GAME_CATALOG_SEED: readonly GameCatalogSeed[] = [
   {
     code: GameCode.CARROM,
     name: 'Carrom',
-    category: GameCategory.CASUAL,
-    currency: GameCurrency.FREE,
-    minPlayers: 2,
-    maxPlayers: 4,
-    minStake: 10,
-    maxStake: 100_000,
-  },
-  {
-    code: GameCode.DOMINO,
-    name: 'Domino',
     category: GameCategory.CASUAL,
     currency: GameCurrency.FREE,
     minPlayers: 2,

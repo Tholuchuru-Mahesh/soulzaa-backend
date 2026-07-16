@@ -11,7 +11,8 @@ import { GamesService } from './services/games.service';
 
 /**
  * Games domain (AR-11) — the platform backend around games: an admin-configurable
- * catalog (8 PRD games), lobby matchmaking (create/join/leave/start by code),
+ * catalog (Ludo + Carrom — the other six PRD games were removed as dead code;
+ * see GAME_CATALOG_SEED), lobby matchmaking (create/join/leave/start by code),
  * entry-stake escrow (debit-on-start / refund-on-cancel) against the wallet in
  * the game's currency (GOLD for premium, FREE for casual), a trusted result
  * settlement seam with anti-cheat validation (participant/pot conservation),

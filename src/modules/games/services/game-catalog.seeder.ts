@@ -3,8 +3,11 @@ import { GAME_CATALOG_SEED } from '../constants/games.constants';
 import { GamesRepository } from '../repositories/games.repository';
 
 /**
- * Idempotently seeds the eight PRD games into the catalog on bootstrap. Only
- * creates missing entries — admin edits to existing definitions are preserved.
+ * Idempotently seeds the catalog (Ludo + Carrom) on bootstrap. Only creates
+ * missing entries — admin edits to existing definitions are preserved. GREEDY,
+ * ROULETTE, SLOTS, JACKPOT, UNO and DOMINO were removed from the catalog (see
+ * GAME_CATALOG_SEED) — this seeder no longer creates them, and any pre-existing
+ * rows for them were disabled by prisma/disable_dead_games.ts, not deleted.
  */
 @Injectable()
 export class GameCatalogSeeder implements OnApplicationBootstrap {

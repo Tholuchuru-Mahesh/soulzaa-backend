@@ -25,10 +25,10 @@ export class CreateLobbyDto {
   @IsEnum(GameCode)
   gameCode!: GameCode;
 
-  @ApiProperty({ description: 'Entry stake per player (game currency).' })
+  @ApiProperty({ description: 'Entry stake per player (game currency). 0 = friendly (no-stake) match.' })
   @Type(() => Number)
   @IsInt()
-  @Min(1)
+  @Min(0)
   stake!: number;
 
   @ApiPropertyOptional({ description: 'Audio-room the game is played inside.' })
@@ -76,11 +76,11 @@ export class KickMemberDto {
 
 /** Host edits open-lobby settings (all optional). */
 export class UpdateLobbySettingsDto {
-  @ApiPropertyOptional({ description: 'New entry stake per player.' })
+  @ApiPropertyOptional({ description: 'New entry stake per player (0 = friendly).' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(1)
+  @Min(0)
   stake?: number;
 
   @ApiPropertyOptional({ description: 'New max player cap.' })
@@ -104,10 +104,10 @@ export class JoinQueueDto {
   @IsEnum(GameCode)
   gameCode!: GameCode;
 
-  @ApiProperty({ description: 'Entry stake per player (game currency).' })
+  @ApiProperty({ description: 'Entry stake per player (game currency). 0 = friendly (no-stake) match.' })
   @Type(() => Number)
   @IsInt()
-  @Min(1)
+  @Min(0)
   stake!: number;
 
   @ApiProperty({ enum: ['DUEL', 'TEAM_2V2'], description: 'DUEL pairs 2; TEAM_2V2 pairs 4.' })

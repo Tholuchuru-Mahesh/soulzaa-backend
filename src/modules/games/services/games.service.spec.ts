@@ -21,11 +21,16 @@ import { IEventBus } from 'src/common/events';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import { QueueService } from 'src/infra/queue/queue.service';
+import type { IProfileService } from 'src/modules/users/interfaces/profile.interface';
 import type { IUsersService } from 'src/modules/users/interfaces/users.service.interface';
 import type { IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import type { GameActor } from '../interfaces/game-actor.interface';
 import { GamesRepository } from '../repositories/games.repository';
 import { GamesService } from './games.service';
+
+// Sentinel "transaction client" the mocked repo.runInTransaction hands to the
+// callback — must be non-null so `expect.anything()` matches it in assertions.
+const FAKE_TX = { __fakeTx: true };
 
 const HOST = '11111111-1111-1111-1111-111111111111';
 const P2 = '22222222-2222-2222-2222-222222222222';
@@ -118,6 +123,7 @@ describe('GamesService', () => {
   let bus: jest.Mocked<IEventBus>;
   let wallet: Record<string, jest.Mock>;
   let users: Record<string, jest.Mock>;
+  let profiles: Record<string, jest.Mock>;
   let service: GamesService;
 
   beforeEach(() => {
@@ -158,6 +164,10 @@ describe('GamesService', () => {
       findActiveSessionForParticipant: jest.fn().mockResolvedValue(null),
       updateLobby: jest.fn().mockResolvedValue(lobby()),
       addBotMember: jest.fn().mockResolvedValue({ id: 'bm1' }),
+      // Settlement runs its writes inside one DB transaction — the mock just
+      // invokes the callback with a non-null sentinel "tx" (real atomicity/
+      // rollback is a Prisma guarantee, not something a unit test can observe).
+      runInTransaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(FAKE_TX)),
     };
     locks = {
       withLock: jest.fn(<T>(_k: string, fn: () => Promise<T>) => fn()),
@@ -203,6 +213,9 @@ describe('GamesService', () => {
         .mockResolvedValue({ transactionId: 'wtx-c', balanceAfter: 0, duplicate: false }),
     };
     users = { findById: jest.fn().mockResolvedValue({ id: HOST, username: 'host' }) };
+    // Default: no identities resolved (empty map) — views degrade to null
+    // displayName/avatar for tests that don't care about player identity.
+    profiles = { resolvePublicIdentities: jest.fn().mockResolvedValue(new Map()) };
     service = new GamesService(
       repo as unknown as GamesRepository,
       locks as unknown as LockService,
@@ -211,6 +224,7 @@ describe('GamesService', () => {
       bus,
       wallet as unknown as IWalletService,
       users as unknown as IUsersService,
+      profiles as unknown as IProfileService,
     );
   });
 
@@ -306,12 +320,15 @@ describe('GamesService', () => {
       });
     });
 
-    it('refunds and aborts if a stake debit fails', async () => {
+    it('refunds and aborts if a stake debit fails (insufficient funds)', async () => {
       wallet.debit
         .mockResolvedValueOnce({ transactionId: 'wtx', balanceAfter: 0, duplicate: false })
         .mockRejectedValueOnce(new BusinessException(ERROR_CODES.INSUFFICIENT_BALANCE, 'no funds'));
       await expect(service.startLobby(ACTOR, 'ABCDEF')).rejects.toBeInstanceOf(BusinessException);
       expect(wallet.credit).toHaveBeenCalledTimes(1); // refund the one already escrowed
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: HOST, amount: 100, reason: 'GAME_REFUND' }),
+      );
       expect(repo.closeSession).toHaveBeenCalledWith('sess-1', GameSessionStatus.ABORTED, HOST);
     });
   });
@@ -346,11 +363,13 @@ describe('GamesService', () => {
       });
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 150, reason: 'GAME_PAYOUT' }),
+        FAKE_TX,
       );
       expect(repo.createMatchResult).toHaveBeenCalledWith(
         expect.objectContaining({ payoutTotal: 150n, rakeAmount: 50n, winners: [HOST] }),
+        FAKE_TX,
       );
-      expect(repo.completeSession).toHaveBeenCalledWith('sess-1', ADMIN.id);
+      expect(repo.completeSession).toHaveBeenCalledWith('sess-1', ADMIN.id, FAKE_TX);
       expect(cache.addScore).toHaveBeenCalledWith('game:wins', HOST, 1);
       expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.settled' }));
     });
@@ -384,6 +403,100 @@ describe('GamesService', () => {
       await expect(
         service.settleResult({ sessionId: 'sess-1', winners: [HOST], payouts: [] }),
       ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_SESSION_NOT_ACTIVE });
+    });
+
+    it('a second settle attempt on an already-settled session pays out nothing extra (idempotent)', async () => {
+      await service.settleResult({
+        sessionId: 'sess-1',
+        winners: [HOST],
+        payouts: [{ userId: HOST, amount: 150 }],
+        settledBy: ADMIN.id,
+      });
+      expect(wallet.credit).toHaveBeenCalledTimes(1);
+
+      // The trusted seam (or a game engine retrying after a timeout) tries again —
+      // the exactly-once guard must reject it without a second payout.
+      repo.getMatchResult.mockResolvedValue({ id: 'r1' });
+      await expect(
+        service.settleResult({
+          sessionId: 'sess-1',
+          winners: [HOST],
+          payouts: [{ userId: HOST, amount: 150 }],
+          settledBy: ADMIN.id,
+        }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_ALREADY_SETTLED });
+      expect(wallet.credit).toHaveBeenCalledTimes(1); // unchanged — no double payout
+      expect(repo.completeSession).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('economy hardening', () => {
+    it('friendly (stake 0) match: create, play and settle with zero wallet movement and no winnings-leaderboard entry', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby({ stake: 0n }));
+      repo.getLobbyById.mockResolvedValue(lobby({ stake: 0n }));
+      repo.createSession.mockResolvedValue(session({ stake: 0n, potAmount: 0n }));
+      repo.getSession.mockResolvedValue(session({ stake: 0n, potAmount: 0n }));
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST, { stake: 0n }),
+        participant('p2', P2, { stake: 0n }),
+      ]);
+
+      await service.startLobby(ACTOR, 'ABCDEF');
+      expect(wallet.debit).not.toHaveBeenCalled();
+      expect(repo.setSessionPot).toHaveBeenCalledWith('sess-1', 0n);
+
+      await service.settleResult({
+        sessionId: 'sess-1',
+        winners: [HOST],
+        payouts: [{ userId: HOST, amount: 0 }],
+      });
+      expect(wallet.credit).not.toHaveBeenCalled();
+      // Win-count leaderboard still records the win; the winnings leaderboard
+      // (amount > 0 only) must not get an entry for a zero-amount payout.
+      expect(cache.addScore).toHaveBeenCalledWith('game:wins', HOST, 1);
+      expect(cache.addScore).toHaveBeenCalledTimes(1);
+    });
+
+    it('classic: the sole winner takes the whole pot; every other participant is settled at zero', async () => {
+      repo.getSession.mockResolvedValue(session({ potAmount: 400n, playerCount: 4 }));
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('p2', P2),
+        participant('p3', STRANGER),
+        participant('p4', P3),
+      ]);
+
+      await service.settleResult({
+        sessionId: 'sess-1',
+        winners: [HOST],
+        payouts: [{ userId: HOST, amount: 400 }],
+      });
+
+      expect(wallet.credit).toHaveBeenCalledTimes(1);
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: HOST, amount: 400, reason: 'GAME_PAYOUT' }),
+        FAKE_TX,
+      );
+      expect(repo.updateParticipant).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({
+          status: GameParticipantStatus.WON,
+          isWinner: true,
+          payoutAmount: 400n,
+        }),
+        FAKE_TX,
+      );
+      for (const id of ['p2', 'p3', 'p4']) {
+        expect(repo.updateParticipant).toHaveBeenCalledWith(
+          id,
+          expect.objectContaining({
+            status: GameParticipantStatus.LOST,
+            isWinner: false,
+            payoutAmount: 0n,
+          }),
+          FAKE_TX,
+        );
+      }
     });
   });
 
@@ -419,9 +532,11 @@ describe('GamesService', () => {
       await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] });
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 200, reason: 'GAME_PAYOUT' }),
+        FAKE_TX,
       );
       expect(repo.createMatchResult).toHaveBeenCalledWith(
         expect.objectContaining({ payoutTotal: 200n, rakeAmount: 0n, winners: [HOST] }),
+        FAKE_TX,
       );
     });
 
@@ -429,9 +544,11 @@ describe('GamesService', () => {
       await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST, P2] });
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 100 }),
+        FAKE_TX,
       );
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: P2, amount: 100 }),
+        FAKE_TX,
       );
     });
 
@@ -440,9 +557,11 @@ describe('GamesService', () => {
       await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] });
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 190 }),
+        FAKE_TX,
       );
       expect(repo.createMatchResult).toHaveBeenCalledWith(
         expect.objectContaining({ payoutTotal: 190n, rakeAmount: 10n }),
+        FAKE_TX,
       );
     });
 
@@ -481,6 +600,7 @@ describe('GamesService', () => {
       expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.forfeited' }));
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: P2, amount: 200, reason: 'GAME_PAYOUT' }),
+        FAKE_TX,
       );
       expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.settled' }));
       expect(res).toBeTruthy();
@@ -595,14 +715,20 @@ describe('GamesService', () => {
       ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_2V2_UNSUPPORTED });
     });
 
-    it('allows TEAM_2V2 for a 2v2-capable game (Ludo)', async () => {
-      repo.getDefinitionByCode.mockResolvedValue(def({ code: GameCode.LUDO }));
-      const res = (await service.joinQueue(ACTOR, {
-        gameCode: GameCode.LUDO,
-        stake: 500,
-        matchType: 'TEAM_2V2',
-      })) as Record<string, unknown>;
-      expect(res).toMatchObject({ status: 'QUEUED' });
+    it('allows TEAM_2V2 for the 2v2-capable games (Ludo, Carrom)', async () => {
+      const cases: [GameCode, GameActor][] = [
+        [GameCode.LUDO, { id: HOST, roles: ['USER'] }],
+        [GameCode.CARROM, { id: P2, roles: ['USER'] }],
+      ];
+      for (const [code, actor] of cases) {
+        repo.getDefinitionByCode.mockResolvedValue(def({ code }));
+        const res = (await service.joinQueue(actor, {
+          gameCode: code,
+          stake: 500,
+          matchType: 'TEAM_2V2',
+        })) as Record<string, unknown>;
+        expect(res).toMatchObject({ status: 'QUEUED' });
+      }
     });
 
     it('rate-limits repeated queue requests', async () => {
@@ -821,12 +947,15 @@ describe('GamesService', () => {
       await service.reportMatchResult(ACTOR, 'sess-1', { winningTeam: GameTeam.A });
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 200 }),
+        FAKE_TX,
       );
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: STRANGER, amount: 200 }),
+        FAKE_TX,
       );
       expect(repo.createMatchResult).toHaveBeenCalledWith(
         expect.objectContaining({ winners: expect.arrayContaining([HOST, STRANGER]) }),
+        FAKE_TX,
       );
     });
 
@@ -853,9 +982,11 @@ describe('GamesService', () => {
       await service.forfeit(ACTOR, 'sess-1');
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: P2, amount: 200 }),
+        FAKE_TX,
       );
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: P3, amount: 200 }),
+        FAKE_TX,
       );
       expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.settled' }));
     });
@@ -960,9 +1091,9 @@ describe('GamesService', () => {
   describe('staked-seat bots', () => {
     const BOT = '99999999-9999-9999-9999-999999999999';
 
-    it('lets the host add a bot and broadcasts it as a member', async () => {
-      repo.getLobbyByCode.mockResolvedValue(lobby());
-      repo.getLobbyById.mockResolvedValue(lobby());
+    it('lets the host add a bot to a friendly (no-stake) match and broadcasts it', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby({ stake: 0n }));
+      repo.getLobbyById.mockResolvedValue(lobby({ stake: 0n }));
       repo.countMembers.mockResolvedValue(1);
       const res = (await service.addBot(ACTOR, 'ABCDEF', {})) as Record<string, unknown>;
       expect(repo.addBotMember).toHaveBeenCalled();
@@ -970,6 +1101,16 @@ describe('GamesService', () => {
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'game.lobby_joined' }),
       );
+    });
+
+    it('rejects adding a bot to a bet (staked) match — bots are friendly-only', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby({ stake: 100n }));
+      repo.getLobbyById.mockResolvedValue(lobby({ stake: 100n }));
+      repo.countMembers.mockResolvedValue(1);
+      await expect(service.addBot(ACTOR, 'ABCDEF', {})).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VALIDATION_ERROR,
+      });
+      expect(repo.addBotMember).not.toHaveBeenCalled();
     });
 
     it('rejects a non-host adding a bot', async () => {
@@ -1010,10 +1151,15 @@ describe('GamesService', () => {
       // Only the human on team A is paid — the whole distributable pot.
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 300 }),
+        FAKE_TX,
       );
-      expect(wallet.credit).not.toHaveBeenCalledWith(expect.objectContaining({ userId: BOT }));
+      expect(wallet.credit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ userId: BOT }),
+        expect.anything(),
+      );
       expect(repo.createMatchResult).toHaveBeenCalledWith(
         expect.objectContaining({ winners: [HOST] }),
+        FAKE_TX,
       );
     });
 
@@ -1068,6 +1214,74 @@ describe('GamesService', () => {
       repo.findActiveSessionForParticipant.mockResolvedValue('sess-1');
       repo.getParticipant.mockResolvedValue(null); // forfeit() throws GAME_NOT_PARTICIPANT
       await expect(service.forfeitOnDisconnect(HOST)).resolves.toBeUndefined();
+    });
+  });
+
+  describe('player identity in views', () => {
+    const BOT = '99999999-9999-9999-9999-999999999999';
+
+    it('sessionView carries displayName + avatar for a human and botName/null for a bot', async () => {
+      repo.getSession.mockResolvedValue(session());
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST, { isBot: false }),
+        participant('pb', BOT, { isBot: true }),
+      ]);
+      // Bot display name comes from the lobby seat (participants have no name of
+      // their own) — never from the identity resolver.
+      repo.listMembersWithTeams.mockResolvedValue([
+        { userId: HOST, team: null, isBot: false, botName: null },
+        { userId: BOT, team: null, isBot: true, botName: 'Bot Alpha' },
+      ]);
+      profiles.resolvePublicIdentities.mockResolvedValue(
+        new Map([[HOST, { displayName: 'Host Name', avatarUrl: 'https://cdn/host.png' }]]),
+      );
+
+      const view = (await service.getSession('sess-1')) as {
+        participants: Record<string, unknown>[];
+      };
+
+      expect(view.participants).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            userId: HOST,
+            displayName: 'Host Name',
+            avatar: 'https://cdn/host.png',
+          }),
+          expect.objectContaining({ userId: BOT, displayName: 'Bot Alpha', avatar: null }),
+        ]),
+      );
+      // Resolved ONCE, batched, with only the human id — bots are never looked up.
+      expect(profiles.resolvePublicIdentities).toHaveBeenCalledTimes(1);
+      expect(profiles.resolvePublicIdentities).toHaveBeenCalledWith([HOST]);
+    });
+
+    it('lobbyView carries displayName + avatar for a human and botName/null for a bot', async () => {
+      repo.getLobbyByCode.mockResolvedValue(lobby());
+      repo.listMembersWithTeams.mockResolvedValue([
+        { userId: HOST, team: null, isBot: false, botName: null },
+        { userId: BOT, team: null, isBot: true, botName: 'Bot Beta' },
+      ]);
+      profiles.resolvePublicIdentities.mockResolvedValue(
+        new Map([[HOST, { displayName: 'Host Name', avatarUrl: 'https://cdn/host.png' }]]),
+      );
+
+      const view = (await service.getLobby('ABCDEF')) as {
+        memberDetails: Record<string, unknown>[];
+      };
+
+      expect(view.memberDetails).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            userId: HOST,
+            displayName: 'Host Name',
+            avatar: 'https://cdn/host.png',
+          }),
+          expect.objectContaining({ userId: BOT, displayName: 'Bot Beta', avatar: null }),
+        ]),
+      );
+      // Resolved ONCE, batched, with only the human id — bots are never looked up.
+      expect(profiles.resolvePublicIdentities).toHaveBeenCalledTimes(1);
+      expect(profiles.resolvePublicIdentities).toHaveBeenCalledWith([HOST]);
     });
   });
 });

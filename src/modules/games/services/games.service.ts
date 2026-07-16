@@ -27,6 +27,11 @@ import { QueueService } from 'src/infra/queue/queue.service';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import { safeEqualHex, sha256 } from 'src/modules/auth/services/hash.util';
+import { walletLockKey } from 'src/modules/wallet/constants/wallet.constants';
+import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
 import {
   USERS_SERVICE,
   type IUsersService,
@@ -46,6 +51,7 @@ import {
   GAME_WINS_LEADERBOARD_KEY,
   MATCHMAKING_PROTOCOL_VERSION,
   TEAM_2V2_CAPABLE_GAMES,
+  effectiveMaxPlayers,
   gameLiveStateKey,
   gameLobbyLockKey,
   gameMatchBucketLockKey,
@@ -148,6 +154,7 @@ export class GamesService {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
+    @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
   ) {}
 
   // ======================= Catalog =======================
@@ -205,7 +212,7 @@ export class GamesService {
       category: def.category,
       currency: def.currency,
       stake: BigInt(dto.stake),
-      maxPlayers: def.maxPlayers,
+      maxPlayers: effectiveMaxPlayers(def.code, mode, def.maxPlayers),
       mode,
       isPrivate: dto.isPrivate ?? false,
       passwordHash: dto.password ? sha256(dto.password) : null,
@@ -414,6 +421,16 @@ export class GamesService {
       if (!fresh || fresh.status !== GameLobbyStatus.OPEN) {
         throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
       }
+      // Bots are only allowed in friendly (no-stake) matches. A bet match's pot
+      // must consist solely of real player stakes — a bot holds no wallet and
+      // stakes nothing, so it can never contribute to (or legitimately win) a pot.
+      if (Number(fresh.stake) > 0) {
+        throw new BusinessException(
+          ERROR_CODES.VALIDATION_ERROR,
+          'Bots are only allowed in friendly matches — a bet match requires real players.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
       if ((await this.repo.countMembers(fresh.id)) >= fresh.maxPlayers) {
         throw this.conflict(ERROR_CODES.GAME_LOBBY_FULL, 'This lobby is full.');
       }
@@ -520,7 +537,8 @@ export class GamesService {
       const escrowed: GameParticipant[] = [];
       try {
         for (const p of participants) {
-          if (p.isBot) continue; // bots don't stake
+          // bots don't stake; friendly (stake 0) matches escrow nothing.
+          if (p.isBot || Number(session.stake) === 0) continue;
           const debit = await this.wallet.debit({
             userId: p.userId,
             currency: this.walletCurrency(session.currency),
@@ -532,6 +550,10 @@ export class GamesService {
             metadata: { gameCode: def.code },
             actorId: p.userId,
           });
+          // Record the successful debit BEFORE the follow-up ledger/participant
+          // writes: if either of those throws, this participant's stake was still
+          // actually taken from their wallet, so it must still be refunded below.
+          escrowed.push(p);
           await this.repo.createTransaction({
             sessionId: session.id,
             participantId: p.id,
@@ -543,7 +565,6 @@ export class GamesService {
             idempotencyKey: `game-stake:${session.id}:${p.userId}`,
           });
           await this.repo.updateParticipant(p.id, { stakeTxnId: debit.transactionId });
-          escrowed.push(p);
         }
       } catch (err) {
         await this.refundParticipants(session, escrowed);
@@ -656,56 +677,85 @@ export class GamesService {
       const payoutTotal = [...payoutMap.values()].reduce((a, b) => a + b, 0);
       const rakeAmount = Number(fresh.potAmount) - payoutTotal;
 
-      // Credit winners. Idempotency keys make a retry after a partial failure safe.
-      for (const p of participants) {
-        const payout = payoutMap.get(p.userId) ?? 0;
-        const isWinner = input.winners.includes(p.userId);
-        let payoutTxnId: string | null = null;
-        if (payout > 0) {
-          const credit = await this.wallet.credit({
-            userId: p.userId,
-            currency: this.walletCurrency(fresh.currency),
-            amount: payout,
-            reason: WalletTxnReason.GAME_PAYOUT,
-            idempotencyKey: `game-payout:${fresh.id}:${p.userId}`,
-            referenceType: 'game_session',
-            referenceId: fresh.id,
-            metadata: { gameCode: fresh.code },
-            actorId: p.userId,
-          });
-          payoutTxnId = credit.transactionId;
-          await this.repo.createTransaction({
-            sessionId: fresh.id,
-            participantId: p.id,
-            userId: p.userId,
-            type: GameTxnType.PAYOUT,
-            currency: fresh.currency,
-            amount: BigInt(payout),
-            walletTxnId: credit.transactionId,
-            idempotencyKey: `game-payout:${fresh.id}:${p.userId}`,
-          });
-        }
-        await this.repo.updateParticipant(p.id, {
-          status: isWinner ? GameParticipantStatus.WON : GameParticipantStatus.LOST,
-          isWinner,
-          payoutAmount: BigInt(payout),
-          payoutTxnId,
-          settledAt: new Date(),
-        });
-      }
+      // Credit winners + record the ledger + close out every participant + flip
+      // the session to COMPLETED as ONE atomic DB transaction (idempotency keys
+      // still make a safe-to-retry replay of the credit itself a no-op): a crash
+      // or error partway through must never leave a half-settled session — one
+      // that's already paid a winner but never reached COMPLETED — since a retry
+      // could then re-attempt the ledger insert and collide with its own
+      // unique idempotency key. Wallet locks are acquired up front (sorted, to
+      // avoid deadlock) because passing `tx` into wallet.credit makes it join
+      // this transaction instead of taking its own internal per-user lock.
+      const creditedUserIds = [...payoutMap.entries()]
+        .filter(([, amount]) => amount > 0)
+        .map(([userId]) => userId);
+      await this.withWalletLocks(creditedUserIds, () =>
+        this.repo.runInTransaction(async (tx) => {
+          for (const p of participants) {
+            const payout = payoutMap.get(p.userId) ?? 0;
+            const isWinner = input.winners.includes(p.userId);
+            let payoutTxnId: string | null = null;
+            if (payout > 0) {
+              const credit = await this.wallet.credit(
+                {
+                  userId: p.userId,
+                  currency: this.walletCurrency(fresh.currency),
+                  amount: payout,
+                  reason: WalletTxnReason.GAME_PAYOUT,
+                  idempotencyKey: `game-payout:${fresh.id}:${p.userId}`,
+                  referenceType: 'game_session',
+                  referenceId: fresh.id,
+                  metadata: { gameCode: fresh.code },
+                  actorId: p.userId,
+                },
+                tx,
+              );
+              payoutTxnId = credit.transactionId;
+              await this.repo.createTransaction(
+                {
+                  sessionId: fresh.id,
+                  participantId: p.id,
+                  userId: p.userId,
+                  type: GameTxnType.PAYOUT,
+                  currency: fresh.currency,
+                  amount: BigInt(payout),
+                  walletTxnId: credit.transactionId,
+                  idempotencyKey: `game-payout:${fresh.id}:${p.userId}`,
+                },
+                tx,
+              );
+            }
+            await this.repo.updateParticipant(
+              p.id,
+              {
+                status: isWinner ? GameParticipantStatus.WON : GameParticipantStatus.LOST,
+                isWinner,
+                payoutAmount: BigInt(payout),
+                payoutTxnId,
+                settledAt: new Date(),
+              },
+              tx,
+            );
+          }
 
-      await this.repo.createMatchResult({
-        sessionId: fresh.id,
-        definitionId: fresh.definitionId,
-        code: fresh.code,
-        potAmount: fresh.potAmount,
-        payoutTotal: BigInt(payoutTotal),
-        rakeAmount: BigInt(rakeAmount),
-        winners: input.winners,
-        resultData: input.resultData ?? {},
-        settledBy: input.settledBy ?? null,
-      });
-      await this.repo.completeSession(fresh.id, input.settledBy ?? null);
+          await this.repo.createMatchResult(
+            {
+              sessionId: fresh.id,
+              definitionId: fresh.definitionId,
+              code: fresh.code,
+              potAmount: fresh.potAmount,
+              payoutTotal: BigInt(payoutTotal),
+              rakeAmount: BigInt(rakeAmount),
+              winners: input.winners,
+              resultData: input.resultData ?? {},
+              settledBy: input.settledBy ?? null,
+            },
+            tx,
+          );
+          await this.repo.completeSession(fresh.id, input.settledBy ?? null, tx);
+        }),
+      );
+
       await this.repo.logEvent({
         sessionId: fresh.id,
         action: 'session.settled',
@@ -1261,7 +1311,7 @@ export class GamesService {
       category: def.category,
       currency: def.currency,
       stake: BigInt(state.stake),
-      maxPlayers: def.maxPlayers,
+      maxPlayers: effectiveMaxPlayers(def.code, state.mode, def.maxPlayers),
       mode: state.mode,
       isMatchmade: true,
       status: GameLobbyStatus.OPEN,
@@ -1633,6 +1683,20 @@ export class GamesService {
 
   // ======================= Internals =======================
 
+  /**
+   * Acquire the wallet lock for each of `userIds` (deduped, sorted to avoid
+   * deadlock against another caller locking the same set) before running `fn`.
+   * Needed wherever we pass a shared `tx` into wallet.credit/debit: that makes
+   * the movement join our transaction instead of taking wallet's own internal
+   * per-user lock, so we take that same lock here for the whole transaction.
+   */
+  private async withWalletLocks<T>(userIds: string[], fn: () => Promise<T>): Promise<T> {
+    const sorted = [...new Set(userIds)].sort();
+    const run = (i: number): Promise<T> =>
+      i >= sorted.length ? fn() : this.locks.withLock(walletLockKey(sorted[i]), () => run(i + 1));
+    return run(0);
+  }
+
   private async loadOrInitLiveState(session: GameSession): Promise<GameLiveState> {
     const cached = await this.cache.get<GameLiveState>(gameLiveStateKey(session.id));
     if (cached) return cached;
@@ -1780,6 +1844,8 @@ export class GamesService {
   }
 
   private assertStakeInRange(def: GameDefinition, stake: number): void {
+    // stake 0 = friendly (no-stake) match — allowed for any game, bypasses the range.
+    if (stake === 0) return;
     if (BigInt(stake) < def.minStake || BigInt(stake) > def.maxStake) {
       throw new BusinessException(
         ERROR_CODES.GAME_INVALID_STAKE,
@@ -1878,7 +1944,9 @@ export class GamesService {
     lobby: GameLobby,
     gameCode: GameCode | undefined,
   ): Promise<GameLobbyView> {
-    const members = await this.repo.listMemberIds(lobby.id);
+    const rows = await this.repo.listMembersWithTeams(lobby.id);
+    const humanIds = rows.filter((m) => !m.isBot).map((m) => m.userId);
+    const identities = await this.resolveHumanIdentities(humanIds);
     return {
       lobbyId: lobby.id,
       code: lobby.code,
@@ -1888,11 +1956,29 @@ export class GamesService {
       currency: lobby.currency,
       stake: Number(lobby.stake),
       maxPlayers: lobby.maxPlayers,
-      members,
+      mode: lobby.mode,
+      isPrivate: lobby.isPrivate,
+      hasPassword: lobby.passwordHash != null,
+      members: rows.map((m) => m.userId),
+      memberDetails: rows.map((m) => ({
+        userId: m.userId,
+        team: m.team,
+        isBot: m.isBot,
+        botName: m.botName,
+        displayName: m.isBot ? m.botName : (identities.get(m.userId)?.displayName ?? null),
+        avatar: m.isBot ? null : (identities.get(m.userId)?.avatarUrl ?? null),
+      })),
     };
   }
 
-  private sessionView(session: GameSession, participants: GameParticipant[]) {
+  private async sessionView(session: GameSession, participants: GameParticipant[]) {
+    const sorted = [...participants].sort((a, b) => a.seat - b.seat);
+    const humanIds = sorted.filter((p) => !p.isBot).map((p) => p.userId);
+    const botIds = sorted.filter((p) => p.isBot).map((p) => p.userId);
+    const [identities, botNames] = await Promise.all([
+      this.resolveHumanIdentities(humanIds),
+      this.resolveBotNames(session.lobbyId, botIds),
+    ]);
     return {
       id: session.id,
       gameCode: session.code,
@@ -1907,18 +1993,49 @@ export class GamesService {
       startedAt: session.startedAt,
       settledAt: session.settledAt,
       // seat order is authoritative (turn order + positional 2v2 team split).
-      participants: [...participants]
-        .sort((a, b) => a.seat - b.seat)
-        .map((p) => ({
-          userId: p.userId,
-          seat: p.seat,
-          team: p.team,
-          isBot: p.isBot,
-          status: p.status,
-          isWinner: p.isWinner,
-          payoutAmount: Number(p.payoutAmount),
-        })),
+      participants: sorted.map((p) => ({
+        userId: p.userId,
+        seat: p.seat,
+        team: p.team,
+        isBot: p.isBot,
+        status: p.status,
+        isWinner: p.isWinner,
+        payoutAmount: Number(p.payoutAmount),
+        displayName: p.isBot
+          ? (botNames.get(p.userId) ?? null)
+          : (identities.get(p.userId)?.displayName ?? null),
+        avatar: p.isBot ? null : (identities.get(p.userId)?.avatarUrl ?? null),
+      })),
     };
+  }
+
+  /**
+   * Batch-resolve displayName + avatar for HUMAN participants/members ONCE per
+   * view build. Bots are never looked up here — they carry their own botName.
+   */
+  private async resolveHumanIdentities(
+    userIds: string[],
+  ): Promise<Map<string, { displayName: string | null; avatarUrl: string | null }>> {
+    const unique = [...new Set(userIds)];
+    if (unique.length === 0) return new Map();
+    return this.profiles.resolvePublicIdentities(unique);
+  }
+
+  /**
+   * A session's participants carry no name of their own — a bot's display name
+   * lives on the lobby seat that spawned it (game_lobby_members.botName). Falls
+   * back to an empty map (null display names) if there's no bot to resolve or
+   * no lobby to resolve it from.
+   */
+  private async resolveBotNames(
+    lobbyId: string | null,
+    botIds: string[],
+  ): Promise<Map<string, string | null>> {
+    const names = new Map<string, string | null>();
+    if (botIds.length === 0 || !lobbyId) return names;
+    const rows = await this.repo.listMembersWithTeams(lobbyId);
+    for (const row of rows) if (row.isBot) names.set(row.userId, row.botName);
+    return names;
   }
 
   private sessionSummary(session: GameSession) {

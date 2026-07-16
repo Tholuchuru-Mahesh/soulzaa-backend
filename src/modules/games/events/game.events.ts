@@ -1,6 +1,18 @@
-import { GameCode, GameCurrency, GameSessionStatus, GameTeam } from '@prisma/client';
+import { GameCode, GameCurrency, GameMode, GameSessionStatus, GameTeam } from '@prisma/client';
 import { DomainEvent } from 'src/common/events';
 import type { MatchCancelReason, MatchType } from '../services/matchmaking-core';
+
+/** One lobby member's team + bot info, surfaced to the waiting-room UI. */
+export interface LobbyMemberView {
+  userId: string;
+  team: GameTeam | null;
+  isBot: boolean;
+  botName: string | null;
+  /** Real player identity (fullName ?? username) — botName for a bot seat. */
+  displayName: string | null;
+  /** Resolved avatar URL — always null for a bot seat. */
+  avatar: string | null;
+}
 
 export const GAME_EVENTS = {
   LOBBY_CREATED: 'game.lobby_created',
@@ -28,7 +40,11 @@ export interface GameLobbyView {
   currency: GameCurrency;
   stake: number;
   maxPlayers: number;
+  mode: GameMode;
+  isPrivate: boolean;
+  hasPassword: boolean;
   members: string[];
+  memberDetails: LobbyMemberView[];
 }
 
 export class GameLobbyCreatedEvent extends DomainEvent<GameLobbyView> {

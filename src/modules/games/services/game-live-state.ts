@@ -1,5 +1,5 @@
 /**
- * In-session live state for board games (Ludo/Carrom/UNO/Domino) — the platform
+ * In-session live state for board games (Ludo/Carrom) — the platform
  * relays client moves without validating game rules (peer-relay model, preserved
  * from the legacy backend). This module is the pure, side-effect-free core: the
  * move log + turn pointer and the exact turn-rotation semantics. It is persisted

@@ -75,6 +75,13 @@ export interface UserCard {
   country: string | null;
 }
 
+/** Minimal public identity for cross-module display needs (e.g. games player panels). */
+export interface PublicIdentity {
+  /** `fullName ?? username` — null only if neither exists. */
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
 export interface IProfileService {
   getProfileView(userId: string): Promise<ProfileView | null>;
   /** View a profile by username as `viewerId` (undefined = anonymous). Privacy-gated. */
@@ -82,6 +89,12 @@ export interface IProfileService {
   getStatistics(userId: string): Promise<StatisticsView | null>;
   /** Resolve lightweight cards for a set of user ids (missing ids are dropped). */
   getCards(ids: string[]): Promise<UserCard[]>;
+  /**
+   * Batch-resolve display name + avatar URL for a set of (human) user ids —
+   * for other modules that just need identity, not the full profile/stats
+   * aggregate (e.g. games player panels). Missing ids are absent from the map.
+   */
+  resolvePublicIdentities(ids: string[]): Promise<Map<string, PublicIdentity>>;
   /** Atomically adjust a counter (delta may be negative). Returns nothing. */
   incrementStatistic(userId: string, field: StatisticField, delta: number): Promise<void>;
   /** Search users; results exclude anyone in a block relationship with `viewerId`. */

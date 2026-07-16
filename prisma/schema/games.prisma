@@ -13,7 +13,12 @@
 // coordinated via the EVENT_BUS. Wallet movements link back by walletTxnId.
 // ============================================================
 
-/// The eight games defined by the PRD.
+/// The eight games originally defined by the PRD. Only LUDO and CARROM are
+/// active in the catalog today (GAME_CATALOG_SEED) — GREEDY, ROULETTE, SLOTS,
+/// JACKPOT, UNO and DOMINO were removed as dead code (never shipped a real
+/// engine); their GameDefinition rows were disabled, not deleted, and these
+/// enum values are kept (dropping them needs a migration and risks historical
+/// game_sessions/game_transactions rows that still reference them).
 enum GameCode {
   GREEDY
   ROULETTE

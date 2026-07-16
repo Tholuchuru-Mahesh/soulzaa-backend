@@ -29,6 +29,7 @@ import {
 import type {
   IProfileService,
   ProfileView,
+  PublicIdentity,
   StatisticField,
   StatisticsView,
   UserCard,
@@ -159,6 +160,36 @@ export class ProfileService implements IProfileService {
         vipLevel: v.statistics.vipLevel,
         country: v.country,
       }));
+  }
+
+  /**
+   * Batch identity resolver for other modules (e.g. games player panels) that
+   * only need displayName + avatar, not the full profile/stats/verification
+   * aggregate — avoids the N+1 cache-then-DB path `getProfileView` takes per id.
+   * `fullName` lives on `users`, `avatarKey` on `user_profiles`; both are
+   * batch-loaded in parallel and joined in memory. Missing ids are dropped.
+   */
+  async resolvePublicIdentities(ids: string[]): Promise<Map<string, PublicIdentity>> {
+    const unique = [...new Set(ids)];
+    const result = new Map<string, PublicIdentity>();
+    if (unique.length === 0) return result;
+
+    const [identityUsers, profileRows] = await Promise.all([
+      this.users.findByIds(unique),
+      this.profiles.profilesByIds(unique),
+    ]);
+    const profileByUserId = new Map(profileRows.map((p) => [p.userId, p]));
+
+    await Promise.all(
+      identityUsers.map(async (user) => {
+        const avatarKey = profileByUserId.get(user.id)?.avatarKey ?? null;
+        result.set(user.id, {
+          displayName: user.fullName ?? user.username,
+          avatarUrl: await this.media.resolve(avatarKey),
+        });
+      }),
+    );
+    return result;
   }
 
   async incrementStatistic(userId: string, field: StatisticField, delta: number): Promise<void> {

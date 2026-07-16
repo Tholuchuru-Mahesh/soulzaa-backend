@@ -20,6 +20,15 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 export class GamesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Run a set of writes atomically in one DB transaction — used by settlement
+   * so credits + ledger rows + participant payouts + the COMPLETED status flip
+   * either all land or none do (no half-settled session a retry can get stuck on).
+   */
+  runInTransaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction((tx) => fn(tx));
+  }
+
   // ======================= Definitions (catalog) =======================
 
   listDefinitions(enabledOnly: boolean): Promise<GameDefinition[]> {
@@ -113,14 +122,14 @@ export class GamesRepository {
     return rows.map((r) => r.userId);
   }
 
-  /** Members with team + bot flag (join order) — drives seating + escrow-skip. */
+  /** Members with team + bot info (join order) — drives seating, escrow-skip, UI. */
   listMembersWithTeams(
     lobbyId: string,
-  ): Promise<{ userId: string; team: GameTeam | null; isBot: boolean }[]> {
+  ): Promise<{ userId: string; team: GameTeam | null; isBot: boolean; botName: string | null }[]> {
     return this.prisma.gameLobbyMember.findMany({
       where: { lobbyId },
       orderBy: { joinedAt: 'asc' },
-      select: { userId: true, team: true, isBot: true },
+      select: { userId: true, team: true, isBot: true, botName: true },
     });
   }
 
@@ -207,16 +216,21 @@ export class GamesRepository {
   updateParticipant(
     id: string,
     data: Prisma.GameParticipantUncheckedUpdateInput,
+    tx?: Prisma.TransactionClient,
   ): Promise<GameParticipant> {
-    return this.prisma.gameParticipant.update({ where: { id }, data });
+    return (tx ?? this.prisma).gameParticipant.update({ where: { id }, data });
   }
 
   setSessionPot(id: string, potAmount: bigint): Promise<GameSession> {
     return this.prisma.gameSession.update({ where: { id }, data: { potAmount } });
   }
 
-  completeSession(id: string, actorId: string | null): Promise<GameSession> {
-    return this.prisma.gameSession.update({
+  completeSession(
+    id: string,
+    actorId: string | null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<GameSession> {
+    return (tx ?? this.prisma).gameSession.update({
       where: { id },
       data: {
         status: GameSessionStatus.COMPLETED,
@@ -274,31 +288,37 @@ export class GamesRepository {
 
   // ======================= Ledger / results / audit =======================
 
-  createTransaction(data: {
-    sessionId: string;
-    participantId?: string | null;
-    userId: string;
-    type: GameTxnType;
-    currency: GameCurrency;
-    amount: bigint;
-    walletTxnId?: string | null;
-    idempotencyKey: string;
-  }): Promise<{ id: string }> {
-    return this.prisma.gameTransaction.create({ data, select: { id: true } });
+  createTransaction(
+    data: {
+      sessionId: string;
+      participantId?: string | null;
+      userId: string;
+      type: GameTxnType;
+      currency: GameCurrency;
+      amount: bigint;
+      walletTxnId?: string | null;
+      idempotencyKey: string;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ id: string }> {
+    return (tx ?? this.prisma).gameTransaction.create({ data, select: { id: true } });
   }
 
-  createMatchResult(data: {
-    sessionId: string;
-    definitionId: string;
-    code: GameCode;
-    potAmount: bigint;
-    payoutTotal: bigint;
-    rakeAmount: bigint;
-    winners: string[];
-    resultData: Record<string, unknown>;
-    settledBy?: string | null;
-  }): Promise<{ id: string }> {
-    return this.prisma.gameMatchResult.create({
+  createMatchResult(
+    data: {
+      sessionId: string;
+      definitionId: string;
+      code: GameCode;
+      potAmount: bigint;
+      payoutTotal: bigint;
+      rakeAmount: bigint;
+      winners: string[];
+      resultData: Record<string, unknown>;
+      settledBy?: string | null;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<{ id: string }> {
+    return (tx ?? this.prisma).gameMatchResult.create({
       data: { ...data, resultData: data.resultData as Prisma.InputJsonValue },
       select: { id: true },
     });
