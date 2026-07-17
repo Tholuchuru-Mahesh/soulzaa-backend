@@ -196,6 +196,39 @@ describe('ProfileService', () => {
     });
   });
 
+  describe('getPublicProfile (username or UUID)', () => {
+    const UUID = 'f67cf300-6b54-48c5-82c5-1d854711c634';
+
+    it('resolves a UUID identifier by id (not username) — the deep-link path', async () => {
+      users.findById.mockResolvedValue(makeUser({ id: UUID }));
+      const view = await service.getPublicProfile(UUID, 'viewer');
+      expect(users.findById).toHaveBeenCalledWith(UUID);
+      expect(users.findByUsername).not.toHaveBeenCalled();
+      expect(privacy.check).toHaveBeenCalledWith('viewer', UUID, 'VIEW_PROFILE');
+      expect(view?.username).toBe('aditya');
+    });
+
+    it('resolves a non-UUID identifier by username', async () => {
+      users.findByUsername.mockResolvedValue(makeUser());
+      users.findById.mockResolvedValue(makeUser());
+      const view = await service.getPublicProfile('aditya', 'viewer');
+      expect(users.findByUsername).toHaveBeenCalledWith('aditya');
+      expect(view?.username).toBe('aditya');
+    });
+
+    it('returns null (→ 404) for an unknown id without leaking existence', async () => {
+      users.findById.mockResolvedValue(null);
+      expect(await service.getPublicProfile(UUID, 'viewer')).toBeNull();
+      expect(privacy.check).not.toHaveBeenCalled();
+    });
+
+    it('honours the privacy gate for the by-id path', async () => {
+      users.findById.mockResolvedValue(makeUser({ id: UUID }));
+      privacy.check.mockResolvedValue(false);
+      expect(await service.getPublicProfile(UUID, 'viewer')).toBeNull();
+    });
+  });
+
   describe('search (block-aware)', () => {
     it('excludes the viewer block relationships', async () => {
       privacy.blockedIdsFor.mockResolvedValue(['blocked-1']);

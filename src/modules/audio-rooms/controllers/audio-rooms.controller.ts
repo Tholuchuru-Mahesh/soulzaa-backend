@@ -80,6 +80,12 @@ export class AudioRoomsController {
     return this.rooms.getMyRoom(this.actor(user));
   }
 
+  @Get('my-room')
+  @ApiOperation({ summary: "Get the caller's owned room (or null)" })
+  myRoom(@CurrentUser() user: AuthenticatedUser) {
+    return this.rooms.getMyRoom(this.actor(user));
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get room detail + live participants' })
   detail(@Param('id', ParseUuidPipe) id: string) {
@@ -116,6 +122,13 @@ export class AudioRoomsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Start/Go live in an existing audio room (owner/admin)' })
   async start(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.rooms.start(this.actor(user), id);
+  }
+
+  @Post(':id/live')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Start/Go live in an existing audio room (owner/admin)' })
+  async live(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.rooms.start(this.actor(user), id);
   }
 

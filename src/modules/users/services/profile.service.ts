@@ -47,6 +47,13 @@ import {
 /** Username policy (mirrors registration): 4–20 chars, letters/digits/underscore. */
 const USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/;
 
+/**
+ * Canonical UUID. A username can never match this (it forbids hyphens — see
+ * USERNAME_RE), so the two identifier spaces are disjoint and the `/users/:x`
+ * route can accept either without ambiguity.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** JSON-safe cached snapshot — stores media KEYS; URLs resolved per response. */
 interface CachedProfile {
   id: string;
@@ -130,11 +137,32 @@ export class ProfileService implements IProfileService {
   }
 
   async getProfileByUsername(username: string, viewerId?: string): Promise<ProfileView | null> {
-    const user = await this.users.findByUsername(username);
+    return this.gatedView(await this.users.findByUsername(username), viewerId);
+  }
+
+  /**
+   * Resolve a public profile by *either* a username or a user id (UUID).
+   *
+   * The client's `/users/:x` route is opaque: a tapped @handle carries a
+   * username, but a tapped notification / deep link carries the actor's UUID
+   * (an FCM follow push only knows the follower's id, not their handle). Since a
+   * UUID can never be a valid username, accepting both here is unambiguous — and
+   * it is what stops a follow-notification tap from 404ing on a real user.
+   */
+  async getPublicProfile(identifier: string, viewerId?: string): Promise<ProfileView | null> {
+    const user = UUID_RE.test(identifier)
+      ? await this.users.findById(identifier)
+      : await this.users.findByUsername(identifier);
+    return this.gatedView(user, viewerId);
+  }
+
+  /**
+   * Privacy gate shared by the public reads: hide the profile (as if not found)
+   * when the viewer is blocked or the target's profileVisibility excludes them.
+   * Own profile and internal/self reads via getProfileView stay ungated.
+   */
+  private async gatedView(user: User | null, viewerId?: string): Promise<ProfileView | null> {
     if (!user) return null;
-    // Privacy gate: hide the profile (as if not found) when the viewer is
-    // blocked or the target's profileVisibility excludes them. Own profile and
-    // internal/self reads via getProfileView stay ungated.
     const allowed = await this.privacy.check(viewerId ?? null, user.id, PrivacyAction.VIEW_PROFILE);
     if (!allowed) return null;
     return this.getProfileView(user.id);

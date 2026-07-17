@@ -24,6 +24,10 @@ import {
   type SeatUnlockedEvent,
   type SeatUpdatedEvent,
 } from '../events/audio-room-seat.events';
+import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
+import { PresenceService } from 'src/infra/redis/presence.service';
+import { PROFILE_SERVICE, type IProfileService } from 'src/modules/users/interfaces/profile.interface';
+import { USER_EVENTS, type UserAvatarUpdatedEvent } from 'src/modules/users/events/user.events';
 
 /**
  * Bridges audio-room domain events on the EVENT_BUS to realtime `room.*`
@@ -37,6 +41,9 @@ export class AudioRoomSocketListener implements OnModuleInit {
   constructor(
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly sockets: SocketManager,
+    private readonly repo: AudioRoomsRepository,
+    private readonly presence: PresenceService,
+    @Inject(PROFILE_SERVICE) private readonly profileService: IProfileService,
   ) {}
 
   onModuleInit(): void {
@@ -52,12 +59,20 @@ export class AudioRoomSocketListener implements OnModuleInit {
     this.bus.subscribe<RoomEndedEvent>(AUDIO_ROOM_EVENTS.ENDED, (e) =>
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.CLOSED, e.payload),
     );
-    this.bus.subscribe<RoomJoinedEvent>(AUDIO_ROOM_EVENTS.JOINED, (e) =>
-      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.JOINED, e.payload),
-    );
-    this.bus.subscribe<RoomLeftEvent>(AUDIO_ROOM_EVENTS.LEFT, (e) =>
-      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.LEFT, e.payload),
-    );
+    this.bus.subscribe<RoomJoinedEvent>(AUDIO_ROOM_EVENTS.JOINED, async (e) => {
+      const payload = await this.getAudiencePreviewPayload(e.payload.roomId, e.payload.participantCount);
+      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.JOINED, {
+        ...e.payload,
+        ...payload,
+      });
+    });
+    this.bus.subscribe<RoomLeftEvent>(AUDIO_ROOM_EVENTS.LEFT, async (e) => {
+      const payload = await this.getAudiencePreviewPayload(e.payload.roomId, e.payload.participantCount);
+      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.LEFT, {
+        ...e.payload,
+        ...payload,
+      });
+    });
     this.bus.subscribe<RoomLockedEvent>(AUDIO_ROOM_EVENTS.LOCKED, (e) =>
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.LOCKED, e.payload),
     );
@@ -65,6 +80,18 @@ export class AudioRoomSocketListener implements OnModuleInit {
       AUDIO_ROOM_EVENTS.OWNERSHIP_TRANSFERRED,
       (e) => this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.OWNERSHIP_TRANSFERRED, e.payload),
     );
+
+    // Listen to user avatar updates to keep audience preview avatars synchronized in realtime
+    this.bus.subscribe<UserAvatarUpdatedEvent>(USER_EVENTS.AVATAR_UPDATED, async (e) => {
+      if (e.payload.kind === 'avatar') {
+        const rooms = await this.presence.userRooms(e.payload.userId);
+        for (const roomId of rooms) {
+          const count = await this.presence.roomMemberCount(roomId);
+          const payload = await this.getAudiencePreviewPayload(roomId, count);
+          this.emit(roomId, ROOM_SOCKET_EVENTS.JOINED, payload);
+        }
+      }
+    });
 
     // ---- Seats (AR-1) ----
     this.bus.subscribe<SeatRequestedEvent>(AUDIO_ROOM_SEAT_EVENTS.REQUESTED, (e) =>
@@ -91,6 +118,25 @@ export class AudioRoomSocketListener implements OnModuleInit {
     this.bus.subscribe<SeatUpdatedEvent>(AUDIO_ROOM_SEAT_EVENTS.UPDATED, (e) =>
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.SEAT_UPDATED, e.payload),
     );
+  }
+
+  private async getAudiencePreviewPayload(roomId: string, count: number) {
+    const members = await this.repo.listFirstActiveMembers(roomId, 3);
+    const ids = members.map((m) => m.userId);
+    const identities = await this.profileService.resolvePublicIdentities(ids);
+    const visibleParticipants = ids.map((id) => {
+      const identity = identities.get(id);
+      return {
+        userId: id,
+        username: identity?.displayName ?? '',
+        profileImage: identity?.avatarUrl ?? null,
+      };
+    });
+    return {
+      roomId,
+      audienceCount: count,
+      visibleParticipants,
+    };
   }
 
   private emit(roomId: string, event: string, payload: unknown): void {

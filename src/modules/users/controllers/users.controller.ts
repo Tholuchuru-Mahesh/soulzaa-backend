@@ -164,10 +164,17 @@ export class UsersController {
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiBearerAuth()
-  @Get(':username')
-  @ApiOperation({ summary: 'View a profile by username (privacy-aware; auth optional)' })
-  async byUsername(@Param('username') username: string, @CurrentUser('id') viewerId?: string) {
-    const view = await this.profile.getProfileByUsername(username, viewerId);
+  @Get(':identifier')
+  @ApiOperation({
+    summary: 'View a profile by username or user id (privacy-aware; auth optional)',
+  })
+  async byIdentifier(
+    @Param('identifier') identifier: string,
+    @CurrentUser('id') viewerId?: string,
+  ) {
+    // Accepts either a username or a UUID: a tapped @handle sends a username, a
+    // tapped notification / deep link sends the actor's id. See getPublicProfile.
+    const view = await this.profile.getPublicProfile(identifier, viewerId);
     if (!view) throw new NotFoundException('User not found');
     return view;
   }

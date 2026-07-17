@@ -86,6 +86,11 @@ export interface IProfileService {
   getProfileView(userId: string): Promise<ProfileView | null>;
   /** View a profile by username as `viewerId` (undefined = anonymous). Privacy-gated. */
   getProfileByUsername(username: string, viewerId?: string): Promise<ProfileView | null>;
+  /**
+   * View a profile by a username *or* a user id (UUID) as `viewerId`. Privacy-gated.
+   * Lets the opaque `/users/:x` route serve a tapped handle and a deep-linked id alike.
+   */
+  getPublicProfile(identifier: string, viewerId?: string): Promise<ProfileView | null>;
   getStatistics(userId: string): Promise<StatisticsView | null>;
   /** Resolve lightweight cards for a set of user ids (missing ids are dropped). */
   getCards(ids: string[]): Promise<UserCard[]>;

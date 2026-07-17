@@ -19,6 +19,10 @@ import {
   USERS_SERVICE,
   type IUsersService,
 } from 'src/modules/users/interfaces/users.service.interface';
+import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
 import { ROOM_MIN_PARTICIPANTS } from '../constants/audio-room.constants';
 import type { CreateRoomDto } from '../dto/create-room.dto';
 import type { JoinRoomDto } from '../dto/join-room.dto';
@@ -48,9 +52,16 @@ import { RoomPermissionService } from './room-permission.service';
 // from this module; the canonical definition lives in interfaces/room-actor.
 export type { RoomActor } from '../interfaces/room-actor.interface';
 
+export interface VisibleParticipant {
+  userId: string;
+  username: string;
+  profileImage: string | null;
+}
+
 /** A room detail view with its live participant roster. */
 export interface RoomDetailView extends RoomView {
   participants: RoomParticipant[];
+  visibleParticipants?: VisibleParticipant[];
 }
 
 export interface RoomParticipant {
@@ -98,6 +109,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     private readonly moderation: ModerationRepository,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
+    @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
   ) {
     // Config namespaces surface raw process.env strings at runtime, so coerce.
     const cfg = this.config.get('audioRoom') as {
@@ -118,13 +130,9 @@ export class AudioRoomsService implements IAudioRoomsService {
 
   async create(actor: RoomActor, dto: CreateRoomDto): Promise<RoomView> {
     return this.locks.withLock(`audio-room:create:{${actor.id}}`, async () => {
-      const owned = await this.repo.countActiveRoomsOwnedBy(actor.id);
-      if (owned >= MAX_STANDARD_ROOMS_PER_USER) {
-        throw new BusinessException(
-          ERROR_CODES.ROOM_LIMIT_REACHED,
-          'You already have an active audio room.',
-          HttpStatus.CONFLICT,
-        );
+      const existing = await this.repo.findOwnedRoom(actor.id);
+      if (existing) {
+        return this.toView(existing);
       }
 
       if (dto.categoryId) await this.assertCategory(dto.categoryId);
@@ -252,12 +260,10 @@ export class AudioRoomsService implements IAudioRoomsService {
   }
 
   async remove(actor: RoomActor, roomId: string): Promise<void> {
-    const room = await this.getManageableRoom(roomId, actor);
-    await this.repo.softDeleteRoom(roomId, actor.id);
-    await this.repo.appendLog(roomId, actor.id, RoomLogAction.DELETED);
-    await this.clearRoomRuntime(roomId);
-    await this.bus.publish(
-      new RoomDeletedEvent({ roomId, actorId: actor.id, ownerId: room.ownerId }),
+    throw new BusinessException(
+      ERROR_CODES.FORBIDDEN,
+      'Permanent rooms cannot be deleted.',
+      HttpStatus.FORBIDDEN,
     );
   }
 
@@ -286,6 +292,7 @@ export class AudioRoomsService implements IAudioRoomsService {
       { status: 'LIVE', endedAt: null },
       actor.id,
     );
+    await this.seatsService.onRoomOpened(roomId, room.ownerId);
     const view = await this.toView(updated);
     await this.repo.setCachedSnapshot(view, this.cacheTtl);
     await this.bus.publish(
@@ -492,12 +499,26 @@ export class AudioRoomsService implements IAudioRoomsService {
         };
       }),
     );
-    return { ...view, participants };
+
+    // Get visible participants (first 3 active members sorted by joinedAt)
+    const first3Members = members.slice(0, 3);
+    const ids = first3Members.map((m) => m.userId);
+    const identities = await this.profiles.resolvePublicIdentities(ids);
+    const visibleParticipants = ids.map((id) => {
+      const identity = identities.get(id);
+      return {
+        userId: id,
+        username: identity?.displayName ?? '',
+        profileImage: identity?.avatarUrl ?? null,
+      };
+    });
+
+    return { ...view, participants, visibleParticipants };
   }
 
   /** The caller's active owned room, or null when they own none. */
   async getMyRoom(actor: RoomActor): Promise<RoomView | null> {
-    const room = await this.repo.findOwnedLiveRoom(actor.id);
+    const room = await this.repo.findOwnedRoom(actor.id);
     return room ? this.toView(room) : null;
   }
 

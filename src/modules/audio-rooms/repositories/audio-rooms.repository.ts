@@ -194,7 +194,7 @@ export class AudioRoomsRepository {
    * The caller's owned room (non-deleted), or null. At most one row
    * exists — one standard room per user is enforced on create.
    */
-  findOwnedLiveRoom(ownerId: string): Promise<AudioRoom | null> {
+  findOwnedRoom(ownerId: string): Promise<AudioRoom | null> {
     return this.prisma.audioRoom.findFirst({
       where: { ownerId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -243,10 +243,40 @@ export class AudioRoomsRepository {
   }
 
   async softDeleteRoom(roomId: string, actorId: string): Promise<void> {
-    await this.prisma.audioRoom.update({
-      where: { id: roomId },
-      data: { status: 'ENDED', endedAt: new Date(), ...auditSoftDelete(actorId) },
-    });
+    await this.prisma.$transaction([
+      this.prisma.roomSettings.deleteMany({ where: { roomId } }),
+      this.prisma.roomMember.deleteMany({ where: { roomId } }),
+      this.prisma.roomStatistics.deleteMany({ where: { roomId } }),
+      this.prisma.roomPresence.deleteMany({ where: { roomId } }),
+      this.prisma.roomLog.deleteMany({ where: { roomId } }),
+      this.prisma.roomRole.deleteMany({ where: { roomId } }),
+      this.prisma.roomSeat.deleteMany({ where: { roomId } }),
+      this.prisma.seatRequest.deleteMany({ where: { roomId } }),
+      this.prisma.seatInvitation.deleteMany({ where: { roomId } }),
+      this.prisma.seatQueueEntry.deleteMany({ where: { roomId } }),
+      this.prisma.seatHistory.deleteMany({ where: { roomId } }),
+      this.prisma.voiceSession.deleteMany({ where: { roomId } }),
+      this.prisma.voiceSessionLog.deleteMany({ where: { roomId } }),
+      this.prisma.roomMessage.deleteMany({ where: { roomId } }),
+      this.prisma.pinnedMessage.deleteMany({ where: { roomId } }),
+      this.prisma.chatReport.deleteMany({ where: { roomId } }),
+      this.prisma.roomKick.deleteMany({ where: { roomId } }),
+      this.prisma.roomBan.deleteMany({ where: { roomId } }),
+      this.prisma.roomMute.deleteMany({ where: { roomId } }),
+      this.prisma.moderationAction.deleteMany({ where: { roomId } }),
+      this.prisma.moderationNote.deleteMany({ where: { roomId } }),
+      this.prisma.roomReport.deleteMany({ where: { roomId } }),
+      this.prisma.roomAppeal.deleteMany({ where: { roomId } }),
+      this.prisma.pkBattle.deleteMany({ where: { roomId } }),
+      this.prisma.pkParticipant.deleteMany({ where: { roomId } }),
+      this.prisma.pkContribution.deleteMany({ where: { roomId } }),
+      this.prisma.pkReward.deleteMany({ where: { roomId } }),
+      this.prisma.premiumAdminSeat.deleteMany({ where: { roomId } }),
+      this.prisma.roomWatchParty.deleteMany({ where: { roomId } }),
+      this.prisma.luckyPacket.deleteMany({ where: { roomId } }),
+      this.prisma.luckyPacketClaim.deleteMany({ where: { roomId } }),
+      this.prisma.audioRoom.delete({ where: { id: roomId } }),
+    ]);
   }
 
   /** Mark a room ENDED and finalise its statistics in one transaction. */
@@ -255,7 +285,7 @@ export class AudioRoomsRepository {
     await this.prisma.$transaction([
       this.prisma.audioRoom.update({
         where: { id: roomId },
-        data: { status: 'ENDED', endedAt, ...auditUpdate(actorId) },
+        data: { status: 'OFFLINE', endedAt, ...auditUpdate(actorId) },
       }),
       this.prisma.roomMember.updateMany({
         where: { roomId, isActive: true },
@@ -344,6 +374,14 @@ export class AudioRoomsRepository {
     return this.prisma.roomMember.findMany({
       where: { roomId, isActive: true },
       orderBy: { joinedAt: 'asc' },
+    });
+  }
+
+  listFirstActiveMembers(roomId: string, limit: number): Promise<RoomMember[]> {
+    return this.prisma.roomMember.findMany({
+      where: { roomId, isActive: true },
+      orderBy: { joinedAt: 'asc' },
+      take: limit,
     });
   }
 

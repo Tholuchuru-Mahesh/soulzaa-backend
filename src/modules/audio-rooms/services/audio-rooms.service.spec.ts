@@ -5,6 +5,7 @@ import { BusinessException } from 'src/common/exceptions';
 import { LockService } from 'src/infra/redis/lock.service';
 import { PresenceService } from 'src/infra/redis/presence.service';
 import type { IUsersService } from 'src/modules/users/interfaces/users.service.interface';
+import type { IProfileService } from 'src/modules/users/interfaces/profile.interface';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
 import { AudioRoomSeatsService } from './audio-room-seats.service';
@@ -49,12 +50,13 @@ describe('AudioRoomsService', () => {
   let moderation: Record<string, jest.Mock>;
   let bus: jest.Mocked<IEventBus>;
   let users: Record<string, jest.Mock>;
+  let profiles: Partial<IProfileService>;
   let service: AudioRoomsService;
 
   beforeEach(() => {
     repo = {
       countActiveRoomsOwnedBy: jest.fn().mockResolvedValue(0),
-      findOwnedLiveRoom: jest.fn().mockResolvedValue(null),
+      findOwnedRoom: jest.fn().mockResolvedValue(null),
       categoryExists: jest.fn().mockResolvedValue(true),
       languageExists: jest.fn().mockResolvedValue(true),
       createRoomTx: jest.fn().mockResolvedValue(roomRow()),
@@ -104,6 +106,9 @@ describe('AudioRoomsService', () => {
       isRoomMuted: jest.fn().mockResolvedValue(false),
       isSeatMuted: jest.fn().mockResolvedValue(false),
       getStage: jest.fn().mockResolvedValue({ seats: [], queue: [], settings: {} }),
+      takeSeat: jest.fn().mockResolvedValue(undefined),
+      onRoomOpened: jest.fn().mockResolvedValue(undefined),
+      onRoomClosed: jest.fn().mockResolvedValue(undefined),
     };
     moderation = {
       isKickedCached: jest.fn().mockResolvedValue(false),
@@ -115,6 +120,9 @@ describe('AudioRoomsService', () => {
     };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     users = { findById: jest.fn().mockResolvedValue({ username: 'bob' }) };
+    profiles = {
+      resolvePublicIdentities: jest.fn().mockResolvedValue(new Map()),
+    };
     const config = {
       get: () => ({
         defaultMaxParticipants: 50,
@@ -136,6 +144,7 @@ describe('AudioRoomsService', () => {
       moderation as unknown as ModerationRepository,
       bus,
       users as unknown as IUsersService,
+      profiles as unknown as IProfileService,
     );
   });
 
@@ -149,11 +158,10 @@ describe('AudioRoomsService', () => {
       );
     });
 
-    it('rejects a second active room (MAX_STANDARD_ROOMS_PER_USER)', async () => {
-      repo.countActiveRoomsOwnedBy.mockResolvedValue(1);
-      await expect(service.create(OWNER, { name: 'Another' })).rejects.toBeInstanceOf(
-        BusinessException,
-      );
+    it('returns the existing room if already created', async () => {
+      repo.findOwnedRoom.mockResolvedValue(roomRow({ id: 'existing-1' }));
+      const view = await service.create(OWNER, { name: 'Another' });
+      expect(view.id).toBe('existing-1');
       expect(repo.createRoomTx).not.toHaveBeenCalled();
     });
 
@@ -317,16 +325,16 @@ describe('AudioRoomsService', () => {
 
   describe('getMyRoom', () => {
     it("returns the caller's active owned room", async () => {
-      repo.findOwnedLiveRoom.mockResolvedValue(roomRow());
+      repo.findOwnedRoom.mockResolvedValue(roomRow());
       const view = await service.getMyRoom(OWNER);
-      expect(repo.findOwnedLiveRoom).toHaveBeenCalledWith(OWNER.id);
+      expect(repo.findOwnedRoom).toHaveBeenCalledWith(OWNER.id);
       expect(view?.id).toBe('room-1');
     });
 
     it('returns null when the caller owns no active room', async () => {
-      repo.findOwnedLiveRoom.mockResolvedValue(null);
+      repo.findOwnedRoom.mockResolvedValue(null);
       const view = await service.getMyRoom(OTHER);
-      expect(repo.findOwnedLiveRoom).toHaveBeenCalledWith(OTHER.id);
+      expect(repo.findOwnedRoom).toHaveBeenCalledWith(OTHER.id);
       expect(view).toBeNull();
     });
   });

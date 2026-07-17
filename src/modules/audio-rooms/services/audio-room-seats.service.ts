@@ -766,6 +766,19 @@ export class AudioRoomSeatsService {
     await this.rebuildStage(roomId);
   }
 
+  /** The room went live: occupy Seat 0 automatically for the owner. */
+  async onRoomOpened(roomId: string, ownerId: string): Promise<void> {
+    await this.locks.withLock(roomSeatLockKey(roomId), async () => {
+      // Ensure Seat 0 is occupied by ownerId
+      await this.seats.setOccupant(roomId, OWNER_SEAT_INDEX, ownerId, ownerId);
+      // Publish SeatJoinedEvent
+      await this.bus.publish(
+        new SeatJoinedEvent({ roomId, userId: ownerId, seatIndex: OWNER_SEAT_INDEX }),
+      );
+    });
+    await this.rebuildStage(roomId);
+  }
+
   /** The room ended/was deleted: clear all seats + the queue and drop the cache. */
   async onRoomClosed(roomId: string): Promise<void> {
     await this.seats.clearStageTx(roomId);
