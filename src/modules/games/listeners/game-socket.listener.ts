@@ -10,6 +10,7 @@ import {
   GameLobbyJoinedEvent,
   GameLobbyLeftEvent,
   GameLobbyMemberKickedEvent,
+  GameLobbyMemberReadyEvent,
   GameLobbyTeamChangedEvent,
   GameForfeitEvent,
   GameMatchCancelledEvent,
@@ -150,6 +151,10 @@ export class GameSocketListener implements OnModuleInit {
         e.payload,
       );
     });
+    // Ready state toggle: fan out to the entire lobby room so all members see the update.
+    this.bus.subscribe<GameLobbyMemberReadyEvent>(GAME_EVENTS.LOBBY_MEMBER_READY, (e) =>
+      this.toLobby(e.payload.code, GAME_SOCKET_EVENTS.LOBBY_MEMBER_READY, e.payload),
+    );
   }
 
   private toLobby(code: string, event: string, payload: unknown): void {

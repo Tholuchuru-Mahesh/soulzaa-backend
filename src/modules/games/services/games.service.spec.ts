@@ -232,7 +232,7 @@ describe('GamesService', () => {
     it('creates a lobby, adds the host, and broadcasts', async () => {
       await service.createLobby(ACTOR, { gameCode: GameCode.GREEDY, stake: 500 });
       expect(repo.createLobby).toHaveBeenCalled();
-      expect(repo.addMember).toHaveBeenCalledWith('lobby-1', HOST);
+      expect(repo.addMember).toHaveBeenCalledWith('lobby-1', HOST, undefined);
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'game.lobby_created' }),
       );
@@ -265,7 +265,7 @@ describe('GamesService', () => {
     it('adds a member and broadcasts', async () => {
       const other: GameActor = { id: P2, roles: ['USER'] };
       await service.joinLobby(other, 'ABCDEF');
-      expect(repo.addMember).toHaveBeenCalledWith('lobby-1', P2);
+      expect(repo.addMember).toHaveBeenCalledWith('lobby-1', P2, undefined);
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'game.lobby_joined' }),
       );
@@ -1038,7 +1038,7 @@ describe('GamesService', () => {
       repo.getLobbyByCode.mockResolvedValue(lobby({ passwordHash: sha256('right') }));
       repo.getLobbyById.mockResolvedValue(lobby({ passwordHash: sha256('right') }));
       await service.joinLobby({ id: P2, roles: ['USER'] }, 'ABCDEF', 'right');
-      expect(repo.addMember).toHaveBeenCalledWith('lobby-1', P2);
+      expect(repo.addMember).toHaveBeenCalledWith('lobby-1', P2, undefined);
     });
 
     it('lets the host kick a member and broadcasts', async () => {

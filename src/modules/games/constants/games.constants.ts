@@ -26,6 +26,8 @@ export const GAME_SOCKET_EVENTS = {
   LOBBY_TEAM_CHANGED: 'game.lobby_team_changed',
   /** The host kicked a member (lobby room + the kicked user). */
   LOBBY_MEMBER_KICKED: 'game.lobby_member_kicked',
+  /** A member toggled their ready state (lobby-room fan-out). */
+  LOBBY_MEMBER_READY: 'game.lobby_member_ready',
 } as const;
 
 /** Bumped when a matchmaking socket payload shape changes (clients gate on it). */
@@ -172,5 +174,30 @@ export const GAME_CATALOG_SEED: readonly GameCatalogSeed[] = [
     maxPlayers: 4,
     minStake: 10,
     maxStake: 100_000,
+  },
+  // House-banked casino games (Greedy Food, Lucky Fruit) — 1-player-vs-house,
+  // Gold Coins only. Settlement is server-funded (stake × multiplier), not a
+  // pot redistribution — see `src/modules/casino`'s own CasinoService/loop,
+  // which own the actual round/bet logic; these catalog rows only make the
+  // games discoverable/joinable through the shared games dashboard.
+  {
+    code: GameCode.GREEDY_FOOD,
+    name: 'Greedy Food',
+    category: GameCategory.PREMIUM,
+    currency: GameCurrency.GOLD,
+    minPlayers: 1,
+    maxPlayers: 1,
+    minStake: 100,
+    maxStake: 50_000,
+  },
+  {
+    code: GameCode.LUCKY_FRUIT,
+    name: 'Lucky Fruit',
+    category: GameCategory.PREMIUM,
+    currency: GameCurrency.GOLD,
+    minPlayers: 1,
+    maxPlayers: 1,
+    minStake: 100,
+    maxStake: 50_000,
   },
 ];

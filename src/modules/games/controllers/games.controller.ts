@@ -16,6 +16,7 @@ import {
   ListSessionsDto,
   ReportMatchResultDto,
   SetPlayerTeamDto,
+  SetReadyDto,
   SettleResultDto,
   SubmitMoveDto,
   UpdateLobbySettingsDto,
@@ -148,6 +149,18 @@ export class GamesController {
     @Body() dto: SetPlayerTeamDto,
   ) {
     return this.games.setPlayerTeam(this.actor(user), code, dto.team);
+  }
+
+  @Post('lobbies/:code/ready')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Toggle ready state in a lobby' })
+  setReady(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('code') code: string,
+    @Body() dto: SetReadyDto,
+  ) {
+    return this.games.setLobbyReady(this.actor(user), code, dto.isReady);
   }
 
   // ---- Matchmaking (auto-pair queue + all-ready ready-check) ----

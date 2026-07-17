@@ -42,6 +42,9 @@ enum WalletTxnReason {
   LUCKY_PACKET_CLAIM
   LUCKY_PACKET_REFUND
   SPIN_WHEEL_REWARD
+  CASINO_BET
+  CASINO_WIN
+  CASINO_REFUND
 }
 
 /// One wallet per user (1:1). Balances are BigInt to scale to platform-wide

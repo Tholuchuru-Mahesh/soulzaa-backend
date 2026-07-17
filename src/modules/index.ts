@@ -6,6 +6,7 @@ import { AudioRoomsModule } from './audio-rooms/audio-rooms.module';
 import { AuthModule } from './auth/auth.module';
 import { BackpackModule } from './backpack/backpack.module';
 import { CallsModule } from './calls/calls.module';
+import { CasinoModule } from './casino/casino.module';
 import { CosmeticsModule } from './cosmetics/cosmetics.module';
 import { ChatModule } from './chat/chat.module';
 import { DeviceModule } from './device/device.module';
@@ -57,6 +58,7 @@ export const DOMAIN_MODULES = [
   FamiliesModule,
   AgenciesModule,
   GamesModule,
+  CasinoModule,
   NotificationModule,
   SocialModule,
   AnalyticsModule,

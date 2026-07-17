@@ -24,6 +24,14 @@ export class LockService {
       return 0
     end`;
 
+  // Atomic compare-and-extend so we only renew the TTL of a lock we still own.
+  private static readonly EXTEND_SCRIPT = `
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+      return redis.call("pexpire", KEYS[1], ARGV[2])
+    else
+      return 0
+    end`;
+
   constructor(@Inject(REDIS_CLIENT) private readonly client: RedisClient) {}
 
   /** Try to acquire once. Returns a release fn, or null if not acquired. */
@@ -34,6 +42,28 @@ export class LockService {
     return async () => {
       await this.client.eval(LockService.RELEASE_SCRIPT, 1, key, token);
     };
+  }
+
+  /** Try to acquire once. Returns the unique token and release fn, or null if not acquired. */
+  async acquireLockObject(
+    key: string,
+    ttlMs = 10_000,
+  ): Promise<{ token: string; release: () => Promise<void> } | null> {
+    const token = randomUUID();
+    const ok = await this.client.set(key, token, 'PX', ttlMs, 'NX');
+    if (ok !== 'OK') return null;
+    return {
+      token,
+      release: async () => {
+        await this.client.eval(LockService.RELEASE_SCRIPT, 1, key, token);
+      },
+    };
+  }
+
+  /** Atomic lock extension. Returns true if the lock was successfully extended. */
+  async extend(key: string, token: string, ttlMs = 10_000): Promise<boolean> {
+    const ok = await this.client.eval(LockService.EXTEND_SCRIPT, 1, key, token, ttlMs);
+    return ok === 1;
   }
 
   /**

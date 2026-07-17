@@ -12,6 +12,8 @@ export interface LobbyMemberView {
   displayName: string | null;
   /** Resolved avatar URL — always null for a bot seat. */
   avatar: string | null;
+  /** Whether this member has toggled ready. Bots are always ready. */
+  isReady: boolean;
 }
 
 export const GAME_EVENTS = {
@@ -29,6 +31,7 @@ export const GAME_EVENTS = {
   MATCH_CANCELLED: 'game.match_cancelled',
   LOBBY_TEAM_CHANGED: 'game.lobby_team_changed',
   LOBBY_MEMBER_KICKED: 'game.lobby_member_kicked',
+  LOBBY_MEMBER_READY: 'game.lobby_member_ready',
 } as const;
 
 export interface GameLobbyView {
@@ -189,4 +192,14 @@ export class GameLobbyMemberKickedEvent extends DomainEvent<{
   members: string[];
 }> {
   readonly name = GAME_EVENTS.LOBBY_MEMBER_KICKED;
+}
+
+export class GameLobbyMemberReadyEvent extends DomainEvent<{
+  lobbyId: string;
+  code: string;
+  userId: string;
+  isReady: boolean;
+  memberDetails: LobbyMemberView[];
+}> {
+  readonly name = GAME_EVENTS.LOBBY_MEMBER_READY;
 }

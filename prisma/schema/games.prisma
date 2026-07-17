@@ -28,6 +28,8 @@ enum GameCode {
   LUDO
   CARROM
   DOMINO
+  GREEDY_FOOD
+  LUCKY_FRUIT
 }
 
 /// Premium games spend Gold Coins; casual games spend Free Coins.
@@ -158,6 +160,8 @@ model GameLobbyMember {
   botName  String?
   /// Chosen team in a TEAM_2V2 lobby (null until picked / auto-balanced at start).
   team     GameTeam?
+  /// Player has signalled they are ready to start. Host can only start when all members are ready.
+  isReady  Boolean   @default(false)
   joinedAt DateTime  @default(now())
 
   @@unique([lobbyId, userId])

@@ -95,9 +95,9 @@ export class GamesRepository {
     ]);
   }
 
-  addMember(lobbyId: string, userId: string): Promise<{ id: string }> {
+  addMember(lobbyId: string, userId: string, team?: GameTeam): Promise<{ id: string }> {
     return this.prisma.gameLobbyMember.create({
-      data: { lobbyId, userId },
+      data: { lobbyId, userId, team },
       select: { id: true },
     });
   }
@@ -125,11 +125,11 @@ export class GamesRepository {
   /** Members with team + bot info (join order) — drives seating, escrow-skip, UI. */
   listMembersWithTeams(
     lobbyId: string,
-  ): Promise<{ userId: string; team: GameTeam | null; isBot: boolean; botName: string | null }[]> {
+  ): Promise<{ userId: string; team: GameTeam | null; isBot: boolean; botName: string | null; isReady: boolean }[]> {
     return this.prisma.gameLobbyMember.findMany({
       where: { lobbyId },
       orderBy: { joinedAt: 'asc' },
-      select: { userId: true, team: true, isBot: true, botName: true },
+      select: { userId: true, team: true, isBot: true, botName: true, isReady: true },
     });
   }
 
@@ -141,10 +141,22 @@ export class GamesRepository {
     });
   }
 
-  /** Add a bot seat (synthetic userId, isBot=true) to a lobby. */
-  addBotMember(lobbyId: string, botUserId: string, botName: string): Promise<{ id: string }> {
+  setMemberReady(lobbyId: string, userId: string, isReady: boolean): Promise<{ id: string }> {
+    return this.prisma.gameLobbyMember.update({
+      where: { lobbyId_userId: { lobbyId, userId } },
+      data: { isReady },
+      select: { id: true },
+    });
+  }
+
+  addBotMember(
+    lobbyId: string,
+    botUserId: string,
+    botName: string,
+    team?: GameTeam,
+  ): Promise<{ id: string }> {
     return this.prisma.gameLobbyMember.create({
-      data: { lobbyId, userId: botUserId, isBot: true, botName },
+      data: { lobbyId, userId: botUserId, isBot: true, botName, team },
       select: { id: true },
     });
   }

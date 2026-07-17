@@ -122,6 +122,13 @@ export class SetPlayerTeamDto {
   team!: GameTeam;
 }
 
+/** Toggle a member's ready state in a lobby. */
+export class SetReadyDto {
+  @ApiProperty({ description: 'true = ready, false = not ready.' })
+  @IsBoolean()
+  isReady!: boolean;
+}
+
 /** One player's payout in a settlement submission. */
 export class PayoutEntryDto {
   @ApiProperty()

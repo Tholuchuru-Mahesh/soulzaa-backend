@@ -77,6 +77,7 @@ import {
   GameLobbyLeftEvent,
   GameLobbyMemberKickedEvent,
   GameLobbyTeamChangedEvent,
+  GameLobbyMemberReadyEvent,
   GameMatchCancelledEvent,
   GameMatchFoundEvent,
   GameMatchReadyProgressEvent,
@@ -220,7 +221,8 @@ export class GamesService {
       expiresAt: new Date(Date.now() + GAME_LOBBY_TTL_MS),
       createdBy: actor.id,
     });
-    await this.repo.addMember(lobby.id, actor.id);
+    const initialTeam = lobby.mode === GameMode.TEAM_2V2 ? GameTeam.A : undefined;
+    await this.repo.addMember(lobby.id, actor.id, initialTeam);
     await this.repo.logEvent({
       lobbyId: lobby.id,
       userId: actor.id,
@@ -253,7 +255,14 @@ export class GamesService {
         throw this.conflict(ERROR_CODES.GAME_LOBBY_FULL, 'This lobby is full.');
       }
       await this.assertCanAfford(actor.id, fresh.currency, fresh.stake);
-      await this.repo.addMember(fresh.id, actor.id);
+      let team: GameTeam | undefined;
+      if (fresh.mode === GameMode.TEAM_2V2) {
+        const members = await this.repo.listMembersWithTeams(fresh.id);
+        const aCount = members.filter((m) => m.team === GameTeam.A).length;
+        const bCount = members.filter((m) => m.team === GameTeam.B).length;
+        team = aCount <= bCount ? GameTeam.A : GameTeam.B;
+      }
+      await this.repo.addMember(fresh.id, actor.id, team);
       await this.repo.logEvent({ lobbyId: fresh.id, userId: actor.id, action: 'lobby.joined' });
 
       const gameCode = await this.gameCodeOf(fresh.definitionId);
@@ -436,10 +445,14 @@ export class GamesService {
       }
       const botId = randomUUID();
       const botName = opts.name ?? `Bot ${botId.slice(0, 4)}`;
-      await this.repo.addBotMember(fresh.id, botId, botName);
-      if (opts.team && fresh.mode === GameMode.TEAM_2V2) {
-        await this.repo.setMemberTeam(fresh.id, botId, opts.team);
+      let team = opts.team;
+      if (!team && fresh.mode === GameMode.TEAM_2V2) {
+        const members = await this.repo.listMembersWithTeams(fresh.id);
+        const aCount = members.filter((m) => m.team === GameTeam.A).length;
+        const bCount = members.filter((m) => m.team === GameTeam.B).length;
+        team = aCount <= bCount ? GameTeam.A : GameTeam.B;
       }
+      await this.repo.addBotMember(fresh.id, botId, botName, team);
       await this.repo.logEvent({
         lobbyId: fresh.id,
         userId: botId,
@@ -1107,7 +1120,17 @@ export class GamesService {
     const botIds = new Set(participants.filter((p) => p.isBot).map((p) => p.userId));
     const humanWinners = winners.filter((w) => !botIds.has(w));
     if (humanWinners.length === 0) {
-      return this.abortSession(session.id, GameSessionStatus.CANCELLED, actorId, 'bot_won_refund');
+      if (Number(session.stake) > 0) {
+        return this.abortSession(session.id, GameSessionStatus.CANCELLED, actorId, 'bot_won_refund');
+      }
+      // Settle friendly matches normally when only bots win
+      return this.settleResult({
+        sessionId: session.id,
+        winners,
+        payouts: [],
+        resultData,
+        settledBy: actorId,
+      });
     }
     const def = await this.repo.getDefinitionByCode(session.code);
     const rakeBps = def?.houseRakeBps ?? 0;
@@ -1507,6 +1530,47 @@ export class GamesService {
         }),
       );
       return { userId: actor.id, team, teams };
+    });
+  }
+
+  /** Toggle a lobby member's ready state. Only non-bot, non-host members need to signal ready. */
+  async setLobbyReady(actor: GameActor, code: string, isReady: boolean): Promise<unknown> {
+    await this.assertRateLimit(actor.id, 'ready', 10, 60);
+    const lobby = await this.requireLobby(code);
+    if (lobby.status !== GameLobbyStatus.OPEN) {
+      throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
+    }
+    return this.locks.withLock(gameLobbyLockKey(lobby.id), async () => {
+      const fresh = await this.repo.getLobbyById(lobby.id);
+      if (!fresh || fresh.status !== GameLobbyStatus.OPEN) {
+        throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
+      }
+      if (!(await this.repo.getMember(fresh.id, actor.id))) {
+        throw this.conflict(ERROR_CODES.GAME_NOT_IN_LOBBY, 'You are not in this lobby.');
+      }
+      await this.repo.setMemberReady(fresh.id, actor.id, isReady);
+      const rows = await this.repo.listMembersWithTeams(fresh.id);
+      const humanIds = rows.filter((m) => !m.isBot).map((m) => m.userId);
+      const identities = await this.resolveHumanIdentities(humanIds);
+      const memberDetails = rows.map((m) => ({
+        userId: m.userId,
+        team: m.team,
+        isBot: m.isBot,
+        botName: m.botName,
+        displayName: m.isBot ? m.botName : (identities.get(m.userId)?.displayName ?? null),
+        avatar: m.isBot ? null : (identities.get(m.userId)?.avatarUrl ?? null),
+        isReady: m.isBot ? true : (m.userId === actor.id ? isReady : m.isReady),
+      }));
+      await this.bus.publish(
+        new GameLobbyMemberReadyEvent({
+          lobbyId: fresh.id,
+          code: fresh.code,
+          userId: actor.id,
+          isReady,
+          memberDetails,
+        }),
+      );
+      return { userId: actor.id, isReady };
     });
   }
 
@@ -1967,6 +2031,7 @@ export class GamesService {
         botName: m.botName,
         displayName: m.isBot ? m.botName : (identities.get(m.userId)?.displayName ?? null),
         avatar: m.isBot ? null : (identities.get(m.userId)?.avatarUrl ?? null),
+        isReady: m.isBot ? true : m.isReady,
       })),
     };
   }
