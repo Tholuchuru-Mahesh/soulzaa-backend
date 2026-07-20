@@ -104,6 +104,7 @@ export class AudioRoomSeatsService {
       speakerSeatCount?: number;
       premiumAdminSeatCount?: number;
       requireApprovalForSeat?: boolean;
+      metadata?: { preset?: string; seatOrder?: number[]; disabledSeats?: number[] };
     },
   ): Promise<StageSnapshot> {
     await this.assertLiveRoom(roomId);
@@ -119,6 +120,8 @@ export class AudioRoomSeatsService {
         HttpStatus.BAD_REQUEST,
       );
     }
+
+    const disabledSeats = new Set<number>(dto.metadata?.disabledSeats ?? []);
 
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
       const { displaced } = await this.seats.reconfigureLayoutTx(
@@ -137,6 +140,34 @@ export class AudioRoomSeatsService {
           subjectUserId: userId,
           action: SeatHistoryAction.SPEAKER_REMOVED,
         });
+      }
+
+      // Apply individual seat lock states based on disabledSeats.
+      if (dto.metadata?.disabledSeats !== undefined) {
+        const currentSeats = await this.seats.listSeats(roomId);
+        const lockMap = new Map<number, boolean>();
+        for (const seat of currentSeats) {
+          if (seat.seatIndex === 0) continue; // Owner seat is never locked.
+          const shouldLock = disabledSeats.has(seat.seatIndex);
+          lockMap.set(seat.seatIndex, shouldLock);
+          // If a seat is being disabled and it is occupied, displace the occupant.
+          if (shouldLock && seat.occupantUserId) {
+            await this.seats.setOccupant(roomId, seat.seatIndex, null, actor.id);
+            await this.seats.appendSeatHistory({
+              roomId,
+              actorId: actor.id,
+              subjectUserId: seat.occupantUserId,
+              action: SeatHistoryAction.SPEAKER_REMOVED,
+              seatIndex: seat.seatIndex,
+            });
+          }
+        }
+        await this.seats.setSeatsLocked(roomId, lockMap, actor.id);
+      }
+
+      // Persist metadata (preset, seatOrder, disabledSeats) for future stage loads.
+      if (dto.metadata) {
+        await this.seats.setMetadata(roomId, dto.metadata as Record<string, unknown>);
       }
     });
 
@@ -959,6 +990,7 @@ export class AudioRoomSeatsService {
         premiumAdminSeatCount: settings.premiumAdminSeatCount,
         isRoomMuted: settings.isRoomMuted,
         requireApprovalForSeat: settings.requireApprovalForSeat,
+        metadata: settings.metadata as Record<string, unknown> | null | undefined,
       },
     };
     await this.seats.setCachedStage(roomId, snapshot, this.stageTtl);

@@ -33,6 +33,7 @@ export interface StageSnapshot {
     premiumAdminSeatCount: number;
     isRoomMuted: boolean;
     requireApprovalForSeat: boolean;
+    metadata?: Record<string, unknown> | null;
   };
 }
 
@@ -404,6 +405,31 @@ export class AudioRoomSeatsRepository {
 
   async setRequireApprovalForSeat(roomId: string, requireApprovalForSeat: boolean): Promise<void> {
     await this.prisma.roomSettings.update({ where: { roomId }, data: { requireApprovalForSeat } });
+  }
+
+  /** Persist free-form seat layout metadata (preset slug, seatOrder, disabledSeats) */
+  async setMetadata(roomId: string, metadata: Record<string, unknown>): Promise<void> {
+    await this.prisma.roomSettings.update({
+      where: { roomId },
+      data: { metadata: metadata as Prisma.InputJsonValue },
+    });
+  }
+
+  /**
+   * Bulk-set isLocked on seats. For each entry (seatIndex → locked), update the
+   * row atomically. Seats not listed are not touched.
+   */
+  async setSeatsLocked(
+    roomId: string,
+    locks: Map<number, boolean>,
+    actorId: string,
+  ): Promise<void> {
+    for (const [seatIndex, isLocked] of locks.entries()) {
+      await this.prisma.roomSeat.updateMany({
+        where: { roomId, seatIndex },
+        data: { isLocked, ...auditUpdate(actorId) },
+      });
+    }
   }
 
   // ---- Redis stage snapshot cache ----
