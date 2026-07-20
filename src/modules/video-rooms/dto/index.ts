@@ -1,2 +1,15 @@
-/** video-rooms dto — empty until the module is implemented. */
-export {};
+export * from './create-video-room.dto';
+export * from './update-video-room.dto';
+export * from './lock-video-room.dto';
+export * from './list-video-rooms.dto';
+export * from './search-video-rooms.dto';
+export * from './update-video-room-settings.dto';
+export * from './grant-video-room-role.dto';
+export * from './seat.dto';
+export * from './moderation.dto';
+export * from './announcement.dto';
+export * from './join-video-room.dto';
+export * from './leave-video-room.dto';
+export * from './reconnect-video-room.dto';
+export * from './video-room-heartbeat.dto';
+export * from './media.dto';

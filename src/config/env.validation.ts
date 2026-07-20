@@ -200,6 +200,48 @@ export const envSchema = z.object({
   AUDIO_ROOM_PREMIUM_SEAT_PRICE_GOLD: z.coerce.number().int().positive().default(50_000),
   AUDIO_ROOM_PREMIUM_SEAT_DURATION_DAYS: z.coerce.number().int().positive().default(30),
 
+  // ---- Video Rooms (VR-0 foundation) ----
+  // Default / hard-cap seat-holder (participant) counts for a new room.
+  VIDEO_ROOM_DEFAULT_MAX_PARTICIPANTS: z.coerce.number().int().positive().default(12),
+  VIDEO_ROOM_MAX_PARTICIPANTS_CAP: z.coerce.number().int().positive().default(20),
+  // Default / hard-cap audience (viewer) counts for a new room.
+  VIDEO_ROOM_DEFAULT_MAX_VIEWERS: z.coerce.number().int().positive().default(500),
+  VIDEO_ROOM_MAX_VIEWERS_CAP: z.coerce.number().int().positive().default(5000),
+  // Client heartbeat cadence (seconds) the session layer expects.
+  VIDEO_ROOM_HEARTBEAT_INTERVAL_SECONDS: z.coerce.number().int().positive().default(25),
+  // Grace window for a dropped client to reconnect before its session is reclaimed.
+  VIDEO_ROOM_RECONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(120),
+  VIDEO_ROOM_MAX_RECONNECT_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  // Idle host/room timeout (seconds) before the room is considered dormant.
+  VIDEO_ROOM_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(300),
+  // How often the session/presence expiry sweep runs (seconds).
+  VIDEO_ROOM_CLEANUP_INTERVAL_SECONDS: z.coerce.number().int().positive().default(30),
+  // Per-session heartbeat TTL: a session with no heartbeat within this window is stale.
+  VIDEO_ROOM_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(90),
+  // Room state-snapshot cache TTL (seconds).
+  VIDEO_ROOM_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  // Room read-snapshot cache TTL (seconds).
+  VIDEO_ROOM_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
+  // Default stream quality advertised to clients (label only in VR-0).
+  VIDEO_ROOM_DEFAULT_QUALITY: z.enum(['SD', 'HD', 'FHD']).default('HD'),
+  // Upper bitrate (kbps) advertised to clients.
+  VIDEO_ROOM_MAX_BITRATE_KBPS: z.coerce.number().int().positive().default(2500),
+  // Max concurrent non-deleted rooms one owner may host (VR-2 lifecycle cap).
+  // Default 1 mirrors Audio's one-room rule; tunable without a migration.
+  VIDEO_ROOM_MAX_ROOMS_PER_OWNER: z.coerce.number().int().positive().default(1),
+  // Viewer-mode audience source (VR-6): 'durable' (member-is-viewer, default) or
+  // 'ephemeral' (Redis-only, broadcast-scale — future implementation).
+  VIDEO_ROOM_VIEWER_PRESENCE_MODE: z.enum(['durable', 'ephemeral']).default('durable'),
+
+  // ---- Video Room media engine (VR-5) ----
+  VIDEO_ROOM_MEDIA_HEARTBEAT_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+  VIDEO_ROOM_MEDIA_MONITOR_INTERVAL_SECONDS: z.coerce.number().int().positive().default(10),
+  VIDEO_ROOM_MEDIA_RECONNECT_GRACE_SECONDS: z.coerce.number().int().positive().default(60),
+  VIDEO_ROOM_MEDIA_RECOVERY_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(60),
+  VIDEO_ROOM_MAX_SUBSCRIPTIONS_PER_USER: z.coerce.number().int().positive().default(20),
+  VIDEO_ROOM_MEDIA_QUALITY_SAMPLE_EVERY: z.coerce.number().int().positive().default(6),
+  VIDEO_ROOM_DEFAULT_BEAUTY_LEVEL: z.coerce.number().int().min(0).max(100).default(0),
+
   // ---- Direct messaging (chat module) ----
   CHAT_MESSAGE_MAX_LENGTH: z.coerce.number().int().positive().default(4000),
   CHAT_MAX_ATTACHMENTS: z.coerce.number().int().positive().default(10),

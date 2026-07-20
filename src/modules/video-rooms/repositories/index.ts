@@ -1,2 +1,7 @@
-/** video-rooms repositories — empty until the module is implemented. */
-export {};
+export * from './video-rooms.repository';
+export * from './video-room-roles.repository';
+export * from './video-room-seats.repository';
+export * from './video-room-moderation.repository';
+export * from './video-room-media-session.repository';
+export * from './video-room-events.repository';
+export * from './video-room-reference.repository';

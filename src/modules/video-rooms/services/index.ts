@@ -1,2 +1,13 @@
-/** video-rooms services — empty until the module is implemented. */
-export {};
+export * from './video-rooms.service';
+export * from './video-room-lifecycle.service';
+export * from './video-room-query.service';
+export * from './video-room-permission.service';
+export * from './video-room-password.service';
+export * from './video-room-state.service';
+export * from './video-room-session.service';
+export * from './video-room-presence.service';
+export * from './video-room-event.service';
+export * from './video-room-reference-seeder.service';
+export * from './video-room-media-state.service';
+export * from './video-room-media.service';
+export * from './video-room-media-recovery.service';

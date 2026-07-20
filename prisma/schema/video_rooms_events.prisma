@@ -1,0 +1,78 @@
+// ============================================================
+// Video Rooms — VR-1: Generic event store, state snapshots, and
+// room announcements. Owned by the "video_rooms" module.
+//
+// Two append-only histories, kept distinct on purpose:
+//  • video_room_logs (VR-0) — the human-readable, enum-typed lifecycle
+//    AUDIT trail (CREATED/ENDED/LOCKED/…).
+//  • video_room_events (VR-1) — a free-form machine EVENT STREAM
+//    (eventType + payload + correlationId) for replay / recovery /
+//    downstream analytics, where the vocabulary is open-ended.
+//
+// video_room_snapshots serialise room state for crash/reconnect
+// recovery. No DB foreign keys — reference rooms/users by id (@@index).
+// ============================================================
+
+/// Why a snapshot was taken. PERIODIC = scheduled; PRE_SHUTDOWN = graceful drain;
+/// MANUAL = operator-triggered; RECOVERY = captured during a recovery flow.
+enum VideoRoomSnapshotReason {
+  PERIODIC
+  PRE_SHUTDOWN
+  MANUAL
+  RECOVERY
+}
+
+/// Append-only generic domain-event store. `eventType` is an open string (e.g.
+/// "seat.taken", "pk.started"), `payload` the event body, `referenceId` an optional
+/// related entity, `correlationId` groups events from one causal flow. Write-once —
+/// no update/delete path.
+model VideoRoomEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  roomId        String   @db.Uuid
+  actorId       String?  @db.Uuid
+  eventType     String
+  payload       Json?
+  referenceId   String?  @db.Uuid
+  correlationId String?  @db.Uuid
+  createdAt     DateTime @default(now())
+
+  @@index([roomId])
+  @@index([eventType])
+  @@index([correlationId])
+  @@map("video_room_events")
+}
+
+/// A serialized snapshot of authoritative room state for recovery (room/crash/
+/// reconnect). `version` is the monotonic state sequence number (matches the
+/// versioned Redis state) — NOT an optimistic lock. Append-only.
+model VideoRoomSnapshot {
+  id        String                  @id @default(uuid()) @db.Uuid
+  roomId    String                  @db.Uuid
+  version   Int
+  reason    VideoRoomSnapshotReason @default(PERIODIC)
+  state     Json
+  createdAt DateTime                @default(now())
+
+  @@index([roomId, createdAt])
+  @@map("video_room_snapshots")
+}
+
+/// A room announcement (owner/admin broadcast). Editable and removable, so it
+/// carries the full audit block + soft delete (unlike the append-only histories).
+model VideoRoomAnnouncement {
+  id       String  @id @default(uuid()) @db.Uuid
+  roomId   String  @db.Uuid
+  authorId String  @db.Uuid
+  content  String
+  isPinned Boolean @default(false)
+
+  // ---- Audit ----
+  createdBy String?   @db.Uuid
+  updatedBy String?   @db.Uuid
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([roomId])
+  @@map("video_room_announcements")
+}

@@ -269,6 +269,35 @@ export const audioRoomConfig = registerAs('audioRoom', () => ({
   },
 }));
 
+export const videoRoomConfig = registerAs('videoRoom', () => ({
+  defaultMaxParticipants: env().VIDEO_ROOM_DEFAULT_MAX_PARTICIPANTS,
+  maxParticipantsCap: env().VIDEO_ROOM_MAX_PARTICIPANTS_CAP,
+  defaultMaxViewers: env().VIDEO_ROOM_DEFAULT_MAX_VIEWERS,
+  maxViewersCap: env().VIDEO_ROOM_MAX_VIEWERS_CAP,
+  heartbeatIntervalSeconds: env().VIDEO_ROOM_HEARTBEAT_INTERVAL_SECONDS,
+  reconnectTimeoutSeconds: env().VIDEO_ROOM_RECONNECT_TIMEOUT_SECONDS,
+  maxReconnectAttempts: env().VIDEO_ROOM_MAX_RECONNECT_ATTEMPTS,
+  idleTimeoutSeconds: env().VIDEO_ROOM_IDLE_TIMEOUT_SECONDS,
+  cleanupIntervalSeconds: env().VIDEO_ROOM_CLEANUP_INTERVAL_SECONDS,
+  sessionTtlSeconds: env().VIDEO_ROOM_SESSION_TTL_SECONDS,
+  stateTtlSeconds: env().VIDEO_ROOM_STATE_TTL_SECONDS,
+  cacheTtlSeconds: env().VIDEO_ROOM_CACHE_TTL_SECONDS,
+  defaultQuality: env().VIDEO_ROOM_DEFAULT_QUALITY,
+  maxBitrateKbps: env().VIDEO_ROOM_MAX_BITRATE_KBPS,
+  maxRoomsPerOwner: env().VIDEO_ROOM_MAX_ROOMS_PER_OWNER,
+  // Media engine (VR-5)
+  mediaHeartbeatTtlSeconds: env().VIDEO_ROOM_MEDIA_HEARTBEAT_TTL_SECONDS,
+  mediaMonitorIntervalSeconds: env().VIDEO_ROOM_MEDIA_MONITOR_INTERVAL_SECONDS,
+  mediaReconnectGraceSeconds: env().VIDEO_ROOM_MEDIA_RECONNECT_GRACE_SECONDS,
+  mediaRecoveryTokenTtlSeconds: env().VIDEO_ROOM_MEDIA_RECOVERY_TOKEN_TTL_SECONDS,
+  maxSubscriptionsPerUser: env().VIDEO_ROOM_MAX_SUBSCRIPTIONS_PER_USER,
+  qualitySampleEvery: env().VIDEO_ROOM_MEDIA_QUALITY_SAMPLE_EVERY,
+  defaultBeautyLevel: env().VIDEO_ROOM_DEFAULT_BEAUTY_LEVEL,
+  // Viewer-mode audience source (VR-6): 'durable' (member-is-viewer) today;
+  // 'ephemeral' (Redis-only, broadcast-scale) is a future implementation.
+  viewerPresenceMode: env().VIDEO_ROOM_VIEWER_PRESENCE_MODE,
+}));
+
 export const chatConfig = registerAs('chat', () => ({
   messageMaxLength: env().CHAT_MESSAGE_MAX_LENGTH,
   maxAttachments: env().CHAT_MAX_ATTACHMENTS,
@@ -347,6 +376,7 @@ export const configurations = [
   agoraConfig,
   zegoConfig,
   audioRoomConfig,
+  videoRoomConfig,
   chatConfig,
   callsConfig,
   giftConfig,

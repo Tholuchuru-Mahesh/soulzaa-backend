@@ -1,2 +1,4 @@
-/** video-rooms entities — empty until the module is implemented. */
-export {};
+export * from './video-room.view';
+export * from './video-room-detail.view';
+export * from './video-room-stage.view';
+export * from './video-room-content.view';

@@ -1,6 +1,304 @@
 // ============================================================
-// Video Rooms — rooms, seats, viewers, PK config
-// Owned by the "video_rooms" module. Add models/enums here as the module
-// is implemented. No cross-module relations by default — reference
-// other domains by id and coordinate via the event bus.
+// Video Rooms — rooms, members, settings, statistics, presence,
+// immutable room logs.
+// Owned by the "video_rooms" module. VR-0 (Phase 0) is the enterprise
+// foundation: it lands the durable system-of-record tables + the module
+// scaffolding all later phases build on. Business workflow (create/join/
+// leave, multi-seat video, viewer mode, PK, chat) lands in later phases.
+//
+// Reuse: room_categories / room_languages (shared reference data owned by
+// the audio_rooms file) are referenced BY VALUE (categoryId / language) with
+// no cross-table FK — the platform convention. No cross-module relations —
+// reference other domains (users) by id and coordinate via the event bus.
+// Live occupancy is authoritative in Redis (VideoRoomPresenceService /
+// VideoRoomSessionService); these tables are the durable record used for
+// recovery + analytics.
+//
+// The core VideoRoom table is intentionally separate from audio_rooms:
+// audio rooms carry audio-specific semantics (one room per owner, Agora
+// channel, speaker-seat stage) that do not apply to video rooms. Own enums
+// (rather than reusing RoomStatus/RoomVisibility) keep boundaries expressed
+// by file ownership and let video-room states diverge later (e.g. PAUSED).
 // ============================================================
+
+enum VideoRoomStatus {
+  OFFLINE
+  LIVE
+  ENDED
+}
+
+enum VideoRoomVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+/// A video room's live streaming state, distinct from lifecycle `status`
+/// (OFFLINE/LIVE/ENDED). IDLE = live room, no host publishing yet; PUBLISHING =
+/// at least one seat streaming video; PAUSED = temporarily halted. Authoritative
+/// live value is in Redis; this column is the durable last-known state.
+enum VideoRoomStreamingStatus {
+  IDLE
+  PUBLISHING
+  PAUSED
+}
+
+/// How a room was created — for analytics + abuse triage. SYSTEM = created by an
+/// automated/admin process rather than a user client.
+enum VideoRoomCreationSource {
+  APP
+  WEB
+  API
+  SYSTEM
+}
+
+/// A member's durable status in the room. INACTIVE = present but idle; LEFT = a
+/// voluntary leave; REMOVED = removed by a moderator (kick/block) — kept distinct
+/// from LEFT so moderation history is legible. Live occupancy stays in Redis;
+/// this is the durable last-known status.
+enum VideoRoomMemberStatus {
+  ACTIVE
+  INACTIVE
+  LEFT
+  REMOVED
+}
+
+/// Membership / effective role inside a video room. OWNER (the creator),
+/// ADMIN / MODERATOR (elevated grants persisted in video_room_roles — VR-1),
+/// HOST (a co-host publishing video on a seat), PARTICIPANT (on a seat),
+/// VIEWER (audience). Permission checks resolve the effective role from the
+/// grants table first, then seat occupancy (HOST/PARTICIPANT), then active
+/// membership (VIEWER); the code matrix maps role → permissions.
+enum VideoRoomMemberRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  HOST
+  PARTICIPANT
+  VIEWER
+}
+
+/// Actions recorded in the append-only video_room_logs audit trail. VR-1 adds the
+/// settings/role/theme/seat/moderation lifecycle actions the later phases emit.
+enum VideoRoomLogAction {
+  CREATED
+  UPDATED
+  DELETED
+  ENDED
+  JOINED
+  LEFT
+  LOCKED
+  UNLOCKED
+  OWNERSHIP_TRANSFERRED
+  IMAGE_UPDATED
+  SETTINGS_CHANGED
+  ROLE_CHANGED
+  THEME_CHANGED
+  ANNOUNCEMENT_POSTED
+  INVITED
+  REQUEST_ACCEPTED
+  REQUEST_REJECTED
+  SEAT_TAKEN
+  SEAT_LEFT
+  MUTED
+  UNMUTED
+  BLOCKED
+  UNBLOCKED
+  KICKED
+}
+
+/// The canonical video room row. `passwordHash` set ⇒ the room is
+/// password-protected (only meaningful while `isLocked`). `imageKey` is an
+/// S3 object key (cover image); the client resolves a URL. `maxParticipants`
+/// caps seat holders (multi-seat video), `maxViewers` caps the audience.
+/// `zegoRoomId` is the ZEGOCLOUD room handle — nullable so the migration
+/// applies without backfilling; it is lazily minted on first media use (the
+/// audio_rooms AR-2 / calls approach). `categoryId` / `language` reference the
+/// shared room_categories / room_languages by value (no cross-table FK).
+/// Unlike AudioRoom, `ownerId` is NOT unique here — how many live video rooms
+/// one owner may host is a business rule for the lifecycle phase, not a schema
+/// constraint.
+model VideoRoom {
+  id              String                   @id @default(uuid()) @db.Uuid
+  ownerId         String                   @db.Uuid
+  name            String
+  description     String?
+  imageKey        String?
+  categoryId      String?                  @db.Uuid
+  language        String?
+  // Free-form discovery tags (Postgres text[]). GIN-indexed for contains queries;
+  // avoids a join table for a small, room-owned list (reuse-maximal, VR-1).
+  tags            String[]                 @default([])
+  country         String?
+  region          String?
+  roomLevel       Int                      @default(0)
+  // Theme / background reference by value (no cross-table FK) — the platform
+  // convention. Resolve against video_room_themes / video_room_backgrounds.
+  themeId         String?                  @db.Uuid
+  backgroundId    String?                  @db.Uuid
+  visibility      VideoRoomVisibility      @default(PUBLIC)
+  isLocked        Boolean                  @default(false)
+  passwordHash    String?
+  isDiscoverable  Boolean                  @default(true)
+  isVerified      Boolean                  @default(false)
+  maxParticipants Int
+  maxViewers      Int
+  status          VideoRoomStatus          @default(OFFLINE)
+  streamingStatus VideoRoomStreamingStatus @default(IDLE)
+  creationSource  VideoRoomCreationSource  @default(APP)
+  endedAt         DateTime?
+  zegoRoomId      String?                  @unique
+  metadata        Json?
+
+  // ---- Audit ----
+  createdBy String?   @db.Uuid
+  updatedBy String?   @db.Uuid
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([categoryId])
+  @@index([language])
+  @@index([country])
+  @@index([createdAt])
+  @@index([status, visibility])
+  @@index([country, categoryId])
+  @@index([visibility, isDiscoverable, status])
+  @@index([tags], type: Gin)
+  @@map("video_rooms")
+}
+
+/// Per-room configurable settings (1:1). Flags for later phases are kept here
+/// defaulted now so the settings surface is stable; seat/host-slot layout
+/// fields are added by the seat phase. Created alongside the room in one
+/// transaction (lifecycle phase).
+model VideoRoomSettings {
+  roomId               String   @id @db.Uuid
+  // ---- Chat ----
+  allowChat            Boolean  @default(true)
+  allowViewerChat      Boolean  @default(true)
+  slowModeSeconds      Int      @default(0)
+  // ---- Economy / interactive ----
+  allowGifts           Boolean  @default(true)
+  allowTreasure        Boolean  @default(true)
+  allowPk              Boolean  @default(true)
+  // ---- Media ----
+  allowBeauty          Boolean  @default(true)
+  allowCameraSwitch    Boolean  @default(true)
+  allowScreenShare     Boolean  @default(false)
+  allowRecording       Boolean  @default(false)
+  // ---- Access / social ----
+  joinApprovalRequired Boolean  @default(false)
+  allowJoinRequest     Boolean  @default(true)
+  allowShare           Boolean  @default(true)
+  allowInvite          Boolean  @default(true)
+  allowFollow          Boolean  @default(true)
+  allowReporting       Boolean  @default(true)
+  allowAnnouncements   Boolean  @default(true)
+  isRoomMuted          Boolean  @default(false)
+  // ---- Limits ----
+  maxDurationMinutes   Int?
+  // ---- Seat layout (multi-seat video; authoritative seat rows in video_room_seats) ----
+  hostSeatCount        Int      @default(9)
+  guestSeatCount       Int      @default(0)
+  metadata             Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("video_room_settings")
+}
+
+/// Durable membership record of record. `isActive` + `leftAt` track the
+/// current occupancy; Redis presence is the live hot-path view. A returning
+/// user's row is reactivated rather than duplicated (unique on room+user).
+model VideoRoomMember {
+  id           String                @id @default(uuid()) @db.Uuid
+  roomId       String                @db.Uuid
+  userId       String                @db.Uuid
+  role         VideoRoomMemberRole   @default(VIEWER)
+  memberStatus VideoRoomMemberStatus @default(ACTIVE)
+  // Join context (analytics / abuse triage). `deviceId` references the shared
+  // device registry by value (no cross-table FK). `joinSource`/`platform` are
+  // open strings (e.g. SEARCH/INVITE/SHARE, ANDROID/IOS/WEB) — kept flexible.
+  joinSource   String?
+  platform     String?
+  country      String?
+  region       String?
+  deviceId     String?               @db.Uuid
+  joinedAt     DateTime              @default(now())
+  lastActiveAt DateTime              @default(now())
+  leftAt       DateTime?
+  isActive     Boolean               @default(true)
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([userId])
+  @@index([roomId, role])
+  @@map("video_room_members")
+}
+
+/// Denormalised per-room counters (1:1). Updated on join/leave/end in later
+/// phases; created alongside the room.
+model VideoRoomStatistics {
+  roomId               String   @id @db.Uuid
+  peakViewers          Int      @default(0)
+  peakParticipants     Int      @default(0)
+  totalJoins           BigInt   @default(0)
+  currentViewers       Int      @default(0)
+  currentParticipants  Int      @default(0)
+  totalDurationSeconds BigInt   @default(0)
+  // ---- Rolling lifetime aggregates (VR-1). Cross-room reporting/rollups live in
+  // the shared analytics module; these are the room's own denormalised counters. ----
+  avgWatchTimeSeconds  Int      @default(0)
+  totalGifts           BigInt   @default(0)
+  totalGiftCoins       BigInt   @default(0)
+  totalPkCount         Int      @default(0)
+  totalChatMessages    BigInt   @default(0)
+  totalSessions        BigInt   @default(0)
+  lastActivityAt       DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@map("video_room_statistics")
+}
+
+/// Durable mirror of the Redis presence set, for cross-instance recovery and
+/// analytics. Redis remains the authoritative live count; this table is
+/// upserted on join and removed/marked on leave. `role` distinguishes seat
+/// holders (participants/hosts) from the audience (viewers).
+model VideoRoomPresence {
+  id         String              @id @default(uuid()) @db.Uuid
+  roomId     String              @db.Uuid
+  userId     String              @db.Uuid
+  socketId   String?
+  role       VideoRoomMemberRole @default(VIEWER)
+  joinedAt   DateTime            @default(now())
+  lastSeenAt DateTime            @default(now())
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@map("video_room_presence")
+}
+
+/// Append-only immutable audit of room lifecycle events (RoomLog pattern).
+/// Write-once — no update/delete paths. Backs moderation review and
+/// financial/audit reconciliation in later phases.
+model VideoRoomLog {
+  id        String             @id @default(uuid()) @db.Uuid
+  roomId    String             @db.Uuid
+  actorId   String?            @db.Uuid
+  action    VideoRoomLogAction
+  metadata  Json?
+  createdAt DateTime           @default(now())
+
+  @@index([roomId])
+  @@index([action])
+  @@map("video_room_logs")
+}

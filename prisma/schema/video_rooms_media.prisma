@@ -1,0 +1,74 @@
+// ============================================================
+// Video Rooms — VR-1: Durable media (RTC) session record.
+// Owned by the "video_rooms" module. The video analog of the
+// Audio-Room AR-2 VoiceSession: one durable session per room+user
+// with a rolling quality summary. It ALSO absorbs the checklist's
+// Connection / Device / Network concepts — the ephemeral live
+// connection lifecycle stays in Redis + the runtime ConnectionStatus
+// enum (enums/index.ts); this table stores only what outlives a
+// socket. No streaming logic here (VR-1 is schema only). No DB
+// foreign keys — reference rooms/users by id (@@index).
+// ============================================================
+
+/// Whether a media participant may publish A/V (on a seat) or only subscribe
+/// (audience). Mirrors the Audio-Room VoicePublishRole.
+enum VideoRoomPublishRole {
+  PUBLISHER
+  SUBSCRIBER
+}
+
+/// Durable session lifecycle. Fine-grained live states (CONNECTING/RECONNECTING/
+/// …) are ephemeral (Redis + runtime ConnectionStatus); the durable record is
+/// simply ACTIVE until it ENDs.
+enum VideoRoomSessionStatus {
+  ACTIVE
+  ENDED
+}
+
+/// A user's durable media session in a room (one per room+user, reactivated on
+/// rejoin). Live presence/heartbeat is authoritative in Redis; this is the durable
+/// record with a rolling A/V quality summary. `role` follows seat state (publisher
+/// on a seat, subscriber in the audience). `selfMutedAudio` / `selfMutedVideo` are
+/// the user's own controls — effective media state also considers admin seat-mute /
+/// room-mute, combined by the service in later phases. `deviceId` / `platform` /
+/// `network` capture the connection context (checklist Connection/Device/Network).
+model VideoRoomSession {
+  id              String                 @id @default(uuid()) @db.Uuid
+  roomId          String                 @db.Uuid
+  userId          String                 @db.Uuid
+  zegoRoomId      String
+  role            VideoRoomPublishRole   @default(SUBSCRIBER)
+  status          VideoRoomSessionStatus @default(ACTIVE)
+  selfMutedAudio  Boolean                @default(false)
+  selfMutedVideo  Boolean                @default(false)
+  cameraFacing    String?
+  deviceId        String?                @db.Uuid
+  platform        String?
+  network         String?
+  reconnectCount  Int                    @default(0)
+  joinedAt        DateTime               @default(now())
+  lastHeartbeatAt DateTime               @default(now())
+  endedAt         DateTime?
+  durationSeconds BigInt                 @default(0)
+
+  // ---- Rolling quality summary (summary + sampled logs pattern) ----
+  lastQualityLevel   Int?
+  avgRttMs           Int?
+  worstRttMs         Int?
+  avgPacketLossPct   Float?
+  avgFrameRate       Int?
+  avgBitrateKbps     Int?
+  qualitySampleCount Int       @default(0)
+  lastReportAt       DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@index([status])
+  @@map("video_room_sessions")
+}

@@ -1,0 +1,163 @@
+// ============================================================
+// Video Rooms — VR-1: Role grants & the multi-seat video stage
+// (seats, seat requests, invitations). Owned by the "video_rooms"
+// module. Mirrors the Audio-Room AR-1 role/seat model. NO seat
+// business logic here (occupy/leave/lock lands with the seat phase);
+// VR-1 delivers the durable schema only. No cross-module relations —
+// reference users by id. No DB foreign keys — reference rooms by id
+// (@@index), the platform convention.
+// ============================================================
+
+/// Physical seat kinds on the video stage. Seat 0 is always the OWNER seat; the
+/// rest are HOST (co-host publishing video) or GUEST seats per the configurable
+/// layout in VideoRoomSettings.
+enum VideoRoomSeatType {
+  OWNER
+  HOST
+  GUEST
+}
+
+/// A seat's occupancy state. Derivable from occupantUserId/isLocked, but stored
+/// explicitly so the seat phase can advertise RESERVED (held for a specific user)
+/// distinctly from EMPTY/OCCUPIED/LOCKED.
+enum VideoRoomSeatStatus {
+  EMPTY
+  OCCUPIED
+  LOCKED
+  RESERVED
+}
+
+/// Kind of seat request. TAKE_SEAT = a viewer asking to come up onto a seat.
+/// Extensible (a future MOVE_SEAT etc. is a new value, not a schema change).
+enum VideoRoomSeatRequestType {
+  TAKE_SEAT
+}
+
+/// Lifecycle of a seat request.
+enum VideoRoomSeatRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+/// Kind of invitation. SEAT = invite a user onto a specific/any seat; ROOM =
+/// invite a user into the room (private rooms).
+enum VideoRoomInvitationType {
+  SEAT
+  ROOM
+}
+
+/// Lifecycle of an invitation.
+enum VideoRoomInvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+/// Authoritative elevated role grants within a video room (OWNER / ADMIN /
+/// MODERATOR). VideoRoomMember.role is kept synced as a denormalised mirror;
+/// permission checks resolve the effective role from here first, then seat
+/// occupancy (HOST/PARTICIPANT), then active membership (VIEWER). One grant per
+/// user; `expiresAt` null ⇒ permanent grant.
+model VideoRoomRole {
+  id        String              @id @default(uuid()) @db.Uuid
+  roomId    String              @db.Uuid
+  userId    String              @db.Uuid
+  role      VideoRoomMemberRole
+  grantedBy String?             @db.Uuid
+  expiresAt DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, userId])
+  @@index([roomId])
+  @@map("video_room_roles")
+}
+
+/// A physical seat on the video stage. Seat 0 is always the OWNER seat; the rest
+/// follow the configurable layout. `occupantUserId` null ⇒ empty. A user may
+/// occupy at most one seat per room (unique). `reservedForUserId` holds a seat for
+/// a specific invitee. Seat/video/mute state is synced to clients; actual media
+/// muting is client-side (ZEGO) in the later media phase.
+model VideoRoomSeat {
+  id                String              @id @default(uuid()) @db.Uuid
+  roomId            String              @db.Uuid
+  seatIndex         Int
+  seatType          VideoRoomSeatType
+  seatStatus        VideoRoomSeatStatus @default(EMPTY)
+  occupantUserId    String?             @db.Uuid
+  reservedForUserId String?             @db.Uuid
+  isLocked          Boolean             @default(false)
+  isMuted           Boolean             @default(false)
+  isVideoOn         Boolean             @default(false)
+  metadata          Json?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roomId, seatIndex])
+  @@unique([roomId, occupantUserId])
+  @@index([roomId])
+  @@map("video_room_seats")
+}
+
+/// A viewer's request to take a seat. `seatIndex` null ⇒ any available seat. At
+/// most one PENDING request per user/room (service-enforced under a lock).
+/// `expiresAt` supports auto-expiry of stale requests.
+model VideoRoomSeatRequest {
+  id         String                     @id @default(uuid()) @db.Uuid
+  roomId     String                     @db.Uuid
+  userId     String                     @db.Uuid
+  seatIndex  Int?
+  type       VideoRoomSeatRequestType   @default(TAKE_SEAT)
+  status     VideoRoomSeatRequestStatus @default(PENDING)
+  resolvedBy String?                    @db.Uuid
+  resolvedAt DateTime?
+  expiresAt  DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, status])
+  @@index([userId])
+  @@map("video_room_seat_requests")
+}
+
+/// An owner/admin invitation for a user to take a seat, or to join a (private)
+/// room. Expires after a TTL. At most one PENDING invite per (room,invitee,type)
+/// is service-enforced.
+model VideoRoomInvitation {
+  id            String                    @id @default(uuid()) @db.Uuid
+  roomId        String                    @db.Uuid
+  inviterId     String                    @db.Uuid
+  inviteeUserId String                    @db.Uuid
+  type          VideoRoomInvitationType   @default(SEAT)
+  seatIndex     Int?
+  status        VideoRoomInvitationStatus @default(PENDING)
+  expiresAt     DateTime
+  resolvedAt    DateTime?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, status])
+  @@index([inviteeUserId, status])
+  @@map("video_room_invitations")
+}

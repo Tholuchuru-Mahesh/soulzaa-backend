@@ -1,2 +1,4 @@
-/** video-rooms controllers — empty until the module is implemented. */
-export {};
+export * from './video-rooms.controller';
+export * from './video-rooms-media.controller';
+export * from './video-rooms-members.controller';
+export * from './video-rooms-seats.controller';
