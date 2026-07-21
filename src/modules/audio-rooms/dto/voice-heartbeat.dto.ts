@@ -11,12 +11,12 @@ export class VoiceHeartbeatDto {
   @ApiProperty({
     description: 'ZEGO network quality level 0 (best) – 4 (worst).',
     minimum: 0,
-    maximum: 4,
+    maximum: 5,
   })
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  @Max(4)
+  @Max(5)
   networkQualityLevel!: number;
 
   @ApiPropertyOptional({ description: 'Round-trip time (ms).', minimum: 0 })

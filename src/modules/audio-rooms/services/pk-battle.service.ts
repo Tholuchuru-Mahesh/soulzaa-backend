@@ -108,7 +108,13 @@ export class PkBattleService {
           HttpStatus.CONFLICT,
         );
       }
-      const endsAt = new Date(Date.now() + dto.durationSeconds * 1000);
+      /** 10-second client-side pre-battle countdown buffer.
+       *  The mobile app shows a cinematic 3…2…1 countdown for the first 10 s
+       *  before revealing the live scoreboard. Adding this offset means the
+       *  actual battle duration begins exactly when the scoreboard appears,
+       *  keeping both the host and audience timers perfectly in sync. */
+      const PRE_BATTLE_COUNTDOWN_MS = 10_000;
+      const endsAt = new Date(Date.now() + dto.durationSeconds * 1000 + PRE_BATTLE_COUNTDOWN_MS);
       const battle = await this.repo.createBattle({
         roomId,
         mode: dto.mode,

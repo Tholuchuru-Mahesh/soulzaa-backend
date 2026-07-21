@@ -22,6 +22,7 @@ const MANAGER_ROLES: ReadonlySet<RoomMemberRole> = new Set([
 ]);
 
 const THEME_PRESETS = new Map<string, string>([
+  ['e1f8638c-fe89-4680-9c7f-4db1e6b0eac0', 'Purple Full Moon'],
   ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab1', 'Sunlight'],
   ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab2', 'Galaxy'],
   ['e1f8638c-fe89-4680-9c7f-4db1e6b0eab3', 'Sunset Glow'],
