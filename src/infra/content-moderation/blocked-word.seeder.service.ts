@@ -1,6 +1,6 @@
 import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { BlockedWordAction, BlockedWordSeverity } from '@prisma/client';
-import { ChatRepository } from '../repositories/chat.repository';
+import { BlockedWordRepository } from './blocked-word.repository';
 
 /** A default dictionary entry (literal unless `isRegex`). */
 interface SeedWord {
@@ -72,13 +72,13 @@ const SEED_WORDS: SeedWord[] = [
 export class ChatBlockedWordSeeder implements OnApplicationBootstrap {
   private readonly logger = new Logger(ChatBlockedWordSeeder.name);
 
-  constructor(private readonly repo: ChatRepository) {}
+  constructor(private readonly words: BlockedWordRepository) {}
 
   async onApplicationBootstrap(): Promise<void> {
     try {
       let created = 0;
       for (const w of SEED_WORDS) {
-        const inserted = await this.repo.upsertSeedWord({
+        const inserted = await this.words.upsertSeedWord({
           pattern: w.pattern,
           isRegex: w.isRegex ?? false,
           language: w.language ?? 'en',

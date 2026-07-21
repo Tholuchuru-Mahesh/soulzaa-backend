@@ -11,7 +11,7 @@ import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repos
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
 import { ChatRepository } from '../repositories/chat.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
-import { BlockedWordService } from './blocked-word.service';
+import { BlockedWordService } from 'src/infra/content-moderation';
 import { ChatService } from './chat.service';
 import { ModerationService } from './moderation.service';
 import { RoomPermissionService } from './room-permission.service';

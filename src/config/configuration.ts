@@ -322,6 +322,28 @@ export const chatConfig = registerAs('chat', () => ({
   syncMaxConversations: env().CHAT_SYNC_MAX_CONVERSATIONS,
 }));
 
+export const videoRoomChatConfig = registerAs('videoRoomChat', () => ({
+  messageMaxLength: process.env.VIDEO_ROOM_CHAT_MESSAGE_MAX_LENGTH ?? 500,
+  maxMentions: process.env.VIDEO_ROOM_CHAT_MAX_MENTIONS ?? 10,
+  maxPins: process.env.VIDEO_ROOM_CHAT_MAX_PINS ?? 3,
+  rateMax: process.env.VIDEO_ROOM_CHAT_RATE_MAX ?? 20,
+  rateWindowSeconds: process.env.VIDEO_ROOM_CHAT_RATE_WINDOW_SECONDS ?? 60,
+  dedupWindowSeconds: process.env.VIDEO_ROOM_CHAT_DEDUP_WINDOW_SECONDS ?? 30,
+  floodBurstMax: process.env.VIDEO_ROOM_CHAT_FLOOD_BURST_MAX ?? 5,
+  floodBurstWindowSeconds: process.env.VIDEO_ROOM_CHAT_FLOOD_BURST_WINDOW_SECONDS ?? 2,
+  cooldownSteps: process.env.VIDEO_ROOM_CHAT_COOLDOWN_STEPS ?? '10,30,120',
+  recentBufferSize: process.env.VIDEO_ROOM_CHAT_RECENT_BUFFER_SIZE ?? 100,
+  recentBufferTtlSeconds: process.env.VIDEO_ROOM_CHAT_RECENT_BUFFER_TTL_SECONDS ?? 3600,
+  typingTtlSeconds: process.env.VIDEO_ROOM_CHAT_TYPING_TTL_SECONDS ?? 5,
+  recallWindowSeconds: process.env.VIDEO_ROOM_CHAT_RECALL_WINDOW_SECONDS ?? 120,
+  editWindowSeconds: process.env.VIDEO_ROOM_CHAT_EDIT_WINDOW_SECONDS ?? 900,
+  receiptThrottleMs: process.env.VIDEO_ROOM_CHAT_RECEIPT_THROTTLE_MS ?? 2000,
+  systemMessageBroadcastOnlyAboveViewers:
+    process.env.VIDEO_ROOM_CHAT_SYSMSG_BROADCAST_ONLY_ABOVE_VIEWERS ?? 200,
+  systemMessageSuppressAboveViewers:
+    process.env.VIDEO_ROOM_CHAT_SYSMSG_SUPPRESS_ABOVE_VIEWERS ?? 2000,
+}));
+
 export const callsConfig = registerAs('calls', () => ({
   ringTimeoutSeconds: env().CALL_RING_TIMEOUT_SECONDS,
   maxDurationSeconds: env().CALL_MAX_DURATION_SECONDS,
@@ -377,6 +399,7 @@ export const configurations = [
   zegoConfig,
   audioRoomConfig,
   videoRoomConfig,
+  videoRoomChatConfig,
   chatConfig,
   callsConfig,
   giftConfig,

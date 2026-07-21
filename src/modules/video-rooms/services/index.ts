@@ -11,3 +11,21 @@ export * from './video-room-reference-seeder.service';
 export * from './video-room-media-state.service';
 export * from './video-room-media.service';
 export * from './video-room-media-recovery.service';
+export * from './video-room-permission-cache.service';
+export * from './video-room-role.service';
+export * from './video-room-ownership.service';
+export * from './video-room-seat-queue.service';
+// VR-9 chat (REST commands + ephemeral socket signals, Redis read model,
+// policy gate, announcements over the VR-1 table, system messages).
+export * from './video-room-chat-cache.service';
+export * from './video-room-chat-rate-limiter.service';
+export * from './video-room-mention-resolver.service';
+export * from './video-room-chat-policy.service';
+export * from './video-room-chat.service';
+export * from './video-room-chat-query.service';
+export * from './video-room-chat-pin.service';
+export * from './video-room-chat-settings.service';
+export * from './video-room-announcement.service';
+export * from './video-room-typing.service';
+export * from './video-room-chat-receipt.service';
+export * from './video-room-system-message.service';

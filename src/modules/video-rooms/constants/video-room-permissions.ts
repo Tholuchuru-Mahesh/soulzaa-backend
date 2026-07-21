@@ -3,17 +3,25 @@ import { VideoRoomMemberRole } from '@prisma/client';
 /**
  * Video-room-scoped permissions (distinct from platform PlatformRole permissions).
  * The matrix below is the single source of truth for what each in-room role may do;
- * a VideoRoomPermissionService (later phase) resolves a user's effective role
- * (grant → seat occupancy → membership) and checks against this. Platform
- * ADMIN/SUPER_ADMIN bypass all room checks.
+ * VideoRoomPermissionService resolves a user's effective role (owner → grant →
+ * seat occupancy) and checks against this. Platform ADMIN/SUPER_ADMIN bypass all
+ * room checks.
  *
- * Design decision (VR-1): permissions are a CODE matrix + a `video_room_roles`
- * grants table — NOT a database-driven permission table. This mirrors Audio Rooms
- * (`RoomPermission` / `ROOM_PERMISSION_MATRIX`): one testable source of truth, and
- * changing policy is a code change, not a data migration. `VideoRoomBan` is not a
- * permission — the Video Room has no ban feature; BLOCK_USERS covers barring.
+ * Design decision (VR-1, re-affirmed VR-7): permissions are a CODE matrix + a
+ * `video_room_roles` grants table — NOT a database-driven permission table. This
+ * mirrors Audio Rooms (`RoomPermission` / `ROOM_PERMISSION_MATRIX`): one testable
+ * source of truth, and changing policy is a code change, not a data migration.
+ * `VideoRoomBan` is not a permission — the Video Room has no ban feature;
+ * BLOCK_USERS covers barring.
  */
 export enum VideoRoomPermission {
+  /**
+   * Edit the room profile, settings and category — the room's identity. VR-7
+   * introduced this to replace the coarse `assertCanManage` gate, which admitted
+   * ADMIN and so made the PRD's "Admins CANNOT edit room profile" restriction
+   * impossible to express. Owner-only.
+   */
+  MANAGE_ROOM = 'MANAGE_ROOM',
   /** Configure the seat layout, lock/unlock seats, accept/reject seat requests. */
   MANAGE_SEATS = 'MANAGE_SEATS',
   /** Invite / move / remove hosts & participants on the stage. */
@@ -28,7 +36,10 @@ export enum VideoRoomPermission {
   ROOM_MUTE = 'ROOM_MUTE',
   /** Pin chat messages (chat phase consumes this). */
   PIN_MESSAGES = 'PIN_MESSAGES',
-  /** Grant/revoke in-room roles (admin / moderator / host). */
+  /**
+   * Grant/revoke in-room roles. Owner-only per the PRD: "Only the Room Owner can
+   * appoint Admins" and "Admins CANNOT add or remove admins".
+   */
   GRANT_ROLES = 'GRANT_ROLES',
   /** Change the room theme / background. */
   CHANGE_THEME = 'CHANGE_THEME',
@@ -49,19 +60,9 @@ export enum VideoRoomPermission {
 }
 
 /**
- * ADMIN gets everything an owner can do EXCEPT the two irreversible,
- * owner-only powers (transfer ownership, close the room) — mirrors Audio Rooms'
- * admin exclusions.
- */
-const ADMIN_PERMISSIONS: readonly VideoRoomPermission[] = Object.values(VideoRoomPermission).filter(
-  (p) => p !== VideoRoomPermission.TRANSFER_OWNERSHIP && p !== VideoRoomPermission.CLOSE_ROOM,
-);
-
-/**
  * MODERATOR is a behaviour/content moderator: it can discipline users and manage
  * chat/announcements, but NOT reshape the room (seats, roles, theme, lock, PK,
- * analytics). This is the key ADMIN-vs-MODERATOR split — adjust the set below if
- * moderators in your product should also manage seats or start PK.
+ * analytics). This is the key ADMIN-vs-MODERATOR split.
  */
 const MODERATOR_PERMISSIONS: readonly VideoRoomPermission[] = [
   VideoRoomPermission.KICK_USERS,
@@ -73,10 +74,30 @@ const MODERATOR_PERMISSIONS: readonly VideoRoomPermission[] = [
 ];
 
 /**
- * Role → permission set. OWNER: full access. ADMIN: all but ownership
- * transfer / room close. MODERATOR: moderation subset. HOST / PARTICIPANT /
- * VIEWER: no management permissions (their media capabilities — publishing,
- * camera, mic — are seat-derived, checked via seat occupancy, not entries here).
+ * ADMIN is the PRD's Room Admin (production.txt:3349-3372): accept/reject seat
+ * requests, invite to seats, remove from seats, mute, kick, pin, manage the
+ * speaking queue. The PRD's "Admin Restrictions" section explicitly bars room
+ * profile (MANAGE_ROOM), password/lock (LOCK_ROOM), admin appointment
+ * (GRANT_ROLES) and category/theme (CHANGE_THEME) — all of which stay owner-only.
+ *
+ * Built by extending MODERATOR_PERMISSIONS rather than listing them again, which
+ * is what makes "each role is a superset of the one below it" true by
+ * construction instead of by convention.
+ */
+const ADMIN_PERMISSIONS: readonly VideoRoomPermission[] = [
+  ...MODERATOR_PERMISSIONS,
+  VideoRoomPermission.MANAGE_SEATS,
+  VideoRoomPermission.MANAGE_PARTICIPANTS,
+  VideoRoomPermission.INVITE_USERS,
+  VideoRoomPermission.VIEW_ANALYTICS,
+  VideoRoomPermission.START_PK,
+];
+
+/**
+ * Role → permission set. OWNER: full access. ADMIN: the PRD admin duties.
+ * MODERATOR: moderation subset. HOST / PARTICIPANT / VIEWER: no management
+ * permissions (their media capabilities — publishing, camera, mic — are
+ * seat-derived, checked via seat occupancy, not entries here).
  */
 export const VIDEO_ROOM_PERMISSION_MATRIX: Record<
   VideoRoomMemberRole,
@@ -88,6 +109,20 @@ export const VIDEO_ROOM_PERMISSION_MATRIX: Record<
   [VideoRoomMemberRole.HOST]: new Set<VideoRoomPermission>(),
   [VideoRoomMemberRole.PARTICIPANT]: new Set<VideoRoomPermission>(),
   [VideoRoomMemberRole.VIEWER]: new Set<VideoRoomPermission>(),
+};
+
+/**
+ * Numeric authority for role-hierarchy guards (higher outranks lower). The single
+ * source of truth — VideoRoomPermissionService and VideoRoomRoleService both read
+ * this rather than keeping private copies that could drift apart.
+ */
+export const VIDEO_ROOM_ROLE_RANK: Record<VideoRoomMemberRole, number> = {
+  [VideoRoomMemberRole.OWNER]: 5,
+  [VideoRoomMemberRole.ADMIN]: 4,
+  [VideoRoomMemberRole.MODERATOR]: 3,
+  [VideoRoomMemberRole.HOST]: 2,
+  [VideoRoomMemberRole.PARTICIPANT]: 1,
+  [VideoRoomMemberRole.VIEWER]: 0,
 };
 
 /** In-room roles that carry an elevated grant (persisted in video_room_roles). */
@@ -106,4 +141,13 @@ export function videoRoomRoleHasPermission(
   permission: VideoRoomPermission,
 ): boolean {
   return VIDEO_ROOM_PERMISSION_MATRIX[role]?.has(permission) ?? false;
+}
+
+/**
+ * A role's permissions as a stable, sorted array — the shape cached in Redis and
+ * returned by the API. Sorted so a cached payload is byte-identical across
+ * instances, which keeps cache entries comparable in tests and logs.
+ */
+export function videoRoomRolePermissions(role: VideoRoomMemberRole): VideoRoomPermission[] {
+  return [...(VIDEO_ROOM_PERMISSION_MATRIX[role] ?? [])].sort();
 }

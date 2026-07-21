@@ -22,10 +22,15 @@ export const VIDEO_ROOM_SEAT_EVENTS = {
   TRANSFERRED: 'video_room.seat_transferred',
   UPDATED: 'video_room.seat_updated',
   SYNC: 'video_room.seat_sync',
+  REQUEST_EXPIRED: 'video_room.seat_request_expired',
+  INVITATION_EXPIRED: 'video_room.seat_invitation_expired',
+  INVITATION_DELIVERED: 'video_room.seat_invitation_delivered',
+  QUEUE_UPDATED: 'video_room.seat_queue_updated',
 } as const;
 
-export type SeatRequestResolution = 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED';
-export type SeatInvitationResolution = 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED';
+export type SeatRequestResolution =
+  'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED' | 'PROMOTED' | 'FAILED';
+export type SeatInvitationResolution = 'ACCEPTED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED' | 'FAILED';
 export type SeatReleaseReason = 'cancelled' | 'expired';
 
 export class SeatTakenEvent extends DomainEvent<{
@@ -101,6 +106,8 @@ export class SeatRequestResolvedEvent extends DomainEvent<{
   actorId?: string | null;
   version?: number;
   seatIndex?: number | null;
+  /** ISO timestamp of the original request — drives the approval-latency histogram. */
+  requestedAt?: string;
 }> {
   readonly name = VIDEO_ROOM_SEAT_EVENTS.REQUEST_RESOLVED;
 }
@@ -163,4 +170,53 @@ export class SeatSyncEvent extends DomainEvent<{
   version: number;
 }> {
   readonly name = VIDEO_ROOM_SEAT_EVENTS.SYNC;
+}
+
+/** One row in the bounded queue preview carried by `SeatQueueUpdatedEvent`. */
+export interface QueuePreviewEntry {
+  userId: string;
+  /** 1-based position in the queue. */
+  position: number;
+  vipLevel: number;
+}
+
+/** A PENDING seat request passed its TTL and was expired by the monitor sweep. */
+export class SeatRequestExpiredEvent extends DomainEvent<{
+  roomId: string;
+  requestId: string;
+  userId: string;
+}> {
+  readonly name = VIDEO_ROOM_SEAT_EVENTS.REQUEST_EXPIRED;
+}
+
+/** A PENDING/DELIVERED invitation passed its TTL and was expired by the sweep. */
+export class SeatInvitationExpiredEvent extends DomainEvent<{
+  roomId: string;
+  invitationId: string;
+  inviteeUserId: string;
+}> {
+  readonly name = VIDEO_ROOM_SEAT_EVENTS.INVITATION_EXPIRED;
+}
+
+/** The invitee's client acknowledged receipt of an invitation. */
+export class SeatInvitationDeliveredEvent extends DomainEvent<{
+  roomId: string;
+  invitationId: string;
+  inviteeUserId: string;
+  deliveredAt: string;
+}> {
+  readonly name = VIDEO_ROOM_SEAT_EVENTS.INVITATION_DELIVERED;
+}
+
+/**
+ * The seat queue changed (join, leave, resolve, expire, advance, re-score).
+ * `top` is truncated to VIDEO_ROOM_QUEUE_PREVIEW_LIMIT — never the whole queue,
+ * so a very deep queue cannot blow up a broadcast frame.
+ */
+export class SeatQueueUpdatedEvent extends DomainEvent<{
+  roomId: string;
+  size: number;
+  top: QueuePreviewEntry[];
+}> {
+  readonly name = VIDEO_ROOM_SEAT_EVENTS.QUEUE_UPDATED;
 }

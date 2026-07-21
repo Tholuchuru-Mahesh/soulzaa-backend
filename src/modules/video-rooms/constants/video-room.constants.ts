@@ -54,9 +54,19 @@ export const VIDEO_ROOM_SOCKET_EVENTS = {
   SEAT_REQUESTED: 'video_room.seat_requested',
   SEAT_APPROVED: 'video_room.seat_approved',
   SEAT_REJECTED: 'video_room.seat_rejected',
+  /** A seat request threw (seat taken concurrently, member inactive, infra hiccup) — not a human rejection. Powers a "retry" UI off the persisted `lastError`. */
+  SEAT_REQUEST_FAILED: 'video_room.seat_request_failed',
   SEAT_INVITATION_SENT: 'video_room.seat_invitation_sent',
   SEAT_INVITATION_ACCEPTED: 'video_room.seat_invitation_accepted',
   SEAT_INVITATION_REJECTED: 'video_room.seat_invitation_rejected',
+  /** An accepted invitation's seating threw — not an invitee decline. Powers a "retry" UI off the persisted `lastError`. */
+  SEAT_INVITATION_FAILED: 'video_room.seat_invitation_failed',
+  SEAT_REQUEST_CANCELLED: 'video_room.seat_request_cancelled',
+  SEAT_REQUEST_EXPIRED: 'video_room.seat_request_expired',
+  SEAT_INVITATION_CANCELLED: 'video_room.seat_invitation_cancelled',
+  SEAT_INVITATION_EXPIRED: 'video_room.seat_invitation_expired',
+  SEAT_INVITATION_DELIVERED: 'video_room.seat_invitation_delivered',
+  SEAT_QUEUE_UPDATED: 'video_room.seat_queue_updated',
   SEAT_SWITCHED: 'video_room.seat_switched',
   SEAT_TRANSFERRED: 'video_room.seat_transferred',
   SEAT_UPDATED: 'video_room.seat_updated',
@@ -85,10 +95,42 @@ export const VIDEO_ROOM_SOCKET_EVENTS = {
   VIEWER_PROMOTED: 'video_room.viewer_promoted',
   VIEWER_DEMOTED: 'video_room.viewer_demoted',
   VIEWER_PRESENCE_CHANGED: 'video_room.viewer_presence_changed',
+  // ---- VR-7 role & permission engine (client-facing) ----
+  ROLE_ASSIGNED: 'video_room.role_assigned',
+  ROLE_REMOVED: 'video_room.role_removed',
+  ROLE_UPDATED: 'video_room.role_updated',
+  /** Point-to-point: the recipient's own capability set moved — refetch it. */
+  PERMISSION_UPDATED: 'video_room.permission_updated',
+  // ---- VR-9 chat (client-facing) ----
+  CHAT_MESSAGE_SENT: 'video_room.chat_message_sent',
+  CHAT_MESSAGE_EDITED: 'video_room.chat_message_edited',
+  CHAT_MESSAGE_DELETED: 'video_room.chat_message_deleted',
+  CHAT_MESSAGE_RECALLED: 'video_room.chat_message_recalled',
+  CHAT_MESSAGE_PINNED: 'video_room.chat_message_pinned',
+  CHAT_MESSAGE_UNPINNED: 'video_room.chat_message_unpinned',
+  CHAT_ANNOUNCEMENT_CREATED: 'video_room.chat_announcement_created',
+  CHAT_ANNOUNCEMENT_UPDATED: 'video_room.chat_announcement_updated',
+  CHAT_ANNOUNCEMENT_DELETED: 'video_room.chat_announcement_deleted',
+  CHAT_TYPING_STARTED: 'video_room.chat_typing_started',
+  CHAT_TYPING_STOPPED: 'video_room.chat_typing_stopped',
+  CHAT_MESSAGE_DELIVERED: 'video_room.chat_message_delivered',
+  CHAT_MESSAGE_READ: 'video_room.chat_message_read',
+  /** Point-to-point: the mentioned user's own notice. */
+  CHAT_MENTIONED: 'video_room.chat_mentioned',
+  /** Emitted from the VR-2 settings path when chat policy moves. */
+  CHAT_MODE_CHANGED: 'video_room.chat_mode_changed',
 } as const;
 
 export type VideoRoomSocketEvent =
   (typeof VIDEO_ROOM_SOCKET_EVENTS)[keyof typeof VIDEO_ROOM_SOCKET_EVENTS];
+
+/** Inbound (client → server) chat events served by VideoRoomChatGateway. */
+export const VIDEO_ROOM_CHAT_INBOUND_EVENTS = {
+  TYPING_START: 'video_room.typing_start',
+  TYPING_STOP: 'video_room.typing_stop',
+  MESSAGE_DELIVERED: 'video_room.message_delivered',
+  MESSAGE_READ: 'video_room.message_read',
+} as const;
 
 // ---- Validation bounds (mirrored by the DTOs + validators) ----
 export const VIDEO_ROOM_NAME_MIN = 3;
@@ -170,6 +212,16 @@ export function videoRoomSeatLockKey(roomId: string): string {
   return `video-room:seat:{${roomId}}`;
 }
 
+/**
+ * Serializes queue *advancement* for a room. Deliberately DISTINCT from
+ * `videoRoomSeatLockKey`: `advance` calls `VideoRoomSeatService.seatUser`, which
+ * takes the seat lock itself, and `LockService` is NOT re-entrant (`SET NX`) —
+ * reusing the seat key here would make every auto-advance retry 20× and throw.
+ */
+export function videoRoomSeatQueueLockKey(roomId: string): string {
+  return `video-room:seatq:lock:{${roomId}}`;
+}
+
 /** Reservation hold with TTL → auto-released by the VideoRoomSeatMonitor sweep. */
 export function videoRoomSeatReservationKey(roomId: string, seatIndex: number): string {
   return `video-room:{${roomId}}:seat:${seatIndex}:hold`;
@@ -247,6 +299,18 @@ export const VIDEO_ROOM_OWNER_SEAT_INDEX = 0;
 
 /** TTL (seconds) after which a PENDING seat request auto-expires. */
 export const VIDEO_ROOM_SEAT_REQUEST_TTL_SECONDS = 60;
+/**
+ * Grace window (seconds) within which a reconnecting viewer's
+ * disconnect-EXPIRED seat request may be `restore()`d. Matched to
+ * `VIDEO_ROOM_RECONNECT_TIMEOUT_SECONDS`'s default (120s, see
+ * config/video-room.config.ts / env.validation.ts) — `restore()` is driven by
+ * the very same `UserReconnectedEvent` that window governs (VR-3's general
+ * member reconnect grace, not VR-5's media-specific one), so a restore is only
+ * ever eligible for exactly as long as the reconnect itself would have been
+ * honoured. Fixed here (not read from ConfigService) like every other VR-8
+ * bound in this file.
+ */
+export const VIDEO_ROOM_SEAT_REQUEST_RESTORE_GRACE_SECONDS = 120;
 /** TTL (seconds) after which a PENDING invitation auto-expires. */
 export const VIDEO_ROOM_INVITATION_TTL_SECONDS = 120;
 
@@ -262,3 +326,61 @@ export const VIDEO_ROOM_SLOW_MODE_MAX_SECONDS = 3600;
 /** Default page size + ceiling for paginated list/search repositories. */
 export const VIDEO_ROOM_DEFAULT_PAGE_SIZE = 20;
 export const VIDEO_ROOM_MAX_PAGE_SIZE = 100;
+
+// ---- VR-7 role & permission engine ----
+
+/**
+ * Per-room monotonic permission version. Bumped (INCR) on any role or ownership
+ * change; a cached decision only counts as a hit when it embeds the current
+ * value, so invalidating a whole room is one command no matter how many users
+ * are cached.
+ */
+export function videoRoomPermissionVersionKey(roomId: string): string {
+  return `video-room:{${roomId}}:perm:ver`;
+}
+
+/**
+ * A user's cached permission decision in a room. Hash-tagged on the ROOM id (not
+ * the user id) so it shares a Redis Cluster slot with the version key above —
+ * the tag is the first {...} in the key, which lets the two be read in a single
+ * MGET even on a clustered deployment.
+ */
+export function videoRoomPermissionKey(roomId: string, userId: string): string {
+  return `video-room:{${roomId}}:perm:${userId}`;
+}
+
+/** How long a cached permission decision survives absent an explicit bump. */
+export const VIDEO_ROOM_PERMISSION_CACHE_TTL_SECONDS = 300;
+
+/** PRD (production.txt:3345): "Maximum Admin Limit: 25". */
+export const VIDEO_ROOM_MAX_ADMINS = 25;
+
+/** Expired-grant sweep batch size (VideoRoomRoleMonitor). */
+export const VIDEO_ROOM_ROLE_SWEEP_BATCH = 200;
+
+/** Lock ensuring exactly one instance sweeps expired role grants per tick. */
+export const VIDEO_ROOM_ROLE_MONITOR_LOCK_KEY = 'video-room:role:monitor';
+
+// ============================================================
+// VR-8 — seat request / invitation workflow + queue bounds.
+// ============================================================
+
+/**
+ * Actor id recorded on writes the platform performs with no human behind them
+ * (expiry sweep, queue auto-advance). MUST be a valid UUID: every audit column
+ * it lands in (`resolvedBy`, `updatedBy`, `VideoRoomEvent.actorId`) is
+ * `@db.Uuid`, so a non-UUID sentinel like 'system' throws at the query layer —
+ * silently, because both call sites swallow-and-log.
+ */
+export const VIDEO_ROOM_SYSTEM_ACTOR_ID = '00000000-0000-0000-0000-000000000000';
+
+/** Max seating attempts for one seat request before retry is refused. */
+export const VIDEO_ROOM_SEAT_REQUEST_MAX_ATTEMPTS = 3;
+/** Max seating attempts for one invitation before retry is refused. */
+export const VIDEO_ROOM_INVITATION_MAX_ATTEMPTS = 3;
+/** How many queue entries ride along in a `seat_queue_updated` broadcast. */
+export const VIDEO_ROOM_QUEUE_PREVIEW_LIMIT = 20;
+/** Upper bound on rows expired per monitor sweep (per collection). */
+export const VIDEO_ROOM_EXPIRY_SWEEP_LIMIT = 500;
+/** TTL (seconds) on the Redis queue projection; refreshed on every write. */
+export const VIDEO_ROOM_SEAT_QUEUE_TTL_SECONDS = 6 * 60 * 60;

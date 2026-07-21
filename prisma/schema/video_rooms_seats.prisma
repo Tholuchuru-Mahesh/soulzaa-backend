@@ -33,13 +33,17 @@ enum VideoRoomSeatRequestType {
   TAKE_SEAT
 }
 
-/// Lifecycle of a seat request.
+/// Lifecycle of a seat request. PENDING is the brief's "SENT"; ACCEPTED is the
+/// brief's "APPROVED" (decision made, seating in flight). PROMOTED and FAILED
+/// are the VR-8 terminal outcomes of the seating attempt itself.
 enum VideoRoomSeatRequestStatus {
   PENDING
   ACCEPTED
   REJECTED
   CANCELLED
   EXPIRED
+  PROMOTED
+  FAILED
 }
 
 /// Kind of invitation. SEAT = invite a user onto a specific/any seat; ROOM =
@@ -49,13 +53,16 @@ enum VideoRoomInvitationType {
   ROOM
 }
 
-/// Lifecycle of an invitation.
+/// Lifecycle of an invitation. PENDING is the brief's "SENT"; DELIVERED means the
+/// invitee's client acknowledged receipt; FAILED means seating threw on accept.
 enum VideoRoomInvitationStatus {
   PENDING
+  DELIVERED
   ACCEPTED
   REJECTED
   EXPIRED
   CANCELLED
+  FAILED
 }
 
 /// Authoritative elevated role grants within a video room (OWNER / ADMIN /
@@ -116,15 +123,19 @@ model VideoRoomSeat {
 /// most one PENDING request per user/room (service-enforced under a lock).
 /// `expiresAt` supports auto-expiry of stale requests.
 model VideoRoomSeatRequest {
-  id         String                     @id @default(uuid()) @db.Uuid
-  roomId     String                     @db.Uuid
-  userId     String                     @db.Uuid
-  seatIndex  Int?
-  type       VideoRoomSeatRequestType   @default(TAKE_SEAT)
-  status     VideoRoomSeatRequestStatus @default(PENDING)
-  resolvedBy String?                    @db.Uuid
-  resolvedAt DateTime?
-  expiresAt  DateTime?
+  id           String                     @id @default(uuid()) @db.Uuid
+  roomId       String                     @db.Uuid
+  userId       String                     @db.Uuid
+  seatIndex    Int?
+  type         VideoRoomSeatRequestType   @default(TAKE_SEAT)
+  status       VideoRoomSeatRequestStatus @default(PENDING)
+  resolvedBy   String?                    @db.Uuid
+  resolvedAt   DateTime?
+  expiresAt    DateTime?
+  /// VR-8 — how many seating attempts this request has consumed (bounds retry).
+  attemptCount Int                        @default(0)
+  /// VR-8 — why the last seating attempt failed, surfaced to the retry UI.
+  lastError    String?
 
   // ---- Audit ----
   createdBy String?  @db.Uuid
@@ -150,6 +161,12 @@ model VideoRoomInvitation {
   status        VideoRoomInvitationStatus @default(PENDING)
   expiresAt     DateTime
   resolvedAt    DateTime?
+  /// VR-8 — how many seating attempts this invitation has consumed.
+  attemptCount  Int                       @default(0)
+  /// VR-8 — why the last seating attempt failed.
+  lastError     String?
+  /// VR-8 — when the invitee's client acknowledged receipt (status DELIVERED).
+  deliveredAt   DateTime?
 
   // ---- Audit ----
   createdBy String?  @db.Uuid

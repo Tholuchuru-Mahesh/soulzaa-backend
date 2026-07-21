@@ -69,7 +69,6 @@ describe('VideoRoomLifecycleService', () => {
       trendingRemove: jest.fn().mockResolvedValue(undefined),
     };
     permissions = {
-      assertCanManage: jest.fn().mockResolvedValue(undefined),
       assertPermission: jest.fn().mockResolvedValue(undefined),
     };
     events = {
@@ -161,9 +160,15 @@ describe('VideoRoomLifecycleService', () => {
       });
     });
 
-    it('checks manage permission and emits updated with the changed set', async () => {
+    it('checks MANAGE_ROOM and emits updated with the changed set', async () => {
       await service.update(actor, 'r1', { name: 'New', description: 'D' } as any);
-      expect(permissions.assertCanManage).toHaveBeenCalled();
+      // VR-7: room editing moved off the coarse assertCanManage gate onto a real
+      // permission, which is what keeps admins out of the room profile per PRD.
+      expect(permissions.assertPermission).toHaveBeenCalledWith(
+        actor,
+        expect.anything(),
+        VideoRoomPermission.MANAGE_ROOM,
+      );
       expect(repo.updateRoom).toHaveBeenCalled();
       const payload = events.emitRoomUpdated.mock.calls[0][0];
       expect(payload.changed).toEqual(expect.arrayContaining(['name', 'description']));
@@ -278,7 +283,11 @@ describe('VideoRoomLifecycleService', () => {
     it('restore un-deletes and emits restored', async () => {
       repo.findDeletedById.mockResolvedValue(fullRoom({ deletedAt: new Date() }));
       const view = await service.restore(actor, 'r1');
-      expect(permissions.assertCanManage).toHaveBeenCalled();
+      expect(permissions.assertPermission).toHaveBeenCalledWith(
+        actor,
+        expect.anything(),
+        VideoRoomPermission.MANAGE_ROOM,
+      );
       expect(repo.restore).toHaveBeenCalledWith('r1', 'owner');
       expect(events.emitRoomRestored).toHaveBeenCalled();
       expect(view.id).toBe('r1');

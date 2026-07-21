@@ -1,5 +1,9 @@
 import {
+  SeatInvitationDeliveredEvent,
+  SeatInvitationExpiredEvent,
   SeatInvitationResolvedEvent,
+  SeatQueueUpdatedEvent,
+  SeatRequestExpiredEvent,
   SeatRequestResolvedEvent,
   SeatReservedEvent,
   SeatTakenEvent,
@@ -53,5 +57,55 @@ describe('video-room seat events', () => {
         status: 'REJECTED',
       }).payload.status,
     ).toBe('REJECTED');
+  });
+});
+
+describe('VR-8 seat workflow events', () => {
+  it('names the four new event types', () => {
+    expect(VIDEO_ROOM_SEAT_EVENTS.REQUEST_EXPIRED).toBe('video_room.seat_request_expired');
+    expect(VIDEO_ROOM_SEAT_EVENTS.INVITATION_EXPIRED).toBe('video_room.seat_invitation_expired');
+    expect(VIDEO_ROOM_SEAT_EVENTS.INVITATION_DELIVERED).toBe(
+      'video_room.seat_invitation_delivered',
+    );
+    expect(VIDEO_ROOM_SEAT_EVENTS.QUEUE_UPDATED).toBe('video_room.seat_queue_updated');
+  });
+
+  it('carries the request id and user on an expiry event', () => {
+    const e = new SeatRequestExpiredEvent({ roomId: 'r1', requestId: 'q1', userId: 'u1' });
+    expect(e.name).toBe(VIDEO_ROOM_SEAT_EVENTS.REQUEST_EXPIRED);
+    expect(e.payload).toEqual({ roomId: 'r1', requestId: 'q1', userId: 'u1' });
+  });
+
+  it('carries the invitation id and invitee on an invitation expiry event', () => {
+    const e = new SeatInvitationExpiredEvent({
+      roomId: 'r1',
+      invitationId: 'i1',
+      inviteeUserId: 'u2',
+    });
+    expect(e.name).toBe(VIDEO_ROOM_SEAT_EVENTS.INVITATION_EXPIRED);
+    expect(e.payload.inviteeUserId).toBe('u2');
+  });
+
+  it('carries the delivery timestamp on a delivered event', () => {
+    const e = new SeatInvitationDeliveredEvent({
+      roomId: 'r1',
+      invitationId: 'i1',
+      inviteeUserId: 'u2',
+      deliveredAt: '2026-07-21T10:00:00.000Z',
+    });
+    expect(e.name).toBe(VIDEO_ROOM_SEAT_EVENTS.INVITATION_DELIVERED);
+    expect(e.payload.deliveredAt).toBe('2026-07-21T10:00:00.000Z');
+  });
+
+  it('carries size and a bounded preview on a queue update', () => {
+    const e = new SeatQueueUpdatedEvent({
+      roomId: 'r1',
+      size: 42,
+      top: [{ userId: 'u1', position: 1, vipLevel: 3 }],
+    });
+    expect(e.name).toBe(VIDEO_ROOM_SEAT_EVENTS.QUEUE_UPDATED);
+    expect(e.payload.size).toBe(42);
+    expect(e.payload.top).toHaveLength(1);
+    expect(e.payload.top[0].position).toBe(1);
   });
 });

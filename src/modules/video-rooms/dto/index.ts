@@ -13,3 +13,6 @@ export * from './leave-video-room.dto';
 export * from './reconnect-video-room.dto';
 export * from './video-room-heartbeat.dto';
 export * from './media.dto';
+export * from './video-room-role.dto';
+export * from './seat-queue.dto';
+export * from './chat';

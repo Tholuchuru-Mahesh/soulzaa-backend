@@ -11,7 +11,9 @@ describe('VideoRoomRolesRepository', () => {
       videoRoomRole: {
         upsert: jest.fn().mockResolvedValue({ id: 'g1' }),
         findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
@@ -55,5 +57,70 @@ describe('VideoRoomRolesRepository', () => {
       where: { roomId: 'r1', userId: 'u1' },
     });
     expect(count).toBe(1);
+  });
+
+  // VR-7: `expiresAt` has existed since VR-1 but nothing ever read it, so an
+  // expired temporary ADMIN kept full powers indefinitely. These pin the fix.
+  describe('expiry-aware reads', () => {
+    const NOW = new Date('2026-07-21T12:00:00.000Z');
+
+    it('findActive filters on the not-expired predicate', async () => {
+      await expect(repo.findActive('r1', 'u1', NOW)).resolves.toBeNull();
+      expect(prisma.videoRoomRole.findFirst).toHaveBeenCalledWith({
+        where: {
+          roomId: 'r1',
+          userId: 'u1',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: NOW } }],
+        },
+      });
+    });
+
+    it('findActive returns a permanent grant', async () => {
+      const grant = { id: 'g1', roomId: 'r1', userId: 'u1', expiresAt: null };
+      prisma.videoRoomRole.findFirst.mockResolvedValue(grant);
+      await expect(repo.findActive('r1', 'u1', NOW)).resolves.toBe(grant);
+    });
+
+    it('listActiveByRoom applies the same predicate, oldest grant first', async () => {
+      await repo.listActiveByRoom('r1', NOW);
+      expect(prisma.videoRoomRole.findMany).toHaveBeenCalledWith({
+        where: { roomId: 'r1', OR: [{ expiresAt: null }, { expiresAt: { gt: NOW } }] },
+        orderBy: { createdAt: 'asc' },
+      });
+    });
+
+    it('countByRole counts only active grants of one role', async () => {
+      prisma.videoRoomRole.count.mockResolvedValue(24);
+      await expect(repo.countByRole('r1', VideoRoomMemberRole.ADMIN, NOW)).resolves.toBe(24);
+      expect(prisma.videoRoomRole.count).toHaveBeenCalledWith({
+        where: {
+          roomId: 'r1',
+          role: VideoRoomMemberRole.ADMIN,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: NOW } }],
+        },
+      });
+    });
+
+    it('listExpired returns lapsed grants, oldest first, capped', async () => {
+      await repo.listExpired(NOW, 100);
+      expect(prisma.videoRoomRole.findMany).toHaveBeenCalledWith({
+        where: { expiresAt: { not: null, lte: NOW } },
+        orderBy: { expiresAt: 'asc' },
+        take: 100,
+      });
+    });
+
+    it('deleteByIds short-circuits on an empty list', async () => {
+      await expect(repo.deleteByIds([])).resolves.toBe(0);
+      expect(prisma.videoRoomRole.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('deleteByIds removes the given grants', async () => {
+      prisma.videoRoomRole.deleteMany.mockResolvedValue({ count: 2 });
+      await expect(repo.deleteByIds(['a', 'b'])).resolves.toBe(2);
+      expect(prisma.videoRoomRole.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: ['a', 'b'] } },
+      });
+    });
   });
 });

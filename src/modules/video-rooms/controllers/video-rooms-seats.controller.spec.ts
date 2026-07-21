@@ -1,3 +1,6 @@
+import { HttpStatus } from '@nestjs/common';
+import { BusinessException } from 'src/common/exceptions/business.exception';
+import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { VideoRoomSeatsController } from './video-rooms-seats.controller';
 
@@ -10,6 +13,7 @@ describe('VideoRoomSeatsController', () => {
   let reservations: any;
   let requests: any;
   let invitations: any;
+  let queue: any;
   let ctrl: VideoRoomSeatsController;
 
   beforeEach(() => {
@@ -28,7 +32,8 @@ describe('VideoRoomSeatsController', () => {
       reject: jest.fn(),
     };
     invitations = { invite: jest.fn(), accept: jest.fn(), reject: jest.fn() };
-    ctrl = new VideoRoomSeatsController(seats, reservations, requests, invitations);
+    queue = { list: jest.fn(), position: jest.fn(), size: jest.fn() };
+    ctrl = new VideoRoomSeatsController(seats, reservations, requests, invitations, queue);
   });
 
   it('getStage delegates with the actor + room id', () => {
@@ -76,5 +81,144 @@ describe('VideoRoomSeatsController', () => {
       true,
       IP,
     );
+  });
+});
+
+describe('VideoRoomSeatsController — VR-8 routes', () => {
+  let deps: any;
+  let ctrl: VideoRoomSeatsController;
+
+  beforeEach(() => {
+    deps = {
+      seats: {},
+      reservations: {},
+      requests: {
+        listRequests: jest.fn().mockResolvedValue([]),
+        updateRequest: jest.fn().mockResolvedValue({ id: 'q1' }),
+        retry: jest.fn().mockResolvedValue({ version: 3 }),
+      },
+      invitations: {
+        listInvitations: jest.fn().mockResolvedValue([]),
+        cancel: jest.fn(),
+        acknowledge: jest.fn().mockResolvedValue({ id: 'i1' }),
+        retry: jest.fn().mockResolvedValue({ version: 4 }),
+      },
+      queue: {
+        list: jest.fn().mockResolvedValue([{ userId: 'u2', position: 1, vipLevel: 0, score: 1 }]),
+        position: jest.fn().mockResolvedValue(4),
+        size: jest.fn().mockResolvedValue(9),
+        assertQueueAccess: jest.fn().mockResolvedValue(undefined),
+      },
+    };
+    ctrl = new VideoRoomSeatsController(
+      deps.seats,
+      deps.reservations,
+      deps.requests,
+      deps.invitations,
+      deps.queue,
+    );
+  });
+
+  it('lists pending seat requests', async () => {
+    await ctrl.listRequests(user, ROOM);
+    expect(deps.requests.listRequests).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+    );
+  });
+
+  it('lists outstanding invitations', async () => {
+    await ctrl.listInvitations(user, ROOM);
+    expect(deps.invitations.listInvitations).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+    );
+  });
+
+  it('cancels an invitation', async () => {
+    await ctrl.cancelInvite(user, ROOM, { invitationId: 'i1' } as never, IP);
+    expect(deps.invitations.cancel).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+      'i1',
+      IP,
+    );
+  });
+
+  it('updates a pending request', async () => {
+    await ctrl.updateRequest(user, ROOM, { seatIndex: 5 } as never, IP);
+    expect(deps.requests.updateRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+      5,
+      IP,
+    );
+  });
+
+  it('retries a failed request', async () => {
+    await ctrl.retryRequest(user, ROOM, 'q1', IP);
+    expect(deps.requests.retry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+      'q1',
+      IP,
+    );
+  });
+
+  it('acknowledges an invitation', async () => {
+    await ctrl.ackInvite(user, ROOM, 'i1', IP);
+    expect(deps.invitations.acknowledge).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+      'i1',
+      IP,
+    );
+  });
+
+  it('retries a failed invitation', async () => {
+    await ctrl.retryInvite(user, ROOM, 'i1', IP);
+    expect(deps.invitations.retry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+      'i1',
+      IP,
+    );
+  });
+
+  it('returns the queue with the caller’s own position', async () => {
+    const res = await ctrl.getQueue(user, ROOM);
+    expect(res).toEqual({
+      size: 9,
+      entries: [{ userId: 'u2', position: 1, vipLevel: 0 }],
+      myPosition: 4,
+    });
+  });
+
+  it('reports a null position for a caller who is not queued', async () => {
+    deps.queue.position.mockResolvedValue(null);
+    const res = await ctrl.getQueue(user, ROOM);
+    expect(res.myPosition).toBeNull();
+  });
+
+  // Fix 2: unlike every other VR-8 route, `getQueue` had no check that the room
+  // is live or that the caller is a member — the JWT guard was the only gate,
+  // letting any authenticated non-guest enumerate an arbitrary room's queue.
+  it('asserts room-live + active-member access before composing the response', async () => {
+    await ctrl.getQueue(user, ROOM);
+    expect(deps.queue.assertQueueAccess).toHaveBeenCalledWith(ROOM, 'u');
+  });
+
+  it('propagates an authorization failure without listing the queue', async () => {
+    deps.queue.assertQueueAccess.mockRejectedValue(
+      new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_NOT_MEMBER,
+        'You must join the room first.',
+        HttpStatus.FORBIDDEN,
+      ),
+    );
+    await expect(ctrl.getQueue(user, ROOM)).rejects.toMatchObject({
+      errorCode: ERROR_CODES.VIDEO_ROOM_NOT_MEMBER,
+    });
+    expect(deps.queue.list).not.toHaveBeenCalled();
   });
 });

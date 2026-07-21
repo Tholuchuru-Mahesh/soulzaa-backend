@@ -39,6 +39,32 @@ export interface CreateInvitationInput {
   expiresAt: Date;
 }
 
+/** VR-8 — optional extras when transitioning a seat request. */
+export interface SetRequestStatusOptions {
+  /** Failure reason to persist (null clears a previous one). */
+  lastError?: string | null;
+  /** Increment `attemptCount` as part of this transition. */
+  bumpAttempt?: boolean;
+  /**
+   * I6 — compare-and-swap guard: only write if the row is CURRENTLY in this
+   * status. Omitted → unconditional `update` (today's behaviour, unchanged).
+   * Provided → an `updateMany({ where: { id, status: expectedFrom } })`; a
+   * `count` of 0 means another actor already moved the row, and the caller
+   * gets `null` back instead of a silently-overwritten write.
+   */
+  expectedFrom?: VideoRoomSeatRequestStatus;
+}
+
+/** VR-8 — optional extras when transitioning an invitation. */
+export interface SetInvitationStatusOptions {
+  lastError?: string | null;
+  bumpAttempt?: boolean;
+  /** Stamp the delivery acknowledgement time (used with status DELIVERED). */
+  deliveredAt?: Date;
+  /** I6 — compare-and-swap guard; see `SetRequestStatusOptions.expectedFrom`. */
+  expectedFrom?: VideoRoomInvitationStatus;
+}
+
 /**
  * Persistence for the multi-seat video stage: `video_room_seats`,
  * `video_room_seat_requests`, `video_room_invitations`. Pure persistence — seat
@@ -135,22 +161,72 @@ export class VideoRoomSeatsRepository {
     });
   }
 
-  /** Resolve a request (accept/reject/cancel/expire). */
+  /** VR-8 — the user's most recent request in a room, whatever its status. */
+  async findLatestRequestForUser(
+    roomId: string,
+    userId: string,
+  ): Promise<VideoRoomSeatRequest | null> {
+    return this.prisma.videoRoomSeatRequest.findFirst({
+      where: { roomId, userId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Resolve a request (accept/reject/cancel/expire). VR-8 adds the optional
+   * `opts` for failure bookkeeping — `lastError` and an `attemptCount` bump —
+   * so retry can be bounded without a second write.
+   *
+   * I6 — when `opts.expectedFrom` is given, the write is a compare-and-swap
+   * (`updateMany({ where: { id, status: expectedFrom } })`) rather than an
+   * unconditional `update`: if the row has already moved (another actor got
+   * there first), `count` comes back 0 and this returns `null` instead of
+   * clobbering whatever that actor wrote. `updateMany` can't return the row
+   * itself, so a successful CAS re-reads it to keep the "returns the updated
+   * entity" contract callers (e.g. `acknowledge`) rely on. Omitting
+   * `expectedFrom` behaves exactly as before — every existing call site keeps
+   * working unchanged.
+   */
   async setRequestStatus(
     id: string,
     status: VideoRoomSeatRequestStatus,
     actorId: string,
     resolvedBy?: string | null,
-  ): Promise<VideoRoomSeatRequest> {
-    return this.prisma.videoRoomSeatRequest.update({
-      where: { id },
-      data: {
-        status,
-        resolvedBy: resolvedBy ?? null,
-        resolvedAt: new Date(),
-        ...auditUpdate(actorId),
-      },
+    opts?: Omit<SetRequestStatusOptions, 'expectedFrom'>,
+  ): Promise<VideoRoomSeatRequest>;
+  async setRequestStatus(
+    id: string,
+    status: VideoRoomSeatRequestStatus,
+    actorId: string,
+    resolvedBy: string | null | undefined,
+    opts: SetRequestStatusOptions & { expectedFrom: VideoRoomSeatRequestStatus },
+  ): Promise<VideoRoomSeatRequest | null>;
+  async setRequestStatus(
+    id: string,
+    status: VideoRoomSeatRequestStatus,
+    actorId: string,
+    resolvedBy?: string | null,
+    opts?: SetRequestStatusOptions,
+  ): Promise<VideoRoomSeatRequest | null> {
+    const data: Prisma.VideoRoomSeatRequestUpdateManyMutationInput = {
+      status,
+      resolvedBy: resolvedBy ?? null,
+      resolvedAt: new Date(),
+      ...(opts?.lastError !== undefined ? { lastError: opts.lastError } : {}),
+      ...(opts?.bumpAttempt ? { attemptCount: { increment: 1 } } : {}),
+      ...auditUpdate(actorId),
+    };
+
+    if (opts?.expectedFrom === undefined) {
+      return this.prisma.videoRoomSeatRequest.update({ where: { id }, data });
+    }
+
+    const { count } = await this.prisma.videoRoomSeatRequest.updateMany({
+      where: { id, status: opts.expectedFrom },
+      data,
     });
+    if (count === 0) return null;
+    return this.prisma.videoRoomSeatRequest.findUniqueOrThrow({ where: { id } });
   }
 
   /** Bulk-expire stale PENDING requests past their `expiresAt`. Returns the count. */
@@ -160,6 +236,54 @@ export class VideoRoomSeatsRepository {
       data: { status: VideoRoomSeatRequestStatus.EXPIRED },
     });
     return count;
+  }
+
+  /**
+   * VR-8 — expired PENDING requests, bounded, oldest first. The monitor walks
+   * these one at a time so each expiry can publish its own event; the bulk
+   * `expireStaleRequests` stays as the fallback for oversized batches.
+   */
+  async listExpiredRequests(now: Date, limit: number): Promise<VideoRoomSeatRequest[]> {
+    return this.prisma.videoRoomSeatRequest.findMany({
+      where: { status: VideoRoomSeatRequestStatus.PENDING, expiresAt: { lt: now } },
+      orderBy: { expiresAt: 'asc' },
+      take: limit,
+    });
+  }
+
+  /** VR-8 — change only the preferred seat on a still-PENDING request. */
+  async updateRequestSeatIndex(
+    id: string,
+    seatIndex: number | null,
+    actorId: string,
+  ): Promise<VideoRoomSeatRequest> {
+    return this.prisma.videoRoomSeatRequest.update({
+      where: { id },
+      data: { seatIndex, ...auditUpdate(actorId) },
+    });
+  }
+
+  /**
+   * VR-8 — revive a request to PENDING with a fresh TTL. `createdAt` is
+   * deliberately NOT touched: the queue score is derived from it, so a restored
+   * request re-enters at exactly its former position.
+   */
+  async restoreRequest(
+    id: string,
+    actorId: string,
+    expiresAt: Date,
+  ): Promise<VideoRoomSeatRequest> {
+    return this.prisma.videoRoomSeatRequest.update({
+      where: { id },
+      data: {
+        status: VideoRoomSeatRequestStatus.PENDING,
+        resolvedAt: null,
+        resolvedBy: null,
+        lastError: null,
+        expiresAt,
+        ...auditUpdate(actorId),
+      },
+    });
   }
 
   // ---- Invitations ----
@@ -181,27 +305,75 @@ export class VideoRoomSeatsRepository {
     });
   }
 
-  /** An invitee's current PENDING invitations in a room. */
+  /**
+   * Outstanding (PENDING or DELIVERED) invitations in a room. VR-8 — DELIVERED
+   * counts as outstanding too, so an acknowledged invitation still surfaces here
+   * (the duplicate-invite guard) and in `listInvitations`. `inviteeUserId` stays
+   * optional: `invite`'s duplicate check passes one, `listInvitations` omits it.
+   */
   async listPendingInvitations(
     roomId: string,
-    inviteeUserId: string,
+    inviteeUserId?: string,
   ): Promise<VideoRoomInvitation[]> {
     return this.prisma.videoRoomInvitation.findMany({
-      where: { roomId, inviteeUserId, status: VideoRoomInvitationStatus.PENDING },
+      where: {
+        roomId,
+        ...(inviteeUserId ? { inviteeUserId } : {}),
+        status: {
+          in: [VideoRoomInvitationStatus.PENDING, VideoRoomInvitationStatus.DELIVERED],
+        },
+      },
       orderBy: { createdAt: 'asc' },
     });
   }
 
-  /** Resolve an invitation (accept/reject/cancel/expire). */
+  /**
+   * Resolve an invitation (accept/reject/cancel/expire). VR-8 adds `opts` for
+   * the DELIVERED acknowledgement stamp and for failure/retry bookkeeping.
+   *
+   * I6 — same compare-and-swap contract as `setRequestStatus`: an
+   * `opts.expectedFrom` turns this into a conditional `updateMany`, returning
+   * `null` when the row was no longer in that status (lost the race) instead
+   * of overwriting whatever another actor already wrote. Omitted →
+   * unconditional `update`, unchanged.
+   */
   async setInvitationStatus(
     id: string,
     status: VideoRoomInvitationStatus,
     actorId: string,
-  ): Promise<VideoRoomInvitation> {
-    return this.prisma.videoRoomInvitation.update({
-      where: { id },
-      data: { status, resolvedAt: new Date(), ...auditUpdate(actorId) },
+    opts?: Omit<SetInvitationStatusOptions, 'expectedFrom'>,
+  ): Promise<VideoRoomInvitation>;
+  async setInvitationStatus(
+    id: string,
+    status: VideoRoomInvitationStatus,
+    actorId: string,
+    opts: SetInvitationStatusOptions & { expectedFrom: VideoRoomInvitationStatus },
+  ): Promise<VideoRoomInvitation | null>;
+  async setInvitationStatus(
+    id: string,
+    status: VideoRoomInvitationStatus,
+    actorId: string,
+    opts?: SetInvitationStatusOptions,
+  ): Promise<VideoRoomInvitation | null> {
+    const data: Prisma.VideoRoomInvitationUpdateManyMutationInput = {
+      status,
+      resolvedAt: new Date(),
+      ...(opts?.deliveredAt !== undefined ? { deliveredAt: opts.deliveredAt } : {}),
+      ...(opts?.lastError !== undefined ? { lastError: opts.lastError } : {}),
+      ...(opts?.bumpAttempt ? { attemptCount: { increment: 1 } } : {}),
+      ...auditUpdate(actorId),
+    };
+
+    if (opts?.expectedFrom === undefined) {
+      return this.prisma.videoRoomInvitation.update({ where: { id }, data });
+    }
+
+    const { count } = await this.prisma.videoRoomInvitation.updateMany({
+      where: { id, status: opts.expectedFrom },
+      data,
     });
+    if (count === 0) return null;
+    return this.prisma.videoRoomInvitation.findUniqueOrThrow({ where: { id } });
   }
 
   /** RESERVED seats across rooms — the seat monitor reconciles these against their
@@ -220,6 +392,20 @@ export class VideoRoomSeatsRepository {
       data: { status: VideoRoomInvitationStatus.EXPIRED },
     });
     return count;
+  }
+
+  /** VR-8 — expired invitations (PENDING *or* DELIVERED), bounded, oldest first. */
+  async listExpiredInvitations(now: Date, limit: number): Promise<VideoRoomInvitation[]> {
+    return this.prisma.videoRoomInvitation.findMany({
+      where: {
+        status: {
+          in: [VideoRoomInvitationStatus.PENDING, VideoRoomInvitationStatus.DELIVERED],
+        },
+        expiresAt: { lt: now },
+      },
+      orderBy: { expiresAt: 'asc' },
+      take: limit,
+    });
   }
 
   // ---- Layout (VideoRoomSettings seat counts) ----

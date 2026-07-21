@@ -1,6 +1,6 @@
 import { BlockedWordAction, BlockedWordSeverity, ChatBlockedWord } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
-import { ChatRepository } from '../repositories/chat.repository';
+import { BlockedWordRepository } from './blocked-word.repository';
 import { BlockedWordService } from './blocked-word.service';
 
 /** Minimal factory for a dictionary row. */
@@ -24,18 +24,18 @@ function word(
 }
 
 describe('BlockedWordService', () => {
-  let repo: { listEnabledWords: jest.Mock };
+  let words: { listEnabledWords: jest.Mock };
   let service: BlockedWordService;
 
-  async function load(words: ChatBlockedWord[]): Promise<void> {
-    repo.listEnabledWords.mockResolvedValue(words);
+  async function load(entries: ChatBlockedWord[]): Promise<void> {
+    words.listEnabledWords.mockResolvedValue(entries);
     await service.invalidate();
   }
 
   beforeEach(() => {
-    repo = { listEnabledWords: jest.fn().mockResolvedValue([]) };
+    words = { listEnabledWords: jest.fn().mockResolvedValue([]) };
     const config = { get: jest.fn().mockReturnValue({ chat: {} }) } as unknown as ConfigService;
-    service = new BlockedWordService(repo as unknown as ChatRepository, config);
+    service = new BlockedWordService(words as unknown as BlockedWordRepository, config);
   });
 
   it('returns clean for text with no matches', async () => {

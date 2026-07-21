@@ -14,9 +14,10 @@ export interface RankedEntry {
  *  - counters with expiry (gift combos, rate windows)
  *  - sorted-set leaderboards (rankings)
  *
- * Every method touches a single key, so all of it is Redis Cluster-safe.
- * `del()` fans out one command per key rather than issuing a cross-slot
- * multi-key DEL.
+ * Every method touches a single key — with the sole exception of `mget`, which
+ * is multi-key and therefore requires its callers to hash-tag the keys into one
+ * slot. `del()` fans out one command per key rather than issuing a cross-slot
+ * multi-key DEL, keeping the rest Redis Cluster-safe by construction.
  */
 @Injectable()
 export class CacheService {
@@ -29,6 +30,30 @@ export class CacheService {
   async get<T>(key: string): Promise<T | null> {
     const raw = await this.client.get(key);
     return raw ? (JSON.parse(raw) as T) : null;
+  }
+
+  /**
+   * Multi-key JSON read in one round trip. Misses — and payloads that fail to
+   * parse — come back as null, positionally aligned with `keys`, so a corrupt
+   * value degrades to a cache miss rather than throwing inside a caller's hot
+   * path.
+   *
+   * **Cluster caveat:** unlike every other method here this spans keys, so the
+   * caller must hash-tag them into a single slot (see
+   * `videoRoomPermissionVersionKey` / `videoRoomPermissionKey`, which both tag on
+   * the room id for exactly this reason).
+   */
+  async mget<T>(keys: string[]): Promise<(T | null)[]> {
+    if (keys.length === 0) return [];
+    const raws = await this.client.mget(...keys);
+    return raws.map((raw) => {
+      if (raw === null) return null;
+      try {
+        return JSON.parse(raw) as T;
+      } catch {
+        return null;
+      }
+    });
   }
 
   async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {

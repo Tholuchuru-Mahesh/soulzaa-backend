@@ -5,3 +5,4 @@ export * from './video-room-moderation.repository';
 export * from './video-room-media-session.repository';
 export * from './video-room-events.repository';
 export * from './video-room-reference.repository';
+export * from './video-room-chat.repository';

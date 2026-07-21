@@ -11,6 +11,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { configurations } from './config/configuration';
 import { validateEnv } from './config/env.validation';
+import { ContentModerationModule } from './infra/content-moderation';
 import { InfraModule } from './infra/infra.module';
 import { MetricsInterceptor } from './infra/observability/metrics.interceptor';
 import { DOMAIN_MODULES } from './modules';
@@ -26,6 +27,7 @@ import { DOMAIN_MODULES } from './modules';
     LoggerModule,
     EventBusModule,
     InfraModule,
+    ContentModerationModule,
     ...DOMAIN_MODULES,
   ],
   controllers: [AppController],

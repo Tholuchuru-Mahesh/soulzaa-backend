@@ -1,4 +1,9 @@
-import { VideoRoomSeatRequestStatus, VideoRoomSeatStatus, VideoRoomSeatType } from '@prisma/client';
+import {
+  VideoRoomInvitationStatus,
+  VideoRoomSeatRequestStatus,
+  VideoRoomSeatStatus,
+  VideoRoomSeatType,
+} from '@prisma/client';
 import type { PrismaService } from 'src/infra/prisma/prisma.service';
 import { VideoRoomSeatsRepository } from './video-room-seats.repository';
 
@@ -142,5 +147,173 @@ describe('VideoRoomSeatsRepository', () => {
         occupantUserId: null,
       } as any),
     ).toBe(false);
+  });
+});
+
+describe('VideoRoomSeatsRepository — VR-8 workflow', () => {
+  let prisma: any;
+  let repo: VideoRoomSeatsRepository;
+
+  beforeEach(() => {
+    prisma = {
+      videoRoomSeatRequest: {
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({ id: 'q1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'q1', status: 'ACCEPTED' }),
+      },
+      videoRoomInvitation: {
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({ id: 'i1' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'i1', status: 'PENDING' }),
+      },
+    };
+    repo = new VideoRoomSeatsRepository(prisma);
+  });
+
+  it('lists expired requests bounded by the caller-supplied limit', async () => {
+    const now = new Date('2026-07-21T10:00:00Z');
+    await repo.listExpiredRequests(now, 500);
+    expect(prisma.videoRoomSeatRequest.findMany).toHaveBeenCalledWith({
+      where: { status: VideoRoomSeatRequestStatus.PENDING, expiresAt: { lt: now } },
+      orderBy: { expiresAt: 'asc' },
+      take: 500,
+    });
+  });
+
+  it('lists expired invitations from both PENDING and DELIVERED', async () => {
+    const now = new Date('2026-07-21T10:00:00Z');
+    await repo.listExpiredInvitations(now, 500);
+    const arg = prisma.videoRoomInvitation.findMany.mock.calls[0][0];
+    expect(arg.where.status).toEqual({
+      in: [VideoRoomInvitationStatus.PENDING, VideoRoomInvitationStatus.DELIVERED],
+    });
+    expect(arg.take).toBe(500);
+  });
+
+  it('records lastError and bumps attemptCount when asked', async () => {
+    await repo.setRequestStatus('q1', VideoRoomSeatRequestStatus.FAILED, 'actor', 'actor', {
+      lastError: 'seat taken',
+      bumpAttempt: true,
+    });
+    const arg = prisma.videoRoomSeatRequest.update.mock.calls[0][0];
+    expect(arg.where).toEqual({ id: 'q1' });
+    expect(arg.data.status).toBe(VideoRoomSeatRequestStatus.FAILED);
+    expect(arg.data.lastError).toBe('seat taken');
+    expect(arg.data.attemptCount).toEqual({ increment: 1 });
+  });
+
+  it('does not touch attemptCount on an ordinary status change', async () => {
+    await repo.setRequestStatus('q1', VideoRoomSeatRequestStatus.REJECTED, 'actor', 'actor');
+    const arg = prisma.videoRoomSeatRequest.update.mock.calls[0][0];
+    expect(arg.data.attemptCount).toBeUndefined();
+    expect(arg.data.lastError).toBeUndefined();
+  });
+
+  it('stamps deliveredAt when marking an invitation DELIVERED', async () => {
+    const when = new Date('2026-07-21T10:00:00Z');
+    await repo.setInvitationStatus('i1', VideoRoomInvitationStatus.DELIVERED, 'u2', {
+      deliveredAt: when,
+    });
+    const arg = prisma.videoRoomInvitation.update.mock.calls[0][0];
+    expect(arg.data.deliveredAt).toBe(when);
+  });
+
+  it('updates only the preferred seat index, leaving status untouched', async () => {
+    await repo.updateRequestSeatIndex('q1', 4, 'u1');
+    const arg = prisma.videoRoomSeatRequest.update.mock.calls[0][0];
+    expect(arg.data.seatIndex).toBe(4);
+    expect(arg.data.status).toBeUndefined();
+  });
+
+  it('restores a request to PENDING without disturbing createdAt', async () => {
+    const expiresAt = new Date('2026-07-21T10:05:00Z');
+    await repo.restoreRequest('q1', 'u1', expiresAt);
+    const arg = prisma.videoRoomSeatRequest.update.mock.calls[0][0];
+    expect(arg.data.status).toBe(VideoRoomSeatRequestStatus.PENDING);
+    expect(arg.data.expiresAt).toBe(expiresAt);
+    expect(arg.data.resolvedAt).toBeNull();
+    expect(arg.data.createdAt).toBeUndefined();
+  });
+
+  // ---- I6 — compare-and-swap ----
+
+  describe('setRequestStatus — I6 compare-and-swap', () => {
+    it('writes unconditionally via `update` when expectedFrom is omitted (unchanged behaviour)', async () => {
+      await repo.setRequestStatus('q1', VideoRoomSeatRequestStatus.ACCEPTED, 'actor', 'actor');
+      expect(prisma.videoRoomSeatRequest.update).toHaveBeenCalledTimes(1);
+      expect(prisma.videoRoomSeatRequest.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('writes conditionally via `updateMany({ where: { id, status: expectedFrom } })` when given', async () => {
+      const updated = await repo.setRequestStatus(
+        'q1',
+        VideoRoomSeatRequestStatus.ACCEPTED,
+        'actor',
+        'actor',
+        { expectedFrom: VideoRoomSeatRequestStatus.PENDING },
+      );
+      expect(prisma.videoRoomSeatRequest.update).not.toHaveBeenCalled();
+      const call = prisma.videoRoomSeatRequest.updateMany.mock.calls[0][0];
+      expect(call.where).toEqual({ id: 'q1', status: VideoRoomSeatRequestStatus.PENDING });
+      expect(call.data.status).toBe(VideoRoomSeatRequestStatus.ACCEPTED);
+      // A successful CAS re-reads the row — `updateMany` can't return it —
+      // to preserve the "returns the updated entity" contract.
+      expect(prisma.videoRoomSeatRequest.findUniqueOrThrow).toHaveBeenCalledWith({
+        where: { id: 'q1' },
+      });
+      expect(updated).toEqual({ id: 'q1', status: 'ACCEPTED' });
+    });
+
+    it('returns null — without re-reading — when the row was no longer in the expected status', async () => {
+      prisma.videoRoomSeatRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+      const updated = await repo.setRequestStatus(
+        'q1',
+        VideoRoomSeatRequestStatus.ACCEPTED,
+        'actor',
+        'actor',
+        { expectedFrom: VideoRoomSeatRequestStatus.PENDING },
+      );
+      expect(updated).toBeNull();
+      expect(prisma.videoRoomSeatRequest.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('setInvitationStatus — I6 compare-and-swap', () => {
+    it('writes unconditionally via `update` when expectedFrom is omitted (unchanged behaviour)', async () => {
+      await repo.setInvitationStatus('i1', VideoRoomInvitationStatus.PENDING, 'actor');
+      expect(prisma.videoRoomInvitation.update).toHaveBeenCalledTimes(1);
+      expect(prisma.videoRoomInvitation.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('writes conditionally via `updateMany({ where: { id, status: expectedFrom } })` when given', async () => {
+      const updated = await repo.setInvitationStatus(
+        'i1',
+        VideoRoomInvitationStatus.PENDING,
+        'actor',
+        { expectedFrom: VideoRoomInvitationStatus.FAILED },
+      );
+      expect(prisma.videoRoomInvitation.update).not.toHaveBeenCalled();
+      const call = prisma.videoRoomInvitation.updateMany.mock.calls[0][0];
+      expect(call.where).toEqual({ id: 'i1', status: VideoRoomInvitationStatus.FAILED });
+      expect(call.data.status).toBe(VideoRoomInvitationStatus.PENDING);
+      expect(prisma.videoRoomInvitation.findUniqueOrThrow).toHaveBeenCalledWith({
+        where: { id: 'i1' },
+      });
+      expect(updated).toEqual({ id: 'i1', status: 'PENDING' });
+    });
+
+    it('returns null — without re-reading — when the row was no longer in the expected status', async () => {
+      prisma.videoRoomInvitation.updateMany.mockResolvedValueOnce({ count: 0 });
+      const updated = await repo.setInvitationStatus(
+        'i1',
+        VideoRoomInvitationStatus.PENDING,
+        'actor',
+        { expectedFrom: VideoRoomInvitationStatus.FAILED },
+      );
+      expect(updated).toBeNull();
+      expect(prisma.videoRoomInvitation.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
   });
 });

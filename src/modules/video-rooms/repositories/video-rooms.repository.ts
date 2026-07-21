@@ -233,6 +233,23 @@ export class VideoRoomsRepository {
     return { room, settings, statistics };
   }
 
+  /** A room's settings row, or null when it has none (VR-8 seat queue policy lookup). */
+  async getSettings(roomId: string): Promise<VideoRoomSettings | null> {
+    return this.prisma.videoRoomSettings.findUnique({ where: { roomId } });
+  }
+
+  /**
+   * Patch a room's settings row (VR-9.1a chat-scoped slice today; the full
+   * ~20-field surface lands with the settings phase). Callers build the
+   * partial `data` themselves — this method has no business rules of its own.
+   */
+  async updateSettings(
+    roomId: string,
+    data: Prisma.VideoRoomSettingsUpdateInput,
+  ): Promise<VideoRoomSettings> {
+    return this.prisma.videoRoomSettings.update({ where: { roomId }, data });
+  }
+
   /** Count an owner's non-deleted rooms (the "max rooms per owner" cap check). */
   countActiveByOwner(ownerId: string): Promise<number> {
     return this.prisma.videoRoom.count({ where: { ownerId, deletedAt: null } });
@@ -517,6 +534,18 @@ export class VideoRoomsRepository {
     });
   }
 
+  /**
+   * Move a room to a new owner (VR-7 ownership transfer / recovery). `ownerId` is
+   * the single source of truth for ownership — there is no owner grant row — so
+   * this one write is what makes the handover authoritative.
+   */
+  async setOwner(roomId: string, newOwnerId: string, actorId: string): Promise<void> {
+    await this.prisma.videoRoom.update({
+      where: { id: roomId },
+      data: { ownerId: newOwnerId, ...auditUpdate(actorId) },
+    });
+  }
+
   /** Update a member's denormalised role mirror. */
   async setMemberRole(
     roomId: string,
@@ -593,6 +622,18 @@ export class VideoRoomsRepository {
     await this.prisma.videoRoomStatistics.update({
       where: { roomId },
       data: { currentViewers: liveCount, lastActivityAt: new Date() },
+    });
+  }
+
+  /**
+   * VR-9.1b: bump the lifetime chat message counter. Called from
+   * `VideoRoomChatMetricsListener` off the send path, fire-and-forget — the
+   * caller filters out SYSTEM rows so presence churn never inflates the count.
+   */
+  async bumpChatMessageCount(roomId: string): Promise<void> {
+    await this.prisma.videoRoomStatistics.update({
+      where: { roomId },
+      data: { totalChatMessages: { increment: 1 }, lastActivityAt: new Date() },
     });
   }
 

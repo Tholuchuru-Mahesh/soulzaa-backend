@@ -60,7 +60,10 @@ describe('VideoRoomsRepository', () => {
         count: jest.fn().mockResolvedValue(0),
         update: jest.fn().mockResolvedValue({ id: 'r1' }),
       },
-      videoRoomSettings: { findUnique: jest.fn().mockResolvedValue(null) },
+      videoRoomSettings: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue({ roomId: 'r1' }),
+      },
       videoRoomStatistics: {
         findUnique: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
@@ -241,6 +244,31 @@ describe('VideoRoomsRepository', () => {
     });
   });
 
+  // ---- VR-9.1a chat settings write ----
+
+  it('updateSettings forwards the patch verbatim to the settings row', async () => {
+    prisma.videoRoomSettings.update.mockResolvedValue({
+      roomId: 'r1',
+      chatMode: 'PARTICIPANTS_ONLY',
+      allowViewerChat: false,
+    });
+
+    const result = await repo.updateSettings('r1', {
+      chatMode: 'PARTICIPANTS_ONLY' as never,
+      allowViewerChat: false,
+    });
+
+    expect(prisma.videoRoomSettings.update).toHaveBeenCalledWith({
+      where: { roomId: 'r1' },
+      data: { chatMode: 'PARTICIPANTS_ONLY', allowViewerChat: false },
+    });
+    expect(result).toEqual({
+      roomId: 'r1',
+      chatMode: 'PARTICIPANTS_ONLY',
+      allowViewerChat: false,
+    });
+  });
+
   // ---- VR-2 discovery ----
 
   it('search applies isVerified + accessPolicy(metadata) + ownerId filters', async () => {
@@ -409,6 +437,14 @@ describe('VideoRoomsRepository', () => {
     expect(prisma.videoRoomStatistics.updateMany).toHaveBeenCalledWith({
       where: { roomId: 'r1', peakParticipants: { lt: 4 } },
       data: { peakParticipants: 4 },
+    });
+  });
+
+  it('bumpChatMessageCount increments the lifetime chat counter', async () => {
+    await repo.bumpChatMessageCount('r1');
+    expect(prisma.videoRoomStatistics.update).toHaveBeenCalledWith({
+      where: { roomId: 'r1' },
+      data: { totalChatMessages: { increment: 1 }, lastActivityAt: expect.any(Date) },
     });
   });
 

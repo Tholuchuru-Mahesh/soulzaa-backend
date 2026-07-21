@@ -36,6 +36,12 @@ export class VideoRoomsMetrics {
   private readonly seatTransfers: Counter;
   private readonly seatSwitches: Counter;
   private readonly reservationTimeouts: Counter;
+  // ---- VR-8 seat request/invitation workflow ----
+  private readonly seatQueueDepth: Histogram;
+  private readonly seatRequestResolutions: Counter<'status'>;
+  private readonly seatApprovalLatency: Histogram;
+  private readonly seatInvitationOutcomes: Counter<'status'>;
+  private readonly seatPromotions: Counter<'result'>;
   // ---- VR-5 media ----
   private readonly mediaActiveStreams: Gauge;
   private readonly mediaPublishingUsers: Gauge;
@@ -59,6 +65,25 @@ export class VideoRoomsMetrics {
   // ---- VR-6 viewer promote/demote ----
   private readonly viewerPromotions: Counter;
   private readonly viewerDemotions: Counter;
+  // ---- VR-7 role & permission engine ----
+  private readonly permCacheHits: Counter;
+  private readonly permCacheMisses: Counter;
+  private readonly roleAssignments: Counter;
+  private readonly permissionChecks: Counter;
+  private readonly permissionDenials: Counter;
+  private readonly ownershipTransfers: Counter;
+  private readonly temporaryRoles: Counter;
+  private readonly authorizationH: Histogram;
+  // ---- VR-9 chat ----
+  private readonly chatMessages: Counter<'type'>;
+  private readonly chatMessageLatency: Histogram;
+  private readonly chatDeliveryLatency: Histogram;
+  private readonly chatReadLatency: Histogram;
+  private readonly typingEvents: Counter;
+  private readonly chatAnnouncements: Counter<'action'>;
+  private readonly pinnedMessages: Gauge;
+  private readonly spamDetected: Counter<'kind'>;
+  private readonly chatRateLimitViolations: Counter;
 
   constructor(metrics: MetricsService) {
     const registers = [metrics.registry];
@@ -173,6 +198,37 @@ export class VideoRoomsMetrics {
       help: 'Video-room seat reservations released by TTL expiry',
       registers,
     });
+    // ---- VR-8 seat request/invitation workflow ----
+    this.seatQueueDepth = new Histogram({
+      name: 'video_rooms_seat_queue_depth',
+      help: "Observed depth of a single room's seat queue at each queue update (distribution across rooms — p50/p95/max, not an aggregate)",
+      buckets: [0, 1, 2, 5, 10, 20, 50, 100],
+      registers,
+    });
+    this.seatRequestResolutions = new Counter({
+      name: 'video_rooms_seat_request_resolutions_total',
+      help: 'Seat request resolutions by terminal status',
+      labelNames: ['status'] as const,
+      registers,
+    });
+    this.seatApprovalLatency = new Histogram({
+      name: 'video_rooms_seat_approval_latency_seconds',
+      help: 'Seconds from seat request creation to resolution',
+      buckets: [1, 5, 15, 30, 60, 120, 300],
+      registers,
+    });
+    this.seatInvitationOutcomes = new Counter({
+      name: 'video_rooms_seat_invitation_outcomes_total',
+      help: 'Seat invitation outcomes; delivery and acceptance rates derive from this',
+      labelNames: ['status'] as const,
+      registers,
+    });
+    this.seatPromotions = new Counter({
+      name: 'video_rooms_seat_promotion_total',
+      help: 'Viewer→participant promotion attempts by result',
+      labelNames: ['result'] as const,
+      registers,
+    });
     // ---- VR-5 media ----
     this.mediaActiveStreams = new Gauge({
       name: 'video_rooms_media_active_streams',
@@ -284,6 +340,103 @@ export class VideoRoomsMetrics {
       help: 'Participants force-demoted back to the audience by a host/moderator',
       registers,
     });
+    this.permCacheHits = new Counter({
+      name: 'video_rooms_permission_cache_hits_total',
+      help: 'Permission cache hits',
+      registers,
+    });
+    this.permCacheMisses = new Counter({
+      name: 'video_rooms_permission_cache_misses_total',
+      help: 'Permission cache misses, including version mismatches',
+      registers,
+    });
+    this.roleAssignments = new Counter({
+      name: 'video_rooms_role_assignments_total',
+      help: 'In-room role grants, updates and revocations',
+      labelNames: ['role', 'action'],
+      registers,
+    });
+    this.permissionChecks = new Counter({
+      name: 'video_rooms_permission_checks_total',
+      help: 'Authorization decisions, by outcome',
+      labelNames: ['result'],
+      registers,
+    });
+    this.permissionDenials = new Counter({
+      name: 'video_rooms_permission_denials_total',
+      help: 'Denied authorization decisions, by permission',
+      labelNames: ['permission'],
+      registers,
+    });
+    this.ownershipTransfers = new Counter({
+      name: 'video_rooms_ownership_transfers_total',
+      help: 'Room ownership handovers (deliberate transfer + recovery)',
+      registers,
+    });
+    this.temporaryRoles = new Counter({
+      name: 'video_rooms_temporary_roles_total',
+      help: 'Temporary role grants and automatic expiries',
+      labelNames: ['action'],
+      registers,
+    });
+    this.authorizationH = new Histogram({
+      name: 'video_rooms_authorization_duration_seconds',
+      help: 'Latency of a full authorization decision (cache hit or DB resolve)',
+      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 1],
+      registers,
+    });
+    // ---- VR-9 chat ----
+    this.chatMessages = new Counter({
+      name: 'video_rooms_chat_messages_total',
+      help: 'Video-room chat messages sent, by type',
+      labelNames: ['type'],
+      registers,
+    });
+    this.chatMessageLatency = new Histogram({
+      name: 'video_rooms_chat_message_latency_seconds',
+      help: 'Time from send request to socket broadcast',
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2],
+      registers,
+    });
+    this.chatDeliveryLatency = new Histogram({
+      name: 'video_rooms_chat_delivery_latency_seconds',
+      help: 'Time from message creation to a delivered receipt',
+      buckets: [0.1, 0.5, 1, 2, 5, 10, 30, 60],
+      registers,
+    });
+    this.chatReadLatency = new Histogram({
+      name: 'video_rooms_chat_read_latency_seconds',
+      help: 'Time from message creation to a read receipt',
+      buckets: [1, 5, 15, 30, 60, 300, 900],
+      registers,
+    });
+    this.typingEvents = new Counter({
+      name: 'video_rooms_chat_typing_events_total',
+      help: 'Typing start/stop signals received',
+      registers,
+    });
+    this.chatAnnouncements = new Counter({
+      name: 'video_rooms_chat_announcements_total',
+      help: 'Announcement lifecycle actions',
+      labelNames: ['action'],
+      registers,
+    });
+    this.pinnedMessages = new Gauge({
+      name: 'video_rooms_chat_pinned_messages',
+      help: 'Currently pinned messages per room',
+      registers,
+    });
+    this.spamDetected = new Counter({
+      name: 'video_rooms_chat_spam_detected_total',
+      help: 'Spam signals detected, by kind (flood/duplicate/blocked_word)',
+      labelNames: ['kind'],
+      registers,
+    });
+    this.chatRateLimitViolations = new Counter({
+      name: 'video_rooms_chat_rate_limit_violations_total',
+      help: 'Chat rate-limit rejections',
+      registers,
+    });
   }
 
   // ---- VR-4 seat helpers ----
@@ -322,6 +475,28 @@ export class VideoRoomsMetrics {
 
   incReservationTimeout(): void {
     this.reservationTimeouts.inc();
+  }
+
+  // ---- VR-8 seat request/invitation workflow helpers ----
+
+  observeSeatQueueDepth(depth: number): void {
+    this.seatQueueDepth.observe(depth);
+  }
+
+  incSeatRequestResolution(status: string): void {
+    this.seatRequestResolutions.inc({ status });
+  }
+
+  observeSeatApprovalLatency(seconds: number): void {
+    this.seatApprovalLatency.observe(seconds);
+  }
+
+  incSeatInvitationOutcome(status: string): void {
+    this.seatInvitationOutcomes.inc({ status });
+  }
+
+  incSeatPromotion(result: 'success' | 'failure'): void {
+    this.seatPromotions.inc({ result });
   }
 
   setLiveRooms(count: number): void {
@@ -490,5 +665,77 @@ export class VideoRoomsMetrics {
 
   incViewerDemotion(): void {
     this.viewerDemotions.inc();
+  }
+
+  // ---- VR-7 permission cache helpers ----
+
+  incPermissionCacheHit(): void {
+    this.permCacheHits.inc();
+  }
+
+  incPermissionCacheMiss(): void {
+    this.permCacheMisses.inc();
+  }
+
+  incRoleAssignment(role: string, action: 'assigned' | 'removed' | 'updated'): void {
+    this.roleAssignments.inc({ role, action });
+  }
+
+  incPermissionCheck(result: 'allowed' | 'denied'): void {
+    this.permissionChecks.inc({ result });
+  }
+
+  incPermissionDenial(permission: string): void {
+    this.permissionDenials.inc({ permission });
+  }
+
+  incOwnershipTransfer(): void {
+    this.ownershipTransfers.inc();
+  }
+
+  incTemporaryRole(action: 'granted' | 'expired'): void {
+    this.temporaryRoles.inc({ action });
+  }
+
+  observeAuthorization(seconds: number): void {
+    this.authorizationH.observe(seconds);
+  }
+
+  // ---- VR-9 chat helpers ----
+
+  incChatMessage(type: string): void {
+    this.chatMessages.inc({ type });
+  }
+
+  observeChatLatency(seconds: number): void {
+    this.chatMessageLatency.observe(seconds);
+  }
+
+  observeChatDelivery(seconds: number): void {
+    this.chatDeliveryLatency.observe(seconds);
+  }
+
+  observeChatRead(seconds: number): void {
+    this.chatReadLatency.observe(seconds);
+  }
+
+  incTypingEvent(): void {
+    this.typingEvents.inc();
+  }
+
+  incAnnouncement(action: string): void {
+    this.chatAnnouncements.inc({ action });
+  }
+
+  setPinnedMessages(count: number): void {
+    this.pinnedMessages.set(count);
+  }
+
+  incSpamDetected(kind: string): void {
+    this.spamDetected.inc({ kind });
+  }
+
+  incChatRateLimitViolation(): void {
+    this.chatRateLimitViolations.inc();
   }
 }

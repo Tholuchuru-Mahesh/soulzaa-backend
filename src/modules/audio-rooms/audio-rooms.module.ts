@@ -40,9 +40,7 @@ import { WatchPartyRepository } from './repositories/watch-party.repository';
 import { VoiceSessionRepository } from './repositories/voice-session.repository';
 import { AudioRoomSeatsService } from './services/audio-room-seats.service';
 import { AudioRoomsService } from './services/audio-rooms.service';
-import { BlockedWordService } from './services/blocked-word.service';
 import { ChatService } from './services/chat.service';
-import { ChatBlockedWordSeeder } from './services/chat-blocked-word.seeder.service';
 import { ModerationExpiryMonitor } from './services/moderation-expiry.monitor';
 import { ModerationService } from './services/moderation.service';
 import { PkBattleService } from './services/pk-battle.service';
@@ -125,9 +123,7 @@ import { VoiceService } from './services/voice.service';
     VoiceHeartbeatMonitor,
     ModerationService,
     ModerationExpiryMonitor,
-    BlockedWordService,
     ChatService,
-    ChatBlockedWordSeeder,
     AudioRoomSocketListener,
     AudioRoomSeatsListener,
     VoiceSocketListener,

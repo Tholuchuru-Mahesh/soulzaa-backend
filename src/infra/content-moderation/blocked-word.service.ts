@@ -7,8 +7,8 @@ import {
 } from '@nestjs/common';
 import { BlockedWordAction, BlockedWordSeverity, ChatBlockedWord } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
-import { CHAT_MASK_TOKEN } from '../constants/chat.constants';
-import { ChatRepository } from '../repositories/chat.repository';
+import { CHAT_MASK_TOKEN } from './content-moderation.constants';
+import { BlockedWordRepository } from './blocked-word.repository';
 
 /** A single dictionary entry compiled to an executable matcher. */
 interface CompiledWord {
@@ -52,7 +52,7 @@ export class BlockedWordService implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
-    private readonly repo: ChatRepository,
+    private readonly words: BlockedWordRepository,
     @Inject(ConfigService) private readonly config: ConfigService,
   ) {}
 
@@ -83,7 +83,7 @@ export class BlockedWordService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async reload(): Promise<void> {
-    const words = await this.repo.listEnabledWords();
+    const words = await this.words.listEnabledWords();
     this.compiled = words.map((w) => this.compile(w)).filter((c): c is CompiledWord => c !== null);
   }
 

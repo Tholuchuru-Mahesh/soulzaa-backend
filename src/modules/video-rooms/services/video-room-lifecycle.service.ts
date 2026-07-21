@@ -149,7 +149,7 @@ export class VideoRoomLifecycleService {
     dto: UpdateVideoRoomDto,
   ): Promise<VideoRoomDetailView> {
     const room = await this.getRoomOrThrow(roomId);
-    await this.permissions.assertCanManage(actor, room);
+    await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_ROOM);
 
     const data: UpdateVideoRoomData = {};
     const changed: string[] = [];
@@ -277,7 +277,7 @@ export class VideoRoomLifecycleService {
   /** Activate a room: OFFLINE -> LIVE (go live). */
   async activate(actor: RoomActor, roomId: string): Promise<VideoRoomDetailView> {
     const room = await this.getRoomOrThrow(roomId);
-    await this.permissions.assertCanManage(actor, room);
+    await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_ROOM);
     this.assertTransition(room.status, VideoRoomStatus.LIVE);
     await this.repo.updateRoom(roomId, { status: VideoRoomStatus.LIVE, endedAt: null }, actor.id);
     await this.repo.trendingBump(roomId);
@@ -324,7 +324,7 @@ export class VideoRoomLifecycleService {
   /** Reopen a closed room: ENDED -> OFFLINE (re-editable, ready to activate). */
   async reopen(actor: RoomActor, roomId: string): Promise<VideoRoomDetailView> {
     const room = await this.getRoomOrThrow(roomId);
-    await this.permissions.assertCanManage(actor, room);
+    await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_ROOM);
     this.assertTransition(room.status, VideoRoomStatus.OFFLINE);
     await this.repo.updateRoom(
       roomId,
@@ -368,7 +368,7 @@ export class VideoRoomLifecycleService {
         HttpStatus.NOT_FOUND,
       );
     }
-    await this.permissions.assertCanManage(actor, room);
+    await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_ROOM);
     await this.repo.restore(roomId, actor.id);
     await this.repo.appendLog({
       roomId,

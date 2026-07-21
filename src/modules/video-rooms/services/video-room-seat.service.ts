@@ -765,7 +765,12 @@ export class VideoRoomSeatService {
     return { id: room.id, ownerId: room.ownerId };
   }
 
-  protected async assertActiveMember(roomId: string, userId: string): Promise<void> {
+  /**
+   * Public (not just `protected`): `VideoRoomSeatQueueService.assertQueueAccess`
+   * calls this directly to gate the `GET .../seats/queue` read route, which has
+   * no MANAGE_SEATS/INVITE_USERS permission check of its own.
+   */
+  async assertActiveMember(roomId: string, userId: string): Promise<void> {
     const member = await this.rooms.getMember(roomId, userId);
     if (!member?.isActive) {
       throw new BusinessException(

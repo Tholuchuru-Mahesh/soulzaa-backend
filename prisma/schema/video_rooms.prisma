@@ -104,6 +104,11 @@ enum VideoRoomLogAction {
   BLOCKED
   UNBLOCKED
   KICKED
+  MESSAGE_DELETED
+  MESSAGE_PINNED
+  MESSAGE_UNPINNED
+  ANNOUNCEMENT_UPDATED
+  ANNOUNCEMENT_DELETED
 }
 
 /// The canonical video room row. `passwordHash` set ⇒ the room is
@@ -177,7 +182,17 @@ model VideoRoomSettings {
   roomId               String   @id @db.Uuid
   // ---- Chat ----
   allowChat            Boolean  @default(true)
+  /// @deprecated VR-9 — superseded by `chatMode` (PARTICIPANTS_ONLY).
+  /// Still WRITTEN (mirrored from chatMode on every settings update) so any
+  /// consumer not yet found — mobile client, admin surface, cached settings
+  /// payload — keeps seeing a truthful value. NEVER READ by backend code.
+  /// Drop in a later cleanup migration after a consumer audit.
   allowViewerChat      Boolean  @default(true)
+  // ---- VR-9 chat policy ----
+  chatMode               VideoRoomChatMode @default(NORMAL)
+  chatMaxMessageLength   Int               @default(500)
+  chatMaxAttachments     Int               @default(1)
+  chatRateLimitPerMinute Int               @default(20)
   slowModeSeconds      Int      @default(0)
   // ---- Economy / interactive ----
   allowGifts           Boolean  @default(true)
@@ -202,6 +217,9 @@ model VideoRoomSettings {
   // ---- Seat layout (multi-seat video; authoritative seat rows in video_room_seats) ----
   hostSeatCount        Int      @default(9)
   guestSeatCount       Int      @default(0)
+  /// VR-8 — when true (default) a freed seat waits for owner/admin approval;
+  /// when false the front of the seat queue is auto-promoted onto it.
+  seatApprovalRequired Boolean  @default(true)
   metadata             Json?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

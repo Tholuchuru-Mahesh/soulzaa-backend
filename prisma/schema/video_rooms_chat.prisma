@@ -1,0 +1,106 @@
+// ============================================================
+// Video Rooms — VR-9: room chat messages, pins, and read cursors.
+// Owned by the "video_rooms" module. No cross-module relations —
+// reference users/rooms/messages by id.
+//
+// Deliberately separate from audio_rooms_chat.prisma's RoomMessage:
+// that table has no edit trail, status, attachments, recall or read
+// cursor, and sharing it would put two domains on one hot index.
+// This mirrors the VideoRoom-does-not-reuse-AudioRoom split.
+//
+// Message STATUS is derived, never stored: SENDING/FAILED are
+// client-only, SENT/EDITED/DELETED/RECALLED come from the timestamp
+// columns, and DELIVERED/READ are per-recipient facts living in
+// video_room_chat_cursors. A status column could only drift.
+// ============================================================
+
+enum VideoRoomMessageType {
+  TEXT
+  EMOJI
+  GIF
+  IMAGE
+  VIDEO
+  VOICE
+  SYSTEM
+  ANNOUNCEMENT
+}
+
+/// Who may send in a room. Mutually exclusive states, so an enum rather
+/// than overlapping booleans (six booleans admit combinations that are
+/// nonsense). NORMAL = any active member; PARTICIPANTS_ONLY = seat
+/// holders + elevated roles; READ_ONLY = elevated roles only;
+/// ANNOUNCEMENT_ONLY = MANAGE_ANNOUNCEMENTS holders, ANNOUNCEMENT type only.
+enum VideoRoomChatMode {
+  NORMAL
+  PARTICIPANTS_ONLY
+  READ_ONLY
+  ANNOUNCEMENT_ONLY
+}
+
+/// A chat message. `senderId` is VIDEO_ROOM_SYSTEM_ACTOR_ID for SYSTEM rows.
+/// `metadata` carries announcementId (for ANNOUNCEMENT projections), the
+/// system-event kind (for SYSTEM rows), and the request audit context.
+/// Deletes and recalls are soft — the row is always retained.
+model VideoRoomMessage {
+  id              String               @id @default(uuid()) @db.Uuid
+  roomId          String               @db.Uuid
+  senderId        String               @db.Uuid
+  type            VideoRoomMessageType @default(TEXT)
+  content         String
+  mentions        String[]             @db.Uuid
+  /// 'OWNER' | 'ADMINS' for group mentions; null for direct @username mentions.
+  mentionScope    String?
+  replyToId       String?              @db.Uuid
+  forwardedFromId String?              @db.Uuid
+  attachments     Json?
+  metadata        Json?
+  editedAt        DateTime?
+  editCount       Int                  @default(0)
+  deletedAt       DateTime?
+  deletedBy       String?              @db.Uuid
+  recalledAt      DateTime?
+  createdAt       DateTime             @default(now())
+
+  @@index([roomId, createdAt(sort: Desc)])
+  @@index([roomId, type, createdAt(sort: Desc)])
+  @@index([roomId, senderId, createdAt(sort: Desc)])
+  @@index([replyToId])
+  @@index([mentions], type: Gin)
+  @@map("video_room_messages")
+}
+
+/// Pin/unpin audit trail. `isActive` false ⇒ unpinned (kept for audit).
+/// No denormalised isPinned flag on the message — pins are few and cached
+/// in Redis, so a second copy would only create drift.
+model VideoRoomMessagePin {
+  id         String    @id @default(uuid()) @db.Uuid
+  roomId     String    @db.Uuid
+  messageId  String    @db.Uuid
+  pinnedBy   String    @db.Uuid
+  isActive   Boolean   @default(true)
+  pinnedAt   DateTime  @default(now())
+  unpinnedBy String?   @db.Uuid
+  unpinnedAt DateTime?
+
+  @@index([roomId, isActive])
+  @@index([messageId])
+  @@map("video_room_message_pins")
+}
+
+/// Read-receipt high-water mark — ONE row per (room, user), never one per
+/// (message, user). A 10k-viewer room at 500 msg/min would otherwise write
+/// 5M receipt rows a minute. The reader list is derived:
+/// readers(M) = cursors where lastReadAt >= M.createdAt.
+model VideoRoomChatCursor {
+  roomId                 String    @db.Uuid
+  userId                 String    @db.Uuid
+  lastReadMessageId      String?   @db.Uuid
+  lastReadAt             DateTime?
+  lastDeliveredMessageId String?   @db.Uuid
+  lastDeliveredAt        DateTime?
+  updatedAt              DateTime  @updatedAt
+
+  @@id([roomId, userId])
+  @@index([roomId, lastReadAt])
+  @@map("video_room_chat_cursors")
+}

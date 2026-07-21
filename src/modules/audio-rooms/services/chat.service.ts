@@ -59,11 +59,11 @@ import {
 import { MemberReportedEvent } from '../events/audio-room-moderation.events';
 import type { IAudioRoomChatService } from '../interfaces/chat.service.interface';
 import type { RoomActor } from '../interfaces/room-actor.interface';
+import { BlockedWordService } from 'src/infra/content-moderation';
 import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repository';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
 import { ChatRepository } from '../repositories/chat.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
-import { BlockedWordService } from './blocked-word.service';
 import { ModerationService } from './moderation.service';
 import { RoomPermissionService } from './room-permission.service';
 
@@ -343,7 +343,11 @@ export class ChatService implements IAudioRoomChatService {
         for (const pin of activePins) {
           await this.chatRepo.unpin(pin.id, actor.id);
           await this.bus.publish(
-            new ChatMessageUnpinnedEvent({ roomId, messageId: pin.messageId, unpinnedBy: actor.id }),
+            new ChatMessageUnpinnedEvent({
+              roomId,
+              messageId: pin.messageId,
+              unpinnedBy: actor.id,
+            }),
           );
         }
       }

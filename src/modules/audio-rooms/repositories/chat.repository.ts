@@ -2,7 +2,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   BlockedWordAction,
   BlockedWordSeverity,
-  ChatBlockedWord,
   ChatMessageType,
   ChatReport,
   ChatReportStatus,
@@ -11,7 +10,9 @@ import {
   ReportReason,
   RoomMessage,
 } from '@prisma/client';
+import type { ChatBlockedWord } from '@prisma/client';
 import { auditCreate, auditUpdate } from 'src/common/utils/audit.util';
+import { BlockedWordRepository } from 'src/infra/content-moderation';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
@@ -25,10 +26,15 @@ import {
 
 /**
  * Data layer for AR-4 chat: Postgres (room_messages, pinned_messages,
- * chat_reports, chat_blocked_words) plus the Redis anti-abuse counters
- * (rate limit, slow-mode, duplicate suppression, violation history). Pure
- * persistence — permission checks, blocked-word scanning and escalation live in
- * the service. Every Redis op touches a single `{roomId}` hash-tagged key.
+ * chat_reports) plus the Redis anti-abuse counters (rate limit, slow-mode,
+ * duplicate suppression, violation history). Pure persistence — permission
+ * checks, blocked-word scanning and escalation live in the service. Every
+ * Redis op touches a single `{roomId}` hash-tagged key.
+ *
+ * The `chat_blocked_words` dictionary is global (no room scoping) and is owned
+ * by the shared `BlockedWordRepository` (src/infra/content-moderation); the
+ * admin CRUD methods below simply delegate to it so `ChatService`'s call sites
+ * don't change.
  */
 @Injectable()
 export class ChatRepository {
@@ -36,6 +42,7 @@ export class ChatRepository {
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
     @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
+    private readonly words: BlockedWordRepository,
   ) {}
 
   // ---- Messages ----
@@ -187,32 +194,21 @@ export class ChatRepository {
   }
 
   // ---- Blocked-word dictionary ----
-
-  listEnabledWords(): Promise<ChatBlockedWord[]> {
-    return this.prisma.chatBlockedWord.findMany({ where: { enabled: true } });
-  }
+  // The `chat_blocked_words` table is global (no room scoping) and its
+  // persistence now lives in the shared `BlockedWordRepository`
+  // (src/infra/content-moderation). These methods delegate to it so the
+  // admin CRUD call sites in ChatService are unaffected by the move.
 
   listWords(
     skip: number,
     take: number,
     filter: { language?: string; enabled?: boolean },
   ): Promise<[ChatBlockedWord[], number]> {
-    const where: Prisma.ChatBlockedWordWhereInput = {
-      ...(filter.language ? { language: filter.language } : {}),
-      ...(filter.enabled !== undefined ? { enabled: filter.enabled } : {}),
-    };
-    return this.prisma.$transaction([
-      this.prisma.chatBlockedWord.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
-      this.prisma.chatBlockedWord.count({ where }),
-    ]);
+    return this.words.listWords(skip, take, filter);
   }
 
   getWord(id: string): Promise<ChatBlockedWord | null> {
-    return this.prisma.chatBlockedWord.findUnique({ where: { id } });
-  }
-
-  findWord(pattern: string, language: string): Promise<ChatBlockedWord | null> {
-    return this.prisma.chatBlockedWord.findFirst({ where: { pattern, language } });
+    return this.words.getWord(id);
   }
 
   createWord(
@@ -227,9 +223,7 @@ export class ChatRepository {
     },
     actorId: string,
   ): Promise<ChatBlockedWord> {
-    return this.prisma.chatBlockedWord.create({
-      data: { ...input, ...auditCreate(actorId) },
-    });
+    return this.words.createWord(input, actorId);
   }
 
   updateWord(
@@ -237,33 +231,11 @@ export class ChatRepository {
     data: Prisma.ChatBlockedWordUpdateInput,
     actorId: string,
   ): Promise<ChatBlockedWord> {
-    return this.prisma.chatBlockedWord.update({
-      where: { id },
-      data: { ...data, ...auditUpdate(actorId) },
-    });
+    return this.words.updateWord(id, data, actorId);
   }
 
-  async deleteWord(id: string): Promise<void> {
-    await this.prisma.chatBlockedWord.delete({ where: { id } });
-  }
-
-  /** Idempotent seed helper: create a default word only if the pattern is new. */
-  async upsertSeedWord(input: {
-    pattern: string;
-    isRegex: boolean;
-    language: string;
-    severity: BlockedWordSeverity;
-    action: BlockedWordAction;
-  }): Promise<boolean> {
-    const existing = await this.prisma.chatBlockedWord.findFirst({
-      where: { pattern: input.pattern, language: input.language },
-      select: { id: true },
-    });
-    if (existing) return false;
-    await this.prisma.chatBlockedWord.create({
-      data: { ...input, enabled: true, notes: 'seed' },
-    });
-    return true;
+  deleteWord(id: string): Promise<void> {
+    return this.words.deleteWord(id);
   }
 
   // ---- Redis anti-abuse counters (hot path) ----

@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Ip,
   Param,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -14,6 +15,12 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { NotGuest } from 'src/common/decorators/not-guest.decorator';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
+import {
+  CancelSeatInvitationDto,
+  QueueResponseDto,
+  SeatRequestListItemDto,
+  UpdateSeatRequestDto,
+} from '../dto/seat-queue.dto';
 import {
   AcceptSeatInvitationDto,
   CancelReservationDto,
@@ -28,6 +35,7 @@ import {
 } from '../dto/seat.dto';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { VideoRoomSeatInvitationService } from '../services/video-room-seat-invitation.service';
+import { VideoRoomSeatQueueService } from '../services/video-room-seat-queue.service';
 import { VideoRoomSeatRequestService } from '../services/video-room-seat-request.service';
 import { VideoRoomSeatReservationService } from '../services/video-room-seat-reservation.service';
 import { VideoRoomSeatService } from '../services/video-room-seat.service';
@@ -48,6 +56,7 @@ export class VideoRoomSeatsController {
     private readonly reservations: VideoRoomSeatReservationService,
     private readonly requests: VideoRoomSeatRequestService,
     private readonly invitations: VideoRoomSeatInvitationService,
+    private readonly queue: VideoRoomSeatQueueService,
   ) {}
 
   private actor(user: AuthenticatedUser): RoomActor {
@@ -62,6 +71,63 @@ export class VideoRoomSeatsController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Room not found.' })
   getStage(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.seats.getStage(this.actor(user), id);
+  }
+
+  @Get(':id/seats/requests')
+  @NotGuest()
+  @ApiOperation({
+    summary: 'List pending seat requests in queue order (owner/admin; MANAGE_SEATS)',
+    description:
+      'Ordered by queue priority: VIP tier first, then arrival time, with a ' +
+      'fairness cap that pins repeatedly-skipped viewers to the front. Each row ' +
+      'carries its 1-based queue position.',
+  })
+  @ApiResponse({ status: HttpStatus.OK, type: [SeatRequestListItemDto] })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'MANAGE_SEATS required.' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Room not found.' })
+  listRequests(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.requests.listRequests(this.actor(user), id);
+  }
+
+  @Get(':id/seats/invitations')
+  @NotGuest()
+  @ApiOperation({ summary: 'List outstanding seat invitations (owner/admin; INVITE_USERS)' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Invitations still PENDING or DELIVERED.',
+  })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'INVITE_USERS required.' })
+  listInvitations(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.invitations.listInvitations(this.actor(user), id);
+  }
+
+  @Get(':id/seats/queue')
+  @NotGuest()
+  @ApiOperation({
+    summary: 'The seat queue and your own position in it (any active member)',
+  })
+  @ApiResponse({ status: HttpStatus.OK, type: QueueResponseDto })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'You must join the room first.' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Room not found.' })
+  async getQueue(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+  ): Promise<QueueResponseDto> {
+    await this.queue.assertQueueAccess(id, user.id);
+    const [entries, myPosition, size] = await Promise.all([
+      this.queue.list(id),
+      this.queue.position(id, user.id),
+      this.queue.size(id),
+    ]);
+    return {
+      size,
+      entries: entries.map((e) => ({
+        userId: e.userId,
+        position: e.position,
+        vipLevel: e.vipLevel,
+      })),
+      myPosition,
+    };
   }
 
   // ---- Reservation ----
@@ -165,6 +231,46 @@ export class VideoRoomSeatsController {
     return this.requests.reject(this.actor(user), id, requestId, ip);
   }
 
+  @Patch(':id/seats/request')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change the preferred seat on your own pending request' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Request updated.' })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'No pending request / seat not found.',
+  })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'That seat is locked.' })
+  updateRequest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: UpdateSeatRequestDto,
+    @Ip() ip: string,
+  ) {
+    return this.requests.updateRequest(this.actor(user), id, dto.seatIndex, ip);
+  }
+
+  @Post(':id/seats/request/:requestId/retry')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Retry a FAILED seat request (owner/admin; MANAGE_SEATS)',
+    description:
+      'Re-drives the seating pipeline for a request whose previous attempt threw. ' +
+      'Bounded by attemptCount; once the budget is spent the request is terminal.',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Retry succeeded; requester seated.' })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Not FAILED, or retries exhausted.' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Request not found.' })
+  retryRequest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('requestId', ParseUuidPipe) requestId: string,
+    @Ip() ip: string,
+  ) {
+    return this.requests.retry(this.actor(user), id, requestId, ip);
+  }
+
   // ---- Invitation workflow ----
 
   @Post(':id/seats/invite')
@@ -212,6 +318,58 @@ export class VideoRoomSeatsController {
     @Ip() ip: string,
   ) {
     return this.invitations.reject(this.actor(user), id, dto.invitationId, ip);
+  }
+
+  @Delete(':id/seats/invite')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Cancel an outstanding invitation (inviter/owner/admin; INVITE_USERS)' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Invitation cancelled.' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Invitation not found.' })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Invitation is no longer actionable.' })
+  cancelInvite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: CancelSeatInvitationDto,
+    @Ip() ip: string,
+  ) {
+    return this.invitations.cancel(this.actor(user), id, dto.invitationId, ip);
+  }
+
+  @Post(':id/seats/invite/:invitationId/ack')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Acknowledge receipt of an invitation (invitee) → DELIVERED',
+    description:
+      'Idempotent. Powers the invitation delivery-rate metric and lets the inviter ' +
+      'distinguish "not seen yet" from "seen and ignoring".',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Invitation marked delivered.' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Only the invitee may acknowledge.' })
+  ackInvite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('invitationId', ParseUuidPipe) invitationId: string,
+    @Ip() ip: string,
+  ) {
+    return this.invitations.acknowledge(this.actor(user), id, invitationId, ip);
+  }
+
+  @Post(':id/seats/invite/:invitationId/retry')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Retry a FAILED invitation acceptance (invitee)' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Retry succeeded; invitee seated.' })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Not FAILED, or retries exhausted.' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Only the invitee may retry.' })
+  retryInvite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('invitationId', ParseUuidPipe) invitationId: string,
+    @Ip() ip: string,
+  ) {
+    return this.invitations.retry(this.actor(user), id, invitationId, ip);
   }
 
   // ---- Lock / unlock (bulk-capable) ----
