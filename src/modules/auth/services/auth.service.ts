@@ -142,12 +142,27 @@ export class AuthService implements IAuthService {
     const verified = await this.firebaseService.verifyIdToken(idToken);
     const phoneNumber = verified.phoneNumber;
 
-    const user = await this.users.findByMobile(phoneNumber);
+    let user = await this.users.findByMobile(phoneNumber);
+    if (!user && phoneNumber.startsWith('+')) {
+      user = await this.users.findByMobile(phoneNumber.slice(1));
+    }
+
     if (!user) {
-      throw new BusinessException(
-        ERROR_CODES.NOT_FOUND,
-        'No account for this mobile number',
-        HttpStatus.NOT_FOUND,
+      const username = await this.generateUsername(null, `User_${phoneNumber.replace(/\D/g, '').slice(-4)}`);
+      user = await this.users.createIdentity({
+        username,
+        mobile: phoneNumber,
+        fullName: `User ${phoneNumber.slice(-4)}`,
+        isGuest: false,
+      });
+      await this.bus.publish(
+        new UserRegisteredEvent({
+          userId: user.id,
+          method: AuthProviderType.MOBILE_OTP,
+          isGuest: false,
+          email: user.email,
+          mobile: user.mobile,
+        }),
       );
     }
     this.assertActive(user);

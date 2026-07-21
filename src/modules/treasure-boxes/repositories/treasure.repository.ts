@@ -85,6 +85,17 @@ export class TreasureRepository {
     });
   }
 
+  getLatestCompletedSessionCreatedAfter(roomId: string, date: Date): Promise<TreasureSession | null> {
+    return this.prisma.treasureSession.findFirst({
+      where: {
+        roomId,
+        status: TreasureSessionStatus.COMPLETED,
+        createdAt: { gte: date },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   getSession(id: string): Promise<TreasureSession | null> {
     return this.prisma.treasureSession.findUnique({ where: { id } });
   }

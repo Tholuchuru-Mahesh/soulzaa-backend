@@ -86,7 +86,7 @@ export class TreasureService implements ITreasureBoxesService {
   // ---- ITreasureBoxesService ----
 
   async getActiveSession(roomId: string): Promise<ActiveTreasureSession | null> {
-    const session = await this.repo.getActiveSession(roomId);
+    const session = await this.autoStartTodaySession(roomId);
     if (!session) return null;
     const box = await this.repo.getBoxByLevel(session.id, session.currentLevel);
     return {
@@ -98,7 +98,73 @@ export class TreasureService implements ITreasureBoxesService {
     };
   }
 
-  // ---- Session lifecycle ----
+  // ---- Session lifecycle & Auto-Start ----
+
+  /**
+   * Ensures a valid Treasure Session exists for today.
+   * - If a session created TODAY exists and is ACTIVE: returns it (same-day rejoin, progress continues).
+   * - If an active session is from a PREVIOUS day: auto-completes it and starts a fresh session for today (Daily Reset).
+   * - If all 5 boxes for today were completed: returns null.
+   */
+  async autoStartTodaySession(roomId: string, ownerId?: string): Promise<TreasureSession | null> {
+    return this.locks.withLock(treasureRoomLockKey(roomId), async () => {
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+
+      let session = await this.repo.getActiveSession(roomId);
+      if (session) {
+        if (session.createdAt >= todayStart) {
+          // Session was created today -> continue seamlessly!
+          return session;
+        }
+        // Session was created on a previous day -> auto-finish it for daily reset
+        await this.repo.finishSession(session.id, TreasureSessionStatus.COMPLETED);
+        session = null;
+      }
+
+      // Check if session was already completed TODAY
+      const completedToday = await this.repo.getLatestCompletedSessionCreatedAfter(roomId, todayStart);
+      if (completedToday) {
+        return null; // All 5 boxes for today completed
+      }
+
+      // Auto-create today's session!
+      const roomOwnerId = await this.rooms.getOwnerId(roomId).catch(() => null);
+      const effectiveOwnerId = ownerId ?? roomOwnerId ?? 'system';
+
+      const configs = await this.repo.listEnabledConfigs();
+      const byLevel = new Map(configs.map((c) => [c.level, c]));
+      if (byLevel.size < TREASURE_BOX_COUNT) {
+        this.logger.warn(`Cannot auto-start treasure session for room ${roomId}: configs incomplete`);
+        return null;
+      }
+
+      await this.cache.del(treasureChampionsCacheKey(roomId));
+
+      const newSession = await this.repo.createSession(roomId, effectiveOwnerId, 'AUDIO_ROOM');
+      for (let level = 1; level <= TREASURE_BOX_COUNT; level++) {
+        const cfg = byLevel.get(level)!;
+        await this.repo.createBox({
+          sessionId: newSession.id,
+          roomId,
+          level,
+          threshold: cfg.threshold,
+          status: level === 1 ? TreasureBoxStatus.ACTIVE : TreasureBoxStatus.PENDING,
+        });
+      }
+
+      const firstThreshold = Number(byLevel.get(1)!.threshold);
+      await this.bus.publish(
+        new TreasureSessionStartedEvent({
+          roomId,
+          sessionId: newSession.id,
+          currentLevel: 1,
+          threshold: firstThreshold,
+        }),
+      );
+      return newSession;
+    });
+  }
 
   async startSession(actor: RoomActor, roomId: string): Promise<TreasureSession> {
     await this.assertManager(roomId, actor);
@@ -109,52 +175,15 @@ export class TreasureService implements ITreasureBoxesService {
         HttpStatus.CONFLICT,
       );
     }
-
-    const configs = await this.repo.listEnabledConfigs();
-    const byLevel = new Map(configs.map((c) => [c.level, c]));
-    for (let level = 1; level <= TREASURE_BOX_COUNT; level++) {
-      if (!byLevel.has(level)) {
-        throw new BusinessException(
-          ERROR_CODES.TREASURE_CONFIG_INCOMPLETE,
-          `Treasure box level ${level} is not configured.`,
-          HttpStatus.CONFLICT,
-        );
-      }
-    }
-
-    return this.locks.withLock(treasureRoomLockKey(roomId), async () => {
-      if (await this.repo.getActiveSession(roomId)) {
-        throw new BusinessException(
-          ERROR_CODES.TREASURE_SESSION_EXISTS,
-          'A treasure session is already active in this room.',
-          HttpStatus.CONFLICT,
-        );
-      }
-      // Clear the previous cycle's champions cache so the new cycle starts fresh.
-      await this.cache.del(treasureChampionsCacheKey(roomId));
-
-      const session = await this.repo.createSession(roomId, actor.id, 'AUDIO_ROOM');
-      for (let level = 1; level <= TREASURE_BOX_COUNT; level++) {
-        const cfg = byLevel.get(level)!;
-        await this.repo.createBox({
-          sessionId: session.id,
-          roomId,
-          level,
-          threshold: cfg.threshold,
-          status: level === 1 ? TreasureBoxStatus.ACTIVE : TreasureBoxStatus.PENDING,
-        });
-      }
-      const firstThreshold = Number(byLevel.get(1)!.threshold);
-      await this.bus.publish(
-        new TreasureSessionStartedEvent({
-          roomId,
-          sessionId: session.id,
-          currentLevel: 1,
-          threshold: firstThreshold,
-        }),
+    const session = await this.autoStartTodaySession(roomId, actor.id);
+    if (!session) {
+      throw new BusinessException(
+        ERROR_CODES.TREASURE_SESSION_EXISTS,
+        'All treasure boxes for today are already completed or a session is active.',
+        HttpStatus.CONFLICT,
       );
-      return session;
-    });
+    }
+    return session;
   }
 
   async cancelSession(actor: RoomActor, roomId: string): Promise<void> {
@@ -192,28 +221,70 @@ export class TreasureService implements ITreasureBoxesService {
     const events: any[] = [];
     let postCommitCallback: (() => Promise<void>) | undefined;
 
-    // Find the active session
-    const session = await tx.treasureSession.findFirst({
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    // 1. Find active session or auto-create today's session
+    let session = await tx.treasureSession.findFirst({
       where: { roomId, status: TreasureSessionStatus.ACTIVE },
     });
 
+    if (session && session.createdAt < todayStart) {
+      // Session from previous day -> finish it for daily reset
+      await tx.treasureSession.update({
+        where: { id: session.id },
+        data: { status: TreasureSessionStatus.COMPLETED, completedAt: new Date() },
+      });
+      session = null;
+    }
+
     if (!session) {
-      // Check if there is a completed session in this room
-      const latestCompleted = await tx.treasureSession.findFirst({
-        where: { roomId, status: TreasureSessionStatus.COMPLETED },
-        orderBy: { createdAt: 'desc' },
+      // Check if session completed today
+      const completedToday = await tx.treasureSession.findFirst({
+        where: { roomId, status: TreasureSessionStatus.COMPLETED, createdAt: { gte: todayStart } },
       });
 
-      if (latestCompleted) {
-        // If completed, refund everything
-        return {
-          acceptedAmount: 0,
-          refundAmount: amount,
-          events,
-        };
-      }
+      if (!completedToday) {
+        // Auto-start today's session inside transaction!
+        const configs = await tx.treasureBoxConfig.findMany({
+          where: { enabled: true },
+          orderBy: { level: 'asc' },
+        });
 
-      // If no active or completed session, it's a normal gift. No refund.
+        if (configs.length >= TREASURE_BOX_COUNT) {
+          const byLevel = new Map(configs.map((c) => [c.level, c]));
+          session = await tx.treasureSession.create({
+            data: { roomId, startedBy: senderId, contextType: 'AUDIO_ROOM' },
+          });
+
+          for (let level = 1; level <= TREASURE_BOX_COUNT; level++) {
+            const cfg = byLevel.get(level)!;
+            await tx.treasureBox.create({
+              data: {
+                sessionId: session.id,
+                roomId,
+                level,
+                threshold: cfg.threshold,
+                status: level === 1 ? TreasureBoxStatus.ACTIVE : TreasureBoxStatus.PENDING,
+              },
+            });
+          }
+
+          const firstThreshold = Number(byLevel.get(1)!.threshold);
+          events.push(
+            new TreasureSessionStartedEvent({
+              roomId,
+              sessionId: session.id,
+              currentLevel: 1,
+              threshold: firstThreshold,
+            }),
+          );
+        }
+      }
+    }
+
+    if (!session) {
+      // If completed today or unable to start, normal gift with 0 refund
       return {
         acceptedAmount: amount,
         refundAmount: 0,
@@ -548,8 +619,23 @@ export class TreasureService implements ITreasureBoxesService {
   // ---- Reads ----
 
   async status(roomId: string): Promise<unknown> {
-    const session = await this.repo.getActiveSession(roomId);
-    if (!session) return { active: false };
+    const session = await this.autoStartTodaySession(roomId);
+    if (!session) {
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const completedToday = await this.repo.getLatestCompletedSessionCreatedAfter(roomId, todayStart);
+      if (completedToday) {
+        const boxes = await this.repo.listBoxes(completedToday.id);
+        return {
+          active: true,
+          completedAll: true,
+          sessionId: completedToday.id,
+          currentLevel: 5,
+          boxes: await Promise.all(boxes.map((b) => this.boxView(b))),
+        };
+      }
+      return { active: false };
+    }
     const boxes = await this.repo.listBoxes(session.id);
     return {
       active: true,
