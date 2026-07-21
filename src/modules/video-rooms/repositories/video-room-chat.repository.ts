@@ -221,6 +221,15 @@ export class VideoRoomChatRepository {
     return this.prisma.videoRoomMessagePin.count({ where: { roomId, isActive: true } });
   }
 
+  /**
+   * Cross-room total, for the unlabeled `video_rooms_chat_pinned_messages`
+   * gauge. Deliberately NOT per-room: the gauge carries no room label, so a
+   * per-room value would have each room overwrite the last.
+   */
+  countAllActivePins(): Promise<number> {
+    return this.prisma.videoRoomMessagePin.count({ where: { isActive: true } });
+  }
+
   async deactivatePin(id: string, unpinnedBy: string): Promise<void> {
     await this.prisma.videoRoomMessagePin.update({
       where: { id },

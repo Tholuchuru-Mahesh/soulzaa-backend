@@ -14,6 +14,7 @@ const AUDITED: Record<string, string> = {
   [VIDEO_ROOM_CHAT_EVENTS.MESSAGE_UNPINNED]: 'unpinnedBy',
   [VIDEO_ROOM_CHAT_EVENTS.ANNOUNCEMENT_CREATED]: 'authorId',
   [VIDEO_ROOM_CHAT_EVENTS.MENTIONED]: 'senderId',
+  [VIDEO_ROOM_CHAT_EVENTS.CHAT_MODE_CHANGED]: 'actorId',
 };
 
 /**
@@ -53,6 +54,10 @@ const LOGGED: Record<string, { action: VideoRoomLogAction; actorField: string }>
   },
   [VIDEO_ROOM_CHAT_EVENTS.ANNOUNCEMENT_DELETED]: {
     action: VideoRoomLogAction.ANNOUNCEMENT_DELETED,
+    actorField: 'actorId',
+  },
+  [VIDEO_ROOM_CHAT_EVENTS.CHAT_MODE_CHANGED]: {
+    action: VideoRoomLogAction.SETTINGS_CHANGED,
     actorField: 'actorId',
   },
 };

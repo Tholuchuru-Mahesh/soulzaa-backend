@@ -1,5 +1,6 @@
 import { VideoRoomMessageType } from '@prisma/client';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
+import { VIDEO_ROOM_CHAT_EVENTS } from '../events/video-room-chat.events';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { VideoRoomChatService } from './video-room-chat.service';
 
@@ -17,6 +18,25 @@ const MESSAGE = {
   replyToId: null,
   createdAt: new Date('2026-07-21T00:00:00Z'),
 };
+const CHAT_CFG = {
+  messageMaxLength: 500,
+  maxMentions: 3,
+  maxPins: 5,
+  rateMax: 20,
+  rateWindowSeconds: 60,
+  dedupWindowSeconds: 30,
+  floodBurstMax: 5,
+  floodBurstWindowSeconds: 2,
+  cooldownSteps: [10, 30, 120],
+  recentBufferSize: 50,
+  recentBufferTtlSeconds: 3600,
+  typingTtlSeconds: 5,
+  recallWindowSeconds: 120,
+  editWindowSeconds: 300,
+  receiptThrottleMs: 1000,
+  systemMessageBroadcastOnlyAboveViewers: 100,
+  systemMessageSuppressAboveViewers: 1000,
+};
 
 describe('VideoRoomChatService.send', () => {
   let policy: { assertCanSend: jest.Mock };
@@ -26,6 +46,7 @@ describe('VideoRoomChatService.send', () => {
   let repo: { createMessage: jest.Mock; findMessage: jest.Mock };
   let cache: { pushRecent: jest.Mock };
   let bus: { publish: jest.Mock };
+  let config: { get: jest.Mock };
   let service: VideoRoomChatService;
 
   beforeEach(() => {
@@ -42,7 +63,8 @@ describe('VideoRoomChatService.send', () => {
       findMessage: jest.fn().mockResolvedValue(null),
     };
     cache = { pushRecent: jest.fn() };
-    bus = { publish: jest.fn() };
+    bus = { publish: jest.fn().mockResolvedValue(undefined) };
+    config = { get: jest.fn().mockReturnValue(CHAT_CFG) };
     service = new VideoRoomChatService(
       policy as never,
       limiter as never,
@@ -51,6 +73,7 @@ describe('VideoRoomChatService.send', () => {
       repo as never,
       cache as never,
       bus as never,
+      config as never,
     );
   });
 
@@ -176,6 +199,67 @@ describe('VideoRoomChatService.send', () => {
 
     expect(limiter.applySlowMode).toHaveBeenCalledWith('r1', 'u1', 10);
   });
+
+  it('stamps a derived status onto the wire payload', () => {
+    const payload = service.toPayload({
+      id: 'm1',
+      roomId: 'r1',
+      senderId: 'u1',
+      type: 'TEXT',
+      content: 'hello',
+      mentions: [],
+      mentionScope: null,
+      replyToId: null,
+      metadata: null,
+      createdAt: new Date('2026-07-21T10:00:00.000Z'),
+      editedAt: new Date('2026-07-21T10:05:00.000Z'),
+      deletedAt: null,
+      recalledAt: null,
+    } as never);
+
+    expect(payload.status).toBe('EDITED');
+  });
+
+  it('caps mention resolution at the configured maximum, not a hardcoded 10', async () => {
+    await service.send(ACTOR, 'r1', { content: 'hi @a @b @c @d' });
+
+    expect(mentions.resolve).toHaveBeenCalledWith(
+      'hi @a @b @c @d',
+      expect.objectContaining({ max: 3 }),
+    );
+  });
+
+  it('publishes a blocked_word spam signal when the scan rejects a message', async () => {
+    words.scan.mockReturnValue({ matched: true, action: 'BLOCK', matches: ['x'], maskedText: '' });
+
+    await expect(service.send(ACTOR, 'r1', { content: 'bad' })).rejects.toMatchObject({
+      errorCode: ERROR_CODES.BLOCKED_WORD,
+    });
+
+    const kinds = bus.publish.mock.calls
+      .map(([e]: [{ name: string; payload: { kind?: string } }]) => e)
+      .filter((e) => e.name === VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED)
+      .map((e) => e.payload.kind);
+    expect(kinds).toEqual(['blocked_word']);
+  });
+
+  // A MASK hit is handled, not rejected — the message still sends, so it is not
+  // an abuse rejection and must not be counted as one.
+  it('publishes NO spam signal when the scan only masks', async () => {
+    words.scan.mockReturnValue({
+      matched: true,
+      action: 'MASK',
+      matches: ['x'],
+      maskedText: 'g***',
+    });
+
+    await service.send(ACTOR, 'r1', { content: 'good' });
+
+    const spam = bus.publish.mock.calls
+      .map(([e]: [{ name: string }]) => e)
+      .filter((e) => e.name === VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED);
+    expect(spam).toHaveLength(0);
+  });
 });
 
 describe('VideoRoomChatService edit/delete/recall', () => {
@@ -188,6 +272,7 @@ describe('VideoRoomChatService edit/delete/recall', () => {
   let repo: Record<string, jest.Mock>;
   let cache: { pushRecent: jest.Mock; invalidateRecent: jest.Mock };
   let bus: { publish: jest.Mock };
+  let config: { get: jest.Mock };
   let service: VideoRoomChatService;
 
   const stored = {
@@ -223,7 +308,8 @@ describe('VideoRoomChatService edit/delete/recall', () => {
       deactivatePin: jest.fn(),
     };
     cache = { pushRecent: jest.fn(), invalidateRecent: jest.fn() };
-    bus = { publish: jest.fn() };
+    bus = { publish: jest.fn().mockResolvedValue(undefined) };
+    config = { get: jest.fn().mockReturnValue(CHAT_CFG) };
     service = new VideoRoomChatService(
       policy as never,
       { assertMaySend: jest.fn(), applySlowMode: jest.fn() } as never,
@@ -232,6 +318,7 @@ describe('VideoRoomChatService edit/delete/recall', () => {
       repo as never,
       cache as never,
       bus as never,
+      config as never,
     );
   });
 

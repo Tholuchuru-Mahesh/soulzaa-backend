@@ -423,7 +423,7 @@ export class VideoRoomsMetrics {
     });
     this.pinnedMessages = new Gauge({
       name: 'video_rooms_chat_pinned_messages',
-      help: 'Currently pinned messages per room',
+      help: 'Currently pinned messages across all rooms',
       registers,
     });
     this.spamDetected = new Counter({

@@ -60,10 +60,10 @@ describe('VideoRoomChatAuditListener', () => {
   });
 
   it('audits the seven mutating actions the brief requires, plus two log-only announcement actions', () => {
-    // 7 event-stream (AUDITED) subscriptions + 2 log-only subscriptions
+    // 8 event-stream (AUDITED) subscriptions + 2 log-only subscriptions
     // (ANNOUNCEMENT_UPDATED/DELETED, which never wrote to the machine event
     // stream and still don't — see GAP 5 / LOG_ONLY_EVENTS).
-    expect(bus.subscribe).toHaveBeenCalledTimes(9);
+    expect(bus.subscribe).toHaveBeenCalledTimes(10);
   });
 
   // ---- GAP 5 (VR-9.1b): VideoRoomLog for moderator-visible chat actions ----
@@ -184,5 +184,41 @@ describe('VideoRoomChatAuditListener', () => {
       }),
     ).not.toThrow();
     await Promise.resolve();
+  });
+
+  it('writes a chat mode change to the event stream with request context', () => {
+    handlers[VIDEO_ROOM_CHAT_EVENTS.CHAT_MODE_CHANGED]({
+      payload: {
+        roomId: 'r1',
+        actorId: 'u1',
+        chatMode: 'PARTICIPANTS_ONLY',
+        audit: { ip: '1.2.3.4', requestId: 'req-1', userAgent: 'jest' },
+      },
+      occurredAt: '2026-07-21T10:00:00.000Z',
+    });
+
+    expect(events.appendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: 'r1',
+        actorId: 'u1',
+        eventType: VIDEO_ROOM_CHAT_EVENTS.CHAT_MODE_CHANGED,
+        payload: expect.objectContaining({ ip: '1.2.3.4', requestId: 'req-1' }),
+      }),
+    );
+  });
+
+  it('writes a SETTINGS_CHANGED row to the moderator log', () => {
+    handlers[VIDEO_ROOM_CHAT_EVENTS.CHAT_MODE_CHANGED]({
+      payload: { roomId: 'r1', actorId: 'u1', chatMode: 'PARTICIPANTS_ONLY' },
+      occurredAt: '2026-07-21T10:00:00.000Z',
+    });
+
+    expect(rooms.appendLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: 'r1',
+        actorId: 'u1',
+        action: 'SETTINGS_CHANGED',
+      }),
+    );
   });
 });

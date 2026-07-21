@@ -6,6 +6,13 @@ import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 import { VideoRoomsMetrics } from '../video-rooms.metrics';
 
 /**
+ * The abuse kinds that are specifically RATE limiting, and so additionally bump
+ * the rate-limit violation counter. `duplicate` and `blocked_word` are abuse
+ * signals but not rate limiting, so they count as spam only.
+ */
+const RATE_LIMIT_KINDS = new Set<string>(['cooldown', 'rate', 'flood']);
+
+/**
  * Chat observability, decoupled from the write path on purpose. Counting inside
  * `send()` would put a Prometheus call on the hot path and couple message
  * delivery to metrics; subscribing to the same bus event the socket listener
@@ -69,6 +76,17 @@ export class VideoRoomChatMetricsListener implements OnModuleInit {
     this.bus.subscribe(VIDEO_ROOM_CHAT_EVENTS.ANNOUNCEMENT_DELETED, () =>
       this.metrics.incAnnouncement('deleted'),
     );
+
+    // VR-9.2 (G3): the brief's MONITORING section names "Spam Detection" and
+    // "Rate Limit Violations". Counted here rather than in the limiter so the
+    // rejection path of every send stays free of a Prometheus dependency.
+    this.bus.subscribe(VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED, (event) => {
+      const payload = event.payload as { kind: string };
+      this.metrics.incSpamDetected(payload.kind);
+      if (RATE_LIMIT_KINDS.has(payload.kind)) {
+        this.metrics.incChatRateLimitViolation();
+      }
+    });
   }
 
   /** Seconds between two ISO instants, floored at 0 to tolerate clock skew. */

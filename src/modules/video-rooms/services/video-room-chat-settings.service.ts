@@ -5,7 +5,7 @@ import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { VideoRoomPermission } from '../constants/video-room-permissions';
 import type { UpdateChatSettingsDto } from '../dto/chat';
-import { ChatModeChangedEvent } from '../events/video-room-chat.events';
+import { ChatAuditContext, ChatModeChangedEvent } from '../events/video-room-chat.events';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 import { VideoRoomPermissionService } from './video-room-permission.service';
@@ -35,6 +35,7 @@ export class VideoRoomChatSettingsService {
     actor: RoomActor,
     roomId: string,
     dto: UpdateChatSettingsDto,
+    audit?: ChatAuditContext,
   ): Promise<VideoRoomSettings> {
     const room = await this.loadRoom(roomId);
     await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_ROOM);
@@ -75,6 +76,7 @@ export class VideoRoomChatSettingsService {
           allowChat: settings.allowChat,
           slowModeSeconds: settings.slowModeSeconds,
           actorId: actor.id,
+          audit,
         }),
       );
     }

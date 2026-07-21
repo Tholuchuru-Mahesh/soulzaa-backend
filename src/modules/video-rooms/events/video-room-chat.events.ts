@@ -1,4 +1,5 @@
 import { DomainEvent } from 'src/common/events';
+import type { ChatMessageStatus } from '../dto/chat/chat-message.view';
 
 /**
  * VR-9 chat domain events on the EVENT_BUS. `VideoRoomChatSocketListener` bridges
@@ -23,6 +24,7 @@ export const VIDEO_ROOM_CHAT_EVENTS = {
   MESSAGE_READ: 'video_room.chat_message_read',
   MENTIONED: 'video_room.chat_mentioned',
   CHAT_MODE_CHANGED: 'video_room.chat_mode_changed',
+  SPAM_DETECTED: 'video_room.chat_spam_detected',
 } as const;
 
 /** The wire shape of a message, shared by every message-carrying event. */
@@ -32,6 +34,12 @@ export interface ChatMessagePayload {
   senderId: string;
   type: string;
   content: string;
+  /**
+   * Derived at read time from the row's editedAt/deletedAt/recalledAt columns —
+   * never stored. SENDING/FAILED are client-only; DELIVERED/READ are
+   * per-recipient facts resolved from the cursor endpoints.
+   */
+  status: ChatMessageStatus;
   mentions: string[];
   mentionScope: string | null;
   replyToId: string | null;
@@ -191,6 +199,30 @@ export class ChatModeChangedEvent extends DomainEvent<{
   allowChat: boolean;
   slowModeSeconds: number;
   actorId: string;
+  audit?: ChatAuditContext;
 }> {
   readonly name = VIDEO_ROOM_CHAT_EVENTS.CHAT_MODE_CHANGED;
+}
+
+/**
+ * The closed set of abuse signals. A union rather than a bare string so a typo
+ * cannot silently mint a new Prometheus label value and fragment the metric.
+ *
+ * Slow mode is deliberately ABSENT: it is a room-level UX setting, and a user
+ * hitting it is complying with room policy, not abusing it.
+ */
+export type ChatSpamKind = 'cooldown' | 'rate' | 'flood' | 'duplicate' | 'blocked_word';
+
+/**
+ * VR-9.2 (G3): published at every abuse rejection so
+ * `VideoRoomChatMetricsListener` can count it. Internal only — this must NEVER
+ * be bridged to a socket broadcast, because it would leak moderation signal to
+ * the room.
+ */
+export class ChatSpamDetectedEvent extends DomainEvent<{
+  roomId: string;
+  userId: string;
+  kind: ChatSpamKind;
+}> {
+  readonly name = VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED;
 }

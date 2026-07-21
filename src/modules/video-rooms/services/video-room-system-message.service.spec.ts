@@ -99,4 +99,11 @@ describe('VideoRoomSystemMessageService', () => {
     await service.emit('SEAT_APPROVED', 'r1', { userId: 'u2' });
     expect(presence.viewerCount).not.toHaveBeenCalled();
   });
+
+  it('marks system messages as SENT', async () => {
+    await service.emit('OWNER_CHANGED', 'r1', { newOwnerId: 'u2' });
+
+    const payload = bus.publish.mock.calls[0][0].payload;
+    expect(payload.status).toBe('SENT');
+  });
 });

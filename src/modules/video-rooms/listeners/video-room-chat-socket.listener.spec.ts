@@ -20,9 +20,14 @@ describe('VideoRoomChatSocketListener', () => {
     listener.onModuleInit();
   });
 
-  it('subscribes to every chat event exactly once', () => {
+  it('subscribes to every socket-bridged chat event exactly once', () => {
+    // SPAM_DETECTED is internal-only (see video-room-chat.events.ts) and must
+    // never be bridged to a socket broadcast, so it is excluded here.
+    const bridged = Object.values(VIDEO_ROOM_CHAT_EVENTS).filter(
+      (name) => name !== VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED,
+    );
     const subscribed = Object.keys(handlers).sort();
-    expect(subscribed).toEqual(Object.values(VIDEO_ROOM_CHAT_EVENTS).sort());
+    expect(subscribed).toEqual(bridged.sort());
     expect(bus.subscribe).toHaveBeenCalledTimes(15);
   });
 

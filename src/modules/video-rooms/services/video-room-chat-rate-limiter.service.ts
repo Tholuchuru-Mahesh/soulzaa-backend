@@ -1,6 +1,7 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
+import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { CacheService } from 'src/infra/redis/cache.service';
@@ -14,6 +15,7 @@ import {
   videoRoomChatSlowKey,
   videoRoomChatViolationKey,
 } from '../constants/video-room-chat.constants';
+import { ChatSpamDetectedEvent, type ChatSpamKind } from '../events/video-room-chat.events';
 
 export interface RateLimitOptions {
   rateMax: number;
@@ -32,10 +34,13 @@ export interface RateLimitOptions {
  */
 @Injectable()
 export class VideoRoomChatRateLimiter {
+  private readonly logger = new Logger(VideoRoomChatRateLimiter.name);
+
   constructor(
     private readonly cache: CacheService,
     @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
     private readonly config: ConfigService,
+    @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
 
   async assertMaySend(
@@ -48,6 +53,7 @@ export class VideoRoomChatRateLimiter {
 
     // 1. Serving a cooldown? Nothing else matters.
     if (await this.cache.exists(videoRoomChatCooldownKey(roomId, userId))) {
+      this.spam(roomId, userId, 'cooldown');
       throw this.tooFast('You are temporarily cooled down — please wait before sending again.');
     }
 
@@ -56,10 +62,11 @@ export class VideoRoomChatRateLimiter {
       ttlSeconds: cfg.rateWindowSeconds,
     });
     if (rate > opts.rateMax) {
+      this.spam(roomId, userId, 'rate');
       throw this.tooFast('You are sending messages too quickly.');
     }
 
-    // 3. Room slow mode.
+    // 3. Room slow mode. NO spam signal — see `ChatSpamKind`.
     if (
       opts.slowModeSeconds > 0 &&
       (await this.cache.exists(videoRoomChatSlowKey(roomId, userId)))
@@ -77,6 +84,7 @@ export class VideoRoomChatRateLimiter {
     });
     if (burst > cfg.floodBurstMax) {
       await this.armCooldown(roomId, userId, cfg.cooldownSteps);
+      this.spam(roomId, userId, 'flood');
       throw this.tooFast('Too many messages at once — slow down.');
     }
 
@@ -90,6 +98,7 @@ export class VideoRoomChatRateLimiter {
       'NX',
     );
     if (claimed === null) {
+      this.spam(roomId, userId, 'duplicate');
       throw new BusinessException(
         ERROR_CODES.DUPLICATE_MESSAGE,
         'Duplicate message ignored.',
@@ -124,5 +133,23 @@ export class VideoRoomChatRateLimiter {
       message,
       HttpStatus.TOO_MANY_REQUESTS,
     );
+  }
+
+  /**
+   * `tooFast` is a factory that RETURNS an exception rather than throwing, so
+   * publication cannot be folded into it — each gate publishes, then throws.
+   */
+  private spam(roomId: string, userId: string, kind: ChatSpamKind): void {
+    // Fire-and-forget: this is the anti-abuse rejection path, so it must not
+    // depend on the health of SPAM_DETECTED listeners. `emitAsync` propagates a
+    // subscriber's thrown error (or an unbounded hang) right out of `publish`,
+    // which would replace the intended rate-limit/duplicate exception with a
+    // 500 — or block the rejection entirely. Publish, swallow and log any
+    // listener failure, then let the caller throw regardless.
+    void this.bus
+      .publish(new ChatSpamDetectedEvent({ roomId, userId, kind }))
+      .catch((error: Error) =>
+        this.logger.warn(`Spam signal publish failed for kind=${kind}: ${error.message}`),
+      );
   }
 }

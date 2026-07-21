@@ -13,6 +13,7 @@ describe('VideoRoomChatPinService', () => {
   let locks: { withLock: jest.Mock };
   let bus: { publish: jest.Mock };
   let config: { get: jest.Mock };
+  let metrics: { setPinnedMessages: jest.Mock };
   let service: VideoRoomChatPinService;
 
   beforeEach(() => {
@@ -26,12 +27,14 @@ describe('VideoRoomChatPinService', () => {
       deactivatePin: jest.fn(),
       listActivePins: jest.fn().mockResolvedValue([]),
       listMessagesByIds: jest.fn().mockResolvedValue([]),
+      countAllActivePins: jest.fn().mockResolvedValue(12),
     };
     cache = { setPins: jest.fn() };
     // withLock must actually run the callback so the guarded logic is tested.
     locks = { withLock: jest.fn((_key, fn) => fn()) };
     bus = { publish: jest.fn() };
     config = { get: jest.fn().mockReturnValue({ maxPins: 3 }) };
+    metrics = { setPinnedMessages: jest.fn() };
     service = new VideoRoomChatPinService(
       permissions as never,
       rooms as never,
@@ -40,6 +43,7 @@ describe('VideoRoomChatPinService', () => {
       locks as never,
       bus as never,
       config as never,
+      metrics as never,
     );
   });
 
@@ -118,5 +122,27 @@ describe('VideoRoomChatPinService', () => {
     expect(repo.listMessagesByIds).toHaveBeenCalledWith(['m1', 'm2']);
     expect(repo.findMessage).not.toHaveBeenCalled();
     expect(result).toHaveLength(2);
+  });
+
+  it('reports the CROSS-ROOM pin total to the gauge, not this room’s count', async () => {
+    await service.pin(ACTOR as never, 'r1', 'm1');
+
+    // The gauge has no room label, so a per-room value would have every room
+    // silently overwrite every other room's.
+    expect(metrics.setPinnedMessages).toHaveBeenCalledWith(12);
+  });
+
+  it('reports the gauge on unpin too', async () => {
+    repo.findActivePin.mockResolvedValue({ id: 'p1' });
+    await service.unpin(ACTOR as never, 'r1', 'm1');
+    expect(metrics.setPinnedMessages).toHaveBeenCalledWith(12);
+  });
+
+  // The pin row is already written by the time the gauge refreshes. A metrics
+  // failure must not fail an operation that has already succeeded.
+  it('still succeeds when the gauge refresh query fails', async () => {
+    (repo.countAllActivePins as jest.Mock).mockRejectedValue(new Error('db down'));
+
+    await expect(service.pin(ACTOR as never, 'r1', 'm1')).resolves.toBeDefined();
   });
 });

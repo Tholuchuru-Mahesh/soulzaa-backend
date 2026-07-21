@@ -68,8 +68,22 @@ describe('VR-9 chat integration', () => {
     const config = {
       get: jest.fn().mockReturnValue({
         messageMaxLength: 500,
-        editWindowSeconds: 900,
+        maxMentions: 10,
+        maxPins: 5,
+        rateMax: 20,
+        rateWindowSeconds: 60,
+        dedupWindowSeconds: 30,
+        floodBurstMax: 5,
+        floodBurstWindowSeconds: 2,
+        cooldownSteps: [10, 30, 120],
+        recentBufferSize: 50,
+        recentBufferTtlSeconds: 3600,
+        typingTtlSeconds: 5,
         recallWindowSeconds: 120,
+        editWindowSeconds: 900,
+        receiptThrottleMs: 1000,
+        systemMessageBroadcastOnlyAboveViewers: 100,
+        systemMessageSuppressAboveViewers: 1000,
       }),
     };
     const policy = new VideoRoomChatPolicyService(
@@ -86,6 +100,7 @@ describe('VR-9 chat integration', () => {
       repo as never,
       cache as never,
       bus as never,
+      config as never,
     );
   });
 

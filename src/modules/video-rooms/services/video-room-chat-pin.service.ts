@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { VideoRoomMessage, VideoRoomMessagePin } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
@@ -16,6 +16,7 @@ import {
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { VideoRoomChatRepository } from '../repositories/video-room-chat.repository';
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
+import { VideoRoomsMetrics } from '../video-rooms.metrics';
 import { VideoRoomChatCacheService } from './video-room-chat-cache.service';
 import { VideoRoomPermissionService } from './video-room-permission.service';
 
@@ -27,6 +28,8 @@ import { VideoRoomPermissionService } from './video-room-permission.service';
  */
 @Injectable()
 export class VideoRoomChatPinService {
+  private readonly logger = new Logger(VideoRoomChatPinService.name);
+
   constructor(
     private readonly permissions: VideoRoomPermissionService,
     private readonly rooms: VideoRoomsRepository,
@@ -35,6 +38,7 @@ export class VideoRoomChatPinService {
     private readonly locks: LockService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly config: ConfigService,
+    private readonly metrics: VideoRoomsMetrics,
   ) {}
 
   async pin(
@@ -118,6 +122,15 @@ export class VideoRoomChatPinService {
       roomId,
       pins.map((p) => p.messageId),
     );
+
+    // VR-9.2 (G3). Guarded because the pin row is ALREADY committed by the time
+    // we get here — a metrics query must never fail an operation that has
+    // already succeeded.
+    try {
+      this.metrics.setPinnedMessages(await this.repo.countAllActivePins());
+    } catch (error) {
+      this.logger.warn(`Pinned-message gauge refresh failed: ${(error as Error).message}`);
+    }
   }
 
   private async loadRoom(roomId: string) {

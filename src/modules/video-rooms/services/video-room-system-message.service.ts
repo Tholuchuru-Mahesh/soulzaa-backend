@@ -5,6 +5,7 @@ import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { loadVideoRoomChatConfig } from '../config/video-room-chat.config';
 import { SYSTEM_MESSAGE_POLICY } from '../constants/video-room-system-message.policy';
 import { VIDEO_ROOM_SYSTEM_ACTOR_ID } from '../constants/video-room.constants';
+import { ChatMessageStatus } from '../dto/chat/chat-message.view';
 import { ChatMessageSentEvent, type ChatMessagePayload } from '../events/video-room-chat.events';
 import { VideoRoomChatRepository } from '../repositories/video-room-chat.repository';
 import { VideoRoomChatCacheService } from './video-room-chat-cache.service';
@@ -65,6 +66,7 @@ export class VideoRoomSystemMessageService {
       senderId: VIDEO_ROOM_SYSTEM_ACTOR_ID,
       type: VideoRoomMessageType.SYSTEM,
       content,
+      status: ChatMessageStatus.SENT,
       mentions: [],
       mentionScope: null,
       replyToId: null,
@@ -88,6 +90,7 @@ export class VideoRoomSystemMessageService {
       senderId: VIDEO_ROOM_SYSTEM_ACTOR_ID,
       type: VideoRoomMessageType.SYSTEM,
       content,
+      status: ChatMessageStatus.SENT,
       mentions: [],
       mentionScope: null,
       replyToId: null,

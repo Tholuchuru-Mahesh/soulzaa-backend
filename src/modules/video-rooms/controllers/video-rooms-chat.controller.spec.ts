@@ -77,8 +77,24 @@ describe('VideoRoomsChatController', () => {
   it('delegates PATCH .../chat/settings to the chat settings service (VR-9.1a)', async () => {
     await controller.updateSettings(USER, 'r1', { chatMode: 'PARTICIPANTS_ONLY' } as never, META);
 
-    expect(settings.update).toHaveBeenCalledWith({ id: 'u1', roles: [] }, 'r1', {
-      chatMode: 'PARTICIPANTS_ONLY',
-    });
+    expect(settings.update).toHaveBeenCalledWith(
+      { id: 'u1', roles: [] },
+      'r1',
+      { chatMode: 'PARTICIPANTS_ONLY' },
+      expect.any(Object),
+    );
+  });
+
+  it('forwards request metadata from the settings route into the service', async () => {
+    const meta = { ip: '1.2.3.4', requestId: 'req-1', userAgent: 'jest' };
+
+    await controller.updateSettings(USER, 'r1', { allowChat: false } as never, meta as never);
+
+    expect(settings.update).toHaveBeenCalledWith(
+      expect.anything(),
+      'r1',
+      { allowChat: false },
+      expect.objectContaining({ ip: '1.2.3.4', requestId: 'req-1' }),
+    );
   });
 });

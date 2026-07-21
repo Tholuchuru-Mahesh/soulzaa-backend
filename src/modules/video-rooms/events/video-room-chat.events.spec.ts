@@ -1,3 +1,4 @@
+import { ChatMessageStatus } from '../dto/chat/chat-message.view';
 import {
   ChatMessageSentEvent,
   ChatModeChangedEvent,
@@ -13,6 +14,7 @@ describe('video-room chat events', () => {
       senderId: 'u1',
       type: 'TEXT',
       content: 'hi',
+      status: ChatMessageStatus.SENT,
       mentions: [],
       mentionScope: null,
       replyToId: null,
@@ -25,8 +27,8 @@ describe('video-room chat events', () => {
     expect(event.eventId).toEqual(expect.any(String));
   });
 
-  it('exposes all 15 event names', () => {
-    expect(Object.keys(VIDEO_ROOM_CHAT_EVENTS)).toHaveLength(15);
+  it('exposes all 16 event names', () => {
+    expect(Object.keys(VIDEO_ROOM_CHAT_EVENTS)).toHaveLength(16);
   });
 
   it('typing events carry the room and user', () => {

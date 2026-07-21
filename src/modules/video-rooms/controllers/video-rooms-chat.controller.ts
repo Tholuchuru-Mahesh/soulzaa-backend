@@ -300,8 +300,8 @@ export class VideoRoomsChatController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) id: string,
     @Body() dto: UpdateChatSettingsDto,
-    @RequestMeta() _meta: RequestMetadata,
+    @RequestMeta() meta: RequestMetadata,
   ) {
-    return this.settings.update(this.actor(user), id, dto);
+    return this.settings.update(this.actor(user), id, dto, this.audit(meta));
   }
 }

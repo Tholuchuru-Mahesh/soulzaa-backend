@@ -23,6 +23,8 @@ describe('VideoRoomChatMetricsListener', () => {
       observeChatRead: jest.fn(),
       incTypingEvent: jest.fn(),
       incAnnouncement: jest.fn(),
+      incSpamDetected: jest.fn(),
+      incChatRateLimitViolation: jest.fn(),
     };
     rooms = { bumpChatMessageCount: jest.fn().mockResolvedValue(undefined) };
     listener = new VideoRoomChatMetricsListener(bus as never, metrics as never, rooms as never);
@@ -91,4 +93,38 @@ describe('VideoRoomChatMetricsListener', () => {
     handlers[VIDEO_ROOM_CHAT_EVENTS.TYPING_STOPPED]({ payload: { roomId: 'r1' } });
     expect(metrics.incTypingEvent).toHaveBeenCalledTimes(2);
   });
+
+  it.each(['cooldown', 'rate', 'flood', 'duplicate', 'blocked_word'])(
+    'counts %s as a spam signal',
+    (kind) => {
+      handlers[VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED]({
+        payload: { roomId: 'r1', userId: 'u1', kind },
+        occurredAt: new Date().toISOString(),
+      });
+      expect(metrics.incSpamDetected).toHaveBeenCalledWith(kind);
+    },
+  );
+
+  it.each(['cooldown', 'rate', 'flood'])(
+    'counts %s as a rate-limit violation as well',
+    (kind) => {
+      handlers[VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED]({
+        payload: { roomId: 'r1', userId: 'u1', kind },
+        occurredAt: new Date().toISOString(),
+      });
+      expect(metrics.incChatRateLimitViolation).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  // Duplicate and blocked-word are abuse signals, but they are not RATE limiting.
+  it.each(['duplicate', 'blocked_word'])(
+    'does not count %s as a rate-limit violation',
+    (kind) => {
+      handlers[VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED]({
+        payload: { roomId: 'r1', userId: 'u1', kind },
+        occurredAt: new Date().toISOString(),
+      });
+      expect(metrics.incChatRateLimitViolation).not.toHaveBeenCalled();
+    },
+  );
 });

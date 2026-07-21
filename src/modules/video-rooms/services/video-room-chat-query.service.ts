@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { VideoRoomMessage, VideoRoomMessageType } from '@prisma/client';
+import { VideoRoomMessageType } from '@prisma/client';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
+import { toChatMessagePayload } from '../dto/chat/chat-message.mapper';
 import type { ChatMessagePayload } from '../events/video-room-chat.events';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { ELEVATED_VIDEO_ROOM_ROLES } from '../constants/video-room-permissions';
@@ -73,7 +74,7 @@ export class VideoRoomChatQueryService {
       order: q.order,
     });
     return buildPaginated(
-      rows.map((r) => this.toPayload(r)),
+      rows.map((r) => toChatMessagePayload(r)),
       total,
       q.page,
       q.limit,
@@ -99,7 +100,7 @@ export class VideoRoomChatQueryService {
       announcementsOnly: q.announcementsOnly,
     });
     return buildPaginated(
-      rows.map((r) => this.toPayload(r)),
+      rows.map((r) => toChatMessagePayload(r)),
       total,
       q.page,
       q.limit,
@@ -120,26 +121,5 @@ export class VideoRoomChatQueryService {
     if (!room) return false;
     const role = await this.permissions.resolveEffectiveRole(room, actor.id);
     return role !== null && ELEVATED_VIDEO_ROOM_ROLES.includes(role);
-  }
-
-  private toPayload(message: VideoRoomMessage): ChatMessagePayload {
-    const metadata = (message.metadata ?? {}) as Record<string, unknown>;
-    return {
-      roomId: message.roomId,
-      messageId: message.id,
-      senderId: message.senderId,
-      type: message.type,
-      // A soft-deleted row reaching a moderator keeps its content; for everyone
-      // else the repository filtered it out before we got here.
-      content: message.content,
-      mentions: message.mentions,
-      mentionScope: message.mentionScope,
-      replyToId: message.replyToId,
-      createdAt: message.createdAt.toISOString(),
-      ...(typeof metadata.announcementId === 'string'
-        ? { announcementId: metadata.announcementId }
-        : {}),
-      ...(typeof metadata.systemEvent === 'string' ? { systemEvent: metadata.systemEvent } : {}),
-    };
   }
 }

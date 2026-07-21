@@ -1,15 +1,19 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { BlockedWordAction, VideoRoomMessage, VideoRoomMessageType } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { BlockedWordService } from 'src/infra/content-moderation';
+import { toChatMessagePayload } from '../dto/chat/chat-message.mapper';
+import { loadVideoRoomChatConfig } from '../config/video-room-chat.config';
 import {
   ChatMentionedEvent,
   ChatMessageDeletedEvent,
   ChatMessageEditedEvent,
   ChatMessageRecalledEvent,
   ChatMessageSentEvent,
+  ChatSpamDetectedEvent,
   type ChatAuditContext,
   type ChatMessagePayload,
 } from '../events/video-room-chat.events';
@@ -40,6 +44,8 @@ export interface SendChatMessageInput {
  */
 @Injectable()
 export class VideoRoomChatService {
+  private readonly logger = new Logger(VideoRoomChatService.name);
+
   constructor(
     private readonly policy: VideoRoomChatPolicyService,
     private readonly limiter: VideoRoomChatRateLimiter,
@@ -48,6 +54,7 @@ export class VideoRoomChatService {
     private readonly repo: VideoRoomChatRepository,
     private readonly cache: VideoRoomChatCacheService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    private readonly config: ConfigService,
   ) {}
 
   async send(
@@ -78,14 +85,16 @@ export class VideoRoomChatService {
     if (dto.replyToId) await this.assertReplyTarget(roomId, dto.replyToId);
 
     // 4. Blocked-word scan: mask and continue, or reject. No auto-discipline.
-    const finalContent = this.applyWordScan(content);
+    const finalContent = this.applyWordScan(content, roomId, actor.id);
+
+    const cfg = loadVideoRoomChatConfig(this.config);
 
     // 5. Mentions.
     const resolved = await this.mentions.resolve(content, {
       roomId,
       ownerId: room.ownerId,
       senderId: actor.id,
-      max: 10,
+      max: cfg.maxMentions,
     });
 
     // 6. Durable write.
@@ -122,24 +131,13 @@ export class VideoRoomChatService {
     return message;
   }
 
-  /** The wire shape every message-carrying event and response uses. */
+  /**
+   * The wire shape every message-carrying event and response uses. Delegates to
+   * the shared mapper — kept as a method because external callers hold a
+   * reference to it.
+   */
   toPayload(message: VideoRoomMessage): ChatMessagePayload {
-    const metadata = (message.metadata ?? {}) as Record<string, unknown>;
-    return {
-      roomId: message.roomId,
-      messageId: message.id,
-      senderId: message.senderId,
-      type: message.type,
-      content: message.content,
-      mentions: message.mentions,
-      mentionScope: message.mentionScope,
-      replyToId: message.replyToId,
-      createdAt: message.createdAt.toISOString(),
-      ...(typeof metadata.announcementId === 'string'
-        ? { announcementId: metadata.announcementId }
-        : {}),
-      ...(typeof metadata.systemEvent === 'string' ? { systemEvent: metadata.systemEvent } : {}),
-    };
+    return toChatMessagePayload(message);
   }
 
   /**
@@ -245,10 +243,23 @@ export class VideoRoomChatService {
    * the message. VR-9 stops there: AR-4 escalates CRITICAL hits into auto-reports
    * and auto-mutes, but Moderation Actions is out of scope for this phase.
    */
-  private applyWordScan(content: string): string {
+  private applyWordScan(content: string, roomId: string, userId: string): string {
     const scan = this.words.scan(content);
     if (!scan.matched) return content;
+    // A MASK hit still sends — handled, not rejected, so it is not an abuse
+    // signal. Only the BLOCK path is counted.
     if (scan.action === BlockedWordAction.MASK) return scan.maskedText;
+    // Fire-and-forget: this is the anti-abuse rejection path, so it must not
+    // depend on the health of SPAM_DETECTED listeners. `emitAsync` propagates a
+    // subscriber's thrown error (or an unbounded hang) right out of `publish`,
+    // which would replace the intended BLOCKED_WORD exception with a 500 — or
+    // block the rejection entirely. Publish, swallow and log any listener
+    // failure, then throw regardless.
+    void this.bus
+      .publish(new ChatSpamDetectedEvent({ roomId, userId, kind: 'blocked_word' }))
+      .catch((error: Error) =>
+        this.logger.warn(`Spam signal publish failed for kind=blocked_word: ${error.message}`),
+      );
     throw new BusinessException(
       ERROR_CODES.BLOCKED_WORD,
       'Your message was blocked by the community guidelines filter.',

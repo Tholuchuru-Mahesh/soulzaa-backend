@@ -1,3 +1,4 @@
+import { ChatMessageStatus } from '../dto/chat/chat-message.view';
 import { VideoRoomChatCacheService } from './video-room-chat-cache.service';
 
 const CFG = { recentBufferSize: 3, recentBufferTtlSeconds: 3600 };
@@ -9,6 +10,7 @@ function message(id: string) {
     senderId: 'u1',
     type: 'TEXT',
     content: 'hi',
+    status: ChatMessageStatus.SENT,
     mentions: [],
     mentionScope: null,
     replyToId: null,

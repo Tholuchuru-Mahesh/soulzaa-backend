@@ -126,6 +126,13 @@ describe('VideoRoomChatRepository', () => {
     });
   });
 
+  it('counts active pins across every room', async () => {
+    prisma.videoRoomMessagePin.count.mockResolvedValue(7);
+
+    await expect(repo.countAllActivePins()).resolves.toBe(7);
+    expect(prisma.videoRoomMessagePin.count).toHaveBeenCalledWith({ where: { isActive: true } });
+  });
+
   it('finds a projected message by announcement id via metadata path', async () => {
     await repo.findByAnnouncementId('r1', 'a1');
     expect(prisma.videoRoomMessage.findFirst).toHaveBeenCalledWith({

@@ -1,3 +1,4 @@
+export * from './chat-message.mapper';
 export * from './chat-message.view';
 export * from './chat-receipt.dto';
 export * from './edit-chat-message.dto';

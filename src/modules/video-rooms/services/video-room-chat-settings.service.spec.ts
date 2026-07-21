@@ -132,4 +132,14 @@ describe('VideoRoomChatSettingsService', () => {
     expect(rooms.updateSettings).toHaveBeenCalledWith('r1', { chatMaxAttachments: 3 });
     expect(bus.publish).not.toHaveBeenCalled();
   });
+
+  it('carries the audit context onto the published event', async () => {
+    const audit = { ip: '1.2.3.4', requestId: 'req-1', userAgent: 'jest' };
+
+    await service.update(ACTOR, 'r1', { allowChat: false }, audit);
+
+    expect(bus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ audit }) }),
+    );
+  });
 });
