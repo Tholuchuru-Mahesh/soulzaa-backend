@@ -19,3 +19,5 @@ export * from './chat';
 export * from './send-video-room-gift.dto';
 export * from './video-room-gift-query.dto';
 export * from './video-room-gift-response.dto';
+export * from './video-room-treasure.dto';
+export * from './video-room-pk.dto';

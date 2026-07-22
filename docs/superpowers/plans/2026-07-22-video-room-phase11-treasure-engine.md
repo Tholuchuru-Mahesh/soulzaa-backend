@@ -79,10 +79,16 @@ git ls-files src/modules/treasure-boxes src/modules/audio-rooms \
 npx jest --silent 2>&1 | tail -5 >> docs/superpowers/plans/vr11-baseline.txt
 ```
 
-- [ ] **Step 4: Verify tsc and lint are clean before we start**
+- [ ] **Step 4: Verify tsc is clean and RECORD the lint debt**
 
-Run: `npx tsc --noEmit && npx eslint "src/**/*.ts" --max-warnings 0`
-Expected: no output (clean).
+```bash
+npx tsc --noEmit && echo "tsc clean"
+# Record, do not assert. treasure-boxes/ carries ~54 pre-existing prettier
+# errors; the Task 25 gate lints only changed files for exactly this reason.
+npx eslint "src/**/*.ts" 2>&1 | tail -3 >> docs/superpowers/plans/vr11-baseline.txt
+```
+Expected: `tsc clean`. The lint count is captured as a baseline number, not a
+pass/fail gate.
 
 - [ ] **Step 5: Commit**
 
@@ -6138,10 +6144,19 @@ export, confirm that is the only line changed and record it as the reviewed exce
 
 ```bash
 npx tsc --noEmit
-npx eslint "src/**/*.ts" --max-warnings 0
+
+# Lint ONLY files this phase touched. A repo-wide `eslint "src/**/*.ts"` would
+# fail on ~54 pre-existing prettier errors under treasure-boxes/ that predate
+# VR-11 (treasure.repository.ts, reward-distributor.service.ts,
+# treasure.service.ts). The gate must catch regressions VR-11 introduces, not
+# inherited debt — and auto-fixing that debt would mean editing files this
+# phase is contractually forbidden to touch.
+git diff --name-only main...HEAD -- '*.ts' | xargs -r npx eslint --max-warnings 0
+
 npx jest --silent 2>&1 | tail -5
 ```
-Expected: tsc clean, lint clean, total ≥ baseline + ~150 new tests, zero failures.
+Expected: tsc clean; lint clean **on changed files**; total ≥ baseline + ~150 new
+tests, zero failures.
 
 - [ ] **Step 5: Record the result**
 

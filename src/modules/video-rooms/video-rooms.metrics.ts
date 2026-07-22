@@ -94,6 +94,26 @@ export class VideoRoomsMetrics {
   private readonly giftFailuresC: Counter;
   private readonly giftRecoveryC: Counter<'result'>;
   private readonly giftCombosC: Counter<'phase'>;
+  // ---- VR-11 treasure ----
+  private readonly treasureProgressG: Gauge<'room' | 'level'>;
+  private readonly treasureUnlocksC: Counter<'level' | 'algorithm'>;
+  private readonly treasureDistributionSecondsH: Histogram<'level'>;
+  private readonly treasureFailuresC: Counter<'stage'>;
+  private readonly treasureQueueDepthG: Gauge<string>;
+  private readonly treasureInFlightG: Gauge<string>;
+  private readonly treasureMintedC: Counter<'level' | 'strategy'>;
+  private readonly treasureWalletLatencyH: Histogram;
+  // ---- VR-12 PK battles ----
+  private readonly pkActiveG: Gauge;
+  private readonly pkBattleDurationH: Histogram;
+  private readonly pkGiftThroughputC: Counter;
+  private readonly pkScoreLatencyH: Histogram;
+  private readonly pkRecoveriesC: Counter<'reason'>;
+  private readonly pkInvitationOutcomesC: Counter<'outcome'>;
+  private readonly pkWinnerCalculationH: Histogram;
+  private readonly pkRewardDistributionH: Histogram;
+  private readonly pkRedisSyncC: Counter<'result'>;
+  private readonly pkRecoveryQueueDepthG: Gauge;
 
   constructor(metrics: MetricsService) {
     const registers = [metrics.registry];
@@ -503,6 +523,114 @@ export class VideoRoomsMetrics {
       labelNames: ['phase'],
       registers,
     });
+
+    // ---- VR-11 treasure ----
+    this.treasureProgressG = new Gauge({
+      name: 'video_rooms_treasure_progress',
+      help: 'Current treasure box progress per room and level',
+      labelNames: ['room', 'level'],
+      registers,
+    });
+    this.treasureUnlocksC = new Counter({
+      name: 'video_rooms_treasure_unlocks_total',
+      help: 'Treasure boxes unlocked, by level and winner algorithm',
+      labelNames: ['level', 'algorithm'],
+      registers,
+    });
+    this.treasureDistributionSecondsH = new Histogram({
+      name: 'video_rooms_treasure_distribution_seconds',
+      help: 'End-to-end reward distribution time per unlock (SLO: < 5s, production.txt:1561)',
+      buckets: [0.1, 0.5, 1, 2, 5, 10, 30],
+      labelNames: ['level'],
+      registers,
+    });
+    this.treasureFailuresC = new Counter({
+      name: 'video_rooms_treasure_failures_total',
+      help: 'Unlock failures, labelled by the pipeline stage that produced them',
+      labelNames: ['stage'],
+      registers,
+    });
+    this.treasureQueueDepthG = new Gauge({
+      name: 'video_rooms_treasure_queue_depth',
+      help: 'Pending treasure unlock jobs',
+      registers,
+    });
+    this.treasureInFlightG = new Gauge({
+      name: 'video_rooms_treasure_unlocks_in_flight',
+      help: 'Treasure unlocks currently executing',
+      registers,
+    });
+    this.treasureMintedC = new Counter({
+      name: 'video_rooms_treasure_minted_total',
+      help: 'GOLD minted to treasure winners (platform-funded; not taken from gift value)',
+      labelNames: ['level', 'strategy'],
+      registers,
+    });
+    this.treasureWalletLatencyH = new Histogram({
+      name: 'video_rooms_treasure_wallet_seconds',
+      help: 'Wallet credit time inside an unlock — isolates the wallet when the 5s SLO breaks',
+      buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+      registers,
+    });
+
+    // ---- VR-12 PK battles ----
+    this.pkActiveG = new Gauge({
+      name: 'video_rooms_pk_active',
+      help: 'PK battles currently non-terminal (fleet-wide)',
+      registers,
+    });
+    this.pkBattleDurationH = new Histogram({
+      name: 'video_rooms_pk_battle_duration_seconds',
+      help: 'Wall-clock duration of a settled PK battle',
+      buckets: [15, 30, 60, 120, 300, 600, 1200],
+      registers,
+    });
+    this.pkGiftThroughputC = new Counter({
+      name: 'video_rooms_pk_gift_throughput_total',
+      help: 'Gifts that landed a PK score contribution',
+      registers,
+    });
+    this.pkScoreLatencyH = new Histogram({
+      name: 'video_rooms_pk_score_latency_seconds',
+      help: 'Time from a gift being scored to its broadcast leaving the event bus',
+      buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2],
+      registers,
+    });
+    this.pkRecoveriesC = new Counter({
+      name: 'video_rooms_pk_recoveries_total',
+      help: 'PK battles recovered from a frozen/interrupted state, by reason',
+      labelNames: ['reason'] as const,
+      registers,
+    });
+    this.pkInvitationOutcomesC = new Counter({
+      name: 'video_rooms_pk_invitation_outcomes_total',
+      help: 'PK invitation outcomes; delivery and acceptance rates derive from this',
+      labelNames: ['outcome'] as const,
+      registers,
+    });
+    this.pkWinnerCalculationH = new Histogram({
+      name: 'video_rooms_pk_winner_calculation_seconds',
+      help: 'Time from a battle ending to its winner being declared',
+      buckets: [0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+      registers,
+    });
+    this.pkRewardDistributionH = new Histogram({
+      name: 'video_rooms_pk_reward_distribution_seconds',
+      help: 'Time from a battle ending to its rewards being distributed',
+      buckets: [0.1, 0.5, 1, 2, 5, 10, 30],
+      registers,
+    });
+    this.pkRedisSyncC = new Counter({
+      name: 'video_rooms_pk_redis_sync_total',
+      help: 'PK scoreboard Redis-mirror syncs, by result',
+      labelNames: ['result'] as const,
+      registers,
+    });
+    this.pkRecoveryQueueDepthG = new Gauge({
+      name: 'video_rooms_pk_recovery_queue_depth',
+      help: 'PK battles/invitations awaiting the recovery sweep',
+      registers,
+    });
   }
 
   // ---- VR-4 seat helpers ----
@@ -839,5 +967,92 @@ export class VideoRoomsMetrics {
 
   incGiftCombo(phase: 'started' | 'updated' | 'ended'): void {
     this.giftCombosC.inc({ phase });
+  }
+
+  // ---- VR-11 treasure helpers ----
+
+  setTreasureProgress(roomId: string, level: number, progress: number): void {
+    this.treasureProgressG.set({ room: roomId, level: String(level) }, progress);
+  }
+
+  incTreasureUnlock(level: number, algorithm: string): void {
+    this.treasureUnlocksC.inc({ level: String(level), algorithm });
+  }
+
+  observeTreasureDistribution(level: number, seconds: number): void {
+    this.treasureDistributionSecondsH.observe({ level: String(level) }, seconds);
+  }
+
+  /** Labelled by pipeline stage so an alert names where the failure happened. */
+  incTreasureFailure(stage: string): void {
+    this.treasureFailuresC.inc({ stage });
+  }
+
+  setTreasureQueueDepth(depth: number): void {
+    this.treasureQueueDepthG.set(depth);
+  }
+
+  setTreasureInFlight(count: number): void {
+    this.treasureInFlightG.set(count);
+  }
+
+  /** GOLD minted to winners — the treasure-revenue counter. */
+  incTreasureMinted(level: number, strategy: string, amount: number): void {
+    this.treasureMintedC.inc({ level: String(level), strategy }, amount);
+  }
+
+  /** Wallet credit time inside an unlock, separate from end-to-end duration. */
+  observeTreasureWalletLatency(seconds: number): void {
+    this.treasureWalletLatencyH.observe(seconds);
+  }
+
+  // ---- VR-12 PK battle helpers ----
+
+  /**
+   * Non-terminal PK battle count. Set by `VideoRoomPkRecoveryService`'s
+   * periodic gauge read (Task 20), not by this module's event listeners — the
+   * recovery sweep already computes the same query result it needs for its
+   * own repair decisions, so re-deriving it from events here would be a
+   * second, drifting source of the same number.
+   */
+  setPkActive(count: number): void {
+    this.pkActiveG.set(count);
+  }
+
+  observePkBattleDuration(seconds: number): void {
+    this.pkBattleDurationH.observe(seconds);
+  }
+
+  incPkGiftThroughput(): void {
+    this.pkGiftThroughputC.inc();
+  }
+
+  observePkScoreLatency(seconds: number): void {
+    this.pkScoreLatencyH.observe(seconds);
+  }
+
+  incPkRecovery(reason: string): void {
+    this.pkRecoveriesC.inc({ reason });
+  }
+
+  incPkInvitationOutcome(outcome: string): void {
+    this.pkInvitationOutcomesC.inc({ outcome });
+  }
+
+  observePkWinnerCalculation(seconds: number): void {
+    this.pkWinnerCalculationH.observe(seconds);
+  }
+
+  observePkRewardDistribution(seconds: number): void {
+    this.pkRewardDistributionH.observe(seconds);
+  }
+
+  incPkRedisSync(result: string): void {
+    this.pkRedisSyncC.inc({ result });
+  }
+
+  /** Same "read every tick, act only when enabled" rationale as `setPkActive`. */
+  setPkRecoveryQueueDepth(count: number): void {
+    this.pkRecoveryQueueDepthG.set(count);
   }
 }

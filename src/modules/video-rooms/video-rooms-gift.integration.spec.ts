@@ -182,6 +182,33 @@ describe('VR-10 gift engine (integration)', () => {
       { findActiveBlock: jest.fn().mockResolvedValue(null) } as never,
       config as never,
       registry,
+      // VR-11: no ladder in this fixture, so the treasure counter reports an
+      // idle result and the gift pipeline behaves exactly as it did in VR-10.
+      {
+        apply: jest.fn().mockResolvedValue({
+          sessionId: null,
+          applied: 0,
+          events: [],
+          claimedBoxId: null,
+          claimedLevel: null,
+          correlationId: 'c1',
+          mirror: null,
+        }),
+        shouldEmit: jest.fn().mockResolvedValue(true),
+        mirror: jest.fn().mockResolvedValue(undefined),
+        recordActivity: jest.fn().mockResolvedValue(undefined),
+      } as never,
+      { enqueue: jest.fn().mockResolvedValue(undefined) } as never,
+      // VR-12: no live battle in this fixture, so PK scoring reports idle and
+      // the gift pipeline behaves exactly as it did in VR-10/VR-11.
+      {
+        apply: jest
+          .fn()
+          .mockResolvedValue({ battleId: null, applied: 0, events: [], mirror: null }),
+        mirror: jest.fn().mockResolvedValue(undefined),
+        shouldEmit: jest.fn().mockResolvedValue(true),
+      } as never,
+      bus as never,
     ).onModuleInit();
 
     const gifts = new GiftService(

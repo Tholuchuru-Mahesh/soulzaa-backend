@@ -45,6 +45,7 @@ enum WalletTxnReason {
   CASINO_BET
   CASINO_WIN
   CASINO_REFUND
+  PK_REWARD
 }
 
 /// One wallet per user (1:1). Balances are BigInt to scale to platform-wide

@@ -1,10 +1,27 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
 import { VIDEO_ROOM_QUEUES } from './constants/video-room.constants';
+import { RewardDistributor } from 'src/modules/treasure-boxes/services/reward-distributor.service';
 import { VideoRoomsChatController } from './controllers/video-rooms-chat.controller';
 import { VideoRoomsGiftsController } from './controllers/video-rooms-gifts.controller';
+import { VideoRoomsTreasureController } from './controllers/video-rooms-treasure.controller';
+import { VideoRoomTreasureAuditListener } from './listeners/video-room-treasure-audit.listener';
+import { VideoRoomTreasureMetricsListener } from './listeners/video-room-treasure-metrics.listener';
+import { VideoRoomTreasureSocketListener } from './listeners/video-room-treasure-socket.listener';
+import { VideoRoomTreasureRewardRepository } from './repositories/video-room-treasure-reward.repository';
+import { VideoRoomTreasureRepository } from './repositories/video-room-treasure.repository';
+import { VideoRoomTreasureEligibilityService } from './services/video-room-treasure-eligibility.service';
+import { VideoRoomTreasureLevelSeeder } from './services/video-room-treasure-level.seeder';
+import { VideoRoomTreasurePoolService } from './services/video-room-treasure-pool.service';
+import { VideoRoomTreasureProgressService } from './services/video-room-treasure-progress.service';
+import { VideoRoomTreasureQueryService } from './services/video-room-treasure-query.service';
+import { VideoRoomTreasureRecoveryService } from './services/video-room-treasure-recovery.service';
+import { VideoRoomTreasureUnlockService } from './services/video-room-treasure-unlock.service';
+import { VideoRoomTreasureWinnerService } from './services/video-room-treasure-winner.service';
+import { VideoRoomTreasureService } from './services/video-room-treasure.service';
 import { VideoRoomsMediaController } from './controllers/video-rooms-media.controller';
 import { VideoRoomMembersController } from './controllers/video-rooms-members.controller';
+import { VideoRoomsPkController } from './controllers/video-rooms-pk.controller';
 import { VideoRoomSeatsController } from './controllers/video-rooms-seats.controller';
 import { VideoRoomViewersController } from './controllers/video-rooms-viewers.controller';
 import { VideoRoomsController } from './controllers/video-rooms.controller';
@@ -19,6 +36,11 @@ import { VideoRoomChatAuditListener } from './listeners/video-room-chat-audit.li
 import { VideoRoomChatMetricsListener } from './listeners/video-room-chat-metrics.listener';
 import { VideoRoomChatSocketListener } from './listeners/video-room-chat-socket.listener';
 import { VideoRoomGiftSocketListener } from './listeners/video-room-gift-socket.listener';
+import { VideoRoomPkAuditListener } from './listeners/video-room-pk-audit.listener';
+import { VideoRoomPkMetricsListener } from './listeners/video-room-pk-metrics.listener';
+import { VideoRoomPkRecoveryListener } from './listeners/video-room-pk-recovery.listener';
+import { VideoRoomPkReversalListener } from './listeners/video-room-pk-reversal.listener';
+import { VideoRoomPkSocketListener } from './listeners/video-room-pk-socket.listener';
 import { VideoRoomGiftMonitor } from './scheduler/video-room-gift.monitor';
 import { VideoRoomGiftRepository } from './repositories/video-room-gift.repository';
 import { VideoRoomGiftComboService } from './services/video-room-gift-combo.service';
@@ -43,6 +65,9 @@ import { VideoRoomChatRepository } from './repositories/video-room-chat.reposito
 import { VideoRoomEventsRepository } from './repositories/video-room-events.repository';
 import { VideoRoomMediaSessionRepository } from './repositories/video-room-media-session.repository';
 import { VideoRoomModerationRepository } from './repositories/video-room-moderation.repository';
+import { VideoRoomPkInvitationRepository } from './repositories/video-room-pk-invitation.repository';
+import { VideoRoomPkRewardRepository } from './repositories/video-room-pk-reward.repository';
+import { VideoRoomPkRepository } from './repositories/video-room-pk.repository';
 import { VideoRoomReferenceRepository } from './repositories/video-room-reference.repository';
 import { VideoRoomRolesRepository } from './repositories/video-room-roles.repository';
 import { VideoRoomRolesController } from './controllers/video-rooms-roles.controller';
@@ -76,6 +101,19 @@ import { VideoRoomMentionResolver } from './services/video-room-mention-resolver
 import { VideoRoomPasswordService } from './services/video-room-password.service';
 import { VideoRoomPermissionService } from './services/video-room-permission.service';
 import { VideoRoomPresenceService } from './services/video-room-presence.service';
+import { VideoRoomPkInvitationService } from './services/video-room-pk-invitation.service';
+import { VideoRoomPkJobsService } from './services/video-room-pk-jobs.service';
+import { VideoRoomPkQueryService } from './services/video-room-pk-query.service';
+import { VideoRoomPkRecoveryService } from './services/video-room-pk-recovery.service';
+import { VideoRoomPkScoreEngine } from './services/video-room-pk-score.engine';
+import { VideoRoomPkScoringService } from './services/video-room-pk-scoring.service';
+import { VideoRoomPkSettlementService } from './services/video-room-pk-settlement.service';
+import { VideoRoomPkStateService } from './services/video-room-pk-state.service';
+import { VideoRoomPkTimerService } from './services/video-room-pk-timer.service';
+import { VideoRoomPkValidationService } from './services/video-room-pk-validation.service';
+import { VIDEO_ROOM_PK_SETTLEMENT, VideoRoomPkService } from './services/video-room-pk.service';
+import { EventMultiplierStrategy } from './services/strategies/event-multiplier.strategy';
+import { VipMultiplierStrategy } from './services/strategies/vip-multiplier.strategy';
 import { VideoRoomQueryService } from './services/video-room-query.service';
 import { VideoRoomReferenceSeederService } from './services/video-room-reference-seeder.service';
 import { VideoRoomSeatInvitationService } from './services/video-room-seat-invitation.service';
@@ -127,6 +165,8 @@ import { VideoRoomsMetrics } from './video-rooms.metrics';
     VideoRoomRolesController,
     VideoRoomsChatController,
     VideoRoomsGiftsController,
+    VideoRoomsTreasureController,
+    VideoRoomsPkController,
   ],
   providers: [
     VideoRoomsRepository,
@@ -223,6 +263,53 @@ import { VideoRoomsMetrics } from './video-rooms.metrics';
     VideoRoomChatSystemListener,
     VideoRoomChatMetricsListener,
     VideoRoomChatAuditListener,
+    // ---- VR-11 treasure engine ----
+    // RewardDistributor is provided directly rather than imported from
+    // TreasureBoxesModule: it depends only on WALLET_SERVICE and BACKPACK_SERVICE,
+    // both @Global, so wiring it here keeps treasure-boxes/ untouched — the
+    // backward-compatibility constraint this phase is held to.
+    RewardDistributor,
+    VideoRoomTreasureRepository,
+    VideoRoomTreasureRewardRepository,
+    VideoRoomTreasureLevelSeeder,
+    VideoRoomTreasurePoolService,
+    VideoRoomTreasureEligibilityService,
+    VideoRoomTreasureWinnerService,
+    VideoRoomTreasureService,
+    VideoRoomTreasureProgressService,
+    VideoRoomTreasureUnlockService,
+    VideoRoomTreasureRecoveryService,
+    VideoRoomTreasureQueryService,
+    VideoRoomTreasureSocketListener,
+    VideoRoomTreasureMetricsListener,
+    VideoRoomTreasureAuditListener,
+    // ---- VR-12 PK battle engine ----
+    VideoRoomPkRepository,
+    VideoRoomPkInvitationRepository,
+    VideoRoomPkRewardRepository,
+    VideoRoomPkStateService,
+    VideoRoomPkScoreEngine,
+    VideoRoomPkValidationService,
+    VideoRoomPkScoringService,
+    VideoRoomPkTimerService,
+    VideoRoomPkInvitationService,
+    VideoRoomPkService,
+    VideoRoomPkSettlementService,
+    VideoRoomPkJobsService,
+    VideoRoomPkRecoveryService,
+    VideoRoomPkQueryService,
+    // Self-register with VideoRoomPkScoreEngine in onModuleInit.
+    VipMultiplierStrategy,
+    EventMultiplierStrategy,
+    VideoRoomPkSocketListener,
+    VideoRoomPkAuditListener,
+    VideoRoomPkMetricsListener,
+    VideoRoomPkReversalListener,
+    VideoRoomPkRecoveryListener,
+    // Task-18 seam (see video-room-pk.service.ts): VideoRoomPkService injects
+    // settlement `@Optional()` via this token so `end()` can fail loudly with
+    // NOT_IMPLEMENTED instead of silently doing nothing if it is ever missing.
+    { provide: VIDEO_ROOM_PK_SETTLEMENT, useExisting: VideoRoomPkSettlementService },
     // The media seam: business code depends on IMediaProvider, bound to Zego here.
     { provide: MEDIA_PROVIDER, useExisting: ZegoMediaProvider },
     // The audience seam: durable (member-is-viewer) is the only impl for VR-6;

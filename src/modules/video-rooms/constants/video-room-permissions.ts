@@ -49,6 +49,12 @@ export enum VideoRoomPermission {
   MANAGE_ANNOUNCEMENTS = 'MANAGE_ANNOUNCEMENTS',
   /** Start/stop PK battles. */
   START_PK = 'START_PK',
+  /**
+   * Create / start / pause / resume / close / archive the treasure ladder
+   * (VR-11). Owner and admin: the PRD's "Only the room owner or authorized
+   * admin can create a Treasure Box" (production.txt:1291).
+   */
+  MANAGE_TREASURE = 'MANAGE_TREASURE',
   /** View room analytics. */
   VIEW_ANALYTICS = 'VIEW_ANALYTICS',
   /** Invite users to the room. */
@@ -91,6 +97,7 @@ const ADMIN_PERMISSIONS: readonly VideoRoomPermission[] = [
   VideoRoomPermission.INVITE_USERS,
   VideoRoomPermission.VIEW_ANALYTICS,
   VideoRoomPermission.START_PK,
+  VideoRoomPermission.MANAGE_TREASURE,
 ];
 
 /**

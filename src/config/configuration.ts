@@ -312,6 +312,55 @@ export const videoRoomGiftConfig = registerAs('videoRoomGift', () => ({
   blockedCountries: process.env.VIDEO_ROOM_GIFT_BLOCKED_COUNTRIES ?? '',
 }));
 
+/**
+ * VR-11 treasure engine. Booleans are read raw rather than through `env()`:
+ * `z.coerce.boolean()` maps the string "false" to `true`, so an operator
+ * disabling recovery would silently enable it. `loadVideoRoomTreasureConfig`
+ * applies `toBool`, which honours "false"/"0"/"no"/"off".
+ */
+export const videoRoomTreasureConfig = registerAs('videoRoomTreasure', () => ({
+  enabled: process.env.VIDEO_ROOM_TREASURE_ENABLED ?? 'true',
+  poolBps: env().VIDEO_ROOM_TREASURE_POOL_BPS,
+  winnerCount: env().VIDEO_ROOM_TREASURE_WINNER_COUNT,
+  oversampleFactor: env().VIDEO_ROOM_TREASURE_OVERSAMPLE_FACTOR,
+  oversampleMin: env().VIDEO_ROOM_TREASURE_OVERSAMPLE_MIN,
+  minStaySeconds: env().VIDEO_ROOM_TREASURE_MIN_STAY_SECONDS,
+  minActivityEvents: env().VIDEO_ROOM_TREASURE_MIN_ACTIVITY_EVENTS,
+  progressEmitPerSecond: env().VIDEO_ROOM_TREASURE_PROGRESS_EMIT_PER_SECOND,
+  orphanTimeoutSeconds: env().VIDEO_ROOM_TREASURE_ORPHAN_TIMEOUT_SECONDS,
+  recoveryEnabled: process.env.VIDEO_ROOM_TREASURE_RECOVERY_ENABLED ?? 'false',
+  monitorIntervalSeconds: env().VIDEO_ROOM_TREASURE_MONITOR_INTERVAL_SECONDS,
+}));
+
+/**
+ * VR-12 PK battle engine. Booleans are read raw rather than through `env()`:
+ * `z.coerce.boolean()` maps the string "false" to `true`, so an operator
+ * disabling recovery would silently enable it. `loadVideoRoomPkConfig`
+ * applies `toBool`, which honours "false"/"0"/"no"/"off".
+ */
+export const videoRoomPkConfig = registerAs('videoRoomPk', () => ({
+  enabled: process.env.VIDEO_ROOM_PK_ENABLED ?? 'true',
+  countdownSeconds: env().VIDEO_ROOM_PK_COUNTDOWN_SECONDS,
+  minDurationSeconds: env().VIDEO_ROOM_PK_MIN_DURATION_SECONDS,
+  maxDurationSeconds: env().VIDEO_ROOM_PK_MAX_DURATION_SECONDS,
+  defaultDurationSeconds: env().VIDEO_ROOM_PK_DEFAULT_DURATION_SECONDS,
+  invitationTtlSeconds: env().VIDEO_ROOM_PK_INVITATION_TTL_SECONDS,
+  poolBps: env().VIDEO_ROOM_PK_POOL_BPS,
+  winnerBps: env().VIDEO_ROOM_PK_WINNER_BPS,
+  participationBps: env().VIDEO_ROOM_PK_PARTICIPATION_BPS,
+  bonusBps: env().VIDEO_ROOM_PK_BONUS_BPS,
+  multiplierCapBps: env().VIDEO_ROOM_PK_MULTIPLIER_CAP_BPS,
+  vipBonusBpsPerTier: env().VIDEO_ROOM_PK_VIP_BONUS_BPS_PER_TIER,
+  eventBonusBps: env().VIDEO_ROOM_PK_EVENT_BONUS_BPS,
+  eventMultiplierEnabled: process.env.VIDEO_ROOM_PK_EVENT_MULTIPLIER_ENABLED ?? 'false',
+  scoreEmitPerSecond: env().VIDEO_ROOM_PK_SCORE_EMIT_PER_SECOND,
+  recoveryEnabled: process.env.VIDEO_ROOM_PK_RECOVERY_ENABLED ?? 'false',
+  monitorIntervalSeconds: env().VIDEO_ROOM_PK_MONITOR_INTERVAL_SECONDS,
+  orphanTimeoutSeconds: env().VIDEO_ROOM_PK_ORPHAN_TIMEOUT_SECONDS,
+  recoveryGraceSeconds: env().VIDEO_ROOM_PK_RECOVERY_GRACE_SECONDS,
+  maxPerSweep: env().VIDEO_ROOM_PK_MAX_PER_SWEEP,
+}));
+
 export const chatConfig = registerAs('chat', () => ({
   messageMaxLength: env().CHAT_MESSAGE_MAX_LENGTH,
   maxAttachments: env().CHAT_MAX_ATTACHMENTS,
@@ -415,6 +464,8 @@ export const configurations = [
   videoRoomConfig,
   videoRoomChatConfig,
   videoRoomGiftConfig,
+  videoRoomTreasureConfig,
+  videoRoomPkConfig,
   chatConfig,
   callsConfig,
   giftConfig,

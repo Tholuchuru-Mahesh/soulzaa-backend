@@ -1,0 +1,176 @@
+# VR-11 release-gate baseline — 04106dc fix(treasure): report config faults correctly and repair stale specs
+
+## Protected file hashes (must be identical at Task 25)
+9782628e25d0d2c451f70ccaac412e260827704e  src/modules/audio-rooms/audio-rooms.module.ts
+9bbaccb5f188a5edf47d717dd3c702ddc04d04ee  src/modules/audio-rooms/constants/audio-room.constants.ts
+227b9e3c56cb951fce59b9698ff501ece0f1da7f  src/modules/audio-rooms/constants/chat.constants.ts
+b19c3b3c264921cff18c5b1a3688224862a81486  src/modules/audio-rooms/constants/index.ts
+6c0a65242b966ec48c52672bc7daaccc24f00bf6  src/modules/audio-rooms/constants/moderation.constants.ts
+aca083d82e939fd09ad928c81b60488fdee35050  src/modules/audio-rooms/constants/pk.constants.ts
+26c616b817db786772b0d0c8fb8b395db88dceb1  src/modules/audio-rooms/constants/premium.constants.ts
+52e19af98942d45364b7f1e49aa15e1aa8b12bd9  src/modules/audio-rooms/constants/reference-data.ts
+e0fab854b6ee27ecc3b2bfbbfa2df9ce35c2ef7d  src/modules/audio-rooms/constants/room-permissions.ts
+6a4357151316593a1d4df05ab40410092844c9d8  src/modules/audio-rooms/constants/voice.constants.ts
+10f5124ade1353581c6a24ff6f6aec5123bd4499  src/modules/audio-rooms/controllers/audio-room-seats.controller.ts
+56d06ebd7ba726c3ba36d1df64361409207d66e9  src/modules/audio-rooms/controllers/audio-rooms-admin.controller.ts
+c64fa0abdb36dbe7658e5241d9bcb6d5da95b93e  src/modules/audio-rooms/controllers/audio-rooms.controller.ts
+587a8b45896da5eaf85315f642010503dd4bb210  src/modules/audio-rooms/controllers/chat-admin.controller.ts
+89a14f62bbcd398410d77597cd147f6c1413cf5b  src/modules/audio-rooms/controllers/chat.controller.ts
+e4d4b052d880ce480a35306d1bd0d819845348f4  src/modules/audio-rooms/controllers/index.ts
+af6a00cfbc5515a81fcd5377e60c0e14761996a8  src/modules/audio-rooms/controllers/moderation.controller.ts
+668516b5f06c99e9d804f893e65634f353b6b296  src/modules/audio-rooms/controllers/pk-battle.controller.ts
+858e97546d1477f7b5737b6870ef919e84edd217  src/modules/audio-rooms/controllers/premium-seat.controller.ts
+d53e655f789f71aa36d4db7826595e200efe7cda  src/modules/audio-rooms/controllers/room-appearance.controller.ts
+c1e5d7ef4c6e6862cd651f77947021a2dd380b28  src/modules/audio-rooms/controllers/voice.controller.ts
+459b2831ce41bb5791e050816c9e15b737e38c0a  src/modules/audio-rooms/controllers/watch-party.controller.ts
+41ed3d34f289be63c3349b6fa989fb05571c4c74  src/modules/audio-rooms/dto/chat.dto.ts
+b9e11a645345dfaca66a57fc02a4a594a28a552e  src/modules/audio-rooms/dto/configure-layout.dto.ts
+1b2c076a789529d35f951def8706c74533bfe844  src/modules/audio-rooms/dto/create-room.dto.ts
+e13d15c41046a794389c0c32a005e3b91488e282  src/modules/audio-rooms/dto/grant-role.dto.ts
+fb07dbdb1ac84fada856920fdc941f5eab7a3b31  src/modules/audio-rooms/dto/index.ts
+27868f3bdeecff5043abc33f251796e8ab42c92a  src/modules/audio-rooms/dto/join-room.dto.ts
+374b4756a80f397537082659b6612ffe279d5647  src/modules/audio-rooms/dto/list-rooms.dto.ts
+c2ae2480df229e447c2996fc49f35b4ea5187478  src/modules/audio-rooms/dto/moderation.dto.ts
+cab8ed29605b27ded40ee26794de03590521b7a6  src/modules/audio-rooms/dto/move-speaker.dto.ts
+bc9cb3579ab7e972bec89ddc077701e6efad6e5b  src/modules/audio-rooms/dto/pk.dto.ts
+33e38028be5fd2bdd827924bc48535cf4d66d759  src/modules/audio-rooms/dto/premium.dto.ts
+81cfe61b7fc7a70277031d7bf7978c798391ea86  src/modules/audio-rooms/dto/room-appearance.dto.ts
+5d55fa0467c6366e723248d30d51f7af9f8b6b89  src/modules/audio-rooms/dto/seat-invite.dto.ts
+86185e656ea93ecd971fc84db846f0e7f3660d13  src/modules/audio-rooms/dto/seat-request.dto.ts
+9d39fd92600389d7c299f6e1cd466f9964ad8731  src/modules/audio-rooms/dto/transfer-ownership.dto.ts
+ec208e1a4943bf7a7eddb2c0f43c6915b33d5f7b  src/modules/audio-rooms/dto/update-room.dto.ts
+d3812c4942273ba40ed55d9b7f179a635130c682  src/modules/audio-rooms/dto/voice-background.dto.ts
+2a779ce1222cd182fbf93891071f0d229d6fb980  src/modules/audio-rooms/dto/voice-heartbeat.dto.ts
+8649030d3173a020019f416ac21ad26f4ce33704  src/modules/audio-rooms/dto/voice-join.dto.ts
+f09c4a3a8c3f6ce1c55c7057a3b1a7852b6929fd  src/modules/audio-rooms/dto/voice-quality.dto.ts
+e445b234a4028cb8f46c23ea9af93dd5fd4e25fb  src/modules/audio-rooms/dto/voice-route.dto.ts
+100934d5be6f9be407e7ff174fa3321edd7b0c0c  src/modules/audio-rooms/entities/index.ts
+bd35917f02be0fa0aa6c841f56e08ccb66f1fb99  src/modules/audio-rooms/events/audio-room-appearance.events.ts
+dd4c766301e8017fed26c659ca057a81ae354e7d  src/modules/audio-rooms/events/audio-room-chat.events.ts
+65a0423e4733e5605c618f5ea6da6efe58a8dcb0  src/modules/audio-rooms/events/audio-room-moderation.events.ts
+7f5137597ea0bd4fa70d7a7d241dc78be97e8602  src/modules/audio-rooms/events/audio-room-pk.events.ts
+f0102ad0b34e6ffefe9a284e451c2b504a0bb981  src/modules/audio-rooms/events/audio-room-premium.events.ts
+f4527112fff8ae4ccd26aff6da94bf24ad660ec7  src/modules/audio-rooms/events/audio-room-seat.events.ts
+1ffc0bd97743f12db59367426cbc77b97022116d  src/modules/audio-rooms/events/audio-room-voice.events.ts
+bd75eb6e7227eafadf8b055356d26129f0085a55  src/modules/audio-rooms/events/audio-room.events.ts
+86a187160647d9335cb08fa7f6fdc5e486afbd23  src/modules/audio-rooms/events/index.ts
+4c9c1e0f7ca3b5367edbbcb64536a22bb338c767  src/modules/audio-rooms/interfaces/audio-rooms.service.interface.ts
+02e765173ae473fc61850a2926fec1d4f87ea160  src/modules/audio-rooms/interfaces/chat.service.interface.ts
+051cb62f8b10bfc1b514a6f9b794a69a33e02927  src/modules/audio-rooms/interfaces/index.ts
+51cc43ae2468f57fc1e1af4eb584fc05c2dbb2a6  src/modules/audio-rooms/interfaces/moderation.service.interface.ts
+997ac8f0fe37bc2651c4e3577e7e15538823ad17  src/modules/audio-rooms/interfaces/room-actor.interface.ts
+0b37696ae91796b44b6cc1de0ff1163c1a447838  src/modules/audio-rooms/interfaces/voice.service.interface.ts
+bc75e3d3e69a775e8e42d2b5741d613426f008af  src/modules/audio-rooms/listeners/audio-room-seats.listener.ts
+6dc9d85c56d32b87a99645971fa333cf9825e3f7  src/modules/audio-rooms/listeners/audio-room-socket.listener.ts
+b4d3ab6eb3277dced1ae8b5e44156742af98c445  src/modules/audio-rooms/listeners/chat-socket.listener.ts
+733d41574b249a1ec0c740f7cdd3847d313b8d22  src/modules/audio-rooms/listeners/gift-socket.listener.ts
+b9a4d5c3248f5309a06c602a687ee007ac8ceba2  src/modules/audio-rooms/listeners/index.ts
+ba4bcd1f56295b8c18a437bde6f371002e7f9763  src/modules/audio-rooms/listeners/lucky-packet-socket.listener.ts
+ba44b7bd751ccc15266eddda641d7d072c691214  src/modules/audio-rooms/listeners/moderation-socket.listener.ts
+a071dc63eb400442362d58ee14b13b4275752109  src/modules/audio-rooms/listeners/pk-gift.listener.ts
+73e61132df188cfc0789d1a6d8299c3ecfb2a616  src/modules/audio-rooms/listeners/pk-socket.listener.ts
+197f0fbc398d4dbe2c5d250cc9633846238eed50  src/modules/audio-rooms/listeners/premium-socket.listener.ts
+6abcc470b583e22fd6fc69549d58077318c764fc  src/modules/audio-rooms/listeners/progression-socket.listener.ts
+da54e56f9d1c9d4236f0c0b4ba666c81e34e8dd5  src/modules/audio-rooms/listeners/room-cosmetics-socket.listener.ts
+4a9032ebc828d4f87f415184ce0e18a70a7c4c31  src/modules/audio-rooms/listeners/room-utilities-socket.listener.ts
+a946b0bf4e4452202576a27eef72ca5e2b427542  src/modules/audio-rooms/listeners/treasure-socket.listener.ts
+45d69d28942fa8ccace63eca89bab93e9d21685d  src/modules/audio-rooms/listeners/voice-seat-sync.listener.ts
+b81ed4a7b1f7515c2b1184632a8281b3b630a603  src/modules/audio-rooms/listeners/voice-socket.listener.ts
+851d37e99eaafaec684d3b2e48af33e07248cd65  src/modules/audio-rooms/repositories/audio-room-seats.repository.ts
+e2171d63b108ce09019ac4a49ca7fbefdec28f50  src/modules/audio-rooms/repositories/audio-rooms.repository.ts
+2243f535f42dc095ad21998fa1fd0d6b368a8223  src/modules/audio-rooms/repositories/chat.repository.ts
+030c172cae908f2dd3c87656b67f82a9e69f21cc  src/modules/audio-rooms/repositories/index.ts
+b956fa0690dc0dd0e773b8692c9a5b9f6be3da5a  src/modules/audio-rooms/repositories/moderation.repository.ts
+e7e04a6a77f13c48f4d5c09b064e3e6012ce163e  src/modules/audio-rooms/repositories/pk-battle.repository.ts
+edc108d44a8ec91022952b528e3bc28d01fca17b  src/modules/audio-rooms/repositories/premium-seat.repository.ts
+8a6cd3193ccfff5106fef293433cdbc643c16dbb  src/modules/audio-rooms/repositories/room-appearance.repository.ts
+a5bef3d771827e8f78e9ae69538c6424c31249a4  src/modules/audio-rooms/repositories/voice-session.repository.ts
+ed2ed7c4cb2350f2fade6c95ddd97c9d1f926ac6  src/modules/audio-rooms/repositories/watch-party.repository.ts
+70312784522b1adb3193f875dcc97a0cab1dfc0a  src/modules/audio-rooms/services/audio-room-gift-baseline.spec.ts
+c9652691cfe0da848c22bc1621dfbd35ec2a2eb8  src/modules/audio-rooms/services/audio-room-gift-context.handler.spec.ts
+61ad63a86b71003646d1f740eb495677fe907fbd  src/modules/audio-rooms/services/audio-room-gift-context.handler.ts
+810e90e0fe2ce4e4c2bcdcdb314fd34913036fb3  src/modules/audio-rooms/services/audio-room-seats.service.spec.ts
+b6bce6517c8e67855d94c1029286c09250e87012  src/modules/audio-rooms/services/audio-room-seats.service.ts
+e55d50d9a111b9a0b22988eb9baafa7bf3745fa5  src/modules/audio-rooms/services/audio-rooms.service.spec.ts
+bd395e2f43e6666003d1ec5e8a98b5780e0a1624  src/modules/audio-rooms/services/audio-rooms.service.ts
+ec54807946bbb7a8c63c5d8acb233967edf9c6b7  src/modules/audio-rooms/services/chat.service.spec.ts
+d566fa9107664fe36d3fe4e2f4fdc05bf63e22c8  src/modules/audio-rooms/services/chat.service.ts
+8a49c9df3dd9e4d4bcb953c3aa7fec1e51544321  src/modules/audio-rooms/services/index.ts
+cebb71d0f83fd18ee240ddc127f2db982b97bbdd  src/modules/audio-rooms/services/moderation-expiry.monitor.ts
+3591b781db295d545192e8afe4be59789be6c071  src/modules/audio-rooms/services/moderation.service.spec.ts
+26e8af7ac39555e11fa873ff2786b3cea39a792e  src/modules/audio-rooms/services/moderation.service.ts
+cc5c110ae50d3a78ee903f187f30216c41739908  src/modules/audio-rooms/services/pk-battle.service.spec.ts
+45b8c4df40acb4d27ee67fae74c0cdc39fcfa4ea  src/modules/audio-rooms/services/pk-battle.service.ts
+01e667012ba0aa878e31d468875b5fb5d6d18f8b  src/modules/audio-rooms/services/pk-expiry.monitor.ts
+0df9c24f66be609e56e48a9aab4e8f84d3715dff  src/modules/audio-rooms/services/premium-seat-expiry.monitor.ts
+0369d23fd9b5c35484d20258e6c0d84244802322  src/modules/audio-rooms/services/premium-seat.service.spec.ts
+83f1c8de148784d3c3d0c7211f02b3f414f5bcb8  src/modules/audio-rooms/services/premium-seat.service.ts
+9fb296bc60e1e65c4d1a91e56e135e7e5c15a7be  src/modules/audio-rooms/services/room-appearance.service.spec.ts
+f6579b99bc79fa10ed0f9ba9d72a88d2a2f5a968  src/modules/audio-rooms/services/room-appearance.service.ts
+248e73d9bd160c96a95c280ffad3c0395849841e  src/modules/audio-rooms/services/room-password.service.ts
+b66da0055293703dfe35ec7e89dd419ce6e80506  src/modules/audio-rooms/services/room-permission.service.spec.ts
+95d31006d328ab5418d9d5a69488a30aee882fe5  src/modules/audio-rooms/services/room-permission.service.ts
+8706700cdc5531fbfc624d9a804c6a3903ef9903  src/modules/audio-rooms/services/room-reference-seeder.service.ts
+0e7d960522307518d4f72a2740087a10b690df76  src/modules/audio-rooms/services/voice-heartbeat.monitor.ts
+e0d3d9429032be46dac34ae4fd259c14a2a57b34  src/modules/audio-rooms/services/voice.service.spec.ts
+154b44f22326b788e9fccb9c6b670a2f51b2305e  src/modules/audio-rooms/services/voice.service.ts
+e1cf70d312b65b37a7c362cddb1f3ee93e3c37fa  src/modules/audio-rooms/services/watch-party.service.spec.ts
+51c9f91f278291f9bda53beea2d748e2fb49eede  src/modules/audio-rooms/services/watch-party.service.ts
+113ed4bed109e452ecf4fed39f9975579a3a06d2  src/modules/treasure-boxes/constants/index.ts
+a3f9baceecb07ade72a2b23761c00c90f236f82f  src/modules/treasure-boxes/constants/treasure.constants.ts
+3fafdf24a1dc8b53bd5c04c8e3f8481268c8e9af  src/modules/treasure-boxes/controllers/index.ts
+e8fc185151daf8f806ec5b06bacaa19c3ad105e9  src/modules/treasure-boxes/controllers/treasure-admin.controller.ts
+135ca9b7333359a1a431911f216fc9122df7c299  src/modules/treasure-boxes/controllers/treasure.controller.ts
+d3f857fa6a7a4ac6ae9e2ebee2a9c4318e5683c9  src/modules/treasure-boxes/dto/index.ts
+9448fbbcb481fb44ae29ce1ff83e9fe010820ea9  src/modules/treasure-boxes/dto/treasure.dto.ts
+e4a815f46230b842d65dd7c245d867aaa80fa5d4  src/modules/treasure-boxes/entities/index.ts
+a726514422351a33e5d3831c25d96d2a8dca75aa  src/modules/treasure-boxes/events/index.ts
+938da91b05dc4cdd3aeb4d61e07b2ac0cb33408c  src/modules/treasure-boxes/events/treasure.events.ts
+e7dfc72121861994ba84ed7b9e0c830fc4e14cdd  src/modules/treasure-boxes/interfaces/index.ts
+179cfa6f557a68226e8480a5c633b2eb602797dc  src/modules/treasure-boxes/interfaces/treasure-boxes.service.interface.ts
+ccecf87ddcd056d6fed037bca13b84bfc9f24150  src/modules/treasure-boxes/listeners/index.ts
+c9e1e7d6b7c9523294435572578c328e2d467b02  src/modules/treasure-boxes/listeners/treasure-gift.listener.ts
+26d5a8f23f10befba5f0c848f13fcb94af8065b9  src/modules/treasure-boxes/repositories/index.ts
+2ad7f9dbb04c5f9326a57044c10727074a878194  src/modules/treasure-boxes/repositories/rocket.repository.ts
+9714a41f715affd65eb843a6cdc570583aa47f59  src/modules/treasure-boxes/repositories/treasure.repository.ts
+caf33d3e925bf5f034223a21d5c8497a7cac5082  src/modules/treasure-boxes/services/index.ts
+35ef4fbe3c153ddee2c4e5932c6904e5ccfe503a  src/modules/treasure-boxes/services/reward-distributor.service.ts
+3c177f5c9b1459df91f7cd09f986bb28dc34f84e  src/modules/treasure-boxes/services/rocket-expiry.monitor.ts
+af95f2d6bd7ec03b2b72ea61525cfc4dcb9668ea  src/modules/treasure-boxes/services/rocket.service.spec.ts
+63eb6f95c0af4c1c9509b95a33fadd04dd498188  src/modules/treasure-boxes/services/rocket.service.ts
+2d796d95f4b503f1b385b26fe8b070ca9cdc6c42  src/modules/treasure-boxes/services/treasure-admin.service.ts
+6d8003ad043facc9e43d9773d77fe48d7773e04a  src/modules/treasure-boxes/services/treasure-config.seeder.service.ts
+b65c6ba270687ef794f5f0983f9bb5f627b8a203  src/modules/treasure-boxes/services/treasure.service.spec.ts
+489ea28787cb6f3356e704588cae6bb8aca0331a  src/modules/treasure-boxes/services/treasure.service.ts
+1d865bffb44b81613a55a393e6aa095b5f3a1fad  src/modules/treasure-boxes/treasure-boxes.module.ts
+
+## Full suite baseline
+Test Suites: 185 passed, 185 total
+Tests:       2171 passed, 2171 total
+
+## BC suite baseline (treasure-boxes)
+Test Suites: 2 passed, 2 total
+Tests:       14 passed, 14 total
+
+## Pre-existing lint debt (recorded, NOT gated)
+✖ 123 problems (122 errors, 1 warning)
+  111 errors and 0 warnings potentially fixable with the `--fix` option.
+
+
+## --- VR-11 COMPLETE ---
+Full suite:
+Test Suites: 205 passed, 205 total
+Tests:       2432 passed, 2432 total
+
+BC suite (treasure-boxes, must equal baseline 14):
+Tests:       14 passed, 14 total
+
+Protected-file diff vs 9d31ece (expect ONLY the approved pre-existing-bug fix):
+src/modules/treasure-boxes/services/treasure.service.spec.ts
+src/modules/treasure-boxes/services/treasure.service.ts
+
+Lint on VR-11 files: clean (0 errors across 56 files)
+Lint on treasure.service.ts: 25 pre-existing prettier errors, untouched by this phase
+tsc: clean
+NOTE: a pre-existing, load-dependent Jest worker-teardown warning reproduces
+      with ALL treasure specs excluded (183 suites), so it is not VR-11's.

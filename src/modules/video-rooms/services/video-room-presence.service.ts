@@ -66,6 +66,10 @@ export class VideoRoomPresenceService implements IRoomPresenceManager {
     await this.redis.srem(videoRoomParticipantsKey(roomId), userId);
   }
 
+  async isParticipant(roomId: string, userId: string): Promise<boolean> {
+    return (await this.redis.sismember(videoRoomParticipantsKey(roomId), userId)) === 1;
+  }
+
   async participantCount(roomId: string): Promise<number> {
     return this.redis.scard(videoRoomParticipantsKey(roomId));
   }

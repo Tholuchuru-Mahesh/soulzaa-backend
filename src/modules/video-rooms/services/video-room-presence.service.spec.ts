@@ -30,6 +30,12 @@ describe('VideoRoomPresenceService', () => {
     expect(await service.isHost('r1', 'u1')).toBe(false);
   });
 
+  it('reports participant membership from set-membership check', async () => {
+    expect(await service.isParticipant('r1', 'u2')).toBe(true);
+    redis.sismember.mockResolvedValue(0);
+    expect(await service.isParticipant('r1', 'u2')).toBe(false);
+  });
+
   it('tracks hosts and participants in distinct sets', async () => {
     await service.addHost('r1', 'u1');
     await service.addParticipant('r1', 'u2');

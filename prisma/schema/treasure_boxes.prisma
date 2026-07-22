@@ -12,12 +12,39 @@ enum TreasureSessionStatus {
   ACTIVE
   COMPLETED
   CANCELLED
+  // ---- VR-11 (video rooms only; the audio engine never writes these) ----
+  /// Ladder created but not started. Boxes stay PENDING so an in-flight gift
+  /// cannot fill a ladder the owner has not started.
+  DRAFT
+  /// Intake stopped by the owner. A box already UNLOCKING still completes —
+  /// its winners were claimed before the pause.
+  PAUSED
+  /// Ended early by the owner. Distinct from COMPLETED, which means the ladder
+  /// ran to its end; conflating them would make "how many ladders actually
+  /// finished?" unanswerable from the data.
+  CLOSED
+  /// Hidden from the current-state read, still readable via history/winners.
+  ARCHIVED
 }
 
 enum TreasureBoxStatus {
   PENDING
   ACTIVE
   OPENED
+  // ---- VR-11: the unlock claim ticket. The audio engine never writes it. ----
+  /// Exactly one transaction wins the conditional ACTIVE -> UNLOCKING update
+  /// and is therefore the unique enqueuer of the unlock job.
+  UNLOCKING
+}
+
+/// VR-11: distribution lifecycle for retry/recovery. Defaults to DISTRIBUTED so
+/// every pre-existing and audio-written row stays semantically correct — a
+/// TreasureReward row has only ever been written after a successful payout. The
+/// video pipeline explicitly writes PENDING first, then flips it.
+enum TreasureRewardStatus {
+  PENDING
+  DISTRIBUTED
+  FAILED
 }
 
 enum RocketStatus {
@@ -121,6 +148,18 @@ model TreasureReward {
   walletTxnId    String?            @db.Uuid
   backpackItemId String?            @db.Uuid
   createdAt      DateTime           @default(now())
+
+  // ---- VR-11: retry / recovery state. Additive and defaulted; the audio
+  // engine writes none of these and is unaffected. Deliberately NO unique
+  // constraint on (boxId, userId) — RewardDistributor legitimately emits one
+  // row per matching reward entry, so a rank configured with both coins and an
+  // item produces two rows and a constraint would crash an audio box-open
+  // inside a gift transaction.
+  status        TreasureRewardStatus @default(DISTRIBUTED)
+  attempts      Int                  @default(0)
+  lastError     String?
+  failureStage  String?
+  distributedAt DateTime?
 
   @@index([sessionId])
   @@index([userId])

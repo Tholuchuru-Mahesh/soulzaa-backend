@@ -37,3 +37,28 @@ export * from './video-room-gift-statistics.service';
 export * from './video-room-gift-target.resolver';
 export * from './video-room-gift.service';
 export * from './video-room-gift-reversal.service';
+export * from './video-room-treasure.service';
+export * from './video-room-treasure-progress.service';
+export * from './video-room-treasure-unlock.service';
+export * from './video-room-treasure-pool.service';
+export * from './video-room-treasure-winner.service';
+export * from './video-room-treasure-eligibility.service';
+export * from './video-room-treasure-query.service';
+export * from './video-room-treasure-recovery.service';
+export * from './video-room-treasure-level.seeder';
+// VR-12 PK battle engine (invite/accept/reject/cancel/start/pause/resume/end,
+// score engine + pluggable multiplier strategies, settlement, timers/jobs,
+// recovery sweep, CQRS read side).
+export * from './video-room-pk-state.service';
+export * from './video-room-pk-score.engine';
+export * from './video-room-pk-validation.service';
+export * from './video-room-pk-scoring.service';
+export * from './video-room-pk-timer.service';
+export * from './video-room-pk-invitation.service';
+export * from './video-room-pk.service';
+export * from './video-room-pk-settlement.service';
+export * from './video-room-pk-jobs.service';
+export * from './video-room-pk-recovery.service';
+export * from './video-room-pk-query.service';
+export * from './strategies/vip-multiplier.strategy';
+export * from './strategies/event-multiplier.strategy';

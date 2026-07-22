@@ -1,0 +1,107 @@
+// ============================================================
+// VR-11 Treasure Box Engine (Video Rooms). Video-owned tables.
+//
+// TreasureSession / TreasureBox / TreasureContribution / TreasureReward are
+// SHARED with audio rooms and are safe to share because every audio query is
+// scoped by roomId / sessionId / boxId, and video room UUIDs never collide
+// with audio room UUIDs.
+//
+// TreasureBoxConfig is deliberately NOT shared: it is globally keyed by
+// `level @unique` and is read UNFILTERED by the audio engine
+// (treasure.repository.ts listEnabledConfigs), which then builds
+// `new Map(configs.map(c => [c.level, c]))`. Adding video rows there would
+// collide on level and silently hand audio rooms video thresholds.
+// ============================================================
+
+/// The video-room treasure ladder. Global (one ladder for all video rooms),
+/// mirroring how audio configures its own. Frozen into a session at create
+/// time so an admin edit cannot change the rules of a ladder in flight.
+model VideoRoomTreasureLevel {
+  id                String  @id @default(uuid()) @db.Uuid
+  level             Int     @unique
+  threshold         BigInt
+  enabled           Boolean @default(true)
+  poolStrategy      String  @default("PERCENTAGE")
+  poolPercentBps    Int     @default(1000)
+  poolFixedAmount   BigInt?
+  winnerAlgorithm   String  @default("RANDOM")
+  winnerCount       Int     @default(3)
+  minStaySeconds    Int     @default(120)
+  minActivityEvents Int     @default(0)
+
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("video_room_treasure_levels")
+}
+
+/// 1:1 extension of TreasureSession for video-only state. `levelSnapshot`
+/// freezes the entire ladder (thresholds, pool params, winner params,
+/// eligibility rules, algorithmVersion) at create time. The unlock path reads
+/// the snapshot, never the live level table.
+model VideoRoomTreasureSession {
+  id            String   @id @default(uuid()) @db.Uuid
+  sessionId     String   @unique @db.Uuid
+  roomId        String   @db.Uuid
+  levelSnapshot Json
+  createdBy     String   @db.Uuid
+  createdAt     DateTime @default(now())
+
+  @@index([roomId])
+  @@map("video_room_treasure_sessions")
+}
+
+/// The minted pool for one unlocked box. `boxId @unique` makes a replayed
+/// unlock job fail closed at the database rather than mint twice — the window
+/// two BullMQ workers could otherwise both pass through.
+///
+/// Dust from integer division is derivable as `poolAmount - allocatedAmount`;
+/// it is deliberately not minted and not handed to an arbitrary winner.
+model TreasureRewardPool {
+  id               String   @id @default(uuid()) @db.Uuid
+  boxId            String   @unique @db.Uuid
+  sessionId        String   @db.Uuid
+  roomId           String   @db.Uuid
+  level            Int
+  strategy         String
+  sourceAmount     BigInt
+  poolAmount       BigInt
+  allocatedAmount  BigInt   @default(0)
+  winnerCount      Int
+  algorithm        String
+  algorithmVersion Int      @default(1)
+  selectionSeed    String
+  computedAt       DateTime @default(now())
+
+  @@index([roomId])
+  @@index([sessionId])
+  @@map("treasure_reward_pools")
+}
+
+/// One winner of one box. The unique constraint is the primary duplicate-reward
+/// defence and lives on a video-owned table, never on a shared one —
+/// RewardDistributor legitimately writes multiple TreasureReward rows for one
+/// (boxId, userId) when a rank is configured with both coins and an item.
+///
+/// `selectionSeed` on the pool plus `algorithm` + `algorithmVersion` here make
+/// a disputed draw reproducible from data alone.
+model TreasureWinner {
+  id             String   @id @default(uuid()) @db.Uuid
+  boxId          String   @db.Uuid
+  sessionId      String   @db.Uuid
+  roomId         String   @db.Uuid
+  userId         String   @db.Uuid
+  algorithm      String
+  shareBps       Int
+  amount         BigInt
+  eligibleCount  Int
+  candidateCount Int
+  selectedAt     DateTime @default(now())
+
+  @@unique([boxId, userId])
+  @@index([roomId])
+  @@index([userId])
+  @@map("treasure_winners")
+}

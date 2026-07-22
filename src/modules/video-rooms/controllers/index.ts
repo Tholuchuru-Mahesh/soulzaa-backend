@@ -5,3 +5,5 @@ export * from './video-rooms-members.controller';
 export * from './video-rooms-seats.controller';
 export * from './video-rooms-roles.controller';
 export * from './video-rooms-gifts.controller';
+export * from './video-rooms-treasure.controller';
+export * from './video-rooms-pk.controller';

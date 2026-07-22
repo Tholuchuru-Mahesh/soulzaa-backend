@@ -175,6 +175,20 @@ export class TreasureService implements ITreasureBoxesService {
         HttpStatus.CONFLICT,
       );
     }
+    // Validate configuration BEFORE delegating. `autoStartTodaySession` returns
+    // null for two unrelated reasons — the ladder is misconfigured, or today's
+    // boxes are already done — and collapsing both into TREASURE_SESSION_EXISTS
+    // tells an operator who forgot to seed a level that a session is active.
+    // That is a configuration fault, so it gets its own code and a 424.
+    const configs = await this.repo.listEnabledConfigs();
+    if (new Set(configs.map((c) => c.level)).size < TREASURE_BOX_COUNT) {
+      throw new BusinessException(
+        ERROR_CODES.TREASURE_CONFIG_INCOMPLETE,
+        `All ${TREASURE_BOX_COUNT} treasure box levels must be configured before starting a session.`,
+        HttpStatus.FAILED_DEPENDENCY,
+      );
+    }
+
     const session = await this.autoStartTodaySession(roomId, actor.id);
     if (!session) {
       throw new BusinessException(

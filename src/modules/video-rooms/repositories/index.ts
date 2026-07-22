@@ -7,3 +7,8 @@ export * from './video-room-events.repository';
 export * from './video-room-reference.repository';
 export * from './video-room-chat.repository';
 export * from './video-room-gift.repository';
+export * from './video-room-treasure.repository';
+export * from './video-room-treasure-reward.repository';
+export * from './video-room-pk.repository';
+export * from './video-room-pk-invitation.repository';
+export * from './video-room-pk-reward.repository';

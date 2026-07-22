@@ -72,6 +72,9 @@ describe('TreasureService', () => {
       getConfig: jest.fn().mockImplementation((l: number) => Promise.resolve(config(l))),
       getActiveSession: jest.fn().mockResolvedValue(null),
       getLatestCompletedSession: jest.fn().mockResolvedValue(null),
+      getLatestCompletedSessionCreatedAfter: jest.fn().mockResolvedValue(null),
+      resolveUserProfiles: jest.fn().mockResolvedValue(new Map()),
+      getUserPositionInBox: jest.fn().mockResolvedValue(null),
       getSession: jest.fn().mockResolvedValue(session()),
       createSession: jest.fn().mockResolvedValue(session()),
       setSessionLevel: jest.fn().mockResolvedValue(undefined),
@@ -162,8 +165,21 @@ describe('TreasureService', () => {
       });
     });
 
-    it('rejects a second active session', async () => {
-      repo.getActiveSession.mockResolvedValue(session());
+    // Auto-start (a682933) deliberately made same-day re-entry idempotent:
+    // progress continues rather than erroring. This replaces the pre-auto-start
+    // "one active session per room is an error" contract.
+    it('returns the existing session on a same-day rejoin', async () => {
+      const existing = session();
+      repo.getActiveSession.mockResolvedValue(existing);
+      await expect(service.startSession(OWNER, ROOM)).resolves.toBe(existing);
+      expect(repo.createSession).not.toHaveBeenCalled();
+    });
+
+    it('rejects when today’s boxes are all already completed', async () => {
+      repo.getActiveSession.mockResolvedValue(null);
+      repo.getLatestCompletedSessionCreatedAfter.mockResolvedValue(
+        session({ status: TreasureSessionStatus.COMPLETED }),
+      );
       await expect(service.startSession(OWNER, ROOM)).rejects.toMatchObject({
         errorCode: 'TREASURE_SESSION_EXISTS',
       });

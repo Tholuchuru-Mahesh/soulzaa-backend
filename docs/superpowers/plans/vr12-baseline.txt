@@ -1,0 +1,41 @@
+VR-12 BASELINE — captured 2026-07-22, before any VR-12 code exists.
+Baseline HEAD: 9d31ece (working tree also carries uncommitted VR-10/VR-11 work).
+
+== TESTS ==
+Test Suites: 205 passed, 205 total
+Tests:       2469 passed, 2469 total
+(The 3 TreasureService failures noted in the VR-9 ledger are NO LONGER failing.)
+
+== TSC ==
+tsc --noEmit: CLEAN (no output). MUST remain absolutely clean.
+
+== LINT ==
+npm run lint: 123 problems (122 errors, 1 warning) across 21 PRE-EXISTING files.
+NOT fixable within this phase: the files live in directories VR-12 is forbidden
+to modify (audio-rooms, wallet, gifts, + shared infra). Gate is therefore
+CHANGED-FILE relative: zero problems in VR-12's own files; this count unchanged.
+
+Files carrying the pre-existing problems:
+  src/infra/socket/socket.gateway.ts
+  src/modules/audio-rooms/listeners/audio-room-socket.listener.ts
+  src/modules/audio-rooms/listeners/voice-seat-sync.listener.ts
+  src/modules/audio-rooms/repositories/audio-rooms.repository.ts
+  src/modules/audio-rooms/services/audio-rooms.service.ts
+  src/modules/auth/services/auth.service.ts
+  src/modules/backpack/repositories/backpack.repository.ts
+  src/modules/backpack/services/backpack.service.ts
+  src/modules/casino/gateway/casino.gateway.ts
+  src/modules/casino/services/casino-loop.service.ts
+  src/modules/games/dto/games.dto.ts
+  src/modules/games/repositories/games.repository.ts
+  src/modules/games/services/games.service.ts
+  src/modules/gifts/repositories/gift.repository.ts
+  src/modules/otp/services/providers/console-sms.provider.ts
+  src/modules/treasure-boxes/repositories/treasure.repository.ts
+  src/modules/treasure-boxes/services/reward-distributor.service.ts
+  src/modules/treasure-boxes/services/treasure.service.ts
+  src/modules/video-rooms/listeners/video-room-chat-metrics.listener.spec.ts
+  src/modules/wallet/repositories/wallet.repository.ts
+  src/modules/wallet/services/wallet.service.ts
+
+VR-12 files with lint problems at baseline: 0 (none exist yet).

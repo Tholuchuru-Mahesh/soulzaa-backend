@@ -253,6 +253,46 @@ export const envSchema = z.object({
   /** Comma-separated ISO-3166-1 alpha-2 codes barred from gifting (regulatory). */
   VIDEO_ROOM_GIFT_BLOCKED_COUNTRIES: z.string().default(''),
 
+  // ---- VR-11 treasure engine ----
+  // Booleans (VIDEO_ROOM_TREASURE_ENABLED / _RECOVERY_ENABLED) are deliberately
+  // absent: z.coerce.boolean() maps the string "false" to true, so the config
+  // loader reads them raw and applies toBool instead.
+  VIDEO_ROOM_TREASURE_POOL_BPS: z.coerce.number().int().min(0).max(10_000).default(1000),
+  VIDEO_ROOM_TREASURE_WINNER_COUNT: z.coerce.number().int().positive().max(100).default(3),
+  VIDEO_ROOM_TREASURE_OVERSAMPLE_FACTOR: z.coerce.number().int().positive().max(20).default(3),
+  VIDEO_ROOM_TREASURE_OVERSAMPLE_MIN: z.coerce.number().int().positive().max(1000).default(50),
+  VIDEO_ROOM_TREASURE_MIN_STAY_SECONDS: z.coerce.number().int().min(0).default(120),
+  VIDEO_ROOM_TREASURE_MIN_ACTIVITY_EVENTS: z.coerce.number().int().min(0).default(0),
+  VIDEO_ROOM_TREASURE_PROGRESS_EMIT_PER_SECOND: z.coerce.number().int().min(0).max(100).default(5),
+  VIDEO_ROOM_TREASURE_ORPHAN_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(120),
+  VIDEO_ROOM_TREASURE_MONITOR_INTERVAL_SECONDS: z.coerce.number().int().positive().default(30),
+
+  // ---- VR-12 PK battle engine ----
+  // Booleans are `.optional()` strings, not `z.coerce.boolean()`: that coercion
+  // maps the string "false" to true, so the config loader reads them raw and
+  // applies toBool instead. All 20 vars are listed here (rather than omitted,
+  // as VR-11's booleans were) so a typo or unset var is never a silent gap.
+  VIDEO_ROOM_PK_ENABLED: z.string().optional(),
+  VIDEO_ROOM_PK_COUNTDOWN_SECONDS: z.coerce.number().int().positive().optional(),
+  VIDEO_ROOM_PK_MIN_DURATION_SECONDS: z.coerce.number().int().positive().optional(),
+  VIDEO_ROOM_PK_MAX_DURATION_SECONDS: z.coerce.number().int().positive().optional(),
+  VIDEO_ROOM_PK_DEFAULT_DURATION_SECONDS: z.coerce.number().int().positive().optional(),
+  VIDEO_ROOM_PK_INVITATION_TTL_SECONDS: z.coerce.number().int().positive().optional(),
+  VIDEO_ROOM_PK_POOL_BPS: z.coerce.number().int().min(0).max(10_000).optional(),
+  VIDEO_ROOM_PK_WINNER_BPS: z.coerce.number().int().min(0).max(10_000).optional(),
+  VIDEO_ROOM_PK_PARTICIPATION_BPS: z.coerce.number().int().min(0).max(10_000).optional(),
+  VIDEO_ROOM_PK_BONUS_BPS: z.coerce.number().int().min(0).max(10_000).optional(),
+  VIDEO_ROOM_PK_MULTIPLIER_CAP_BPS: z.coerce.number().int().positive().optional(),
+  VIDEO_ROOM_PK_VIP_BONUS_BPS_PER_TIER: z.coerce.number().int().min(0).optional(),
+  VIDEO_ROOM_PK_EVENT_BONUS_BPS: z.coerce.number().int().min(0).optional(),
+  VIDEO_ROOM_PK_EVENT_MULTIPLIER_ENABLED: z.string().optional(),
+  VIDEO_ROOM_PK_SCORE_EMIT_PER_SECOND: z.coerce.number().int().positive().max(100).optional(),
+  VIDEO_ROOM_PK_RECOVERY_ENABLED: z.string().optional(),
+  VIDEO_ROOM_PK_MONITOR_INTERVAL_SECONDS: z.coerce.number().int().positive().optional(),
+  VIDEO_ROOM_PK_ORPHAN_TIMEOUT_SECONDS: z.coerce.number().int().positive().optional(),
+  VIDEO_ROOM_PK_RECOVERY_GRACE_SECONDS: z.coerce.number().int().positive().optional(),
+  VIDEO_ROOM_PK_MAX_PER_SWEEP: z.coerce.number().int().positive().optional(),
+
   // ---- Direct messaging (chat module) ----
   CHAT_MESSAGE_MAX_LENGTH: z.coerce.number().int().positive().default(4000),
   CHAT_MAX_ATTACHMENTS: z.coerce.number().int().positive().default(10),
