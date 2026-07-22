@@ -298,6 +298,20 @@ export const videoRoomConfig = registerAs('videoRoom', () => ({
   viewerPresenceMode: env().VIDEO_ROOM_VIEWER_PRESENCE_MODE,
 }));
 
+/**
+ * VR-10 gift engine tuning. Read through `loadVideoRoomGiftConfig`, which
+ * re-coerces the booleans (z.coerce.boolean maps "false" to true).
+ */
+export const videoRoomGiftConfig = registerAs('videoRoomGift', () => ({
+  maxReceivers: env().VIDEO_ROOM_GIFT_MAX_RECEIVERS,
+  allowRoomAll: process.env.VIDEO_ROOM_GIFT_ALLOW_ROOM_ALL ?? 'false',
+  allowViewerGiftsDefault: process.env.VIDEO_ROOM_GIFT_ALLOW_VIEWER_DEFAULT ?? 'true',
+  recentFeedSize: env().VIDEO_ROOM_GIFT_RECENT_FEED_SIZE,
+  monitorIntervalSeconds: env().VIDEO_ROOM_GIFT_MONITOR_INTERVAL_SECONDS,
+  recoveryEnabled: process.env.VIDEO_ROOM_GIFT_RECOVERY_ENABLED ?? 'false',
+  blockedCountries: process.env.VIDEO_ROOM_GIFT_BLOCKED_COUNTRIES ?? '',
+}));
+
 export const chatConfig = registerAs('chat', () => ({
   messageMaxLength: env().CHAT_MESSAGE_MAX_LENGTH,
   maxAttachments: env().CHAT_MAX_ATTACHMENTS,
@@ -400,6 +414,7 @@ export const configurations = [
   audioRoomConfig,
   videoRoomConfig,
   videoRoomChatConfig,
+  videoRoomGiftConfig,
   chatConfig,
   callsConfig,
   giftConfig,

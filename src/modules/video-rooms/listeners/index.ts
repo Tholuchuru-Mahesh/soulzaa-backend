@@ -14,3 +14,4 @@ export * from './video-room-chat-socket.listener';
 export * from './video-room-chat-system.listener';
 export * from './video-room-chat-metrics.listener';
 export * from './video-room-chat-audit.listener';
+export * from './video-room-gift-socket.listener';

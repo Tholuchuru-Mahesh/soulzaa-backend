@@ -12,8 +12,10 @@ import type { ITreasureBoxesService } from 'src/modules/treasure-boxes/interface
 import type { IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
 import type { SendGiftDto } from '../dto/gift.dto';
+import { AudioRoomGiftContextHandler } from 'src/modules/audio-rooms/services/audio-room-gift-context.handler';
 import { GiftRepository } from '../repositories/gift.repository';
 import { GiftCatalogService } from './gift-catalog.service';
+import { GiftContextRegistry } from './gift-context.registry';
 import { GiftLeaderboardService } from './gift-leaderboard.service';
 import { GiftService } from './gift.service';
 
@@ -80,6 +82,7 @@ describe('GiftService', () => {
   let prisma: Record<string, jest.Mock>;
   let locks: Record<string, jest.Mock>;
   let treasure: Record<string, jest.Mock>;
+  let registry: GiftContextRegistry;
   let service: GiftService;
 
   beforeEach(() => {
@@ -127,13 +130,28 @@ describe('GiftService', () => {
       withLock: jest.fn().mockImplementation((key, cb) => cb()),
     };
     treasure = {
-      processTreasureContribution: jest.fn().mockImplementation((tx, roomId, senderId, receiverId, amount) => Promise.resolve({
-        acceptedAmount: amount,
-        refundAmount: 0,
-        events: [],
-        postCommit: undefined,
-      })),
+      processTreasureContribution: jest
+        .fn()
+        .mockImplementation((tx, roomId, senderId, receiverId, amount) =>
+          Promise.resolve({
+            acceptedAmount: amount,
+            refundAmount: 0,
+            events: [],
+            postCommit: undefined,
+          }),
+        ),
     };
+
+    // VR-10: AUDIO_ROOM validation/economics/treasure now live in the handler,
+    // registered on the shared registry rather than injected into GiftService.
+    registry = new GiftContextRegistry();
+    new AudioRoomGiftContextHandler(
+      rooms as unknown as IAudioRoomsService,
+      users as unknown as IUsersService,
+      registry,
+      wallet as unknown as IWalletService,
+      treasure as unknown as ITreasureBoxesService,
+    ).onModuleInit();
 
     service = new GiftService(
       repo as unknown as GiftRepository,
@@ -145,10 +163,8 @@ describe('GiftService', () => {
       locks as unknown as LockService,
       bus,
       wallet as unknown as IWalletService,
-      rooms as unknown as IAudioRoomsService,
-      users as unknown as IUsersService,
       vip as unknown as IVipService,
-      treasure as unknown as ITreasureBoxesService,
+      registry,
     );
   });
 
@@ -247,7 +263,10 @@ describe('GiftService', () => {
 
     it('multiplies value by quantity', async () => {
       await service.sendGift(SENDER, dto({ quantity: 3 }));
-      expect(wallet.debit).toHaveBeenCalledWith(expect.objectContaining({ amount: 300 }), expect.anything());
+      expect(wallet.debit).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 300 }),
+        expect.anything(),
+      );
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: 'owner-id', currency: 'GOLD', amount: 30 }),
         expect.anything(),

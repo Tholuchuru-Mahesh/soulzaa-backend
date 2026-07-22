@@ -5,6 +5,7 @@ import { GIFTS_SERVICE } from './interfaces/gifts.service.interface';
 import { GiftRepository } from './repositories/gift.repository';
 import { GiftCatalogSeeder } from './services/gift-catalog.seeder.service';
 import { GiftCatalogService } from './services/gift-catalog.service';
+import { GiftContextRegistry } from './services/gift-context.registry';
 import { GiftLeaderboardService } from './services/gift-leaderboard.service';
 import { GiftService } from './services/gift.service';
 
@@ -24,11 +25,14 @@ import { GiftService } from './services/gift.service';
   providers: [
     GiftRepository,
     GiftCatalogService,
+    GiftContextRegistry,
     GiftLeaderboardService,
     GiftService,
     GiftCatalogSeeder,
     { provide: GIFTS_SERVICE, useExisting: GiftCatalogService },
   ],
-  exports: [GIFTS_SERVICE],
+  // GiftContextRegistry + GiftService are exported so each gifting context's
+  // module can register its handler and drive the shared send pipeline (VR-10).
+  exports: [GIFTS_SERVICE, GiftContextRegistry, GiftService],
 })
 export class GiftsModule {}

@@ -37,3 +37,55 @@ describe('VideoRoomsMetrics - setPeakViewers', () => {
     await expect(peakViewersValue()).resolves.toBe(60);
   });
 });
+
+describe('VideoRoomsMetrics — VR-10 gifts', () => {
+  it('registers the gift metric families', () => {
+    const registry = new Registry();
+    new VideoRoomsMetrics({ registry } as never);
+    const names = registry.getMetricsAsArray().map((m) => m.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'video_rooms_gifts_sent_total',
+        'video_rooms_gift_coins_total',
+        'video_rooms_gift_send_latency_seconds',
+        'video_rooms_gift_wallet_latency_seconds',
+        'video_rooms_gift_queue_depth',
+        'video_rooms_gift_animation_queue_depth',
+        'video_rooms_gift_failures_total',
+        'video_rooms_gift_recovery_total',
+        'video_rooms_gift_combos_total',
+      ]),
+    );
+  });
+
+  /**
+   * CARDINALITY GUARD. A per-giftId label is unbounded — the catalog grows
+   * forever — and would blow up the metric store. Top gifts come from Redis.
+   */
+  it('labels gifts by category, never by giftId', async () => {
+    const registry = new Registry();
+    const metrics = new VideoRoomsMetrics({ registry } as never);
+    metrics.incGiftSent('LUXURY', 100);
+    const dump = JSON.stringify(await registry.getMetricsAsJSON());
+    expect(dump).toContain('category');
+    expect(dump).toContain('LUXURY');
+    expect(dump).not.toContain('giftId');
+  });
+
+  it('records coins alongside the send count', async () => {
+    const registry = new Registry();
+    const metrics = new VideoRoomsMetrics({ registry } as never);
+    metrics.incGiftSent('LUXURY', 250);
+    const coins = await registry.getSingleMetric('video_rooms_gift_coins_total')?.get();
+    expect(coins?.values[0].value).toBe(250);
+  });
+
+  it('tracks recovery outcomes separately', async () => {
+    const registry = new Registry();
+    const metrics = new VideoRoomsMetrics({ registry } as never);
+    metrics.incGiftRecovery('success');
+    metrics.incGiftRecovery('failure');
+    const recovery = await registry.getSingleMetric('video_rooms_gift_recovery_total')?.get();
+    expect(recovery?.values).toHaveLength(2);
+  });
+});

@@ -14,6 +14,7 @@ import { ALL_QUEUE_NAMES } from './queue.constants';
 import { QueueMetrics } from './queue.metrics';
 import { QueueMonitorService } from './queue.monitor';
 import { QueueService } from './queue.service';
+import { QueueJobRegistry } from './workers/queue-job.registry';
 import { QueueSupport } from './workers/queue-support.service';
 
 const PROCESSORS = [
@@ -87,9 +88,18 @@ function basicAuth(user: string, password: string) {
     }),
     ...ALL_QUEUE_NAMES.map((name) => BullBoardModule.forFeature({ name, adapter: BullMQAdapter })),
   ],
-  providers: [QueueService, QueueMetrics, QueueSupport, QueueMonitorService, ...PROCESSORS],
+  providers: [
+    QueueService,
+    QueueMetrics,
+    QueueSupport,
+    QueueJobRegistry,
+    QueueMonitorService,
+    ...PROCESSORS,
+  ],
   // QueueSupport is exported so domain-owned processors (e.g. the OTP module's
   // delivery workers) can extend BaseQueueWorker and reuse metrics + dead-letter.
-  exports: [BullModule, QueueService, QueueSupport],
+  // QueueJobRegistry is exported so domain modules can register handlers for
+  // job names on shared queues without owning a processor (VR-10).
+  exports: [BullModule, QueueService, QueueSupport, QueueJobRegistry],
 })
 export class QueueModule {}

@@ -241,6 +241,17 @@ export const envSchema = z.object({
   VIDEO_ROOM_MAX_SUBSCRIPTIONS_PER_USER: z.coerce.number().int().positive().default(20),
   VIDEO_ROOM_MEDIA_QUALITY_SAMPLE_EVERY: z.coerce.number().int().positive().default(6),
   VIDEO_ROOM_DEFAULT_BEAUTY_LEVEL: z.coerce.number().int().min(0).max(100).default(0),
+  // ---- VR-10 gift engine ----
+  // NOTE: the boolean flags are re-coerced in video-room-gift.config.ts, because
+  // z.coerce.boolean() maps the string "false" to true.
+  VIDEO_ROOM_GIFT_MAX_RECEIVERS: z.coerce.number().int().positive().max(50).default(9),
+  VIDEO_ROOM_GIFT_ALLOW_ROOM_ALL: z.coerce.boolean().default(false),
+  VIDEO_ROOM_GIFT_ALLOW_VIEWER_DEFAULT: z.coerce.boolean().default(true),
+  VIDEO_ROOM_GIFT_RECENT_FEED_SIZE: z.coerce.number().int().positive().max(500).default(50),
+  VIDEO_ROOM_GIFT_MONITOR_INTERVAL_SECONDS: z.coerce.number().int().positive().default(15),
+  VIDEO_ROOM_GIFT_RECOVERY_ENABLED: z.coerce.boolean().default(false),
+  /** Comma-separated ISO-3166-1 alpha-2 codes barred from gifting (regulatory). */
+  VIDEO_ROOM_GIFT_BLOCKED_COUNTRIES: z.string().default(''),
 
   // ---- Direct messaging (chat module) ----
   CHAT_MESSAGE_MAX_LENGTH: z.coerce.number().int().positive().default(4000),

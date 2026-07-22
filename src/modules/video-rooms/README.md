@@ -268,3 +268,130 @@ cold read. On `USER_LEFT`, the listener ends that user's media session.
 - `videoRoomMediaHeartbeatKey` is reserved for a future fast-path; liveness
   detection today uses the durable `video_room_sessions.lastHeartbeatAt` +
   `findStale` sweep, mirroring the audio `VoiceHeartbeatMonitor`.
+
+## VR-10 — Enterprise Virtual Gift Engine
+
+Gifting in video rooms, built by **opening the existing AR-5 gift pipeline to a
+second context** rather than building a parallel one. **Zero migrations** — the
+`GiftContextType.VIDEO_ROOM` enum value was reserved in AR-5 for exactly this,
+and `gift_transactions` was already context-generic.
+
+Design spec:
+[VR-10](../../../docs/superpowers/specs/2026-07-22-video-room-phase10-gift-engine-design.md).
+
+### The seam (why nothing is duplicated)
+
+`GiftService` used to hard-throw for any context except `AUDIO_ROOM`. VR-10
+replaced that with a handler registry: the gifts module owns the port, each
+context's module registers its own handler.
+
+| Concern | Owner |
+| --- | --- |
+| Catalog, VIP gate, idempotency, rate limit, combo tier, lucky roll, wallet moves, ledger | `GiftService` (shared) |
+| What makes a send legal, the revenue split, extra locks, in-transaction side effects | the context's `IGiftContextHandler` |
+
+`GiftService` **lost** three dependencies in the process (`AUDIO_ROOMS_SERVICE`,
+`USERS_SERVICE`, `TREASURE_BOXES_SERVICE`) and its dead `compensate()` method.
+Audio-room behaviour is pinned byte-for-byte by
+`audio-rooms/services/audio-room-gift-baseline.spec.ts` (BC-1…BC-12) — **if that
+file fails, audio gifting has regressed; fix the code, never the baseline.**
+
+Adding LIVE_STREAM or PRIVATE_CHAT later is a new handler plus a `register`
+call, with no change to `GiftService`.
+
+### Multi-receiver semantics
+
+`total = coinValue × quantity × recipients` — every recipient receives a whole
+gift. One debit, N credits, N ledger rows sharing a `batchId`, all in one
+transaction, **all-or-nothing**.
+
+⚠️ Wallet credit keys are **per leg** (`gift-credit:{key}:{receiverId}`). Sharing
+one key across a batch would make the wallet treat legs 2..N as replays of leg 1:
+receiver #1 paid, everyone else silently unpaid, sender charged for all N.
+
+### Transaction boundary (normative)
+
+**Only Postgres work runs inside `prisma.$transaction`** — debit, `handler.onSend`,
+N credits, N ledger rows. Redis, BullMQ, sockets, metrics and statistics are
+pre-flight reads or post-commit effects. Redis writes cannot roll back, and a
+queued job can be picked up before the commit lands. `VideoRoomGiftService`
+carries an explicit test asserting no queue/Redis/combo work happens before the
+batch returns.
+
+### REST (base `video-rooms/:id/gifts`, JWT-guarded)
+
+| Method | Route | Notes |
+| --- | --- | --- |
+| POST | `/send` | `@NotGuest`, 201. Synchronous + ACID: a 201 means the gift is paid for |
+| GET | `/history` | paginated ledger, filters combine with AND |
+| GET | `/recent` | live Redis feed (empty on cold cache — by design) |
+| GET | `/combo` | active combo streaks |
+| GET | `/statistics` | summary for members; breakdown for `VIEW_ANALYTICS` |
+
+### Socket events (`/video-room`, EVENT_BUS-driven — no gateway)
+
+`gift_sent` · `gift_delivered` · `gift_animation` · `gift_combo_started` /
+`_updated` / `_ended` · `gift_queue_updated` · `gift_failed` · `gift_recovered`.
+
+Shared gifts-module events (`gift.sent`, `gift.combo`, `gift.lucky_win`) are
+**reused, not redeclared** — the bridge filters `contextType === VIDEO_ROOM`.
+Republishing them would double-fire notifications, EXP, rankings, social and
+analytics.
+
+### Correlation model (no `deliveryId`)
+
+`batchId` (the send / delivery lifecycle) → BullMQ `jobId` (one attempt-run; a
+DLQ replay mints a new one) → `attemptsMade` (retry within a run) →
+`transactionId` ↔ `receiverId` (the leg). A separate delivery id would duplicate
+`jobId`, which BullMQ already generates and Bull Board already displays.
+
+`giftAnimation` is the **only batch-level event** — one send plays one animation —
+so it carries `transactionIds[]`/`receiverIds[]`; every other delivery event is
+per leg.
+
+### Redis keys
+
+| Key | Purpose |
+| --- | --- |
+| `video-room:{id}:gifts:recent` | capped LIST — recent-gift feed |
+| `video-room:{id}:gift:combo:{sender}:{gift}` | combo counter (TTL = combo window) |
+| `video-room:gift:combos` | ZSET expiry index → drives `combo_ended` |
+| `video-room:{id}:gift:stats` | hot counters |
+| `video-room:{id}:gift:top` / `:top-senders` | top-gift / top-gifter ZSETs |
+| `video-room:gift:deliver:{id}` | per-room delivery ordering lock |
+| `video-room:gift:monitor` | monitor sweep guard |
+
+**Why the combo index exists:** an expiring Redis key emits nothing, so
+`giftComboEnded` has no natural trigger. Rather than enable keyspace
+notifications (a Redis *server* config change that fires best-effort), every live
+combo is registered in an expiry-scored ZSET that `VideoRoomGiftMonitor` sweeps.
+
+### Combo does not multiply cost
+
+`comboTier` is recorded and broadcast for display. Only `luckyMultiplier` affects
+`totalCoinValue` — identical to Audio Rooms. Changing this would silently diverge
+the two economies.
+
+### Infra seam (2 files)
+
+`QueueJobRegistry` routes gift-queue jobs to domain handlers, so video-rooms
+inherits BullMQ retry/backoff/DLQ/replay instead of reimplementing them.
+`dispatch()` on an **unregistered job name returns `{ ok: true, unhandled: true }`
+and never throws** — `gift.sent` is enqueued on every audio-room gift with no
+handler, and throwing would dead-letter all of them.
+
+### Config
+
+`VIDEO_ROOM_GIFT_MAX_RECEIVERS` (9) · `_ALLOW_ROOM_ALL` (false) ·
+`_ALLOW_VIEWER_DEFAULT` (true) · `_RECENT_FEED_SIZE` (50) ·
+`_MONITOR_INTERVAL_SECONDS` (15) · `_RECOVERY_ENABLED` (false).
+
+⚠️ Booleans are re-coerced in `config/video-room-gift.config.ts`: the repo-wide
+`z.coerce.boolean()` maps the **string** `"false"` to `true`, which would have
+silently enabled room-wide gifting.
+
+### RBAC note
+
+No `SEND_GIFT` entry was added to `VIDEO_ROOM_PERMISSION_MATRIX`. That matrix is
+management-only (HOST/PARTICIPANT/VIEWER map to empty sets); gifting is a member
+capability gated by membership + `settings.allowGifts` + the viewer flag.

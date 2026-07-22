@@ -4,3 +4,4 @@ export * from './video-rooms-media.controller';
 export * from './video-rooms-members.controller';
 export * from './video-rooms-seats.controller';
 export * from './video-rooms-roles.controller';
+export * from './video-rooms-gifts.controller';

@@ -38,6 +38,7 @@ import { PremiumSeatRepository } from './repositories/premium-seat.repository';
 import { RoomAppearanceRepository } from './repositories/room-appearance.repository';
 import { WatchPartyRepository } from './repositories/watch-party.repository';
 import { VoiceSessionRepository } from './repositories/voice-session.repository';
+import { AudioRoomGiftContextHandler } from './services/audio-room-gift-context.handler';
 import { AudioRoomSeatsService } from './services/audio-room-seats.service';
 import { AudioRoomsService } from './services/audio-rooms.service';
 import { ChatService } from './services/chat.service';
@@ -110,6 +111,8 @@ import { VoiceService } from './services/voice.service';
     PkBattleRepository,
     AudioRoomsService,
     AudioRoomSeatsService,
+    // VR-10: registers the AUDIO_ROOM gift context on the shared registry.
+    AudioRoomGiftContextHandler,
     RoomAppearanceService,
     PremiumSeatService,
     PremiumSeatExpiryMonitor,

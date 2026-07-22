@@ -84,6 +84,16 @@ export class VideoRoomsMetrics {
   private readonly pinnedMessages: Gauge;
   private readonly spamDetected: Counter<'kind'>;
   private readonly chatRateLimitViolations: Counter;
+  // ---- VR-10 gifts ----
+  private readonly giftsSentC: Counter<'category'>;
+  private readonly giftCoinsC: Counter<'category'>;
+  private readonly giftSendLatencyH: Histogram;
+  private readonly giftWalletLatencyH: Histogram;
+  private readonly giftQueueDepthG: Gauge;
+  private readonly giftAnimationQueueDepthG: Gauge;
+  private readonly giftFailuresC: Counter;
+  private readonly giftRecoveryC: Counter<'result'>;
+  private readonly giftCombosC: Counter<'phase'>;
 
   constructor(metrics: MetricsService) {
     const registers = [metrics.registry];
@@ -437,6 +447,62 @@ export class VideoRoomsMetrics {
       help: 'Chat rate-limit rejections',
       registers,
     });
+
+    // ---- VR-10 gifts ----
+    // Labelled by gift CATEGORY (5 bounded values), never by giftId: a per-gift
+    // label is unbounded cardinality and would blow up the metric store. Top
+    // gifts are served from the per-room Redis ZSET instead.
+    this.giftsSentC = new Counter({
+      name: 'video_rooms_gifts_sent_total',
+      help: 'Gifts sent in video rooms',
+      labelNames: ['category'],
+      registers,
+    });
+    this.giftCoinsC = new Counter({
+      name: 'video_rooms_gift_coins_total',
+      help: 'Coin value of gifts sent in video rooms (revenue)',
+      labelNames: ['category'],
+      registers,
+    });
+    this.giftSendLatencyH = new Histogram({
+      name: 'video_rooms_gift_send_latency_seconds',
+      help: 'End-to-end gift send latency (excludes animation delivery)',
+      buckets: [0.025, 0.05, 0.1, 0.25, 0.5, 1, 2],
+      registers,
+    });
+    this.giftWalletLatencyH = new Histogram({
+      name: 'video_rooms_gift_wallet_latency_seconds',
+      help: 'Wallet movement latency inside a gift send',
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5],
+      registers,
+    });
+    this.giftQueueDepthG = new Gauge({
+      name: 'video_rooms_gift_queue_depth',
+      help: 'Pending gift delivery jobs',
+      registers,
+    });
+    this.giftAnimationQueueDepthG = new Gauge({
+      name: 'video_rooms_gift_animation_queue_depth',
+      help: 'Animations awaiting broadcast',
+      registers,
+    });
+    this.giftFailuresC = new Counter({
+      name: 'video_rooms_gift_failures_total',
+      help: 'Gift delivery failures (a dead-lettered gift is a missing animation)',
+      registers,
+    });
+    this.giftRecoveryC = new Counter({
+      name: 'video_rooms_gift_recovery_total',
+      help: 'Dead-letter replay outcomes',
+      labelNames: ['result'],
+      registers,
+    });
+    this.giftCombosC = new Counter({
+      name: 'video_rooms_gift_combos_total',
+      help: 'Gift combo lifecycle transitions',
+      labelNames: ['phase'],
+      registers,
+    });
   }
 
   // ---- VR-4 seat helpers ----
@@ -737,5 +803,41 @@ export class VideoRoomsMetrics {
 
   incChatRateLimitViolation(): void {
     this.chatRateLimitViolations.inc();
+  }
+
+  // ---- VR-10 gift helpers ----
+
+  /** One call per ledger row, so an N-receiver send counts as N gifts. */
+  incGiftSent(category: string, coins: number): void {
+    this.giftsSentC.inc({ category });
+    this.giftCoinsC.inc({ category }, coins);
+  }
+
+  observeGiftSendLatency(seconds: number): void {
+    this.giftSendLatencyH.observe(seconds);
+  }
+
+  observeGiftWalletLatency(seconds: number): void {
+    this.giftWalletLatencyH.observe(seconds);
+  }
+
+  setGiftQueueDepth(depth: number): void {
+    this.giftQueueDepthG.set(depth);
+  }
+
+  setGiftAnimationQueueDepth(depth: number): void {
+    this.giftAnimationQueueDepthG.set(depth);
+  }
+
+  incGiftFailure(): void {
+    this.giftFailuresC.inc();
+  }
+
+  incGiftRecovery(result: 'success' | 'failure'): void {
+    this.giftRecoveryC.inc({ result });
+  }
+
+  incGiftCombo(phase: 'started' | 'updated' | 'ended'): void {
+    this.giftCombosC.inc({ phase });
   }
 }

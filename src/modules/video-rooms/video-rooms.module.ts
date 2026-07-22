@@ -2,6 +2,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
 import { VIDEO_ROOM_QUEUES } from './constants/video-room.constants';
 import { VideoRoomsChatController } from './controllers/video-rooms-chat.controller';
+import { VideoRoomsGiftsController } from './controllers/video-rooms-gifts.controller';
 import { VideoRoomsMediaController } from './controllers/video-rooms-media.controller';
 import { VideoRoomMembersController } from './controllers/video-rooms-members.controller';
 import { VideoRoomSeatsController } from './controllers/video-rooms-seats.controller';
@@ -17,6 +18,17 @@ import { VideoRoomMediaSocketListener } from './listeners/video-room-media-socke
 import { VideoRoomChatAuditListener } from './listeners/video-room-chat-audit.listener';
 import { VideoRoomChatMetricsListener } from './listeners/video-room-chat-metrics.listener';
 import { VideoRoomChatSocketListener } from './listeners/video-room-chat-socket.listener';
+import { VideoRoomGiftSocketListener } from './listeners/video-room-gift-socket.listener';
+import { VideoRoomGiftMonitor } from './scheduler/video-room-gift.monitor';
+import { VideoRoomGiftRepository } from './repositories/video-room-gift.repository';
+import { VideoRoomGiftComboService } from './services/video-room-gift-combo.service';
+import { VideoRoomGiftReversalService } from './services/video-room-gift-reversal.service';
+import { VideoRoomGiftContextHandler } from './services/video-room-gift-context.handler';
+import { VideoRoomGiftDeliveryService } from './services/video-room-gift-delivery.service';
+import { VideoRoomGiftQueryService } from './services/video-room-gift-query.service';
+import { VideoRoomGiftStatisticsService } from './services/video-room-gift-statistics.service';
+import { VideoRoomGiftTargetResolver } from './services/video-room-gift-target.resolver';
+import { VideoRoomGiftService } from './services/video-room-gift.service';
 import { VideoRoomChatSystemListener } from './listeners/video-room-chat-system.listener';
 import { VideoRoomPresenceListener } from './listeners/video-room-presence.listener';
 import { VideoRoomSeatLifecycleListener } from './listeners/video-room-seat-lifecycle.listener';
@@ -114,6 +126,7 @@ import { VideoRoomsMetrics } from './video-rooms.metrics';
     VideoRoomViewersController,
     VideoRoomRolesController,
     VideoRoomsChatController,
+    VideoRoomsGiftsController,
   ],
   providers: [
     VideoRoomsRepository,
@@ -166,6 +179,18 @@ import { VideoRoomsMetrics } from './video-rooms.metrics';
     VideoRoomMediaMetricsListener,
     VideoRoomMediaLifecycleListener,
     VideoRoomMediaMonitor,
+    // ---- VR-10 gift engine ----
+    VideoRoomGiftRepository,
+    VideoRoomGiftContextHandler,
+    VideoRoomGiftReversalService,
+    VideoRoomGiftTargetResolver,
+    VideoRoomGiftComboService,
+    VideoRoomGiftStatisticsService,
+    VideoRoomGiftQueryService,
+    VideoRoomGiftDeliveryService,
+    VideoRoomGiftService,
+    VideoRoomGiftSocketListener,
+    VideoRoomGiftMonitor,
     // VR-6 viewer mode (audience facade + read model over the VR-3/VR-4 engines).
     DurableViewerPresence,
     VideoRoomViewerService,

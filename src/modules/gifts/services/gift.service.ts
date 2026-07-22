@@ -3,7 +3,6 @@ import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Gift,
-  GiftContextType,
   GiftTransaction,
   GiftType,
   Prisma,
@@ -19,32 +18,30 @@ import { LockService } from 'src/infra/redis/lock.service';
 import { QueueService } from 'src/infra/queue/queue.service';
 import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import {
-  AUDIO_ROOMS_SERVICE,
-  type IAudioRoomsService,
-} from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
-import {
-  USERS_SERVICE,
-  type IUsersService,
-} from 'src/modules/users/interfaces/users.service.interface';
-import {
   WALLET_SERVICE,
   type IWalletService,
 } from 'src/modules/wallet/interfaces/wallet.service.interface';
-import {
-  TREASURE_BOXES_SERVICE,
-  type ITreasureBoxesService,
-} from 'src/modules/treasure-boxes/interfaces/treasure-boxes.service.interface';
 import { VIP_SERVICE, type IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
 import { GIFT_WALLET_REFERENCE_TYPE } from '../constants/gifts.constants';
 import { walletLockKey } from 'src/modules/wallet/constants/wallet.constants';
-import { treasureRoomLockKey } from 'src/modules/treasure-boxes/constants/treasure.constants';
 import type { GiftHistoryDto, SendGiftDto } from '../dto/gift.dto';
-import { GiftComboEvent, GiftLuckyWinEvent, GiftSentEvent, GiftRefundedEvent } from '../events/gift.events';
-import { TreasureReceiverRewardEvent } from 'src/modules/treasure-boxes/events/treasure.events';
+import { GiftComboEvent, GiftLuckyWinEvent, GiftSentEvent } from '../events/gift.events';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
+import type { GiftContextRequest } from '../interfaces/gift-context-handler.interface';
 import { GiftRepository } from '../repositories/gift.repository';
 import { GiftCatalogService } from './gift-catalog.service';
+import { GiftContextRegistry } from './gift-context.registry';
 import { GiftLeaderboardService } from './gift-leaderboard.service';
+
+/**
+ * A multi-receiver send. Same shape as SendGiftDto but with `receiverIds` in
+ * place of `receiverId`, plus an optional caller-supplied `batchId` so an
+ * orchestrating module can correlate the batch with its own records.
+ */
+export type SendGiftBatchDto = Omit<SendGiftDto, 'receiverId'> & {
+  receiverIds: string[];
+  batchId?: string;
+};
 
 /** Resolved gift tuning from config. */
 interface GiftConfig {
@@ -78,17 +75,43 @@ export class GiftService {
     private readonly locks: LockService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
-    @Inject(AUDIO_ROOMS_SERVICE) private readonly rooms: IAudioRoomsService,
-    @Inject(USERS_SERVICE) private readonly users: IUsersService,
     @Inject(VIP_SERVICE) private readonly vip: IVipService,
-    @Inject(TREASURE_BOXES_SERVICE) private readonly treasure: ITreasureBoxesService,
+    private readonly registry: GiftContextRegistry,
   ) {}
 
+  /**
+   * Single-receiver send. A thin wrapper over `sendGiftBatch` so audio rooms and
+   * video rooms share one pipeline and cannot drift apart.
+   */
   async sendGift(actor: RoomActor, dto: SendGiftDto): Promise<GiftTransaction> {
+    const [txn] = await this.sendGiftBatch(actor, {
+      ...dto,
+      receiverIds: [dto.receiverId],
+    });
+    return txn;
+  }
+
+  /**
+   * Send one gift to N receivers as a single all-or-nothing operation: one debit
+   * for the summed total, one credit per receiver, one ledger row per receiver,
+   * all inside one transaction. If any receiver fails validation the whole batch
+   * rolls back, so the sender is never charged an amount other than the quote.
+   */
+  async sendGiftBatch(actor: RoomActor, dto: SendGiftBatchDto): Promise<GiftTransaction[]> {
     const cfg = this.giftConfig();
     const senderId = actor.id;
 
-    if (senderId === dto.receiverId) {
+    // De-duplicate first: a client sending ["u1","u1"] means one gift to u1, not
+    // a double charge. Dedup before the self-check so both see the same set.
+    const receiverIds = [...new Set(dto.receiverIds)];
+    if (receiverIds.length === 0) {
+      throw new BusinessException(
+        ERROR_CODES.GIFT_RECEIVER_INVALID,
+        'A gift needs at least one recipient.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (receiverIds.includes(senderId)) {
       throw new BusinessException(
         ERROR_CODES.CANNOT_GIFT_SELF,
         'You cannot send a gift to yourself.',
@@ -122,12 +145,35 @@ export class GiftService {
     }
 
     const idempotencyKey = dto.idempotencyKey?.trim() || `gift:${randomUUID()}`;
+    // A batch's ledger keys are suffixed per receiver; a single send keeps the
+    // bare key so existing rows and client replays stay valid.
+    const isBatch = receiverIds.length > 1;
+    const ledgerKeyFor = (receiverId: string) =>
+      isBatch ? `${idempotencyKey}:${receiverId}` : idempotencyKey;
 
-    // Idempotent replay: a prior send with this key returns the original row.
-    const prior = await this.repo.findTxnByIdempotencyKey(idempotencyKey);
-    if (prior) return prior;
+    // Idempotent replay: a prior send with this key returns the original rows.
+    const prior = await this.repo.findTxnByIdempotencyKey(ledgerKeyFor(receiverIds[0]));
+    if (prior) return [prior];
 
-    await this.assertContext(dto.contextType, dto.contextId, senderId, dto.receiverId);
+    // The context handler owns everything room-shaped: what makes this send
+    // legal, and how the coins are split. GiftService stays economy-only.
+    const handler = this.registry.for(dto.contextType);
+    if (receiverIds.length > handler.maxReceivers) {
+      throw new BusinessException(
+        ERROR_CODES.GIFT_TOO_MANY_RECEIVERS,
+        `This context accepts at most ${handler.maxReceivers} recipient(s) per gift.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const req: GiftContextRequest = {
+      contextType: dto.contextType,
+      contextId: dto.contextId,
+      senderId,
+      receiverIds,
+      gift,
+      quantity: dto.quantity,
+    };
+    await handler.validate(req);
 
     if (await this.repo.hitRateLimit(senderId, cfg.rateMax, cfg.rateWindowSeconds)) {
       throw new BusinessException(
@@ -143,167 +189,143 @@ export class GiftService {
       : 1;
     const lucky = this.rollLucky(gift);
 
-    // Economics.
+    // Economics. Each receiver gets a whole gift, so `perReceiver` is the unit
+    // of value and the sender pays it N times. The split is the handler's call,
+    // expressed in basis points.
     const unit = gift.coinValue;
-    const total = BigInt(unit) * BigInt(dto.quantity) * BigInt(lucky.multiplier);
-    const creatorEarnings =
-      dto.contextType === GiftContextType.AUDIO_ROOM
-        ? 0n
-        : (total * BigInt(Math.round(cfg.creatorEarningRatePercent))) / 100n;
-    const totalNum = Number(total);
+    const perReceiver = BigInt(unit) * BigInt(dto.quantity) * BigInt(lucky.multiplier);
+    const earningsBps = BigInt(Math.round(handler.economics(req).receiverEarningsBps));
+    const creatorEarnings = (perReceiver * earningsBps) / 10_000n;
+    const perReceiverNum = Number(perReceiver);
+    const totalNum = perReceiverNum * receiverIds.length;
     const earningsNum = Number(creatorEarnings);
-    const senderExp = Math.floor(totalNum * cfg.senderExpPerCoin);
-    const receiverExp = Math.floor(totalNum * cfg.receiverExpPerCoin);
+    const senderExp = Math.floor(perReceiverNum * cfg.senderExpPerCoin);
+    const receiverExp = Math.floor(perReceiverNum * cfg.receiverExpPerCoin);
 
-    // Lock keys sorted to prevent deadlocks
-    const [userLock1, userLock2] = [senderId, dto.receiverId].sort();
+    // Every lock the send needs, sorted before acquisition. With N receivers,
+    // unsorted acquisition across concurrent sends deadlocks; sorting gives the
+    // whole system one global lock order.
     const locksToAcquire = [
-      walletLockKey(userLock1),
-      walletLockKey(userLock2),
-      treasureRoomLockKey(dto.contextId),
-    ];
+      ...[senderId, ...receiverIds].map(walletLockKey),
+      ...(handler.contextLockKeys?.(req) ?? []),
+    ].sort();
 
     const txnId = randomUUID();
+    const batchId = dto.batchId ?? txnId;
     const eventsToPublish: any[] = [];
     let postCommitFn: (() => Promise<void>) | undefined;
 
-    const transactionResult = await this.locks.withLock(locksToAcquire[0], async () => {
-      return this.locks.withLock(locksToAcquire[1], async () => {
-        return this.locks.withLock(locksToAcquire[2], async () => {
-          return this.prisma.$transaction(async (tx) => {
-            // Check idempotency inside transaction again to be absolutely bulletproof
-            const existingPrior = await this.repo.findTxnByIdempotencyKey(idempotencyKey, tx);
-            if (existingPrior) return existingPrior;
+    const transactionResult = await this.withLocks(locksToAcquire, () =>
+      this.prisma.$transaction(async (tx) => {
+        // Re-check idempotency inside the transaction: two concurrent requests
+        // with the same key can both pass the pre-flight check above.
+        const existingPrior = await this.repo.findTxnByIdempotencyKey(
+          ledgerKeyFor(receiverIds[0]),
+          tx,
+        );
+        if (existingPrior) return [existingPrior];
 
-            // 1. Debit the sender's wallet for the full totalNum
-            const debit = await this.wallet.debit({
-              userId: senderId,
-              currency: WalletCurrency.GOLD,
-              amount: totalNum,
-              reason: WalletTxnReason.GIFT_SEND,
-              idempotencyKey: `gift-debit:${idempotencyKey}`,
-              referenceType: GIFT_WALLET_REFERENCE_TYPE,
-              metadata: { giftId: gift.id, quantity: dto.quantity, contextId: dto.contextId },
-              actorId: senderId,
-            }, tx);
-
-            let acceptedAmount = totalNum;
-            let refundAmount = 0;
-            let creditTxnId: string | null = null;
-
-            // 2. Process Treasure Box contribution if in an audio room
-            if (dto.contextType === GiftContextType.AUDIO_ROOM) {
-              const contributionResult = await this.treasure.processTreasureContribution(
-                tx,
-                dto.contextId,
-                senderId,
-                dto.receiverId,
-                totalNum,
-                txnId,
-              );
-              acceptedAmount = contributionResult.acceptedAmount;
-              refundAmount = contributionResult.refundAmount;
-              eventsToPublish.push(...contributionResult.events);
-              postCommitFn = contributionResult.postCommit;
-
-              // Immediately credit 10% of the accepted amount to the host/room owner
-              const hostId = await this.rooms.getOwnerId(dto.contextId);
-              const hostRewardAmount = Math.floor(acceptedAmount * 0.1);
-              if (hostId && hostRewardAmount > 0) {
-                const hostCredit = await this.wallet.credit({
-                  userId: hostId,
-                  currency: WalletCurrency.GOLD,
-                  amount: hostRewardAmount,
-                  reason: WalletTxnReason.TREASURE_BOX,
-                  idempotencyKey: `gift-host-reward:${idempotencyKey}`,
-                  referenceType: GIFT_WALLET_REFERENCE_TYPE,
-                  referenceId: txnId,
-                  actorId: senderId,
-                }, tx);
-
-                eventsToPublish.push(
-                  new TreasureReceiverRewardEvent({
-                    roomId: dto.contextId,
-                    boxId: contributionResult.boxId ?? txnId,
-                    level: contributionResult.level ?? 0,
-                    hostId,
-                    rewardAmount: hostRewardAmount,
-                    walletTxnId: hostCredit.transactionId,
-                  }),
-                );
-              }
-
-              // Refund excess coins to sender immediately
-              if (refundAmount > 0) {
-                await this.wallet.credit({
-                  userId: senderId,
-                  currency: WalletCurrency.GOLD,
-                  amount: refundAmount,
-                  reason: WalletTxnReason.GIFT_REFUND,
-                  idempotencyKey: `gift-refund:${idempotencyKey}`,
-                  referenceType: GIFT_WALLET_REFERENCE_TYPE,
-                  referenceId: txnId,
-                  actorId: senderId,
-                }, tx);
-
-                eventsToPublish.push(
-                  new GiftRefundedEvent({
-                    transactionId: txnId,
-                    senderId,
-                    roomId: dto.contextId,
-                    giftId: gift.id,
-                    giftName: gift.name,
-                    totalRefundAmount: refundAmount,
-                    createdAt: new Date().toISOString(),
-                  }),
-                );
-              }
-            } else {
-              // Non-AUDIO_ROOM contexts
-              if (earningsNum > 0) {
-                const creditResult = await this.wallet.credit({
-                  userId: dto.receiverId,
-                  currency: WalletCurrency.EARNINGS,
-                  amount: earningsNum,
-                  reason: WalletTxnReason.GIFT_RECEIVE,
-                  idempotencyKey: `gift-credit:${idempotencyKey}`,
-                  referenceType: GIFT_WALLET_REFERENCE_TYPE,
-                  metadata: { giftId: gift.id, senderId },
-                  actorId: senderId,
-                }, tx);
-                creditTxnId = creditResult.transactionId;
-              }
-            }
-
-            // Create gift transaction in Postgres
-            return this.repo.createTransaction({
-              senderId,
-              receiverId: dto.receiverId,
+        // 1. Debit the sender for the full amount.
+        const debit = await this.wallet.debit(
+          {
+            userId: senderId,
+            currency: WalletCurrency.GOLD,
+            amount: totalNum,
+            reason: WalletTxnReason.GIFT_SEND,
+            idempotencyKey: `gift-debit:${idempotencyKey}`,
+            referenceType: GIFT_WALLET_REFERENCE_TYPE,
+            metadata: {
               giftId: gift.id,
-              giftType: gift.type,
-              contextType: dto.contextType,
-              contextId: dto.contextId,
               quantity: dto.quantity,
-              comboTier,
-              unitCoinValue: unit,
-              totalCoinValue: total,
-              creatorEarnings,
-              luckyMultiplier: lucky.multiplier,
-              isLuckyWin: lucky.win,
-              senderExp,
-              receiverExp,
-              idempotencyKey,
-              senderWalletTxnId: debit.transactionId,
-              receiverWalletTxnId: creditTxnId,
-              metadata: { giftName: gift.name, acceptedAmount, refundAmount } as Prisma.InputJsonValue,
-            }, tx);
-          });
-        });
-      });
-    });
+              contextId: dto.contextId,
+              batchId,
+            },
+            actorId: senderId,
+          },
+          tx,
+        );
 
-    // Execute post-persist side-effects
-    await this.afterSend(gift, transactionResult);
+        // 2. Context-specific coin routing (audio rooms: treasure box + host
+        //    reward + overflow refund). Postgres-only; its events and postCommit
+        //    are drained after the transaction commits.
+        const effects = handler.onSend
+          ? await handler.onSend(tx, {
+              ...req,
+              transactionId: txnId,
+              batchId,
+              idempotencyKey,
+              totalCoinValue: totalNum,
+            })
+          : { acceptedAmount: totalNum, refundAmount: 0, events: [] };
+        eventsToPublish.push(...effects.events);
+        postCommitFn = effects.postCommit;
+
+        // 3. One credit + one ledger row per receiver. The wallet idempotency key
+        //    MUST carry the receiver id: sharing one key across the batch would
+        //    make the wallet treat legs 2..N as replays of leg 1 and pay nobody
+        //    but the first receiver, while the sender is debited for all N.
+        const rows: GiftTransaction[] = [];
+        for (const receiverId of receiverIds) {
+          let creditTxnId: string | null = null;
+          if (earningsNum > 0) {
+            const creditResult = await this.wallet.credit(
+              {
+                userId: receiverId,
+                currency: WalletCurrency.EARNINGS,
+                amount: earningsNum,
+                reason: WalletTxnReason.GIFT_RECEIVE,
+                idempotencyKey: `gift-credit:${idempotencyKey}:${receiverId}`,
+                referenceType: GIFT_WALLET_REFERENCE_TYPE,
+                metadata: { giftId: gift.id, senderId, batchId },
+                actorId: senderId,
+              },
+              tx,
+            );
+            creditTxnId = creditResult.transactionId;
+          }
+
+          rows.push(
+            await this.repo.createTransaction(
+              {
+                senderId,
+                receiverId,
+                giftId: gift.id,
+                giftType: gift.type,
+                contextType: dto.contextType,
+                contextId: dto.contextId,
+                quantity: dto.quantity,
+                comboTier,
+                unitCoinValue: unit,
+                totalCoinValue: perReceiver,
+                creatorEarnings,
+                luckyMultiplier: lucky.multiplier,
+                isLuckyWin: lucky.win,
+                senderExp,
+                receiverExp,
+                idempotencyKey: ledgerKeyFor(receiverId),
+                senderWalletTxnId: debit.transactionId,
+                receiverWalletTxnId: creditTxnId,
+                metadata: {
+                  giftName: gift.name,
+                  batchId,
+                  acceptedAmount: effects.acceptedAmount,
+                  refundAmount: effects.refundAmount,
+                } as Prisma.InputJsonValue,
+              },
+              tx,
+            ),
+          );
+        }
+        return rows;
+      }),
+    );
+
+    // Post-commit side effects — leaderboards, events, durable jobs. Every one
+    // of these is deliberately outside the transaction: Redis writes cannot roll
+    // back, and a queued job could otherwise be picked up before the commit.
+    for (const txn of transactionResult) {
+      await this.afterSend(gift, txn);
+    }
 
     // Publish all collected treasure / refund events
     for (const event of eventsToPublish) {
@@ -337,38 +359,16 @@ export class GiftService {
     return this.config.get('gift') as GiftConfig;
   }
 
-  /** Validate the send context and that both parties belong to it. */
-  private async assertContext(
-    contextType: GiftContextType,
-    contextId: string,
-    senderId: string,
-    receiverId: string,
-  ): Promise<void> {
-    if (contextType !== GiftContextType.AUDIO_ROOM) {
-      throw new BusinessException(
-        ERROR_CODES.GIFT_CONTEXT_INVALID,
-        'Gifting is not yet supported in this context.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    if (!(await this.rooms.isRoomLive(contextId))) {
-      throw new BusinessException(
-        ERROR_CODES.GIFT_CONTEXT_INVALID,
-        'The room is not live.',
-        HttpStatus.CONFLICT,
-      );
-    }
-    // Sender must be an active member (throws NOT_ROOM_MEMBER otherwise).
-    await this.rooms.assertMember(contextId, senderId);
-    const receiverInRoom = await this.rooms.isMember(contextId, receiverId);
-    const receiverExists = receiverInRoom && (await this.users.findById(receiverId));
-    if (!receiverExists) {
-      throw new BusinessException(
-        ERROR_CODES.GIFT_RECEIVER_INVALID,
-        'The recipient is not in this room.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+  /**
+   * Acquire every lock in order, innermost callback last. Folding avoids the
+   * hand-nested `withLock` pyramid and, more importantly, works for any number
+   * of locks — which multi-receiver sends need.
+   */
+  private withLocks<T>(keys: string[], fn: () => Promise<T>): Promise<T> {
+    return keys.reduceRight<() => Promise<T>>(
+      (next, key) => () => this.locks.withLock(key, next),
+      fn,
+    )();
   }
 
   /** Roll a lucky multiplier for LUCKY gifts (fair, crypto-random). */
@@ -463,44 +463,6 @@ export class GiftService {
       receiverId: txn.receiverId,
       totalCoinValue: totalNum,
     });
-  }
-
-  /** Refund coins when the ledger write fails, so a send is all-or-nothing. */
-  private async compensate(
-    idempotencyKey: string,
-    senderId: string,
-    receiverId: string,
-    totalNum: number,
-    earningsNum: number,
-    creditTxnId: string | null,
-  ): Promise<void> {
-    try {
-      if (creditTxnId) {
-        await this.wallet.debit({
-          userId: receiverId,
-          currency: WalletCurrency.EARNINGS,
-          amount: earningsNum > 0 ? earningsNum : 1,
-          reason: WalletTxnReason.GIFT_REFUND,
-          idempotencyKey: `gift-credit-reverse:${idempotencyKey}`,
-          referenceType: GIFT_WALLET_REFERENCE_TYPE,
-          actorId: senderId,
-        });
-      }
-      await this.wallet.credit({
-        userId: senderId,
-        currency: WalletCurrency.GOLD,
-        amount: totalNum,
-        reason: WalletTxnReason.GIFT_REFUND,
-        idempotencyKey: `gift-debit-reverse:${idempotencyKey}`,
-        referenceType: GIFT_WALLET_REFERENCE_TYPE,
-        actorId: senderId,
-      });
-    } catch (err) {
-      // A failed compensation must be visible for manual reconciliation.
-      this.logger.error(
-        `Gift compensation failed for key ${idempotencyKey}: ${(err as Error).message}`,
-      );
-    }
   }
 
   private toView(t: GiftTransaction) {
