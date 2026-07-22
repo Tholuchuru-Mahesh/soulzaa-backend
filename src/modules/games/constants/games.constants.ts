@@ -47,10 +47,11 @@ export const GAME_TURN_SECONDS = 30;
  * from an active match. A brief network blip / socket drop should not instantly
  * forfeit or cancel a match (especially a bet match, where a forfeit refunds and
  * cancels the pot) — the player has this long to reconnect first. Configurable
- * via the `GAME_DISCONNECT_GRACE_SECONDS` env var (defaults to 20s).
+ * via the `GAME_DISCONNECT_GRACE_SECONDS` env var (defaults to 60s, per the
+ * betting/prize-distribution spec's reconnect-timeout rule).
  */
 export const GAME_DISCONNECT_GRACE_SECONDS = Number(
-  process.env.GAME_DISCONNECT_GRACE_SECONDS ?? 20,
+  process.env.GAME_DISCONNECT_GRACE_SECONDS ?? 60,
 );
 
 /** Redis lock keys — hash-tagged so a lobby and its derived session share a slot. */

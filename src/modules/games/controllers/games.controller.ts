@@ -47,6 +47,17 @@ export class GamesController {
     return this.games.listCatalog();
   }
 
+  @Get('me/active-match')
+  @NotGuest()
+  @ApiOperation({
+    summary:
+      'Resume-on-launch: an in-progress session, an unseen completed result, or an ' +
+      'open lobby the caller should be routed back into right now, if any',
+  })
+  myActiveMatch(@CurrentUser() user: AuthenticatedUser) {
+    return this.games.getMyActiveMatch(this.actor(user));
+  }
+
   @Post('lobbies')
   @HttpCode(HttpStatus.CREATED)
   @NotGuest()
@@ -212,6 +223,18 @@ export class GamesController {
   @ApiOperation({ summary: 'Session detail' })
   session(@Param('id', ParseUuidPipe) id: string) {
     return this.games.getSession(id);
+  }
+
+  @Post('sessions/:id/ack-result')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({
+    summary:
+      "Acknowledge this session's result — call once the Match Result screen is " +
+      'dismissed, so it stops being auto-resurfaced by GET games/me/active-match',
+  })
+  ackResult(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.games.ackResult(this.actor(user), id);
   }
 
   @Post('sessions/:id/moves')

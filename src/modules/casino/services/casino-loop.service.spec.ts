@@ -169,8 +169,8 @@ describe('CasinoLoopService — phase machine (Greedy Food)', () => {
     await tick(loop, CasinoGame.GREEDY_FOOD, 40);
     const results = emitted.find((e) => e.event === 'greedy_food_results')!;
     expect(results.payload.winners).toEqual([
-      { username: 'Alice', amount: 500 },
-      { username: 'Player_u-unknown', amount: 100 },
+      { username: 'Alice', amount: 500, avatarUrl: null },
+      { username: 'Player_u-unknown', amount: 100, avatarUrl: null },
     ]);
   });
 

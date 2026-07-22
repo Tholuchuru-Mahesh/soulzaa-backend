@@ -21,6 +21,7 @@ import { PHASE_SECONDS, type CasinoPhase } from '../constants/casino.constants';
 export interface CasinoRoundWinnerView {
   username: string;
   amount: number;
+  avatarUrl?: string | null;
 }
 
 export interface CasinoRoundState {

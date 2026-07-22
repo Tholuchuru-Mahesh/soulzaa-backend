@@ -222,6 +222,14 @@ model GameParticipant {
   isWinner     Boolean               @default(false)
   joinedAt     DateTime              @default(now())
   settledAt    DateTime?
+  /// When this participant's client last acknowledged the result screen for
+  /// this session — set by `POST games/sessions/:id/ack-result`, called once
+  /// the player dismisses the Match Result screen (live reveal or
+  /// resume-on-launch). Drives resume-on-launch: a settled session with no
+  /// `resultSeenAt` is still "worth auto-showing"; once acknowledged, it
+  /// never resurfaces the result screen automatically again on a later
+  /// launch, no matter how the player got there.
+  resultSeenAt DateTime?
 
   @@unique([sessionId, userId])
   @@index([sessionId])

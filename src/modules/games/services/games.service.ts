@@ -1002,9 +1002,11 @@ export class GamesService {
    * the platform never derives), a forfeit is deterministic — the leaver forfeits
    * their claim — so the platform resolves it directly: if exactly one PLAYING
    * participant remains they take the pot (escrow-bounded via settleResult); if
-   * none remain everyone is refunded; if 2+ remain the match continues without
-   * the forfeiter (clients withdraw the seat). Always relays a forfeit event so
-   * in-progress boards withdraw the seat.
+   * NONE remain, the platform has no refund policy once a match has started — the
+   * actor calling this (the very last participant to leave) is awarded the full
+   * pot instead; if 2+ remain the match continues without the forfeiter (clients
+   * withdraw the seat). Always relays a forfeit event so in-progress boards
+   * withdraw the seat.
    */
   async forfeit(actor: GameActor, sessionId: string): Promise<unknown> {
     const session = await this.repo.getSession(sessionId);
@@ -1050,8 +1052,16 @@ export class GamesService {
     }
 
     if (remaining.length === 0) {
-      // Everyone has left — refund all remaining stakes.
-      return this.abortSession(sessionId, GameSessionStatus.CANCELLED, actor.id, 'all_forfeited');
+      // Everyone else already left — no refunds once a match has started, so
+      // the LAST participant to leave (the one calling this, by construction —
+      // every other PLAYING seat already forfeited before them) takes the pot
+      // instead of it being returned to nobody in particular.
+      return this.settleToHumanWinners(
+        session,
+        [actor.id],
+        { reason: 'forfeit_last_to_leave', forfeitedBy: actor.id },
+        actor.id,
+      );
     }
     if (remaining.length === 1) {
       // Sole survivor takes the pot (minus house rake). Deterministic → the
@@ -1074,10 +1084,13 @@ export class GamesService {
 
   /**
    * Resolve a forfeit in a TEAM_2V2 match. `remaining` are the still-PLAYING
-   * participants other than the forfeiter. If no team retains a player everyone is
-   * refunded; if exactly one team retains players it wins (its survivors split the
-   * pot — a forfeiter forfeits their claim, so a lone survivor takes the team's
-   * whole share); if both teams retain players the match continues.
+   * participants other than the forfeiter. If no team retains a player, no
+   * refunds once a match has started — the actor (the last of all four seats
+   * still PLAYING, by construction, since every other seat already forfeited)
+   * takes the pot alone; if exactly one team retains players it wins (its
+   * survivors split the pot — a forfeiter forfeits their claim, so a lone
+   * survivor takes the team's whole share); if both teams retain players the
+   * match continues.
    */
   private async forfeitTeamMatch(
     session: GameSession,
@@ -1087,7 +1100,12 @@ export class GamesService {
   ): Promise<unknown> {
     const teamsLeft = new Set(remaining.map((p) => p.team));
     if (teamsLeft.size === 0) {
-      return this.abortSession(session.id, GameSessionStatus.CANCELLED, actorId, 'all_forfeited');
+      return this.settleToHumanWinners(
+        session,
+        [actorId],
+        { reason: 'forfeit_last_to_leave', forfeitedBy: actorId },
+        actorId,
+      );
     }
     if (teamsLeft.size === 1) {
       return this.settleToHumanWinners(
@@ -1121,7 +1139,12 @@ export class GamesService {
     const humanWinners = winners.filter((w) => !botIds.has(w));
     if (humanWinners.length === 0) {
       if (Number(session.stake) > 0) {
-        return this.abortSession(session.id, GameSessionStatus.CANCELLED, actorId, 'bot_won_refund');
+        return this.abortSession(
+          session.id,
+          GameSessionStatus.CANCELLED,
+          actorId,
+          'bot_won_refund',
+        );
       }
       // Settle friendly matches normally when only bots win
       return this.settleResult({
@@ -1474,6 +1497,9 @@ export class GamesService {
     await this.locks.withLock(gameMatchBucketLockKey(ptr.bucketKey), async () => {
       await this.cache.sortedRemove(ptr.bucketKey, actor.id);
       await this.cache.del(gameMatchUserKey(actor.id));
+      if ((await this.cache.sortedCount(ptr.bucketKey)) === 0) {
+        await this.cache.setRemove(GAME_MATCH_BUCKET_INDEX_KEY, ptr.bucketKey);
+      }
     });
     await this.repo.logEvent({
       userId: actor.id,
@@ -1559,7 +1585,7 @@ export class GamesService {
         botName: m.botName,
         displayName: m.isBot ? m.botName : (identities.get(m.userId)?.displayName ?? null),
         avatar: m.isBot ? null : (identities.get(m.userId)?.avatarUrl ?? null),
-        isReady: m.isBot ? true : (m.userId === actor.id ? isReady : m.isReady),
+        isReady: m.isBot ? true : m.userId === actor.id ? isReady : m.isReady,
       }));
       await this.bus.publish(
         new GameLobbyMemberReadyEvent({
@@ -1699,6 +1725,63 @@ export class GamesService {
     if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
     const participants = await this.repo.listParticipants(sessionId);
     return this.sessionView(session, participants);
+  }
+
+  /**
+   * Resume-on-launch: what should the client automatically route the actor
+   * BACK into right now, if anything — the single source of truth the app
+   * checks on cold start and on every foreground-resume so a player who
+   * closed/backgrounded the app mid-match (or mid-waiting-room) never has to
+   * manually rejoin. Checked in priority order — an in-progress match always
+   * wins over an unseen old result, which always wins over a waiting room:
+   *   1. An ACTIVE session the actor is still `PLAYING` in.
+   *   2. A COMPLETED session whose result the actor hasn't acknowledged yet
+   *      (`resultSeenAt IS NULL` — see `markResultSeen`/the `ack-result`
+   *      endpoint the client calls once the player dismisses that screen).
+   *   3. A still-open (OPEN/STARTED) lobby the actor is a member of.
+   *
+   * Response shape (discriminated by `kind`) — one variant per client
+   * decision-table branch:
+   *   { kind: 'session', session: <sessionView> }  — the client branches on
+   *     `session.status` itself: IN_PROGRESS → reconnect + restore state;
+   *     COMPLETED → show the result screen straight from this same payload,
+   *     no second round-trip needed.
+   *   { kind: 'lobby', lobby: <lobbyView> }         — rejoin the waiting room.
+   *   { kind: 'none' }                              — nothing to resume;
+   *     stay on whatever screen normal navigation would show (e.g. Home).
+   *
+   * CANCELLED/ABORTED sessions and CANCELLED/EXPIRED lobbies are never
+   * returned by any of the three lookups above, so those terminal states
+   * fall straight through to `{ kind: 'none' }` — matching the spec's
+   * "cancelled → just go Home" rule without the client special-casing it.
+   */
+  async getMyActiveMatch(actor: GameActor): Promise<unknown> {
+    const activeSessionId = await this.repo.findActiveSessionForParticipant(actor.id);
+    const sessionId =
+      activeSessionId ?? (await this.repo.findUnseenCompletedSessionForParticipant(actor.id));
+    if (sessionId) {
+      const session = await this.repo.getSession(sessionId);
+      if (session) {
+        const participants = await this.repo.listParticipants(sessionId);
+        return { kind: 'session', session: await this.sessionView(session, participants) };
+      }
+    }
+    const lobbyCode = await this.repo.findActiveLobbyForParticipant(actor.id);
+    if (lobbyCode) {
+      const lobby = await this.repo.getLobbyByCode(lobbyCode);
+      if (lobby) {
+        return {
+          kind: 'lobby',
+          lobby: await this.lobbyView(lobby, await this.gameCodeOf(lobby.definitionId)),
+        };
+      }
+    }
+    return { kind: 'none' };
+  }
+
+  /** Marks the actor's result for [sessionId] as acknowledged (idempotent, no-op if not a participant). */
+  async ackResult(actor: GameActor, sessionId: string): Promise<void> {
+    await this.repo.markResultSeen(sessionId, actor.id);
   }
 
   async getLobby(code: string): Promise<unknown> {

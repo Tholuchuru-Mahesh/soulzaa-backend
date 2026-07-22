@@ -162,6 +162,9 @@ describe('GamesService', () => {
       listMembersWithTeams: jest.fn().mockResolvedValue([]),
       setMemberTeam: jest.fn().mockResolvedValue({ id: 'm1' }),
       findActiveSessionForParticipant: jest.fn().mockResolvedValue(null),
+      findActiveLobbyForParticipant: jest.fn().mockResolvedValue(null),
+      findUnseenCompletedSessionForParticipant: jest.fn().mockResolvedValue(null),
+      markResultSeen: jest.fn().mockResolvedValue(undefined),
       updateLobby: jest.fn().mockResolvedValue(lobby()),
       addBotMember: jest.fn().mockResolvedValue({ id: 'bm1' }),
       // Settlement runs its writes inside one DB transaction — the mock just
@@ -627,6 +630,34 @@ describe('GamesService', () => {
       );
     });
 
+    it(
+      'REGRESSION (betting spec #12): when the LAST participant forfeits (everyone else ' +
+        'already left), no refund — the actor takes the full pot instead of it being ' +
+        'returned to nobody',
+      async () => {
+        repo.getSession.mockResolvedValue(session({ playerCount: 3, potAmount: 300n }));
+        repo.getParticipant.mockResolvedValue(participant('p1', HOST));
+        repo.listParticipants.mockResolvedValue([
+          participant('p1', HOST, { status: GameParticipantStatus.PLAYING }),
+          participant('p2', P2, { status: GameParticipantStatus.LOST }),
+          participant('p3', P3, { status: GameParticipantStatus.LOST }),
+        ]);
+        await service.forfeit(ACTOR, 'sess-1');
+
+        expect(wallet.credit).toHaveBeenCalledWith(
+          expect.objectContaining({ userId: HOST, amount: 300, reason: 'GAME_PAYOUT' }),
+          FAKE_TX,
+        );
+        expect(repo.createMatchResult).toHaveBeenCalledWith(
+          expect.objectContaining({ winners: [HOST] }),
+          FAKE_TX,
+        );
+        expect(bus.publish).not.toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'game.cancelled' }),
+        );
+      },
+    );
+
     it('rejects a non-participant forfeiter', async () => {
       repo.getParticipant.mockResolvedValue(null);
       await expect(
@@ -653,6 +684,55 @@ describe('GamesService', () => {
       cache.top.mockResolvedValue([{ member: HOST, score: 3 }]);
       const board = (await service.leaderboard(10)) as Array<Record<string, unknown>>;
       expect(board[0]).toMatchObject({ rank: 1, userId: HOST, username: 'host', wins: 3 });
+    });
+  });
+
+  describe('getMyActiveMatch — resume-on-launch', () => {
+    it('returns kind: none when nothing is active/unseen', async () => {
+      const result = await service.getMyActiveMatch(ACTOR);
+      expect(result).toEqual({ kind: 'none' });
+    });
+
+    it('prioritizes an ACTIVE session over everything else', async () => {
+      repo.findActiveSessionForParticipant.mockResolvedValue('sess-1');
+      repo.findActiveLobbyForParticipant.mockResolvedValue('LOBBY1');
+      const result = (await service.getMyActiveMatch(ACTOR)) as Record<string, unknown>;
+      expect(result.kind).toBe('session');
+      const view = result.session as Record<string, unknown>;
+      expect(view.id).toBe('sess-1');
+      // The lobby lookup must not even matter once a session is found.
+      expect(repo.findUnseenCompletedSessionForParticipant).not.toHaveBeenCalled();
+    });
+
+    it(
+      'falls back to an UNSEEN completed session (resultSeenAt IS NULL) when no ' +
+        'session is currently active — the "missed the result while offline" case',
+      async () => {
+        repo.findActiveSessionForParticipant.mockResolvedValue(null);
+        repo.findUnseenCompletedSessionForParticipant.mockResolvedValue('sess-2');
+        repo.getSession.mockResolvedValue(
+          session({ id: 'sess-2', status: GameSessionStatus.COMPLETED }),
+        );
+        const result = (await service.getMyActiveMatch(ACTOR)) as Record<string, unknown>;
+        expect(result.kind).toBe('session');
+        const view = result.session as Record<string, unknown>;
+        expect(view.id).toBe('sess-2');
+        expect(view.status).toBe(GameSessionStatus.COMPLETED);
+      },
+    );
+
+    it('falls back to an open lobby when no session (active or unseen) exists', async () => {
+      repo.findActiveLobbyForParticipant.mockResolvedValue('LOBBY1');
+      repo.getLobbyByCode.mockResolvedValue(lobby({ code: 'LOBBY1' }));
+      const result = (await service.getMyActiveMatch(ACTOR)) as Record<string, unknown>;
+      expect(result.kind).toBe('lobby');
+      const view = result.lobby as Record<string, unknown>;
+      expect(view.code).toBe('LOBBY1');
+    });
+
+    it('ackResult marks the session seen for the acting user', async () => {
+      await service.ackResult(ACTOR, 'sess-1');
+      expect(repo.markResultSeen).toHaveBeenCalledWith('sess-1', HOST);
     });
   });
 
@@ -965,6 +1045,55 @@ describe('GamesService', () => {
         service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] }),
       ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_INVALID_PAYOUT });
     });
+
+    it(
+      'REGRESSION (betting spec #8): a teammate who already forfeited (status LOST) is ' +
+        'excluded from the winning-team expansion, so the solo survivor takes the WHOLE ' +
+        'pot instead of splitting it with a partner who left',
+      async () => {
+        repo.getSession.mockResolvedValue(
+          session({ mode: GameMode.TEAM_2V2, potAmount: 400n, playerCount: 4 }),
+        );
+        repo.listParticipants.mockResolvedValue([
+          participant('p1', HOST, {
+            team: GameTeam.A,
+            seat: 0,
+            status: GameParticipantStatus.PLAYING,
+          }),
+          participant('p2', P2, {
+            team: GameTeam.B,
+            seat: 1,
+            status: GameParticipantStatus.PLAYING,
+          }),
+          // STRANGER already forfeited earlier in the match — still tagged Team A,
+          // but must NOT collect a share when Team A's survivor (HOST) wins.
+          participant('p3', STRANGER, {
+            team: GameTeam.A,
+            seat: 2,
+            status: GameParticipantStatus.LOST,
+          }),
+          participant('p4', P3, {
+            team: GameTeam.B,
+            seat: 3,
+            status: GameParticipantStatus.PLAYING,
+          }),
+        ]);
+        await service.reportMatchResult(ACTOR, 'sess-1', { winningTeam: GameTeam.A });
+
+        expect(wallet.credit).toHaveBeenCalledWith(
+          expect.objectContaining({ userId: HOST, amount: 400 }),
+          FAKE_TX,
+        );
+        expect(wallet.credit).not.toHaveBeenCalledWith(
+          expect.objectContaining({ userId: STRANGER }),
+          FAKE_TX,
+        );
+        expect(repo.createMatchResult).toHaveBeenCalledWith(
+          expect.objectContaining({ winners: [HOST] }),
+          FAKE_TX,
+        );
+      },
+    );
   });
 
   describe('2v2 — forfeit', () => {
@@ -1009,6 +1138,32 @@ describe('GamesService', () => {
         expect.objectContaining({ status: GameParticipantStatus.LOST }),
       );
     });
+
+    it(
+      'REGRESSION (betting spec #12): the LAST 2v2 participant to forfeit (all three ' +
+        'others already left) takes the full pot instead of a refund',
+      async () => {
+        repo.getSession.mockResolvedValue(
+          session({ mode: GameMode.TEAM_2V2, potAmount: 400n, playerCount: 4 }),
+        );
+        repo.getParticipant.mockResolvedValue(participant('p1', HOST, { team: GameTeam.A }));
+        repo.listParticipants.mockResolvedValue([
+          participant('p1', HOST, { team: GameTeam.A, status: GameParticipantStatus.PLAYING }),
+          participant('p2', STRANGER, { team: GameTeam.A, status: GameParticipantStatus.LOST }),
+          participant('p3', P2, { team: GameTeam.B, status: GameParticipantStatus.LOST }),
+          participant('p4', P3, { team: GameTeam.B, status: GameParticipantStatus.LOST }),
+        ]);
+        await service.forfeit(ACTOR, 'sess-1');
+
+        expect(wallet.credit).toHaveBeenCalledWith(
+          expect.objectContaining({ userId: HOST, amount: 400, reason: 'GAME_PAYOUT' }),
+          FAKE_TX,
+        );
+        expect(bus.publish).not.toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'game.cancelled' }),
+        );
+      },
+    );
   });
 
   describe('private / password lobbies + host controls', () => {

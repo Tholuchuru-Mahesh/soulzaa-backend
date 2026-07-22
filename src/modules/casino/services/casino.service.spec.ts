@@ -177,7 +177,7 @@ describe('CasinoService.placeBet', () => {
     expect(res).toEqual({ balanceAfter: 900, betId: 'bet1' });
   });
 
-  it('does not consult hasSymbol when the user is still under the 6-distinct cap', async () => {
+  it('does not consult hasSymbol when the user is still under the distinct cap', async () => {
     const { svc, repo } = makeService({
       repo: { countDistinctSymbols: jest.fn().mockResolvedValue(3) },
     });

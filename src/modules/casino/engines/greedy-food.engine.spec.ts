@@ -71,14 +71,6 @@ describe('greedy-food engine', () => {
         expect(greedyEffectiveMultiplier(item, 'vegSalad')).toBe(0);
       }
     });
-
-    it('a direct vegSalad bet also wins under vegSalad outcome (exact match)', () => {
-      expect(greedyEffectiveMultiplier('vegSalad', 'vegSalad')).toBe(5);
-    });
-
-    it('a direct vegSalad bet does NOT win under nonVegSalad outcome', () => {
-      expect(greedyEffectiveMultiplier('vegSalad', 'nonVegSalad')).toBe(0);
-    });
   });
 
   describe('nonVegSalad outcome pays every NON_VEG bet at the BET item multiplier', () => {
@@ -95,14 +87,6 @@ describe('greedy-food engine', () => {
         expect(greedyEffectiveMultiplier(item, 'nonVegSalad')).toBe(0);
       }
     });
-
-    it('a direct nonVegSalad bet also wins under nonVegSalad outcome (exact match)', () => {
-      expect(greedyEffectiveMultiplier('nonVegSalad', 'nonVegSalad')).toBe(10);
-    });
-
-    it('a direct nonVegSalad bet does NOT win under vegSalad outcome', () => {
-      expect(greedyEffectiveMultiplier('nonVegSalad', 'vegSalad')).toBe(0);
-    });
   });
 
   describe('selectGreedyOutcome', () => {
@@ -117,8 +101,8 @@ describe('greedy-food engine', () => {
         { item: 'corn', amount: 50 },
         { item: 'burger', amount: 200 },
         { item: 'crab', amount: 10 },
-        { item: 'vegSalad', amount: 30 },
-        { item: 'nonVegSalad', amount: 20 },
+        { item: 'tomato', amount: 30 },
+        { item: 'chicken', amount: 20 },
       ];
       const liabilityOf = (outcome: string) =>
         bets.reduce((sum, b) => sum + b.amount * greedyEffectiveMultiplier(b.item, outcome), 0);

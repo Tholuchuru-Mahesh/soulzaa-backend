@@ -1,4 +1,4 @@
-import { GameMode, GameTeam } from '@prisma/client';
+import { GameMode, GameParticipantStatus, GameTeam } from '@prisma/client';
 import {
   assignTeamsAndSeats,
   expandTeamWinners,
@@ -134,10 +134,10 @@ describe('matchmaking-core', () => {
 
   describe('expandTeamWinners', () => {
     const participants = [
-      { userId: 'a', team: GameTeam.A },
-      { userId: 'b', team: GameTeam.B },
-      { userId: 'c', team: GameTeam.A },
-      { userId: 'd', team: GameTeam.B },
+      { userId: 'a', team: GameTeam.A, status: GameParticipantStatus.PLAYING },
+      { userId: 'b', team: GameTeam.B, status: GameParticipantStatus.PLAYING },
+      { userId: 'c', team: GameTeam.A, status: GameParticipantStatus.PLAYING },
+      { userId: 'd', team: GameTeam.B, status: GameParticipantStatus.PLAYING },
     ];
 
     it('returns both members of the winning team', () => {
@@ -146,8 +146,36 @@ describe('matchmaking-core', () => {
     });
 
     it('ignores participants with no team', () => {
-      const mixed = [...participants, { userId: 'e', team: null }];
+      const mixed = [
+        ...participants,
+        { userId: 'e', team: null, status: GameParticipantStatus.PLAYING },
+      ];
       expect(expandTeamWinners(mixed, GameTeam.A).sort()).toEqual(['a', 'c']);
+    });
+
+    it(
+      'REGRESSION: excludes a teammate who already forfeited (status != PLAYING), so a solo ' +
+        'survivor wins the pot alone instead of splitting it with a partner who left — a ' +
+        'forfeited teammate keeps their `team` field but must not collect a share',
+      () => {
+        const oneForfeited = [
+          { userId: 'a', team: GameTeam.A, status: GameParticipantStatus.PLAYING },
+          { userId: 'c', team: GameTeam.A, status: GameParticipantStatus.LOST }, // forfeited
+          { userId: 'b', team: GameTeam.B, status: GameParticipantStatus.PLAYING },
+          { userId: 'd', team: GameTeam.B, status: GameParticipantStatus.PLAYING },
+        ];
+        expect(expandTeamWinners(oneForfeited, GameTeam.A)).toEqual(['a']);
+      },
+    );
+
+    it('excludes a winning-team member marked WON/DREW/REFUNDED — only PLAYING counts', () => {
+      const notPlaying = [
+        { userId: 'a', team: GameTeam.A, status: GameParticipantStatus.PLAYING },
+        { userId: 'c', team: GameTeam.A, status: GameParticipantStatus.REFUNDED },
+        { userId: 'b', team: GameTeam.B, status: GameParticipantStatus.PLAYING },
+        { userId: 'd', team: GameTeam.B, status: GameParticipantStatus.PLAYING },
+      ];
+      expect(expandTeamWinners(notPlaying, GameTeam.A)).toEqual(['a']);
     });
   });
 });

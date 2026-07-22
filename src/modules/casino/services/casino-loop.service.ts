@@ -422,6 +422,7 @@ export class CasinoLoopService implements OnModuleInit, OnModuleDestroy {
     return winners.map((w) => ({
       username: identities.get(w.userId)?.displayName ?? `Player_${w.userId}`,
       amount: w.amount,
+      avatarUrl: identities.get(w.userId)?.avatarUrl ?? null,
     }));
   }
 

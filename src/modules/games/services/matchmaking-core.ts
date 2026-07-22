@@ -4,7 +4,7 @@
  * branch is unit-testable without mocks. The service layer wraps these with I/O
  * and translates the `AssignResult` errors into BusinessExceptions.
  */
-import { GameMode, GameTeam } from '@prisma/client';
+import { GameMode, GameParticipantStatus, GameTeam } from '@prisma/client';
 
 /** Matchmaking bucket flavour. DUEL pairs 2 into a CLASSIC lobby; TEAM_2V2 pairs 4. */
 export type MatchType = 'DUEL' | 'TEAM_2V2';
@@ -100,10 +100,20 @@ export function assignTeamsAndSeats(
   };
 }
 
-/** The user ids on `winningTeam` — the winners a host's team-report expands into. */
+/**
+ * The user ids on `winningTeam` who are still `PLAYING` — the winners a
+ * host's team-report expands into. A teammate who already forfeited
+ * (`status !== PLAYING`, e.g. `LOST` from `forfeitTeamMatch`) keeps their
+ * `team` field but forfeits their claim on the pot: if their partner then
+ * wins solo, only the survivor collects, and `splitPot` (a single winner)
+ * naturally gives them the team's WHOLE share instead of splitting it with
+ * someone who already left.
+ */
 export function expandTeamWinners(
-  participants: { userId: string; team: GameTeam | null }[],
+  participants: { userId: string; team: GameTeam | null; status: GameParticipantStatus }[],
   winningTeam: GameTeam,
 ): string[] {
-  return participants.filter((p) => p.team === winningTeam).map((p) => p.userId);
+  return participants
+    .filter((p) => p.team === winningTeam && p.status === GameParticipantStatus.PLAYING)
+    .map((p) => p.userId);
 }

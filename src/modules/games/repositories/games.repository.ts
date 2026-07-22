@@ -123,9 +123,15 @@ export class GamesRepository {
   }
 
   /** Members with team + bot info (join order) — drives seating, escrow-skip, UI. */
-  listMembersWithTeams(
-    lobbyId: string,
-  ): Promise<{ userId: string; team: GameTeam | null; isBot: boolean; botName: string | null; isReady: boolean }[]> {
+  listMembersWithTeams(lobbyId: string): Promise<
+    {
+      userId: string;
+      team: GameTeam | null;
+      isBot: boolean;
+      botName: string | null;
+      isReady: boolean;
+    }[]
+  > {
     return this.prisma.gameLobbyMember.findMany({
       where: { lobbyId },
       orderBy: { joinedAt: 'asc' },
@@ -287,6 +293,69 @@ export class GamesRepository {
       select: { id: true },
     });
     return session?.id ?? null;
+  }
+
+  /**
+   * The still-open (OPEN/STARTED) lobby a user is currently a member of, if
+   * any — the pre-match counterpart of [findActiveSessionForParticipant], for
+   * resume-on-launch: a player who backgrounded the app while still in the
+   * waiting room (never actually started) has no session to find, only a
+   * lobby. STARTED is included because there's a brief window between the
+   * host starting the match and the session row existing where the lobby is
+   * already STARTED but `sessionId` may not be set yet.
+   */
+  async findActiveLobbyForParticipant(userId: string): Promise<string | null> {
+    const membership = await this.prisma.gameLobbyMember.findFirst({
+      where: { userId, isBot: false },
+      select: { lobbyId: true },
+    });
+    if (!membership) return null;
+    const lobby = await this.prisma.gameLobby.findFirst({
+      where: {
+        id: membership.lobbyId,
+        status: { in: [GameLobbyStatus.OPEN, GameLobbyStatus.STARTED] },
+      },
+      select: { code: true },
+    });
+    return lobby?.code ?? null;
+  }
+
+  /**
+   * The most recently settled session this user played that they have NOT
+   * yet acknowledged (`resultSeenAt IS NULL`) — resume-on-launch's "you
+   * missed the result" case. Only COMPLETED sessions carry a result worth
+   * showing; CANCELLED/ABORTED ones resolve via a refund, not a result
+   * screen, so they're excluded here (the client's CANCELLED branch just
+   * routes Home, per spec — nothing to fetch).
+   *
+   * `GameParticipant`/`GameSession` are linked by a plain `sessionId` column
+   * (no Prisma relation declared between the two models), so this is a
+   * two-step lookup rather than a single nested-relation query.
+   */
+  async findUnseenCompletedSessionForParticipant(userId: string): Promise<string | null> {
+    const unseen = await this.prisma.gameParticipant.findMany({
+      where: { userId, resultSeenAt: null },
+      orderBy: { settledAt: 'desc' },
+      select: { sessionId: true, settledAt: true },
+    });
+    if (unseen.length === 0) return null;
+    const session = await this.prisma.gameSession.findFirst({
+      where: {
+        id: { in: unseen.map((p) => p.sessionId) },
+        status: GameSessionStatus.COMPLETED,
+      },
+      orderBy: { settledAt: 'desc' },
+      select: { id: true },
+    });
+    return session?.id ?? null;
+  }
+
+  /** Marks [userId]'s result for [sessionId] as acknowledged (idempotent). */
+  async markResultSeen(sessionId: string, userId: string): Promise<void> {
+    await this.prisma.gameParticipant.updateMany({
+      where: { sessionId, userId },
+      data: { resultSeenAt: new Date() },
+    });
   }
 
   /** Session ids a user has taken part in (optionally filtered to one game). */
