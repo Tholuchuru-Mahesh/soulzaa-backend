@@ -57,6 +57,16 @@ export class AudioRoomSeatsRepository {
     return this.prisma.roomRole.findUnique({ where: { roomId_userId: { roomId, userId } } });
   }
 
+  /** Total number of active admins (ADMIN or PREMIUM_ADMIN) in a room (maximum 25 allowed). */
+  async countAdmins(roomId: string): Promise<number> {
+    return this.prisma.roomRole.count({
+      where: {
+        roomId,
+        role: { in: [RoomMemberRole.ADMIN, RoomMemberRole.PREMIUM_ADMIN] },
+      },
+    });
+  }
+
   /** User ids holding an elevated grant (owner/admin/premium-admin) in a room. */
   async listElevatedMemberIds(roomId: string): Promise<string[]> {
     const rows = await this.prisma.roomRole.findMany({
@@ -397,6 +407,11 @@ export class AudioRoomSeatsRepository {
 
   getSettings(roomId: string): Promise<RoomSettings | null> {
     return this.prisma.roomSettings.findUnique({ where: { roomId } });
+  }
+
+  async isRoomMuted(roomId: string): Promise<boolean> {
+    const settings = await this.getSettings(roomId);
+    return settings?.isRoomMuted ?? false;
   }
 
   async setRoomMuted(roomId: string, isRoomMuted: boolean): Promise<void> {

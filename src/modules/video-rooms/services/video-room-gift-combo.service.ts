@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { Gift } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { CacheService } from 'src/infra/redis/cache.service';
@@ -52,7 +52,7 @@ export class VideoRoomGiftComboService {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly metrics: VideoRoomsMetrics,
     /** Injected so the expiry sweep is deterministic under test. */
-    private readonly now: () => number = () => Date.now(),
+    @Optional() @Inject('CLOCK') private readonly now: () => number = () => Date.now(),
   ) {}
 
   /**

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { REDIS_CLIENT, type RedisClient } from 'src/infra/redis/redis.constants';
 import { VIP_SERVICE, type IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
 import { treasureActivityKey } from '../constants/video-room-treasure.constants';
@@ -41,7 +41,7 @@ export class VideoRoomTreasureEligibilityService {
     @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
     private readonly repo: VideoRoomTreasureRepository,
     @Inject(VIP_SERVICE) private readonly vip: IVipService,
-    private readonly now: () => number = () => Date.now(),
+    @Optional() private readonly now: () => number = () => Date.now(),
   ) {}
 
   async resolve(input: {

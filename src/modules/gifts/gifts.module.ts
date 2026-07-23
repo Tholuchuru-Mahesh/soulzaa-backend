@@ -33,6 +33,6 @@ import { GiftService } from './services/gift.service';
   ],
   // GiftContextRegistry + GiftService are exported so each gifting context's
   // module can register its handler and drive the shared send pipeline (VR-10).
-  exports: [GIFTS_SERVICE, GiftContextRegistry, GiftService],
+  exports: [GIFTS_SERVICE, GiftContextRegistry, GiftService, GiftRepository, GiftCatalogService],
 })
 export class GiftsModule {}

@@ -187,13 +187,26 @@ export class VoiceService implements IVoiceService {
 
   async setSelfMute(actor: RoomActor, roomId: string, muted: boolean): Promise<VoiceStateSnapshot> {
     const session = await this.requireActiveSession(roomId, actor.id);
-    // A moderator-muted member cannot self-unmute (AR-3 permanent/temp mute).
-    if (!muted && (await this.moderation.isMutedCached(roomId, actor.id))) {
-      throw new BusinessException(
-        ERROR_CODES.MEMBER_MUTED,
-        'You have been muted by a moderator and cannot unmute yourself.',
-        HttpStatus.FORBIDDEN,
-      );
+    if (!muted) {
+      if (await this.moderation.isMutedCached(roomId, actor.id)) {
+        throw new BusinessException(
+          ERROR_CODES.MEMBER_MUTED,
+          'You have been muted by a moderator and cannot unmute yourself.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      const isRoomMuted = await this.roomsSvc.isRoomMuted(roomId);
+      if (isRoomMuted) {
+        const room = await this.rooms.findRoomRow(roomId);
+        const isOwner = room?.ownerId === actor.id;
+        if (!isOwner) {
+          throw new BusinessException(
+            ERROR_CODES.MEMBER_MUTED,
+            'Broad Mute is enabled in this room. You cannot unmute yourself.',
+            HttpStatus.FORBIDDEN,
+          );
+        }
+      }
     }
     await this.voice.updateSelfMute(session.id, muted);
     await this.voice.appendVoiceSessionLog({

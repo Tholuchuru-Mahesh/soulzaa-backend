@@ -685,7 +685,9 @@ export class AudioRoomSeatsService {
     await this.assertLiveRoom(roomId);
     await this.permissions.assertPermission(roomId, actor, RoomPermission.ROOM_MUTE);
     await this.seats.setRoomMuted(roomId, muted);
-    await this.seats.setSpeakerSeatsMuted(roomId, muted, actor.id);
+    if (muted) {
+      await this.seats.setSpeakerSeatsMuted(roomId, true, actor.id);
+    }
     await this.seats.appendSeatHistory({
       roomId,
       actorId: actor.id,
@@ -707,6 +709,22 @@ export class AudioRoomSeatsService {
     await this.permissions.assertPermission(roomId, actor, RoomPermission.GRANT_ROLES);
     await this.assertActiveMember(roomId, userId);
     const target = role === 'PREMIUM_ADMIN' ? RoomMemberRole.PREMIUM_ADMIN : RoomMemberRole.ADMIN;
+
+    const existingRole = await this.seats.getRole(roomId, userId);
+    const isTargetAlreadyAdmin =
+      existingRole?.role === RoomMemberRole.ADMIN ||
+      existingRole?.role === RoomMemberRole.PREMIUM_ADMIN;
+
+    if (!isTargetAlreadyAdmin) {
+      const adminCount = await this.seats.countAdmins(roomId);
+      if (adminCount >= 25) {
+        throw this.err(
+          ERROR_CODES.ADMIN_LIMIT_REACHED,
+          'A room may have at most 25 admins.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
 
     await this.seats.upsertRole(roomId, userId, target, actor.id);
     await this.rooms.setMemberRole(roomId, userId, target, actor.id);
@@ -864,6 +882,10 @@ export class AudioRoomSeatsService {
     actorId: string,
   ): Promise<void> {
     await this.seats.setOccupant(roomId, seat.seatIndex, userId, actorId);
+    const isRoomMuted = await this.seats.isRoomMuted(roomId);
+    if (isRoomMuted && seat.seatType !== SeatType.OWNER) {
+      await this.seats.setSeatMuted(roomId, seat.seatIndex, true, actorId);
+    }
     await this.seats.appendSeatHistory({
       roomId,
       actorId,

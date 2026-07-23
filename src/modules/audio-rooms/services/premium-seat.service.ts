@@ -75,7 +75,7 @@ export class PremiumSeatService {
         HttpStatus.FORBIDDEN,
       );
     }
-    await this.assertNotElevated(roomId, actor.id);
+    await this.assertEligibleForPremiumSeat(roomId, actor.id);
 
     const { priceGold, durationDays } = this.premiumConfig();
 
@@ -203,20 +203,27 @@ export class PremiumSeatService {
     );
   }
 
-  private async assertNotElevated(roomId: string, userId: string): Promise<void> {
+  private async assertEligibleForPremiumSeat(roomId: string, userId: string): Promise<void> {
     if ((await this.rooms.getOwnerId(roomId)) === userId) {
       throw new BusinessException(
         ERROR_CODES.ALREADY_ELEVATED,
-        'The room owner already has admin privileges.',
+        'The room owner already has full room privileges.',
         HttpStatus.CONFLICT,
       );
     }
     const role = await this.seats.getRole(roomId, userId);
-    if (role && ELEVATED_ROLES.has(role.role)) {
+    if (role?.role === RoomMemberRole.PREMIUM_ADMIN) {
       throw new BusinessException(
-        ERROR_CODES.ALREADY_ELEVATED,
-        'You already hold an elevated role in this room.',
+        ERROR_CODES.PREMIUM_SEAT_ALREADY_HELD,
+        'You already hold a premium admin seat in this room.',
         HttpStatus.CONFLICT,
+      );
+    }
+    if (role?.role !== RoomMemberRole.ADMIN) {
+      throw new BusinessException(
+        ERROR_CODES.NOT_ROOM_ADMIN,
+        'Only Room Admins are eligible to purchase a premium admin seat.',
+        HttpStatus.FORBIDDEN,
       );
     }
   }

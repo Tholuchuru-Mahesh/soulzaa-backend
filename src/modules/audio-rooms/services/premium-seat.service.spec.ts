@@ -43,7 +43,7 @@ describe('PremiumSeatService', () => {
       listUserSeats: jest.fn().mockResolvedValue([[], 0]),
     };
     seats = {
-      getRole: jest.fn().mockResolvedValue(null),
+      getRole: jest.fn().mockResolvedValue({ role: 'ADMIN' }),
       upsertRole: jest.fn().mockResolvedValue(undefined),
       deleteRole: jest.fn().mockResolvedValue(undefined),
     };
@@ -108,10 +108,17 @@ describe('PremiumSeatService', () => {
       });
     });
 
-    it('rejects an already-elevated user', async () => {
-      seats.getRole.mockResolvedValue({ role: 'ADMIN' });
+    it('rejects a non-admin user', async () => {
+      seats.getRole.mockResolvedValue(null);
       await expect(service.purchase(BUYER, ROOM)).rejects.toMatchObject({
-        errorCode: 'ALREADY_ELEVATED',
+        errorCode: 'NOT_ROOM_ADMIN',
+      });
+    });
+
+    it('rejects an existing premium admin', async () => {
+      seats.getRole.mockResolvedValue({ role: 'PREMIUM_ADMIN' });
+      await expect(service.purchase(BUYER, ROOM)).rejects.toMatchObject({
+        errorCode: 'PREMIUM_SEAT_ALREADY_HELD',
       });
     });
 

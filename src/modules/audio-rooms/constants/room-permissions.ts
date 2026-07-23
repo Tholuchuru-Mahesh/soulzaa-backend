@@ -34,7 +34,6 @@ const ADMIN_PERMISSIONS: readonly RoomPermission[] = [
   RoomPermission.MUTE_USERS,
   RoomPermission.ROOM_MUTE,
   RoomPermission.PIN_MESSAGES,
-  RoomPermission.GRANT_ROLES,
 ];
 
 /**
