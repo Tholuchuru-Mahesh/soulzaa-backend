@@ -156,7 +156,11 @@ export class CasinoLoopService implements OnModuleInit, OnModuleDestroy {
   private async renewOrAcquireLeadership(): Promise<boolean> {
     if (this.isLeader && this.leaderToken) {
       try {
-        const extended = await this.locks.extend(LEADER_LOCK_KEY, this.leaderToken, LEADER_LOCK_TTL_MS);
+        const extended = await this.locks.extend(
+          LEADER_LOCK_KEY,
+          this.leaderToken,
+          LEADER_LOCK_TTL_MS,
+        );
         if (extended) {
           return true;
         }

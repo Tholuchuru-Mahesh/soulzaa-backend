@@ -1,38 +1,60 @@
 import { Global, Module } from '@nestjs/common';
-import { GiftAdminController } from './controllers/gift-admin.controller';
+import { PrismaModule } from 'src/infra/prisma/prisma.module';
+import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
+import { TreasuryModule } from 'src/modules/treasury/treasury.module';
+import { WalletModule } from 'src/modules/wallet/wallet.module';
 import { GiftController } from './controllers/gift.controller';
+import { GiftsController } from './controllers/gifts.controller';
 import { GIFTS_SERVICE } from './interfaces/gifts.service.interface';
 import { GiftRepository } from './repositories/gift.repository';
-import { GiftCatalogSeeder } from './services/gift-catalog.seeder.service';
+import { GiftAuditService } from './services/gift-audit.service';
+import { GiftAvailabilityService } from './services/gift-availability.service';
+import { GiftCatalogSeederService } from './services/gift-catalog-seeder.service';
 import { GiftCatalogService } from './services/gift-catalog.service';
 import { GiftContextRegistry } from './services/gift-context.registry';
+import { GiftHistoryService } from './services/gift-history.service';
+import { GiftInventoryService } from './services/gift-inventory.service';
 import { GiftLeaderboardService } from './services/gift-leaderboard.service';
+import { GiftQueryService } from './services/gift-query.service';
+import { GiftTransactionService } from './services/gift-transaction.service';
+import { GiftValidationService } from './services/gift-validation.service';
 import { GiftService } from './services/gift.service';
 
-/**
- * Gifts domain (AR-5) — the gift catalog, the immutable gift-send ledger,
- * combo/lucky mechanics, creator earnings, EXP seam, and the live top-gifter/
- * receiver leaderboards. Coin movement is delegated to the wallet (WALLET_SERVICE);
- * context validation to AUDIO_ROOMS_SERVICE; realtime room fan-out flows through
- * EVENT_BUS → the audio-rooms gift socket bridge.
- *
- * @Global so later gifting contexts (video rooms, live streaming, treasure boxes)
- * resolve GIFTS_SERVICE by token without importing this module.
- */
 @Global()
 @Module({
-  controllers: [GiftController, GiftAdminController],
+  imports: [PrismaModule, PlatformConfigurationModule, TreasuryModule, WalletModule],
+  controllers: [GiftController, GiftsController],
   providers: [
     GiftRepository,
-    GiftCatalogService,
-    GiftContextRegistry,
-    GiftLeaderboardService,
     GiftService,
-    GiftCatalogSeeder,
-    { provide: GIFTS_SERVICE, useExisting: GiftCatalogService },
+    GiftContextRegistry,
+    GiftAuditService,
+    GiftCatalogService,
+    GiftAvailabilityService,
+    GiftValidationService,
+    GiftInventoryService,
+    GiftTransactionService,
+    GiftHistoryService,
+    GiftQueryService,
+    GiftLeaderboardService,
+    GiftCatalogSeederService,
+    { provide: GIFTS_SERVICE, useClass: GiftService },
   ],
-  // GiftContextRegistry + GiftService are exported so each gifting context's
-  // module can register its handler and drive the shared send pipeline (VR-10).
-  exports: [GIFTS_SERVICE, GiftContextRegistry, GiftService, GiftRepository, GiftCatalogService],
+  exports: [
+    GIFTS_SERVICE,
+    GiftRepository,
+    GiftService,
+    GiftContextRegistry,
+    GiftAuditService,
+    GiftCatalogService,
+    GiftAvailabilityService,
+    GiftValidationService,
+    GiftInventoryService,
+    GiftTransactionService,
+    GiftHistoryService,
+    GiftQueryService,
+    GiftLeaderboardService,
+    GiftCatalogSeederService,
+  ],
 })
 export class GiftsModule {}

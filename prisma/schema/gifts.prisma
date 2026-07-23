@@ -1,13 +1,8 @@
 // ============================================================
-// Gifts — the gift catalog + the immutable gift-send ledger.
-// Owned by the "gifts" module. Coin movement is delegated to the
-// wallet module (WALLET_SERVICE); this ledger is the durable record
-// of every gift sent (sender, receiver, context, combo, lucky roll,
-// creator earnings, EXP). No cross-module relations — reference
-// users/rooms/wallet transactions by id.
+// Soulzaa — Enterprise Gift Engine Schema
+// Entities: GiftCategoryEntity, Gift, GiftInventory, GiftAvailability, GiftTransaction, GiftAudit
 // ============================================================
 
-/// Presentation/behaviour type of a gift (PRD gift types).
 enum GiftType {
   STATIC
   ANIMATED
@@ -15,78 +10,133 @@ enum GiftType {
   LUCKY
   FESTIVAL
   PREMIUM
+  LIMITED_EDITION
 }
 
-/// Catalog category (PRD gift categories) — drives shelves & VIP gating.
 enum GiftCategory {
-  STANDARD
-  PREMIUM
+  CLASSIC
   LUXURY
-  EVENT
-  VIP_EXCLUSIVE
+  FESTIVAL
+  VIP
+  PREMIUM
+  SPECIAL_EVENT
+  ANIMATED
+  LIMITED_EDITION
 }
 
-/// Where a gift was sent. AR-5 wires AUDIO_ROOM; the others are reserved so the
-/// same pipeline serves live/video/private-chat gifting later.
 enum GiftContextType {
   AUDIO_ROOM
   VIDEO_ROOM
   LIVE_STREAM
+  PK_BATTLE
+  MULTI_HOST_BATTLE
   PRIVATE_CHAT
+  EVENT
+  GAME
 }
 
-/// Lifecycle of a gift transaction. COMPLETED is terminal; REVERSED marks an
-/// admin-authorized rollback (a compensating wallet refund was issued).
 enum GiftTxnStatus {
   COMPLETED
+  FAILED
   REVERSED
 }
 
-/// The gift catalog (admin-managed). `coinValue` is the Gold-coin unit price.
-/// `comboEnabled` gifts accumulate a combo tier within `comboWindowSeconds`.
-/// LUCKY gifts roll a multiplier from `luckyMultipliers` at `luckyWinChanceBp`
-/// (basis points). `minVipLevel` gates VIP-exclusive gifts (enforced once the
-/// VIP module lands). All media are URLs resolved by the client.
-model Gift {
-  id                 String       @id @default(uuid()) @db.Uuid
-  name               String
-  category           GiftCategory
-  type               GiftType
-  coinValue          Int
-  thumbnailUrl       String?
-  animationUrl       String?
-  soundUrl           String?
-  minVipLevel        Int          @default(0)
-  comboEnabled       Boolean      @default(false)
-  comboWindowSeconds Int          @default(10)
-  luckyMultipliers   Int[]        @default([])
-  luckyWinChanceBp   Int          @default(0)
-  festivalTag        String?
-  enabled            Boolean      @default(true)
-  sortOrder          Int          @default(0)
+/// Catalog Category Entity
+model GiftCategoryEntity {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  iconUrl     String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  @@map("gift_categories")
+}
+
+/// The enterprise Gift catalog entity
+model Gift {
+  id                  String       @id @default(uuid()) @db.Uuid
+  code                String       @unique
+  name                String
+  displayName         String?
+  description         String?
+  category            GiftCategory @default(CLASSIC)
+  type                GiftType     @default(STATIC)
+  coinValue           Int
+  thumbnailUrl        String?
+  animationUrl        String?
+  lottieUrl           String?
+  svgaUrl             String?
+  mp4Url              String?
+  soundUrl            String?
+  priority            Int          @default(0)
+  popularity          Int          @default(0)
+  sortOrder           Int          @default(0)
+  tags                String[]     @default([])
+  minVipLevel         Int          @default(0)
+  comboEnabled        Boolean      @default(false)
+  comboWindowSeconds  Int          @default(10)
+  luckyMultipliers    Int[]        @default([])
+  luckyWinChanceBp    Int          @default(0)
+  festivalTag         String?
+  countryRestriction  String[]     @default([])
+  platformRestriction String[]     @default([])
+  activeFrom          DateTime?
+  activeUntil         DateTime?
+  enabled             Boolean      @default(true)
+  createdBy           String?      @db.Uuid
+  updatedBy           String?      @db.Uuid
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  inventories    GiftInventory[]
+  availabilities GiftAvailability[]
 
   @@index([enabled, category])
   @@index([type])
   @@map("gifts")
 }
 
-/// Append-only, immutable record of every gift sent. Written after the wallet
-/// debit (sender) + credit (receiver earnings) succeed, inside the same
-/// send flow. `idempotencyKey` is unique so a replayed send returns the original
-/// row. `totalCoinValue = unitCoinValue * quantity * luckyMultiplier`.
+/// User Gift Inventory / Backpack
+model GiftInventory {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  giftId    String   @db.Uuid
+  quantity  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  gift Gift @relation(fields: [giftId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, giftId])
+  @@index([userId])
+  @@map("gift_inventories")
+}
+
+/// Gift Availability Controls per Region / Platform
+model GiftAvailability {
+  id          String   @id @default(uuid()) @db.Uuid
+  giftId      String   @db.Uuid
+  country     String   @default("GLOBAL")
+  platform    String   @default("ALL")
+  isAvailable Boolean  @default(true)
+
+  gift Gift @relation(fields: [giftId], references: [id], onDelete: Cascade)
+
+  @@unique([giftId, country, platform])
+  @@map("gift_availabilities")
+}
+
+/// Immutable record of every gift transaction sent across all contexts
 model GiftTransaction {
   id                  String          @id @default(uuid()) @db.Uuid
   senderId            String          @db.Uuid
   receiverId          String          @db.Uuid
   giftId              String          @db.Uuid
-  giftType            GiftType
-  contextType         GiftContextType
+  giftType            GiftType        @default(STATIC)
+  contextType         GiftContextType @default(AUDIO_ROOM)
   contextId           String          @db.Uuid
   quantity            Int             @default(1)
   comboTier           Int             @default(1)
@@ -105,13 +155,23 @@ model GiftTransaction {
   createdAt           DateTime        @default(now())
 
   @@index([contextType, contextId, createdAt])
-  /// VR-13: the global video-room recompute filters on contextType + a time
-  /// window with no contextId. The composite index above cannot serve that —
-  /// contextId is the second column — so an hourly global aggregation would
-  /// sequential-scan gift_transactions. Additive: no column or constraint change.
   @@index([contextType, createdAt])
   @@index([senderId, createdAt])
   @@index([receiverId, createdAt])
   @@index([giftId])
   @@map("gift_transactions")
+}
+
+/// Operational Audit Log for Gift Events
+model GiftAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  giftId    String?  @db.Uuid
+  action    String
+  details   Json?
+  actorId   String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([giftId])
+  @@index([createdAt])
+  @@map("gift_audits")
 }

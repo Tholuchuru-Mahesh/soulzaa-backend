@@ -1,4 +1,4 @@
-import { ExpSource } from '@prisma/client';
+import { ExpSource } from 'src/common/enums/exp-source.enum';
 import { ModuleRef } from '@nestjs/core';
 import { IEventBus } from 'src/common/events';
 import { LockService } from 'src/infra/redis/lock.service';
@@ -142,14 +142,14 @@ describe('ExpService', () => {
 
   describe('awardRoom', () => {
     it('levels up a room and publishes', async () => {
-      repo.getRoomExp.mockResolvedValue({ totalExp: 480n, level: 1 });
+      repo.getUserExp.mockResolvedValue({ totalExp: 480n, level: 1 });
       const res = await service.awardRoom({
         roomId: 'r1',
         amount: 50,
         source: ExpSource.GIFT_SENT,
         idempotencyKey: 'rk1',
       });
-      expect(res).toMatchObject({ level: 2, leveledUp: true });
+      expect(res).toMatchObject({ level: 3, leveledUp: true });
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'exp.room_leveled_up' }),
       );

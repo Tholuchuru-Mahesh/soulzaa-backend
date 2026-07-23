@@ -1,4 +1,4 @@
-import { VipLevel } from '@prisma/client';
+import { VipLevel } from 'src/common/enums/vip-level.enum';
 import { IEventBus } from 'src/common/events';
 import { LockService } from 'src/infra/redis/lock.service';
 import type { ICosmeticsService } from 'src/modules/cosmetics/interfaces/cosmetics.service.interface';

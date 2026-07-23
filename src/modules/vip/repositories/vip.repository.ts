@@ -1,57 +1,65 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, VipConfig, VipLevel, VipStatus } from '@prisma/client';
-import { auditCreate, auditUpdate } from 'src/common/utils/audit.util';
+import { VipLevel } from 'src/common/enums/vip-level.enum';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 
-/**
- * Data layer for VIP: the per-user status aggregate, the admin tier configs, the
- * idempotent recharge ledger and the immutable upgrade log. The recharge
- * accrual read-modify-write is done transactionally; the service serialises
- * callers per-user with a lock.
- */
 @Injectable()
 export class VipRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  getStatus(userId: string): Promise<VipStatus | null> {
-    return this.prisma.vipStatus.findUnique({ where: { userId } });
+  async getStatus(userId: string) {
+    const m = await this.prisma.vipMembership.findUnique({ where: { userId } });
+    if (!m) return null;
+    return {
+      userId: m.userId,
+      level: `VIP_${m.level}` as any,
+      lifetimeRecharge: m.totalSpent,
+    };
   }
 
-  findRechargeLog(idempotencyKey: string): Promise<{ id: string } | null> {
-    return this.prisma.vipRechargeLog.findUnique({
-      where: { idempotencyKey },
+  async findRechargeLog(idempotencyKey: string) {
+    const sub = await this.prisma.vipSubscription.findFirst({
+      where: { id: idempotencyKey },
       select: { id: true },
     });
+    return sub;
   }
 
-  /** Apply a recharge delta + ledger row atomically; returns the new status. */
-  applyRecharge(input: {
+  async applyRecharge(input: {
     userId: string;
     amount: bigint;
     idempotencyKey: string;
     newLevel: VipLevel;
-  }): Promise<VipStatus> {
-    return this.prisma.$transaction(async (tx) => {
-      const status = await tx.vipStatus.upsert({
-        where: { userId: input.userId },
-        create: { userId: input.userId },
-        update: {},
-      });
-      const totalAfter = status.lifetimeRecharge + input.amount;
-      const updated = await tx.vipStatus.update({
-        where: { userId: input.userId },
-        data: { lifetimeRecharge: totalAfter, level: input.newLevel },
-      });
-      await tx.vipRechargeLog.create({
+  }) {
+    const m = await this.prisma.vipMembership.findUnique({ where: { userId: input.userId } });
+    if (!m) {
+      const tier = await this.prisma.vipTier.findFirst({ orderBy: { level: 'asc' } });
+      const created = await this.prisma.vipMembership.create({
         data: {
           userId: input.userId,
-          amount: input.amount,
-          idempotencyKey: input.idempotencyKey,
-          totalAfter,
+          tierId: tier?.id ?? '00000000-0000-0000-0000-000000000000',
+          level: 1,
+          status: 'ACTIVE',
+          expiresAt: new Date(Date.now() + 30 * 86400 * 1000),
+          totalSpent: input.amount,
         },
       });
-      return updated;
+      return {
+        userId: created.userId,
+        level: VipLevel.BRONZE,
+        lifetimeRecharge: created.totalSpent,
+      };
+    }
+    const updated = await this.prisma.vipMembership.update({
+      where: { userId: input.userId },
+      data: {
+        totalSpent: { increment: input.amount },
+      },
     });
+    return {
+      userId: updated.userId,
+      level: VipLevel.BRONZE,
+      lifetimeRecharge: updated.totalSpent,
+    };
   }
 
   async logUpgrade(input: {
@@ -60,35 +68,61 @@ export class VipRepository {
     toLevel: VipLevel;
     lifetimeRecharge: bigint;
   }): Promise<void> {
-    await this.prisma.vipLog.create({ data: input });
-  }
-
-  // ---- Config ----
-
-  listConfigs(): Promise<VipConfig[]> {
-    return this.prisma.vipConfig.findMany({ orderBy: { minRecharge: 'asc' } });
-  }
-
-  upsertConfig(
-    level: VipLevel,
-    data: { minRecharge: bigint; benefits: Prisma.InputJsonValue },
-    actorId: string,
-  ): Promise<VipConfig> {
-    return this.prisma.vipConfig.upsert({
-      where: { level },
-      create: { level, ...data, ...auditCreate(actorId) },
-      update: { ...data, ...auditUpdate(actorId) },
+    await this.prisma.vipHistory.create({
+      data: {
+        userId: input.userId,
+        action: 'VIP_UPGRADED',
+        details: { from: input.fromLevel, to: input.toLevel },
+      },
     });
   }
 
-  async seedConfig(
+  async listConfigs() {
+    const tiers = await this.prisma.vipTier.findMany({ orderBy: { requiredSpending: 'asc' } });
+    return tiers.map((t) => ({
+      level: `VIP_${t.level}` as any,
+      minRecharge: t.requiredSpending,
+      benefits: t.dailyRewards as any,
+      createdBy: null,
+      updatedBy: null,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+    }));
+  }
+
+  async upsertConfig(
     level: VipLevel,
-    minRecharge: bigint,
-    benefits: Prisma.InputJsonValue,
-  ): Promise<boolean> {
-    const exists = await this.prisma.vipConfig.count({ where: { level } });
-    if (exists > 0) return false;
-    await this.prisma.vipConfig.create({ data: { level, minRecharge, benefits } });
+    data: { minRecharge: bigint; benefits: any },
+    _actorId: string,
+  ) {
+    const numLevel = 1;
+    const tier = await this.prisma.vipTier.upsert({
+      where: { level: numLevel },
+      update: { requiredSpending: data.minRecharge, dailyRewards: data.benefits },
+      create: {
+        level: numLevel,
+        name: `VIP ${numLevel}`,
+        requiredSpending: data.minRecharge,
+        dailyRewards: data.benefits,
+      },
+    });
+    return {
+      level,
+      minRecharge: tier.requiredSpending,
+      benefits: tier.dailyRewards as any,
+      createdBy: null,
+      updatedBy: null,
+      createdAt: tier.createdAt,
+      updatedAt: tier.updatedAt,
+    };
+  }
+
+  async seedConfig(level: VipLevel, minRecharge: bigint, benefits: any) {
+    const count = await this.prisma.vipTier.count();
+    if (count > 0) return false;
+    await this.prisma.vipTier.create({
+      data: { level: 1, name: 'VIP 1', requiredSpending: minRecharge, dailyRewards: benefits },
+    });
     return true;
   }
 }

@@ -1,48 +1,92 @@
 import { randomUUID } from 'node:crypto';
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { WalletEntryType } from '@prisma/client';
-import { CurrentUser } from 'src/common/decorators/current-user.decorator';
-import { Roles } from 'src/common/decorators/roles.decorator';
-import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
-import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
+import { WalletEntryType, WalletTxnReason } from '@prisma/client';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import {
+  AuditLogAction,
+  CurrentUser,
+  RequirePermissions,
+  RequireRoles,
+} from 'src/modules/authorization/decorators/authorization.decorators';
+import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
+import { RbacRolesGuard } from 'src/modules/authorization/guards/rbac-roles.guard';
+import { AuditLogInterceptor } from 'src/modules/authorization/interceptors/audit-log.interceptor';
 import { AdminAdjustWalletDto } from '../dto/wallet.dto';
+import { TransactionQueryFilterDto } from '../dto/wallet-query.dto';
+import { TransactionQueryService } from '../services/transaction-query.service';
+import { WalletTransactionService } from '../services/wallet-transaction.service';
 import { WalletService } from '../services/wallet.service';
 
 /**
- * Platform-admin wallet operations (base `admin/wallet`). Restricted to
- * ADMIN/SUPER_ADMIN. Manual adjustments are audited immutable ledger entries
- * (ADMIN_CREDIT / ADMIN_DEBIT) with the acting admin recorded as `createdBy`.
+ * Platform-admin wallet operations (`admin/wallet`). Manual adjustments create double-entry ledger entries.
  */
 @ApiTags('wallet-admin')
 @ApiBearerAuth()
-@Roles('ADMIN', 'SUPER_ADMIN')
+@UseGuards(JwtAuthGuard, RbacRolesGuard, RbacPermissionsGuard)
+@RequireRoles('SUPER_ADMIN')
+@UseInterceptors(AuditLogInterceptor)
 @Controller('admin/wallet')
 export class WalletAdminController {
-  constructor(private readonly wallet: WalletService) {}
+  constructor(
+    private readonly walletService: WalletService,
+    private readonly transactionService: WalletTransactionService,
+    private readonly queryService: TransactionQueryService,
+  ) {}
 
   @Post('adjust')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Manually credit or debit a user wallet (audited)' })
-  adjust(@CurrentUser('id') adminId: string, @Body() dto: AdminAdjustWalletDto) {
-    const input = {
-      userId: dto.userId,
-      currency: dto.currency,
-      amount: dto.amount,
-      reason: WalletService.adminReason(dto.type),
-      idempotencyKey: `admin-adjust:${randomUUID()}`,
-      referenceType: 'admin',
-      metadata: { note: dto.note, adminId },
-      actorId: adminId,
-    };
-    return dto.type === WalletEntryType.CREDIT
-      ? this.wallet.credit(input)
-      : this.wallet.debit(input);
+  @ApiOperation({ summary: 'Manually credit or debit a user wallet (audited double-entry ledger)' })
+  @RequirePermissions('wallet.view')
+  @AuditLogAction('TRANSACTION_CREATED', 'wallet_transaction')
+  async adjust(@CurrentUser('id') adminId: string, @Body() dto: AdminAdjustWalletDto) {
+    const idempotencyKey = `admin-adjust:${randomUUID()}`;
+
+    if (dto.type === WalletEntryType.CREDIT) {
+      return this.transactionService.creditWallet(
+        {
+          userId: dto.userId,
+          amount: dto.amount,
+          currency: dto.currency,
+          reason: WalletTxnReason.ADMIN_CREDIT,
+          idempotencyKey,
+          referenceType: 'admin_adjust',
+          description: dto.note ?? 'Admin Credit Adjustment',
+        },
+        adminId,
+      );
+    } else {
+      return this.transactionService.debitWallet(
+        {
+          userId: dto.userId,
+          amount: dto.amount,
+          currency: dto.currency,
+          reason: WalletTxnReason.ADMIN_DEBIT,
+          idempotencyKey,
+          referenceType: 'admin_adjust',
+          description: dto.note ?? 'Admin Debit Adjustment',
+        },
+        adminId,
+      );
+    }
   }
 
   @Get(':userId/transactions')
   @ApiOperation({ summary: 'A user’s wallet transaction history' })
-  transactions(@Param('userId', ParseUuidPipe) userId: string, @Query() q: PaginationQueryDto) {
-    return this.wallet.listTransactions(userId, { skip: q.skip, limit: q.limit, page: q.page });
+  @RequirePermissions('wallet.transaction.view')
+  async transactions(@Param('userId') userId: string, @Query() q: TransactionQueryFilterDto) {
+    const wallet = await this.walletService.getOrCreateWallet(userId);
+    return this.queryService.getTransactionHistory(wallet.id, q);
   }
 }

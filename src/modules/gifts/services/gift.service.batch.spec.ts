@@ -116,7 +116,10 @@ describe('GiftService.sendGiftBatch (multi-receiver)', () => {
 
     service = new GiftService(
       repo as unknown as GiftRepository,
-      { getGift: jest.fn().mockResolvedValue(gift()) } as unknown as GiftCatalogService,
+      {
+        getGift: jest.fn().mockResolvedValue(gift()),
+        getGiftById: jest.fn().mockResolvedValue(gift()),
+      } as unknown as GiftCatalogService,
       { record: jest.fn() } as unknown as GiftLeaderboardService,
       { get: jest.fn().mockReturnValue(GIFT_CFG) } as unknown as ConfigService,
       { enqueue: jest.fn() } as unknown as QueueService,

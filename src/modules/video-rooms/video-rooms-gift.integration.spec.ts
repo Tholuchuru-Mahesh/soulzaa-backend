@@ -213,7 +213,10 @@ describe('VR-10 gift engine (integration)', () => {
 
     const gifts = new GiftService(
       giftRepo as never,
-      { getGift: jest.fn().mockResolvedValue(GIFT) } as never,
+      {
+        getGiftById: jest.fn().mockResolvedValue(GIFT),
+        getGift: jest.fn().mockResolvedValue(GIFT),
+      } as never,
       { record: jest.fn() } as never,
       config as never,
       { enqueue: jest.fn() } as never,
@@ -250,7 +253,10 @@ describe('VR-10 gift engine (integration)', () => {
     const service = new VideoRoomGiftService(
       resolver,
       gifts,
-      { getGift: jest.fn().mockResolvedValue(GIFT) } as never,
+      {
+        getGiftById: jest.fn().mockResolvedValue(GIFT),
+        getGift: jest.fn().mockResolvedValue(GIFT),
+      } as never,
       combo,
       statistics,
       { appendEvent: jest.fn().mockResolvedValue(undefined) } as never,

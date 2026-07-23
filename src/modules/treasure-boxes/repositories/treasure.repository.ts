@@ -85,7 +85,10 @@ export class TreasureRepository {
     });
   }
 
-  getLatestCompletedSessionCreatedAfter(roomId: string, date: Date): Promise<TreasureSession | null> {
+  getLatestCompletedSessionCreatedAfter(
+    roomId: string,
+    date: Date,
+  ): Promise<TreasureSession | null> {
     return this.prisma.treasureSession.findFirst({
       where: {
         roomId,
@@ -104,12 +107,20 @@ export class TreasureRepository {
     return this.prisma.treasureSession.create({ data: { roomId, startedBy, contextType } });
   }
 
-  async setSessionLevel(id: string, currentLevel: number, tx?: Prisma.TransactionClient): Promise<void> {
+  async setSessionLevel(
+    id: string,
+    currentLevel: number,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
     const client = tx || this.prisma;
     await client.treasureSession.update({ where: { id }, data: { currentLevel } });
   }
 
-  async finishSession(id: string, status: TreasureSessionStatus, tx?: Prisma.TransactionClient): Promise<void> {
+  async finishSession(
+    id: string,
+    status: TreasureSessionStatus,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
     const client = tx || this.prisma;
     await client.treasureSession.update({
       where: { id },
@@ -167,7 +178,11 @@ export class TreasureRepository {
     });
   }
 
-  async openBox(boxId: string, topGifters: Prisma.InputJsonValue, tx?: Prisma.TransactionClient): Promise<void> {
+  async openBox(
+    boxId: string,
+    topGifters: Prisma.InputJsonValue,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
     const client = tx || this.prisma;
     await client.treasureBox.update({
       where: { id: boxId },
@@ -193,7 +208,11 @@ export class TreasureRepository {
   }
 
   /** Contributor totals for a box, highest first, ties broken by earliest. */
-  async topContributors(boxId: string, limit: number, tx?: Prisma.TransactionClient): Promise<BoxContributorTotal[]> {
+  async topContributors(
+    boxId: string,
+    limit: number,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BoxContributorTotal[]> {
     const client = tx || this.prisma;
     const grouped = await client.treasureContribution.groupBy({
       by: ['userId'],
@@ -245,7 +264,11 @@ export class TreasureRepository {
     ]);
   }
 
-  async incrementRoomContribution(roomId: string, amount: bigint, tx?: Prisma.TransactionClient): Promise<bigint> {
+  async incrementRoomContribution(
+    roomId: string,
+    amount: bigint,
+    tx?: Prisma.TransactionClient,
+  ): Promise<bigint> {
     const client = tx || this.prisma;
     const res = await client.roomContributionCounter.upsert({
       where: { roomId },
@@ -255,7 +278,11 @@ export class TreasureRepository {
     return res.amount;
   }
 
-  async incrementUserContribution(userId: string, amount: bigint, tx?: Prisma.TransactionClient): Promise<bigint> {
+  async incrementUserContribution(
+    userId: string,
+    amount: bigint,
+    tx?: Prisma.TransactionClient,
+  ): Promise<bigint> {
     const client = tx || this.prisma;
     const res = await client.userContributionCounter.upsert({
       where: { userId },

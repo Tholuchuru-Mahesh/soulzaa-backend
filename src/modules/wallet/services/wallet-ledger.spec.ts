@@ -1,0 +1,227 @@
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import {
+  ReservationStatus,
+  TransactionStatus,
+  TransactionType,
+  WalletCurrency,
+  WalletEntryType,
+  WalletStatus,
+  WalletType,
+  WalletTxnReason,
+} from '@prisma/client';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { FeatureFlagService } from 'src/modules/platform-configuration/services/feature-flag.service';
+import { CoinEconomyService } from 'src/modules/treasury/services/coin-economy.service';
+import { BalanceService } from './balance.service';
+import { LedgerService } from './ledger.service';
+import { ReservationService } from './reservation.service';
+import { TransactionQueryService } from './transaction-query.service';
+import { WalletAuditService } from './wallet-audit.service';
+import { WalletTransactionService } from './wallet-transaction.service';
+import { WalletValidationService } from './wallet-validation.service';
+import { WalletService } from './wallet.service';
+
+describe('Phase 3: Enterprise Wallet & Double-Entry Ledger Infrastructure', () => {
+  let walletService: WalletService;
+  let ledgerService: LedgerService;
+  let balanceService: BalanceService;
+  let reservationService: ReservationService;
+  let transactionService: WalletTransactionService;
+  let validationService: WalletValidationService;
+  let auditService: WalletAuditService;
+  let queryService: TransactionQueryService;
+
+  const mockPrismaService: any = {
+    wallet: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      aggregate: jest.fn(),
+    },
+    ledgerEntry: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+    },
+    walletTransaction: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+      create: jest.fn(),
+    },
+    walletReservation: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    walletAudit: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+      count: jest.fn(),
+    },
+    $transaction: jest.fn((cb: (tx: any) => Promise<any>) => cb(mockPrismaService)),
+  };
+
+  const mockCoinEconomyService = {
+    isEconomyFrozen: jest.fn().mockResolvedValue(false),
+  };
+
+  const mockFeatureFlagService = {
+    isEnabled: jest.fn().mockResolvedValue(true),
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        WalletAuditService,
+        WalletValidationService,
+        WalletService,
+        LedgerService,
+        BalanceService,
+        ReservationService,
+        WalletTransactionService,
+        TransactionQueryService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: CoinEconomyService, useValue: mockCoinEconomyService },
+        { provide: FeatureFlagService, useValue: mockFeatureFlagService },
+      ],
+    }).compile();
+
+    walletService = module.get<WalletService>(WalletService);
+    ledgerService = module.get<LedgerService>(LedgerService);
+    balanceService = module.get<BalanceService>(BalanceService);
+    reservationService = module.get<ReservationService>(ReservationService);
+    transactionService = module.get<WalletTransactionService>(WalletTransactionService);
+    validationService = module.get<WalletValidationService>(WalletValidationService);
+    auditService = module.get<WalletAuditService>(WalletAuditService);
+    queryService = module.get<TransactionQueryService>(TransactionQueryService);
+
+    jest.clearAllMocks();
+  });
+
+  describe('WalletService', () => {
+    it('should create a new wallet account if not existing', async () => {
+      mockPrismaService.wallet.findUnique.mockResolvedValue(null);
+      mockPrismaService.wallet.create.mockResolvedValue({
+        id: 'w-1',
+        userId: 'u-1',
+        type: WalletType.USER_WALLET,
+        status: WalletStatus.ACTIVE,
+        availableBalance: BigInt(0),
+        goldBalance: BigInt(0),
+        freeBalance: BigInt(0),
+        earningsBalance: BigInt(0),
+      });
+
+      const wallet = await walletService.getOrCreateWallet('u-1');
+      expect(wallet.id).toBe('w-1');
+      expect(mockPrismaService.wallet.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('BalanceService', () => {
+    it('should compute balance projections and reconcile with ledger entries', async () => {
+      mockPrismaService.wallet.findUnique.mockResolvedValue({
+        id: 'w-1',
+        userId: 'u-1',
+        availableBalance: BigInt(500),
+        reservedBalance: BigInt(100),
+        pendingBalance: BigInt(0),
+        lockedBalance: BigInt(0),
+        goldBalance: BigInt(600),
+        freeBalance: BigInt(0),
+        earningsBalance: BigInt(0),
+        version: 1,
+        updatedAt: new Date(),
+      });
+
+      mockPrismaService.ledgerEntry.findMany.mockResolvedValue([
+        { type: WalletEntryType.CREDIT, amount: BigInt(700) },
+        { type: WalletEntryType.DEBIT, amount: BigInt(200) },
+      ]);
+
+      const projection = await balanceService.getBalanceProjection('w-1');
+      expect(projection.totalBalance).toBe('600');
+
+      const reconciliation = await balanceService.reconcileBalanceWithLedger('w-1');
+      expect(reconciliation.isReconciled).toBe(true);
+      expect(reconciliation.derivedNetBalance).toBe('500');
+    });
+  });
+
+  describe('ReservationService', () => {
+    it('should place a coin reservation hold successfully', async () => {
+      mockCoinEconomyService.isEconomyFrozen.mockResolvedValue(false);
+      mockFeatureFlagService.isEnabled.mockResolvedValue(true);
+
+      mockPrismaService.wallet.findUnique.mockResolvedValue({
+        id: 'w-1',
+        userId: 'u-1',
+        status: WalletStatus.ACTIVE,
+        availableBalance: BigInt(1000),
+        reservedBalance: BigInt(0),
+      });
+
+      mockPrismaService.wallet.update.mockResolvedValue({
+        availableBalance: BigInt(800),
+        reservedBalance: BigInt(200),
+      });
+
+      mockPrismaService.walletReservation.create.mockResolvedValue({
+        id: 'res-1',
+        walletId: 'w-1',
+        amount: BigInt(200),
+        purpose: 'GAME_STAKE',
+        status: ReservationStatus.HELD,
+      });
+
+      const res = await reservationService.reserveCoins({
+        userId: 'u-1',
+        amount: 200,
+        purpose: 'GAME_STAKE',
+      });
+
+      expect(res.id).toBe('res-1');
+      expect(res.walletReservedBalance).toBe('200');
+    });
+  });
+
+  describe('WalletTransactionService', () => {
+    it('should credit a wallet account idempotently', async () => {
+      mockCoinEconomyService.isEconomyFrozen.mockResolvedValue(false);
+      mockFeatureFlagService.isEnabled.mockResolvedValue(true);
+
+      mockPrismaService.walletTransaction.findUnique.mockResolvedValue(null);
+      mockPrismaService.wallet.findUnique.mockResolvedValue({
+        id: 'w-1',
+        userId: 'u-1',
+        status: WalletStatus.ACTIVE,
+        availableBalance: BigInt(500),
+      });
+
+      mockPrismaService.walletTransaction.create.mockResolvedValue({
+        id: 'tx-1',
+        idempotencyKey: 'idemp-1',
+        status: TransactionStatus.COMPLETED,
+        createdAt: new Date(),
+      });
+
+      mockPrismaService.wallet.update.mockResolvedValue({
+        availableBalance: BigInt(1500),
+      });
+
+      const result = await transactionService.creditWallet({
+        userId: 'u-1',
+        amount: 1000,
+        idempotencyKey: 'idemp-1',
+      });
+
+      expect(result.transactionId).toBe('tx-1');
+      expect((result as any).balanceAfter).toBe('1500');
+    });
+  });
+});

@@ -1,27 +1,50 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { NotGuest } from 'src/common/decorators/not-guest.decorator';
-import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
-import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
-import { RocketService } from '../services/rocket.service';
-import { TreasureService } from '../services/treasure.service';
+import { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
+import {
+  AuditLogAction,
+  RequirePermissions,
+} from 'src/modules/authorization/decorators/authorization.decorators';
+import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
+import { AuditLogInterceptor } from 'src/modules/authorization/interceptors/audit-log.interceptor';
+import {
+  RocketService,
+  TreasureAuditService,
+  TreasureBoxService,
+  TreasureConfigurationService,
+  TreasureHistoryService,
+  TreasureResetService,
+  TreasureService,
+} from '../services';
 
-/**
- * Treasure box & rocket REST surface (base `rooms/:id/treasure` + `.../rocket`).
- * JWT-guarded globally. Starting/cancelling a treasure session requires room
- * owner/admin authority (enforced in the service); progress is driven by gifts,
- * not by direct calls. Reads expose live status, history and rewards.
- */
-@ApiTags('treasure-boxes')
+@ApiTags('Treasure Boxes & Enterprise Treasure Engine')
 @ApiBearerAuth()
 @Controller('rooms')
 export class TreasureController {
   constructor(
     private readonly treasure: TreasureService,
     private readonly rocket: RocketService,
+    private readonly boxService: TreasureBoxService,
+    private readonly historyService: TreasureHistoryService,
+    private readonly auditService: TreasureAuditService,
+    private readonly configService: TreasureConfigurationService,
+    private readonly resetService: TreasureResetService,
   ) {}
 
   private actor(user: AuthenticatedUser): RoomActor {
@@ -47,20 +70,63 @@ export class TreasureController {
 
   @Get(':id/treasure/status')
   @ApiOperation({ summary: 'Live treasure session status (boxes + progress)' })
+  @ApiResponse({ status: 200, description: 'Treasure box status' })
   status(@Param('id', ParseUuidPipe) id: string) {
-    return this.treasure.status(id);
+    return this.boxService.getRoomStatus(id);
+  }
+
+  @Get(':id/treasure/progress')
+  @ApiOperation({ summary: 'Current treasure box progress detail' })
+  @ApiResponse({ status: 200, description: 'Progress breakdown' })
+  progress(@Param('id', ParseUuidPipe) id: string) {
+    return this.boxService.getRoomStatus(id);
   }
 
   @Get(':id/treasure/history')
   @ApiOperation({ summary: 'Past treasure sessions in the room' })
+  @ApiResponse({ status: 200, description: 'Session history' })
   history(@Param('id', ParseUuidPipe) id: string, @Query() q: PaginationQueryDto) {
-    return this.treasure.history(id, { skip: q.skip, limit: q.limit, page: q.page });
+    return this.historyService.getRoomSessionHistory(id, { page: q.page, limit: q.limit });
   }
 
   @Get(':id/treasure/rewards')
   @ApiOperation({ summary: 'Treasure reward distribution log for the room' })
+  @ApiResponse({ status: 200, description: 'Reward history' })
   rewards(@Param('id', ParseUuidPipe) id: string, @Query() q: PaginationQueryDto) {
-    return this.treasure.rewards(id, { skip: q.skip, limit: q.limit, page: q.page });
+    return this.historyService.getRoomRewardHistory(id, { page: q.page, limit: q.limit });
+  }
+
+  @Get(':id/treasure/winners')
+  @ApiOperation({ summary: 'Recent treasure box winners in the room' })
+  @ApiResponse({ status: 200, description: 'Winners list' })
+  winners(@Param('id', ParseUuidPipe) id: string, @Query() q: PaginationQueryDto) {
+    return this.historyService.getRoomRewardHistory(id, { page: q.page, limit: q.limit });
+  }
+
+  @Get(':id/treasure/configuration')
+  @ApiOperation({ summary: 'Treasure Box 5-level configuration thresholds & pool settings' })
+  @ApiResponse({ status: 200, description: 'Configuration details' })
+  configuration() {
+    return this.configService.getAllLevelConfigs();
+  }
+
+  @Get(':id/treasure/audit')
+  @ApiOperation({ summary: 'Treasure audit event log' })
+  @ApiResponse({ status: 200, description: 'Audit log' })
+  audit(@Param('id', ParseUuidPipe) id: string, @Query() q: PaginationQueryDto) {
+    return this.auditService.getAuditLogs(id, q.page, q.limit);
+  }
+
+  @Post(':id/treasure/reset')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RbacPermissionsGuard)
+  @RequirePermissions('treasure.configuration.manage')
+  @UseInterceptors(AuditLogInterceptor)
+  @AuditLogAction('TREASURE_RESET', 'treasure_session')
+  @ApiOperation({ summary: 'Manual reset of daily room treasure cycle (admin/owner)' })
+  @ApiResponse({ status: 200, description: 'Reset result' })
+  reset(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.resetService.resetRoomTreasure(id, user.id);
   }
 
   @Get(':id/treasure/champions')

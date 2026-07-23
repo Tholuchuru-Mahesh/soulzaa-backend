@@ -12,19 +12,19 @@ import {
 
 describe('video-room gift constants', () => {
   describe('priority policy', () => {
-    it('gives LUXURY and VIP_EXCLUSIVE the highest priority', () => {
+    it('gives LUXURY and VIP the highest priority', () => {
       expect(GIFT_CATEGORY_PRIORITY[GiftCategory.LUXURY]).toBe(1);
-      expect(GIFT_CATEGORY_PRIORITY[GiftCategory.VIP_EXCLUSIVE]).toBe(1);
+      expect(GIFT_CATEGORY_PRIORITY[GiftCategory.VIP]).toBe(1);
     });
 
-    it('ranks STANDARD last', () => {
+    it('ranks CLASSIC last', () => {
       const others = [
         GiftCategory.LUXURY,
-        GiftCategory.VIP_EXCLUSIVE,
+        GiftCategory.VIP,
         GiftCategory.PREMIUM,
-        GiftCategory.EVENT,
+        GiftCategory.SPECIAL_EVENT,
       ].map((c) => GIFT_CATEGORY_PRIORITY[c]);
-      expect(Math.max(...others)).toBeLessThan(GIFT_CATEGORY_PRIORITY[GiftCategory.STANDARD]);
+      expect(Math.max(...others)).toBeLessThan(GIFT_CATEGORY_PRIORITY[GiftCategory.CLASSIC]);
     });
 
     it('covers every GiftCategory — a new category must not get undefined', () => {

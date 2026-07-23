@@ -1,4 +1,4 @@
-import { VipLevel } from '@prisma/client';
+import { VipLevel } from 'src/common/enums/vip-level.enum';
 import { VideoRoomPkRepository } from '../../repositories/video-room-pk.repository';
 import type { PkScoreContext, PkScoringSnapshot } from '../video-room-pk-score.engine';
 import { VideoRoomPkScoreEngine } from '../video-room-pk-score.engine';

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, VipConfig } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { VipConfigDto } from '../dto/vip.dto';
 import { VipRepository } from '../repositories/vip.repository';
 import { VipService } from './vip.service';
@@ -15,11 +15,11 @@ export class VipAdminService {
     private readonly vip: VipService,
   ) {}
 
-  listConfigs(): Promise<VipConfig[]> {
+  listConfigs(): Promise<any[]> {
     return this.repo.listConfigs();
   }
 
-  async upsertConfig(actorId: string, dto: VipConfigDto): Promise<VipConfig> {
+  async upsertConfig(actorId: string, dto: VipConfigDto): Promise<any> {
     const config = await this.repo.upsertConfig(
       dto.level,
       {

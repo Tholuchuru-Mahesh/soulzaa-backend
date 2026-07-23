@@ -1,4 +1,3 @@
-import { FamilyRequestStatus, FamilyRole } from '@prisma/client';
 import { IEventBus } from 'src/common/events';
 import { BusinessException } from 'src/common/exceptions';
 import { FamiliesRepository } from '../repositories/families.repository';
@@ -8,17 +7,17 @@ function mockFamily(overrides: Record<string, any> = {}): any {
   return {
     id: 'family-1',
     name: 'Gamerz',
+    tag: 'GAME',
     description: 'Elite guild',
-    logoKey: 'logo-1',
-    leaderId: 'user-1',
+    logo: 'logo-1',
+    founderId: 'user-1',
     level: 1,
     exp: 0n,
     memberCount: 1,
     maxMembers: 100,
-    autoAccept: false,
+    privacy: 'PRIVATE',
     createdAt: new Date(),
     updatedAt: new Date(),
-    deletedAt: null,
     ...overrides,
   };
 }
@@ -28,8 +27,9 @@ function mockMember(overrides: Record<string, any> = {}): any {
     id: 'member-1',
     familyId: 'family-1',
     userId: 'user-1',
-    role: FamilyRole.LEADER,
-    contributionPoints: 0,
+    role: 'FOUNDER',
+    expContribution: 0n,
+    coinContribution: 0n,
     joinedAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -61,9 +61,7 @@ describe('FamiliesService', () => {
       removeMember: jest.fn().mockResolvedValue(undefined),
       createRequest: jest
         .fn()
-        .mockImplementation((r) =>
-          Promise.resolve({ id: 'req-1', status: FamilyRequestStatus.PENDING, ...r }),
-        ),
+        .mockImplementation((r) => Promise.resolve({ id: 'req-1', status: 'PENDING', ...r })),
       updateRequest: jest.fn().mockImplementation((_id, r) => Promise.resolve({ id: _id, ...r })),
       acceptRequest: jest
         .fn()
@@ -94,7 +92,7 @@ describe('FamiliesService', () => {
     it('throws ALREADY_IN_FAMILY if user belongs to a family', async () => {
       repo.findMemberByUserId.mockResolvedValue(mockMember());
       await expect(service.create('user-1', { name: 'Gamerz' })).rejects.toThrow(
-        new BusinessException('ALREADY_IN_FAMILY', 'You are already a member of a family.'),
+        new BusinessException('ALREADY_IN_FAMILY', 'You are already a member of another family.'),
       );
     });
 
@@ -107,27 +105,27 @@ describe('FamiliesService', () => {
   });
 
   describe('join', () => {
-    it('joins immediately if autoAccept is true', async () => {
-      repo.findById.mockResolvedValue(mockFamily({ autoAccept: true }));
+    it('joins immediately if family privacy is PUBLIC', async () => {
+      repo.findById.mockResolvedValue(mockFamily({ privacy: 'PUBLIC' }));
       const res = await service.join('user-2', 'family-1');
-      expect(repo.addMember).toHaveBeenCalledWith('family-1', 'user-2', FamilyRole.MEMBER);
+      expect(repo.addMember).toHaveBeenCalledWith('family-1', 'user-2', 'MEMBER');
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'family.member_joined' }),
       );
       expect(res.joined).toBe(true);
     });
 
-    it('creates a request if autoAccept is false', async () => {
+    it('creates a request if privacy is PRIVATE', async () => {
       const res = await service.join('user-2', 'family-1');
       expect(repo.createRequest).toHaveBeenCalled();
       expect(res.joined).toBe(false);
-      expect(res.request.status).toBe(FamilyRequestStatus.PENDING);
+      expect(res.request.status).toBe('PENDING');
     });
   });
 
   describe('leave', () => {
     it('allows a member to leave', async () => {
-      repo.findMemberByUserId.mockResolvedValue(mockMember({ role: FamilyRole.MEMBER }));
+      repo.findMemberByUserId.mockResolvedValue(mockMember({ role: 'MEMBER' }));
       await service.leave('user-1', 'family-1');
       expect(repo.removeMember).toHaveBeenCalledWith('family-1', 'user-1', 'user-1');
       expect(bus.publish).toHaveBeenCalledWith(
@@ -135,8 +133,8 @@ describe('FamiliesService', () => {
       );
     });
 
-    it('prevents a Leader from leaving', async () => {
-      repo.findMemberByUserId.mockResolvedValue(mockMember({ role: FamilyRole.LEADER }));
+    it('prevents a Founder from leaving', async () => {
+      repo.findMemberByUserId.mockResolvedValue(mockMember({ role: 'FOUNDER' }));
       await expect(service.leave('user-1', 'family-1')).rejects.toThrow(
         new BusinessException(
           'LEADER_CANNOT_LEAVE',
@@ -147,12 +145,12 @@ describe('FamiliesService', () => {
   });
 
   describe('kick', () => {
-    it('allows a leader to kick a member', async () => {
+    it('allows a founder to kick a member', async () => {
       repo.findMemberByUserId.mockImplementation((u) => {
         if (u === 'user-1')
-          return Promise.resolve(mockMember({ userId: 'user-1', role: FamilyRole.LEADER }));
+          return Promise.resolve(mockMember({ userId: 'user-1', role: 'FOUNDER' }));
         if (u === 'user-2')
-          return Promise.resolve(mockMember({ userId: 'user-2', role: FamilyRole.MEMBER }));
+          return Promise.resolve(mockMember({ userId: 'user-2', role: 'MEMBER' }));
         return Promise.resolve(null);
       });
 
@@ -160,12 +158,12 @@ describe('FamiliesService', () => {
       expect(repo.removeMember).toHaveBeenCalledWith('family-1', 'user-2', 'user-1');
     });
 
-    it('prevents a co-leader from kicking another co-leader', async () => {
+    it('prevents a co-founder from kicking another co-founder', async () => {
       repo.findMemberByUserId.mockImplementation((u) => {
         if (u === 'user-1')
-          return Promise.resolve(mockMember({ userId: 'user-1', role: FamilyRole.CO_LEADER }));
+          return Promise.resolve(mockMember({ userId: 'user-1', role: 'CO_FOUNDER' }));
         if (u === 'user-2')
-          return Promise.resolve(mockMember({ userId: 'user-2', role: FamilyRole.CO_LEADER }));
+          return Promise.resolve(mockMember({ userId: 'user-2', role: 'CO_FOUNDER' }));
         return Promise.resolve(null);
       });
 
@@ -179,32 +177,32 @@ describe('FamiliesService', () => {
   });
 
   describe('promote', () => {
-    it('allows a Leader to promote a member to Co-Leader', async () => {
+    it('allows a Founder to promote a member to Co-Founder', async () => {
       repo.findMemberByUserId.mockImplementation((u) => {
         if (u === 'user-1')
-          return Promise.resolve(mockMember({ userId: 'user-1', role: FamilyRole.LEADER }));
+          return Promise.resolve(mockMember({ userId: 'user-1', role: 'FOUNDER' }));
         if (u === 'user-2')
           return Promise.resolve(
-            mockMember({ userId: 'user-2', role: FamilyRole.MEMBER, id: 'target-mem' }),
+            mockMember({ userId: 'user-2', role: 'MEMBER', id: 'target-mem' }),
           );
         return Promise.resolve(null);
       });
 
-      await service.promote('user-1', 'family-1', { userId: 'user-2', role: FamilyRole.CO_LEADER });
-      expect(repo.updateMember).toHaveBeenCalledWith('target-mem', { role: FamilyRole.CO_LEADER });
+      await service.promote('user-1', 'family-1', { userId: 'user-2', role: 'CO_FOUNDER' });
+      expect(repo.updateMember).toHaveBeenCalledWith('target-mem', { role: 'CO_FOUNDER' });
     });
 
-    it('prevents a Co-Leader from promoting a member to Co-Leader', async () => {
+    it('prevents a Co-Founder from promoting a member to Co-Founder', async () => {
       repo.findMemberByUserId.mockImplementation((u) => {
         if (u === 'user-1')
-          return Promise.resolve(mockMember({ userId: 'user-1', role: FamilyRole.CO_LEADER }));
+          return Promise.resolve(mockMember({ userId: 'user-1', role: 'CO_FOUNDER' }));
         if (u === 'user-2')
-          return Promise.resolve(mockMember({ userId: 'user-2', role: FamilyRole.MEMBER }));
+          return Promise.resolve(mockMember({ userId: 'user-2', role: 'MEMBER' }));
         return Promise.resolve(null);
       });
 
       await expect(
-        service.promote('user-1', 'family-1', { userId: 'user-2', role: FamilyRole.CO_LEADER }),
+        service.promote('user-1', 'family-1', { userId: 'user-2', role: 'CO_FOUNDER' }),
       ).rejects.toThrow(
         new BusinessException(
           'FAMILY_ROLE_FORBIDDEN',

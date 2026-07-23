@@ -1,11 +1,48 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
+import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
+import { TreasuryModule } from 'src/modules/treasury/treasury.module';
+import { WalletModule } from 'src/modules/wallet/wallet.module';
+import { AgencySettlementController } from './controllers/agency-settlement.controller';
+import {
+  AgencyAuditService,
+  AgencyCommissionService,
+  AgencyConfigurationService,
+  AgencyEventService,
+  AgencyHistoryService,
+  AgencyQueryService,
+  AgencyRelationshipService,
+  AgencySettlementService,
+  AgencyStatisticsService,
+  AgencyValidationService,
+} from './services';
 
-/**
- * Agencies domain — agencies, hosts, commissions, performance.
- *
- * Phase 0 placeholder — no controllers/providers yet. When implemented, this
- * module owns its Prisma models (its file under prisma/schema/), its DTOs, and
- * communicates with other domains only via the EVENT_BUS.
- */
-@Module({})
+@Global()
+@Module({
+  imports: [PlatformConfigurationModule, TreasuryModule, WalletModule],
+  controllers: [AgencySettlementController],
+  providers: [
+    AgencyConfigurationService,
+    AgencyCommissionService,
+    AgencyRelationshipService,
+    AgencyValidationService,
+    AgencySettlementService,
+    AgencyHistoryService,
+    AgencyAuditService,
+    AgencyStatisticsService,
+    AgencyQueryService,
+    AgencyEventService,
+  ],
+  exports: [
+    AgencyConfigurationService,
+    AgencyCommissionService,
+    AgencyRelationshipService,
+    AgencyValidationService,
+    AgencySettlementService,
+    AgencyHistoryService,
+    AgencyAuditService,
+    AgencyStatisticsService,
+    AgencyQueryService,
+    AgencyEventService,
+  ],
+})
 export class AgenciesModule {}

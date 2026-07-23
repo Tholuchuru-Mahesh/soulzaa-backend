@@ -1,0 +1,51 @@
+// ============================================================
+// Platform Configuration & Global Settings Domain Schema
+// Entities: PlatformSetting, SettingHistory
+// ============================================================
+
+enum SettingValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
+
+/// Centralized Platform Configuration system setting
+model PlatformSetting {
+  id            String           @id @default(uuid()) @db.Uuid
+  key           String           @unique
+  category      String           @default("GENERAL")
+  value         String
+  valueType     SettingValueType @default(STRING)
+  defaultValue  String?
+  description   String?
+  isSecret      Boolean          @default(false)
+  isReadOnly    Boolean          @default(false)
+  isFeatureFlag Boolean          @default(false)
+  updatedBy     String?          @db.Uuid
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  histories SettingHistory[]
+
+  @@index([category])
+  @@index([isFeatureFlag])
+  @@map("platform_settings")
+}
+
+/// Historical audit record of configuration changes
+model SettingHistory {
+  id           String   @id @default(uuid()) @db.Uuid
+  settingId    String   @db.Uuid
+  oldValue     String?
+  newValue     String
+  changeReason String?
+  changedBy    String?  @db.Uuid
+  createdAt    DateTime @default(now())
+
+  setting PlatformSetting @relation(fields: [settingId], references: [id], onDelete: Cascade)
+
+  @@index([settingId])
+  @@index([createdAt])
+  @@map("setting_histories")
+}

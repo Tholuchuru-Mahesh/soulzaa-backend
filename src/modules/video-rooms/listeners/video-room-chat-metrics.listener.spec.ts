@@ -105,26 +105,20 @@ describe('VideoRoomChatMetricsListener', () => {
     },
   );
 
-  it.each(['cooldown', 'rate', 'flood'])(
-    'counts %s as a rate-limit violation as well',
-    (kind) => {
-      handlers[VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED]({
-        payload: { roomId: 'r1', userId: 'u1', kind },
-        occurredAt: new Date().toISOString(),
-      });
-      expect(metrics.incChatRateLimitViolation).toHaveBeenCalledTimes(1);
-    },
-  );
+  it.each(['cooldown', 'rate', 'flood'])('counts %s as a rate-limit violation as well', (kind) => {
+    handlers[VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED]({
+      payload: { roomId: 'r1', userId: 'u1', kind },
+      occurredAt: new Date().toISOString(),
+    });
+    expect(metrics.incChatRateLimitViolation).toHaveBeenCalledTimes(1);
+  });
 
   // Duplicate and blocked-word are abuse signals, but they are not RATE limiting.
-  it.each(['duplicate', 'blocked_word'])(
-    'does not count %s as a rate-limit violation',
-    (kind) => {
-      handlers[VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED]({
-        payload: { roomId: 'r1', userId: 'u1', kind },
-        occurredAt: new Date().toISOString(),
-      });
-      expect(metrics.incChatRateLimitViolation).not.toHaveBeenCalled();
-    },
-  );
+  it.each(['duplicate', 'blocked_word'])('does not count %s as a rate-limit violation', (kind) => {
+    handlers[VIDEO_ROOM_CHAT_EVENTS.SPAM_DETECTED]({
+      payload: { roomId: 'r1', userId: 'u1', kind },
+      occurredAt: new Date().toISOString(),
+    });
+    expect(metrics.incChatRateLimitViolation).not.toHaveBeenCalled();
+  });
 });

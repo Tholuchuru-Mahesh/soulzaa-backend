@@ -35,7 +35,7 @@ function gift(overrides: Record<string, unknown> = {}) {
   return {
     id: 'gift-1',
     name: 'Rose',
-    category: GiftCategory.STANDARD,
+    category: GiftCategory.CLASSIC,
     type: GiftType.STATIC,
     coinValue: 100,
     thumbnailUrl: null,
@@ -70,7 +70,7 @@ function dto(overrides: Partial<SendGiftDto> = {}): SendGiftDto {
 
 describe('GiftService', () => {
   let repo: Record<string, jest.Mock>;
-  let catalog: { getGift: jest.Mock };
+  let catalog: { getGift: jest.Mock; getGiftById: jest.Mock };
   let leaderboards: { record: jest.Mock };
   let config: { get: jest.Mock };
   let queue: { enqueue: jest.Mock };
@@ -102,7 +102,10 @@ describe('GiftService', () => {
       ),
       listTransactions: jest.fn().mockResolvedValue([[], 0]),
     };
-    catalog = { getGift: jest.fn().mockResolvedValue(gift()) };
+    catalog = {
+      getGift: jest.fn().mockResolvedValue(gift()),
+      getGiftById: jest.fn().mockResolvedValue(gift()),
+    };
     leaderboards = { record: jest.fn().mockResolvedValue(undefined) };
     config = { get: jest.fn().mockReturnValue(GIFT_CFG) };
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
@@ -195,21 +198,21 @@ describe('GiftService', () => {
     });
 
     it('rejects a missing gift', async () => {
-      catalog.getGift.mockResolvedValue(null);
+      catalog.getGiftById.mockResolvedValue(null);
       await expect(service.sendGift(SENDER, dto())).rejects.toMatchObject({
         errorCode: 'GIFT_NOT_FOUND',
       });
     });
 
     it('rejects a disabled gift', async () => {
-      catalog.getGift.mockResolvedValue(gift({ enabled: false }));
+      catalog.getGiftById.mockResolvedValue(gift({ enabled: false }));
       await expect(service.sendGift(SENDER, dto())).rejects.toMatchObject({
         errorCode: 'GIFT_DISABLED',
       });
     });
 
     it('rejects a VIP-exclusive gift below the required tier', async () => {
-      catalog.getGift.mockResolvedValue(gift({ minVipLevel: 3 }));
+      catalog.getGiftById.mockResolvedValue(gift({ minVipLevel: 3 }));
       vip.getLevelOrdinal.mockResolvedValue(1);
       await expect(service.sendGift(SENDER, dto())).rejects.toMatchObject({
         errorCode: 'GIFT_VIP_RESTRICTED',
@@ -218,7 +221,7 @@ describe('GiftService', () => {
     });
 
     it('allows a VIP-exclusive gift when the sender meets the tier', async () => {
-      catalog.getGift.mockResolvedValue(gift({ minVipLevel: 3 }));
+      catalog.getGiftById.mockResolvedValue(gift({ minVipLevel: 3 }));
       vip.getLevelOrdinal.mockResolvedValue(5);
       await service.sendGift(SENDER, dto());
       expect(wallet.debit).toHaveBeenCalled();
@@ -274,7 +277,7 @@ describe('GiftService', () => {
     });
 
     it('applies combo tier for combo-enabled gifts and emits a combo event', async () => {
-      catalog.getGift.mockResolvedValue(gift({ comboEnabled: true }));
+      catalog.getGiftById.mockResolvedValue(gift({ comboEnabled: true }));
       repo.comboTick.mockResolvedValue(3);
       await service.sendGift(SENDER, dto());
       expect(repo.createTransaction).toHaveBeenCalledWith(

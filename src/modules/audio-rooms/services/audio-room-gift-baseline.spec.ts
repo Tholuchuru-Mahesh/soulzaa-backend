@@ -54,7 +54,7 @@ function gift(overrides: Record<string, unknown> = {}) {
   return {
     id: 'gift-1',
     name: 'Rose',
-    category: GiftCategory.STANDARD,
+    category: GiftCategory.CLASSIC,
     type: GiftType.STATIC,
     coinValue: 100,
     thumbnailUrl: null,
@@ -91,7 +91,7 @@ function dto(overrides: Partial<SendGiftDto> = {}): SendGiftDto {
 /** Collaborator mocks, rebuilt per test. */
 interface Mocks {
   repo: Record<string, jest.Mock>;
-  catalog: { getGift: jest.Mock };
+  catalog: { getGiftById: jest.Mock; getGift: jest.Mock };
   leaderboards: { record: jest.Mock };
   config: { get: jest.Mock };
   queue: { enqueue: jest.Mock };
@@ -120,7 +120,10 @@ function buildMocks(): Mocks {
         ),
       listTransactions: jest.fn().mockResolvedValue([[], 0]),
     },
-    catalog: { getGift: jest.fn().mockResolvedValue(gift()) },
+    catalog: {
+      getGiftById: jest.fn().mockResolvedValue(gift()),
+      getGift: jest.fn().mockResolvedValue(gift()),
+    },
     leaderboards: { record: jest.fn().mockResolvedValue(undefined) },
     config: { get: jest.fn().mockReturnValue(GIFT_CFG) },
     queue: { enqueue: jest.fn().mockResolvedValue(undefined) },

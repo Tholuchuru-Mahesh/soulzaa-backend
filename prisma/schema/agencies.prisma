@@ -1,6 +1,106 @@
 // ============================================================
-// Agencies — agencies, hosts, commissions, performance
-// Owned by the "agencies" module. Add models/enums here as the module
-// is implemented. No cross-module relations by default — reference
-// other domains by id and coordinate via the event bus.
+// Soulzaa — Enterprise Agency Settlement Schema
+// Entities: AgencyRelationship, AgencySettlement, AgencyCommission, AgencyHistory, AgencyAudit, AgencyStatistics, AgencyConfiguration
 // ============================================================
+
+/// Active mapping relationship between Agency and Host
+model AgencyRelationship {
+  id            String    @id @default(uuid()) @db.Uuid
+  agencyId      String    @db.Uuid
+  hostId        String    @db.Uuid
+  status        String    @default("ACTIVE")
+  effectiveFrom DateTime  @default(now())
+  effectiveUntil DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([agencyId, hostId])
+  @@index([hostId, status])
+  @@index([agencyId, status])
+  @@map("agency_relationships")
+}
+
+/// Immutable master record of every agency commission calculation & settlement
+model AgencySettlement {
+  id                      String   @id @default(uuid()) @db.Uuid
+  revenueDistributionId   String   @unique @db.Uuid
+  giftTxnId               String   @db.Uuid
+  agencyId                String   @db.Uuid
+  hostId                  String   @db.Uuid
+  hostEarningsCoins       BigInt
+  commissionPercentage    Float    @default(10.0)
+  agencyCommissionCoins   BigInt
+  walletTxnId             String?  @db.Uuid
+  status                  String   @default("COMPLETED")
+  createdAt               DateTime @default(now())
+
+  @@index([agencyId, createdAt])
+  @@index([hostId, createdAt])
+  @@map("agency_settlements")
+}
+
+/// Granular commission record linked to settlement
+model AgencyCommission {
+  id           String   @id @default(uuid()) @db.Uuid
+  settlementId String   @unique @db.Uuid
+  agencyId     String   @db.Uuid
+  hostId       String   @db.Uuid
+  amount       BigInt
+  createdAt    DateTime @default(now())
+
+  @@index([agencyId])
+  @@map("agency_commissions")
+}
+
+/// Granular history ledger of agency settlements
+model AgencyHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  agencyId   String   @db.Uuid
+  hostId     String   @db.Uuid
+  amount     BigInt
+  sourceType String   @default("HOST_REVENUE")
+  createdAt  DateTime @default(now())
+
+  @@index([agencyId, createdAt])
+  @@map("agency_histories")
+}
+
+/// Operational Audit Log for Agency Settlement Events
+model AgencyAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  agencyId  String?  @db.Uuid
+  hostId    String?  @db.Uuid
+  action    String
+  details   Json?
+  actorId   String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([agencyId])
+  @@index([createdAt])
+  @@map("agency_audits")
+}
+
+/// Pre-aggregated daily, weekly, monthly, lifetime statistics for agencies
+model AgencyStatistics {
+  id                   String   @id @default(uuid()) @db.Uuid
+  agencyId             String   @db.Uuid
+  period               String   @default("DAILY")
+  dateKey              String
+  totalCommissionCoins BigInt   @default(0)
+  settlementCount      Int      @default(0)
+  updatedAt            DateTime @updatedAt
+
+  @@unique([agencyId, period, dateKey])
+  @@index([agencyId, period])
+  @@map("agency_statistics")
+}
+
+/// Dynamic Agency Configuration Parameters
+model AgencyConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("agency_configurations")
+}

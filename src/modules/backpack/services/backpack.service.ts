@@ -43,24 +43,33 @@ export class BackpackService implements IBackpackService {
     const existing = await this.repo.findByGrantKey(input.grantKey, tx);
     if (existing) return { itemId: existing.id, duplicate: true };
 
-    const item = await this.repo.create({
-      userId: input.userId,
-      type: input.type,
-      refId: input.refId ?? null,
-      name: input.name,
-      source: input.source,
-      quantity: input.quantity ?? 1,
-      transferable: input.transferable ?? false,
-      grantKey: input.grantKey,
-      ...(input.metadata !== undefined
-        ? { metadata: input.metadata as Prisma.InputJsonValue }
-        : {}),
-      expiresAt: input.expiresAt ?? null,
-    }, tx);
-    await this.repo.log(input.userId, BACKPACK_ACTIONS.GRANTED, item.id, {
-      type: item.type,
-      source: item.source,
-    }, tx);
+    const item = await this.repo.create(
+      {
+        userId: input.userId,
+        type: input.type,
+        refId: input.refId ?? null,
+        name: input.name,
+        source: input.source,
+        quantity: input.quantity ?? 1,
+        transferable: input.transferable ?? false,
+        grantKey: input.grantKey,
+        ...(input.metadata !== undefined
+          ? { metadata: input.metadata as Prisma.InputJsonValue }
+          : {}),
+        expiresAt: input.expiresAt ?? null,
+      },
+      tx,
+    );
+    await this.repo.log(
+      input.userId,
+      BACKPACK_ACTIONS.GRANTED,
+      item.id,
+      {
+        type: item.type,
+        source: item.source,
+      },
+      tx,
+    );
     await this.bus.publish(
       new BackpackItemGrantedEvent({
         userId: item.userId,

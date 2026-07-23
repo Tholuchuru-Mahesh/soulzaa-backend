@@ -1,32 +1,85 @@
 // ============================================================
-// Wallet — gold/free/earnings balances + the immutable wallet
-// transaction ledger. Owned by the "wallet" module. The economy
-// authority: every coin movement (recharge, gift send/receive,
-// admin adjustment, refund) is an append-only WalletTransaction row
-// with a unique idempotency key. Balances never go negative. No
-// cross-module relations — reference users by id.
+// Enterprise Wallet & Double-Entry Ledger Infrastructure
+// Entities: Wallet, LedgerEntry, WalletTransaction, WalletReservation, WalletAudit
 // ============================================================
 
-/// Currencies held in a wallet. GOLD is purchased with real money and spent on
-/// gifts/VIP/treasure; FREE is earned and used only in casual games; EARNINGS is
-/// the creator-earnings balance accrued from received gifts (diamonds).
+/// Currencies held in a wallet. GOLD is purchased with real money; FREE is earned; EARNINGS is creator diamonds.
 enum WalletCurrency {
   GOLD
   FREE
   EARNINGS
 }
 
-/// Direction of a ledger entry relative to the wallet holder.
+/// Category of Wallet Account
+enum WalletType {
+  USER_WALLET
+  HOST_WALLET
+  AGENCY_WALLET
+  COIN_SELLER_WALLET
+  TREASURY_WALLET
+  SYSTEM_WALLET
+  ESCROW_WALLET
+  GAME_ESCROW_WALLET
+}
+
+/// Operational state of a wallet
+enum WalletStatus {
+  ACTIVE
+  LOCKED
+  FROZEN
+  SUSPENDED
+}
+
+/// Direction of a double-entry ledger record
 enum WalletEntryType {
   CREDIT
   DEBIT
 }
 
-/// Why a ledger entry was written (drives reporting/reconciliation).
+/// Status of a wallet reservation hold
+enum ReservationStatus {
+  HELD
+  RELEASED
+  CONSUMED
+  EXPIRED
+}
+
+/// Status of a wallet transaction
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REVERSED
+}
+
+/// High-level Transaction Type classification
+enum TransactionType {
+  PURCHASE
+  GIFT
+  REWARD
+  BONUS
+  TREASURE
+  WITHDRAWAL
+  DEPOSIT
+  REFUND
+  SETTLEMENT
+  PENALTY
+  ADJUSTMENT
+  TRANSFER
+  GAME_ENTRY
+  GAME_REWARD
+}
+
+/// Why a ledger entry was written (drives reporting/reconciliation)
 enum WalletTxnReason {
   RECHARGE
   GIFT_SEND
   GIFT_RECEIVE
+  HOST_EARNING
+  AGENCY_COMMISSION
+  COIN_SELLER_COMMISSION
+  WITHDRAWAL
   GIFT_REFUND
   ADMIN_CREDIT
   ADMIN_DEBIT
@@ -35,6 +88,7 @@ enum WalletTxnReason {
   GAME_PAYOUT
   GAME_REFUND
   VIP_PURCHASE
+  VIP_RENEWAL
   EVENT_REWARD
   COSMETIC_PURCHASE
   PREMIUM_SEAT
@@ -46,54 +100,123 @@ enum WalletTxnReason {
   CASINO_WIN
   CASINO_REFUND
   PK_REWARD
+  SYSTEM_TRANSFER
+  RESERVATION_HOLD
+  RESERVATION_RELEASE
+  RESERVATION_CONSUME
 }
 
-/// One wallet per user (1:1). Balances are BigInt to scale to platform-wide
-/// lifetime volumes; convert to Number at the read-model layer. `version` is an
-/// optimistic-concurrency counter bumped on every balance mutation.
+/// Wallet Account Entity. Balances are BigInt to scale to platform-wide lifetime volumes.
 model Wallet {
-  userId                  String @id @db.Uuid
-  goldBalance             BigInt @default(0)
-  freeBalance             BigInt @default(0)
-  earningsBalance         BigInt @default(0)
-  totalRecharged          BigInt @default(0)
-  totalGiftsSentValue     BigInt @default(0)
-  totalGiftsReceivedValue BigInt @default(0)
-  totalSpent              BigInt @default(0)
-  version                 Int    @default(0)
+  id                      String       @id @default(uuid()) @db.Uuid
+  userId                  String       @unique @db.Uuid
+  type                    WalletType   @default(USER_WALLET)
+  status                  WalletStatus @default(ACTIVE)
+  goldBalance             BigInt       @default(0)
+  freeBalance             BigInt       @default(0)
+  earningsBalance         BigInt       @default(0)
+  availableBalance        BigInt       @default(0)
+  reservedBalance         BigInt       @default(0)
+  pendingBalance          BigInt       @default(0)
+  lockedBalance           BigInt       @default(0)
+  totalRecharged          BigInt       @default(0)
+  totalGiftsSentValue     BigInt       @default(0)
+  totalGiftsReceivedValue BigInt       @default(0)
+  totalSpent              BigInt       @default(0)
+  version                 Int          @default(0)
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  ledgerEntries LedgerEntry[]
+  reservations  WalletReservation[]
 
+  @@index([userId])
+  @@index([type])
+  @@index([status])
   @@map("wallets")
 }
 
-/// Append-only, immutable ledger. Written once per balance movement inside the
-/// same DB transaction that mutates the wallet, so the ledger and balances can
-/// never diverge. `idempotencyKey` is globally unique — a replayed request maps
-/// to the same row instead of double-applying. `balanceBefore/After` capture the
-/// running balance for audit and reconciliation.
+/// Central Wallet Transaction Record for high-level operations
 model WalletTransaction {
-  id             String          @id @default(uuid()) @db.Uuid
-  userId         String          @db.Uuid
-  currency       WalletCurrency
-  type           WalletEntryType
-  reason         WalletTxnReason
-  amount         BigInt
-  balanceBefore  BigInt
-  balanceAfter   BigInt
-  /// Source domain of the movement, e.g. "gift", "recharge", "admin".
-  referenceType  String?
-  /// Id of the source entity (gift transaction id, recharge order id, ...).
-  referenceId    String?         @db.Uuid
-  idempotencyKey String          @unique
-  metadata       Json?
-  /// Actor who caused the entry (the user, or an admin for adjustments).
-  createdBy      String?         @db.Uuid
-  createdAt      DateTime        @default(now())
+  id                  String            @id @default(uuid()) @db.Uuid
+  transactionType     TransactionType
+  status              TransactionStatus @default(COMPLETED)
+  sourceWalletId      String?           @db.Uuid
+  destinationWalletId String?           @db.Uuid
+  currency            WalletCurrency    @default(GOLD)
+  amount              BigInt
+  idempotencyKey      String            @unique
+  referenceType       String?
+  referenceId         String?           @db.Uuid
+  metadata            Json?
+  createdBy           String?           @db.Uuid
+  createdAt           DateTime          @default(now())
 
-  @@index([userId, createdAt])
+  ledgerEntries LedgerEntry[]
+
+  @@index([sourceWalletId, createdAt])
+  @@index([destinationWalletId, createdAt])
   @@index([referenceType, referenceId])
-  @@index([reason])
   @@map("wallet_transactions")
+}
+
+/// Append-only, immutable double-entry ledger record. Never updated or deleted.
+model LedgerEntry {
+  id            String          @id @default(uuid()) @db.Uuid
+  transactionId String          @db.Uuid
+  walletId      String          @db.Uuid
+  type          WalletEntryType
+  currency      WalletCurrency
+  reason        WalletTxnReason @default(SYSTEM_TRANSFER)
+  amount        BigInt
+  balanceBefore BigInt
+  balanceAfter  BigInt
+  referenceType String?
+  referenceId   String?         @db.Uuid
+  description   String?
+  actorId       String?         @db.Uuid
+  createdAt     DateTime        @default(now())
+
+  wallet      Wallet            @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  transaction WalletTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, createdAt])
+  @@index([transactionId])
+  @@index([referenceType, referenceId])
+  @@map("ledger_entries")
+}
+
+/// Temporary Coin Reservation Hold (for Games, Withdrawals, Treasure Boxes, Checkouts)
+model WalletReservation {
+  id            String            @id @default(uuid()) @db.Uuid
+  walletId      String            @db.Uuid
+  currency      WalletCurrency    @default(GOLD)
+  amount        BigInt
+  purpose       String            // e.g. GAME_STAKE, WITHDRAWAL_HOLD, TREASURE_HOLD
+  status        ReservationStatus @default(HELD)
+  referenceType String?
+  referenceId   String?           @db.Uuid
+  expiresAt     DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([walletId, status])
+  @@index([expiresAt])
+  @@map("wallet_reservations")
+}
+
+/// Operational Audit Log for Wallet locks, balance reconciliations, and limit events
+model WalletAudit {
+  id         String   @id @default(uuid()) @db.Uuid
+  walletId   String   @db.Uuid
+  action     String   // e.g. WALLET_CREATED, WALLET_LOCKED, BALANCE_RECONCILED
+  details    Json?
+  actorId    String?  @db.Uuid
+  createdAt  DateTime @default(now())
+
+  @@index([walletId])
+  @@index([createdAt])
+  @@map("wallet_audits")
 }

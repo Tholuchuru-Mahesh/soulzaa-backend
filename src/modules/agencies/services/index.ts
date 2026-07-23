@@ -1,2 +1,10 @@
-/** agencies services — empty until the module is implemented. */
-export {};
+export * from './agency-configuration.service';
+export * from './agency-commission.service';
+export * from './agency-relationship.service';
+export * from './agency-validation.service';
+export * from './agency-settlement.service';
+export * from './agency-history.service';
+export * from './agency-audit.service';
+export * from './agency-statistics.service';
+export * from './agency-query.service';
+export * from './agency-event.service';

@@ -12,7 +12,7 @@ const prisma = () =>
       groupBy: jest.fn(),
       findMany: jest.fn(),
     },
-    vipStatus: { findUnique: jest.fn() },
+    vipMembership: { findUnique: jest.fn() },
   }) as never;
 
 describe('VideoRoomPkRepository', () => {
@@ -98,23 +98,23 @@ describe('VideoRoomPkRepository', () => {
   // repository (rather than a raw Prisma call in the service) precisely so it
   // can forward the gift's transaction client — pin both the query shape and
   // that a supplied `db` is actually used instead of the default `this.prisma`.
-  it('getVipStatus queries vipStatus.findUnique by userId, using the passed db client', async () => {
+  it('getVipStatus queries vipMembership.findUnique by userId, using the passed db client', async () => {
     const defaultDb = prisma();
     const txDb = prisma();
     (
-      txDb as never as { vipStatus: { findUnique: jest.Mock } }
-    ).vipStatus.findUnique.mockResolvedValue({ userId: 'u1', level: 'GOLD' });
+      txDb as never as { vipMembership: { findUnique: jest.Mock } }
+    ).vipMembership.findUnique.mockResolvedValue({ userId: 'u1', level: 3, totalSpent: 200000n });
     const repo = new VideoRoomPkRepository(defaultDb);
 
     const result = await repo.getVipStatus('u1', txDb);
 
     expect(
-      (txDb as never as { vipStatus: { findUnique: jest.Mock } }).vipStatus.findUnique,
+      (txDb as never as { vipMembership: { findUnique: jest.Mock } }).vipMembership.findUnique,
     ).toHaveBeenCalledWith({ where: { userId: 'u1' } });
     expect(
-      (defaultDb as never as { vipStatus: { findUnique: jest.Mock } }).vipStatus.findUnique,
+      (defaultDb as never as { vipMembership: { findUnique: jest.Mock } }).vipMembership.findUnique,
     ).not.toHaveBeenCalled();
-    expect(result).toEqual({ userId: 'u1', level: 'GOLD' });
+    expect(result).toEqual({ level: 'VIP_3', lifetimeRecharge: 200000n });
   });
 
   // The reversal path (Task 13) negates the ORIGINAL contribution row rather

@@ -1,4 +1,4 @@
-import { VipLevel } from '@prisma/client';
+import { VipLevel } from 'src/common/enums/vip-level.enum';
 
 /**
  * VIP tier order (ascending rank). The array index IS the tier ordinal, used to

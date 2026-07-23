@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BackpackItemSource, ExpSource, WalletCurrency, WalletTxnReason } from '@prisma/client';
+import { BackpackItemSource, WalletCurrency, WalletTxnReason } from '@prisma/client';
+import { ExpSource } from 'src/common/enums/exp-source.enum';
 import {
   COSMETICS_SERVICE,
   type ICosmeticsService,

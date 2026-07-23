@@ -119,7 +119,7 @@ export class GiftService {
       );
     }
 
-    const gift = await this.catalog.getGift(dto.giftId);
+    const gift = await this.catalog.getGiftById(dto.giftId);
     if (!gift) {
       throw new BusinessException(
         ERROR_CODES.GIFT_NOT_FOUND,

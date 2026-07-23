@@ -1,13 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  Family,
-  FamilyJoinRequest,
-  FamilyLog,
-  FamilyMember,
-  FamilyRequestStatus,
-  FamilyRole,
-  Prisma,
-} from '@prisma/client';
+import { Family, FamilyJoinRequest, FamilyMember, Prisma } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
@@ -45,7 +37,7 @@ export class FamiliesRepository {
 
   findRequestByFamilyAndUser(familyId: string, userId: string): Promise<FamilyJoinRequest | null> {
     return this.prisma.familyJoinRequest.findFirst({
-      where: { familyId, userId, status: FamilyRequestStatus.PENDING },
+      where: { familyId, userId, status: 'PENDING' },
     });
   }
 
@@ -62,16 +54,16 @@ export class FamiliesRepository {
         data: {
           ...leaderData,
           familyId: family.id,
-          role: FamilyRole.LEADER,
+          role: 'FOUNDER',
         },
       });
 
-      await tx.familyLog.create({
+      await tx.familyHistory.create({
         data: {
           familyId: family.id,
-          userId: family.leaderId,
+          userId: family.founderId,
           action: 'CREATE',
-          metadata: { familyName: family.name },
+          details: { familyName: family.name },
         },
       });
 
@@ -79,12 +71,12 @@ export class FamiliesRepository {
     });
   }
 
-  async deleteFamily(familyId: string, leaderId: string): Promise<void> {
+  async deleteFamily(familyId: string, founderId: string): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      await tx.familyLog.create({
+      await tx.familyHistory.create({
         data: {
           familyId,
-          userId: leaderId,
+          userId: founderId,
           action: 'DELETE',
         },
       });
@@ -120,7 +112,7 @@ export class FamiliesRepository {
   async addMember(
     familyId: string,
     userId: string,
-    role: FamilyRole = FamilyRole.MEMBER,
+    role: string = 'MEMBER',
   ): Promise<FamilyMember> {
     return this.prisma.$transaction(async (tx) => {
       const member = await tx.familyMember.create({
@@ -159,12 +151,12 @@ export class FamiliesRepository {
         },
       });
 
-      await tx.familyLog.create({
+      await tx.familyHistory.create({
         data: {
           familyId,
           userId: actorId,
           action: actorId === userId ? 'LEAVE' : 'KICK',
-          metadata: { kickedUserId: userId },
+          details: { kickedUserId: userId },
         },
       });
     });
@@ -190,14 +182,14 @@ export class FamiliesRepository {
     return this.prisma.$transaction(async (tx) => {
       await tx.familyJoinRequest.update({
         where: { id: requestId },
-        data: { status: FamilyRequestStatus.APPROVED },
+        data: { status: 'APPROVED' },
       });
 
       const member = await tx.familyMember.create({
         data: {
           familyId,
           userId,
-          role: FamilyRole.MEMBER,
+          role: 'MEMBER',
         },
       });
 
@@ -210,12 +202,12 @@ export class FamiliesRepository {
         },
       });
 
-      await tx.familyLog.create({
+      await tx.familyHistory.create({
         data: {
           familyId,
           userId: actorId,
           action: 'ACCEPT_REQUEST',
-          metadata: { acceptedUserId: userId, requestId },
+          details: { acceptedUserId: userId, requestId },
         },
       });
 
@@ -232,15 +224,15 @@ export class FamiliesRepository {
     await this.prisma.$transaction(async (tx) => {
       await tx.familyJoinRequest.update({
         where: { id: requestId },
-        data: { status: FamilyRequestStatus.REJECTED },
+        data: { status: 'REJECTED' },
       });
 
-      await tx.familyLog.create({
+      await tx.familyHistory.create({
         data: {
           familyId,
           userId: actorId,
           action: 'REJECT_REQUEST',
-          metadata: { rejectedUserId: userId, requestId },
+          details: { rejectedUserId: userId, requestId },
         },
       });
     });
@@ -274,7 +266,7 @@ export class FamiliesRepository {
         where,
         skip,
         take,
-        orderBy: { role: 'asc' }, // LEADER, CO_LEADER, ELDER, MEMBER order
+        orderBy: { role: 'asc' },
       }),
       this.prisma.familyMember.count({ where }),
     ]);
@@ -282,7 +274,7 @@ export class FamiliesRepository {
 
   listRequests(
     familyId: string,
-    status: FamilyRequestStatus,
+    status: string,
     skip: number,
     take: number,
   ): Promise<[FamilyJoinRequest[], number]> {
@@ -298,32 +290,27 @@ export class FamiliesRepository {
     ]);
   }
 
-  logAction(
-    familyId: string,
-    userId: string,
-    action: string,
-    metadata?: Prisma.InputJsonValue,
-  ): Promise<FamilyLog> {
-    return this.prisma.familyLog.create({
+  logAction(familyId: string, userId: string, action: string, details?: Prisma.InputJsonValue) {
+    return this.prisma.familyHistory.create({
       data: {
         familyId,
         userId,
         action,
-        metadata: metadata ?? undefined,
+        details: details ?? undefined,
       },
     });
   }
 
-  listLogs(familyId: string, skip: number, take: number): Promise<[FamilyLog[], number]> {
+  listLogs(familyId: string, skip: number, take: number) {
     const where = { familyId };
     return this.prisma.$transaction([
-      this.prisma.familyLog.findMany({
+      this.prisma.familyHistory.findMany({
         where,
         skip,
         take,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.familyLog.count({ where }),
+      this.prisma.familyHistory.count({ where }),
     ]);
   }
 }

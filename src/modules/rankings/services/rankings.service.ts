@@ -180,7 +180,7 @@ export class RankingsService implements IRankingsService {
         rank: start + index + 1,
         familyId: entry.member,
         name: detail?.name ?? 'Unknown',
-        logoKey: detail?.logoKey ?? null,
+        logoKey: detail?.logo ?? null,
         score: entry.score,
         level: detail?.level ?? 1,
         leaderUsername: detail?.leaderUsername ?? 'Unknown',

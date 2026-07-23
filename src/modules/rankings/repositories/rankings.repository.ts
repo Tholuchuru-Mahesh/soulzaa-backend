@@ -124,20 +124,20 @@ export class RankingsRepository {
       select: {
         id: true,
         name: true,
-        logoKey: true,
+        logo: true,
         level: true,
-        leaderId: true,
+        founderId: true,
       },
     });
 
-    const leaderIds = families.map((f) => f.leaderId);
+    const founderIds = families.map((f) => f.founderId);
     const leaders = await this.prisma.user.findMany({
-      where: { id: { in: leaderIds } },
+      where: { id: { in: founderIds } },
       select: { id: true, username: true },
     });
 
     return families.map((family) => {
-      const leader = leaders.find((l) => l.id === family.leaderId);
+      const leader = leaders.find((l) => l.id === family.founderId);
       return {
         ...family,
         leaderUsername: leader ? leader.username : 'Unknown',

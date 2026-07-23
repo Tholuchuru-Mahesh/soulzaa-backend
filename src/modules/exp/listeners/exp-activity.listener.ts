@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { ExpSource, GiftContextType } from '@prisma/client';
+import { GiftContextType } from '@prisma/client';
+import { ExpSource } from 'src/common/enums/exp-source.enum';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import {
   AUDIO_ROOM_EVENTS,

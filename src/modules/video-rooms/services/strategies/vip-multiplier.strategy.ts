@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { VipLevel } from '@prisma/client';
+import { VipLevel } from 'src/common/enums/vip-level.enum';
 import { vipOrdinal } from 'src/modules/vip/constants/vip.constants';
 import { VideoRoomPkRepository } from '../../repositories/video-room-pk.repository';
 import type { IPkScoreStrategy, PkScoreContext } from '../video-room-pk-score.engine';

@@ -31,7 +31,21 @@ import { VideoRoomsModule } from './video-rooms/video-rooms.module';
 import { VipModule } from './vip/vip.module';
 import { WalletModule } from './wallet/wallet.module';
 
+import { AuthorizationModule } from './authorization/authorization.module';
+import { OrganizationModule } from './organization/organization.module';
+import { PlatformConfigurationModule } from './platform-configuration/platform-configuration.module';
+import { SuperAdminModule } from './super-admin/super-admin.module';
+import { TreasuryModule } from './treasury/treasury.module';
+import { RevenueModule } from './revenue/revenue.module';
+import { CoinSellerSettlementModule } from './coin-seller-settlement/coin-seller-settlement.module';
+import { WithdrawalsModule } from './withdrawals/withdrawals.module';
+
 export const DOMAIN_MODULES = [
+  TreasuryModule,
+  PlatformConfigurationModule,
+  OrganizationModule,
+  SuperAdminModule,
+  AuthorizationModule,
   AuthModule,
   UsersModule,
   OtpModule,
@@ -62,4 +76,7 @@ export const DOMAIN_MODULES = [
   NotificationModule,
   SocialModule,
   AnalyticsModule,
+  RevenueModule,
+  CoinSellerSettlementModule,
+  WithdrawalsModule,
 ];

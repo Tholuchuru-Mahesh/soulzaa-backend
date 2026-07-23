@@ -1,0 +1,54 @@
+// ============================================================
+// Soulzaa — Treasury & Financial Core Governance Schema
+// Entities: TreasuryReserve, FinancialPolicy, TreasuryLog
+// ============================================================
+
+/// Global Treasury & Coin Supply Reserve tracking
+model TreasuryReserve {
+  id                String   @id @default(uuid()) @db.Uuid
+  maxSupply         BigInt   @default(1000000000000)
+  circulatingSupply BigInt   @default(0)
+  reservedSupply    BigInt   @default(0)
+  treasuryBalance   BigInt   @default(0)
+  isFrozen          Boolean  @default(false)
+  updatedBy         String?  @db.Uuid
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("treasury_reserves")
+}
+
+/// Centralized Financial Policy Limits & Risk Thresholds
+model FinancialPolicy {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  name        String
+  category    String   @default("WALLET_LIMITS")
+  value       BigInt
+  minLimit    BigInt?
+  maxLimit    BigInt?
+  description String?
+  isEditable  Boolean  @default(true)
+  updatedBy   String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@map("financial_policies")
+}
+
+/// Operational audit log for Treasury and Economy operations
+model TreasuryLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  operation     String
+  amount        BigInt?
+  previousValue String?
+  newValue      String?
+  reason        String?
+  actorId       String?  @db.Uuid
+  createdAt     DateTime @default(now())
+
+  @@index([operation])
+  @@index([createdAt])
+  @@map("treasury_logs")
+}

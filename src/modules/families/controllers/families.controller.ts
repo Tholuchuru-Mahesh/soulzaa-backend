@@ -27,7 +27,7 @@ import { FamiliesService } from '../services/families.service';
 
 @ApiTags('families')
 @ApiBearerAuth()
-@Controller('families')
+@Controller('families-v1')
 export class FamiliesController {
   constructor(private readonly families: FamiliesService) {}
 
@@ -41,12 +41,7 @@ export class FamiliesController {
   @Get()
   @ApiOperation({ summary: 'List and search families' })
   list(@Query() q: PaginationQueryDto & { search?: string }) {
-    return this.families.list({
-      skip: q.skip,
-      limit: q.limit,
-      page: q.page,
-      search: q.search,
-    });
+    return this.families.listFamilies(q.page, q.limit, q.search);
   }
 
   @Get(':id')
@@ -158,11 +153,7 @@ export class FamiliesController {
   @Get(':id/members')
   @ApiOperation({ summary: 'Get list of members in the family' })
   members(@Param('id', ParseUuidPipe) id: string, @Query() q: PaginationQueryDto) {
-    return this.families.getMembers(id, {
-      skip: q.skip,
-      limit: q.limit,
-      page: q.page,
-    });
+    return this.families.listMembers(id, q.page, q.limit);
   }
 
   @Get(':id/logs')
@@ -173,10 +164,6 @@ export class FamiliesController {
     @Param('id', ParseUuidPipe) id: string,
     @Query() q: PaginationQueryDto,
   ) {
-    return this.families.getLogs(userId, id, {
-      skip: q.skip,
-      limit: q.limit,
-      page: q.page,
-    });
+    return this.families.listLogs(userId, id, q.page, q.limit);
   }
 }

@@ -8,11 +8,8 @@ async function main() {
 
   const existing = await prisma.user.findFirst({
     where: {
-      OR: [
-        { mobile },
-        { username }
-      ]
-    }
+      OR: [{ mobile }, { username }],
+    },
   });
 
   if (existing) {
@@ -29,7 +26,7 @@ async function main() {
         country: 'IN',
         preferredLanguage: 'en',
         mobileVerifiedAt: new Date(),
-      }
+      },
     });
 
     await tx.userProfile.create({ data: { userId: user.id } });

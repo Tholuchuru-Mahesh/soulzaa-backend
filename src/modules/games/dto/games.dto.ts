@@ -25,7 +25,9 @@ export class CreateLobbyDto {
   @IsEnum(GameCode)
   gameCode!: GameCode;
 
-  @ApiProperty({ description: 'Entry stake per player (game currency). 0 = friendly (no-stake) match.' })
+  @ApiProperty({
+    description: 'Entry stake per player (game currency). 0 = friendly (no-stake) match.',
+  })
   @Type(() => Number)
   @IsInt()
   @Min(0)
@@ -104,7 +106,9 @@ export class JoinQueueDto {
   @IsEnum(GameCode)
   gameCode!: GameCode;
 
-  @ApiProperty({ description: 'Entry stake per player (game currency). 0 = friendly (no-stake) match.' })
+  @ApiProperty({
+    description: 'Entry stake per player (game currency). 0 = friendly (no-stake) match.',
+  })
   @Type(() => Number)
   @IsInt()
   @Min(0)

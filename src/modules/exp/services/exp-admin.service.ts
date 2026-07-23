@@ -1,14 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { LevelConfig, Prisma, RoomLevelConfig } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { LevelConfigDto, RoomLevelConfigDto } from '../dto/exp.dto';
 import { ExpRepository } from '../repositories/exp.repository';
 import { ExpService } from './exp.service';
 
-/**
- * Platform-admin configuration of the user + room level ladders (thresholds +
- * rewards). Every mutation reloads the EXP service's in-memory config cache so
- * awards reflect the change immediately.
- */
 @Injectable()
 export class ExpAdminService {
   constructor(
@@ -16,15 +11,15 @@ export class ExpAdminService {
     private readonly exp: ExpService,
   ) {}
 
-  listLevels(): Promise<LevelConfig[]> {
+  listLevels(): Promise<any[]> {
     return this.repo.listLevelConfigs();
   }
 
-  listRoomLevels(): Promise<RoomLevelConfig[]> {
-    return this.repo.listRoomLevelConfigs();
+  listRoomLevels(): Promise<any[]> {
+    return this.repo.listLevelConfigs();
   }
 
-  async upsertLevel(actorId: string, dto: LevelConfigDto): Promise<LevelConfig> {
+  async upsertLevel(actorId: string, dto: LevelConfigDto): Promise<any> {
     const config = await this.repo.upsertLevelConfig(
       dto.level,
       {
@@ -38,10 +33,10 @@ export class ExpAdminService {
     return config;
   }
 
-  async upsertRoomLevel(actorId: string, dto: RoomLevelConfigDto): Promise<RoomLevelConfig> {
-    const config = await this.repo.upsertRoomLevelConfig(
+  async upsertRoomLevel(actorId: string, dto: RoomLevelConfigDto): Promise<any> {
+    const config = await this.repo.upsertLevelConfig(
       dto.level,
-      { minExp: BigInt(dto.minExp), title: dto.title ?? null },
+      { minExp: BigInt(dto.minExp), title: dto.title ?? null, rewards: [] },
       actorId,
     );
     await this.exp.reload();

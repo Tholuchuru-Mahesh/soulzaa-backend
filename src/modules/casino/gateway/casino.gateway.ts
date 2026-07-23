@@ -421,7 +421,8 @@ export class CasinoGateway extends BaseGateway implements CasinoBroadcaster {
     if (!state) return;
     const room = this.roomFor(game);
     const count = this.onlineCount(room);
-    const event = game === CasinoGame.GREEDY_FOOD ? CASINO_EVENTS.GREEDY.TICK : CASINO_EVENTS.LUCKY.TICK;
+    const event =
+      game === CasinoGame.GREEDY_FOOD ? CASINO_EVENTS.GREEDY.TICK : CASINO_EVENTS.LUCKY.TICK;
     if (game === CasinoGame.GREEDY_FOOD) {
       this.emitToRoom(room, event, {
         roundId: state.roundId,

@@ -253,3 +253,20 @@ model UserContributionCounter {
 
   @@map("user_contribution_counters")
 }
+
+/// Operational Audit Log for Treasure Events
+model TreasureAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  roomId    String?  @db.Uuid
+  boxId     String?  @db.Uuid
+  action    String
+  details   Json?
+  actorId   String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([roomId])
+  @@index([boxId])
+  @@index([createdAt])
+  @@map("treasure_audits")
+}
+

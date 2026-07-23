@@ -13,7 +13,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
-import { CreateGiftDto, ListGiftsAdminDto, UpdateGiftDto } from '../dto/gift.dto';
+import { CreateGiftDto, GiftQueryDto, UpdateGiftDto } from '../dto/gift-catalog.dto';
 import { GiftCatalogService } from '../services/gift-catalog.service';
 
 /**
@@ -30,15 +30,15 @@ export class GiftAdminController {
 
   @Get()
   @ApiOperation({ summary: 'List catalog gifts (paginated)' })
-  list(@Query() q: ListGiftsAdminDto) {
-    return this.catalog.list(q);
+  list(@Query() q: GiftQueryDto) {
+    return this.catalog.listGifts(q);
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a catalog gift' })
   create(@CurrentUser('id') adminId: string, @Body() dto: CreateGiftDto) {
-    return this.catalog.create(adminId, dto);
+    return this.catalog.createGift(dto, adminId);
   }
 
   @Patch(':giftId')
@@ -48,6 +48,6 @@ export class GiftAdminController {
     @Param('giftId', ParseUuidPipe) giftId: string,
     @Body() dto: UpdateGiftDto,
   ) {
-    return this.catalog.update(adminId, giftId, dto);
+    return this.catalog.updateGift(giftId, dto, adminId);
   }
 }

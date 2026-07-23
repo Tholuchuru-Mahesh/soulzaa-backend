@@ -148,7 +148,10 @@ export class AuthService implements IAuthService {
     }
 
     if (!user) {
-      const username = await this.generateUsername(null, `User_${phoneNumber.replace(/\D/g, '').slice(-4)}`);
+      const username = await this.generateUsername(
+        null,
+        `User_${phoneNumber.replace(/\D/g, '').slice(-4)}`,
+      );
       user = await this.users.createIdentity({
         username,
         mobile: phoneNumber,

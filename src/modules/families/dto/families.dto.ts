@@ -1,5 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { FamilyRequestStatus, FamilyRole } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
@@ -52,8 +51,8 @@ export class UpdateFamilyDto {
 
 export class ManageRequestDto {
   @ApiProperty({ description: 'Decision status', enum: ['APPROVED', 'REJECTED'] })
-  @IsEnum(FamilyRequestStatus)
-  status!: FamilyRequestStatus;
+  @IsEnum(['APPROVED', 'REJECTED'])
+  status!: 'APPROVED' | 'REJECTED';
 }
 
 export class PromoteMemberDto {
@@ -62,9 +61,9 @@ export class PromoteMemberDto {
   @IsNotEmpty()
   userId!: string;
 
-  @ApiProperty({ description: 'New role for the member', enum: ['CO_LEADER', 'ELDER', 'MEMBER'] })
-  @IsEnum([FamilyRole.CO_LEADER, FamilyRole.ELDER, FamilyRole.MEMBER])
-  role!: FamilyRole;
+  @ApiProperty({ description: 'New role for the member', enum: ['CO_FOUNDER', 'ELDER', 'MEMBER'] })
+  @IsEnum(['CO_FOUNDER', 'ELDER', 'MEMBER'])
+  role!: any;
 }
 
 export class KickMemberDto {

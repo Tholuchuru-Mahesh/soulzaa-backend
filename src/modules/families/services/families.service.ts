@@ -1,12 +1,5 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import {
-  Family,
-  FamilyJoinRequest,
-  FamilyLog,
-  FamilyMember,
-  FamilyRequestStatus,
-  FamilyRole,
-} from '@prisma/client';
+import { Family, FamilyJoinRequest, FamilyMember } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
@@ -27,17 +20,6 @@ import {
 import type { IFamiliesService } from '../interfaces/families.service.interface';
 import { FamiliesRepository } from '../repositories/families.repository';
 
-// Family experience ladder:
-// Level 1: 0 exp
-// Level 2: 10,000 exp
-// Level 3: 50,000 exp
-// Level 4: 100,000 exp
-// Level 5: 250,000 exp
-// Level 6: 500,000 exp
-// Level 7: 1,000,000 exp
-// Level 8: 2,500,000 exp
-// Level 9: 5,000,000 exp
-// Level 10: 10,000,000 exp
 const FAMILY_LEVEL_LADDER: { level: number; minExp: bigint }[] = [
   { level: 1, minExp: 0n },
   { level: 2, minExp: 10_000n },
@@ -82,7 +64,6 @@ export class FamiliesService implements IFamiliesService {
 
     if (newLevel > family.level) {
       this.logger.log(`Family ${family.name} (${familyId}) leveled up to Level ${newLevel}`);
-      // Future hook: Emit family level up event if needed
     }
   }
 
@@ -92,26 +73,36 @@ export class FamiliesService implements IFamiliesService {
     if (!member) return;
 
     await this.repo.updateMember(member.id, {
-      contributionPoints: {
+      expContribution: {
         increment: points,
       },
     });
   }
 
-  // ---- REST API business methods ----
+  private calculateLevel(exp: bigint): number {
+    let level = 1;
+    for (const step of FAMILY_LEVEL_LADDER) {
+      if (exp >= step.minExp) {
+        level = step.level;
+      } else {
+        break;
+      }
+    }
+    return level;
+  }
+
+  // ---- Standard Domain Logic ----
 
   async create(creatorId: string, dto: CreateFamilyDto): Promise<Family> {
-    // 1. Ensure creator is not already in a family
     const existingMember = await this.repo.findMemberByUserId(creatorId);
     if (existingMember) {
       throw new BusinessException(
         ERROR_CODES.ALREADY_IN_FAMILY,
-        'You are already a member of a family.',
+        'You are already a member of another family.',
         HttpStatus.CONFLICT,
       );
     }
 
-    // 2. Ensure name is unique
     const existingFamily = await this.repo.findByName(dto.name);
     if (existingFamily) {
       throw new BusinessException(
@@ -121,23 +112,22 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    // 3. Create family
     const family = await this.repo.createFamily(
       {
         name: dto.name,
+        tag: dto.name.slice(0, 4).toUpperCase(),
         description: dto.description,
-        logoKey: dto.logoKey,
-        leaderId: creatorId,
+        logo: dto.logoKey,
+        founderId: creatorId,
         memberCount: 1,
-        maxMembers: 100, // Default limit
+        maxMembers: 100,
       },
       {
         userId: creatorId,
-        role: FamilyRole.LEADER,
+        role: 'FOUNDER',
       },
     );
 
-    // 4. Publish Event
     await this.bus.publish(
       new FamilyCreatedEvent({
         familyId: family.id,
@@ -162,9 +152,8 @@ export class FamiliesService implements IFamiliesService {
   }
 
   async update(userId: string, familyId: string, dto: UpdateFamilyDto): Promise<Family> {
-    await this.get(familyId); // Enforces existence
+    await this.get(familyId);
 
-    // Validate authority: Leader or Co-Leader
     const member = await this.repo.findMemberByUserId(userId);
     if (!member || member.familyId !== familyId) {
       throw new BusinessException(
@@ -174,7 +163,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (member.role !== FamilyRole.LEADER && member.role !== FamilyRole.CO_LEADER) {
+    if (!['FOUNDER', 'CO_FOUNDER'].includes(member.role)) {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only Leaders and Co-Leaders can edit family details.',
@@ -182,15 +171,13 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    const updated = await this.repo.updateFamily(familyId, dto);
-
+    const updated = await this.repo.updateFamily(familyId, dto as any);
     await this.repo.logAction(familyId, userId, 'EDIT_PROFILE', dto as any);
 
     return updated;
   }
 
   async join(userId: string, familyId: string): Promise<any> {
-    // 1. Ensure user is not already in a family
     const existingMember = await this.repo.findMemberByUserId(userId);
     if (existingMember) {
       throw new BusinessException(
@@ -200,11 +187,9 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    // 2. Enforce family existence
     const family = await this.get(familyId);
 
-    // 3. Auto accept logic
-    if (family.autoAccept) {
+    if (family.privacy === 'PUBLIC') {
       if (family.memberCount >= family.maxMembers) {
         throw new BusinessException(
           ERROR_CODES.FAMILY_LIMIT_REACHED,
@@ -213,7 +198,7 @@ export class FamiliesService implements IFamiliesService {
         );
       }
 
-      await this.repo.addMember(familyId, userId, FamilyRole.MEMBER);
+      await this.repo.addMember(familyId, userId, 'MEMBER');
       await this.repo.logAction(familyId, userId, 'JOIN');
 
       await this.bus.publish(
@@ -226,7 +211,6 @@ export class FamiliesService implements IFamiliesService {
       return { joined: true, family };
     }
 
-    // 4. Pending request logic
     const existingRequest = await this.repo.findRequestByFamilyAndUser(familyId, userId);
     if (existingRequest) {
       throw new BusinessException(
@@ -239,7 +223,7 @@ export class FamiliesService implements IFamiliesService {
     const request = await this.repo.createRequest({
       familyId,
       userId,
-      status: FamilyRequestStatus.PENDING,
+      status: 'PENDING',
     });
 
     return { joined: false, request };
@@ -250,7 +234,6 @@ export class FamiliesService implements IFamiliesService {
     familyId: string,
     q: { skip: number; limit: number; page: number },
   ): Promise<Paginated<FamilyJoinRequest>> {
-    // Validate authority: Leaders, Co-leaders, or Elders
     const member = await this.repo.findMemberByUserId(userId);
     if (!member || member.familyId !== familyId) {
       throw new BusinessException(
@@ -260,7 +243,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (member.role === FamilyRole.MEMBER) {
+    if (member.role === 'MEMBER') {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only Leaders, Co-Leaders, and Elders can view join requests.',
@@ -268,12 +251,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    const [rows, total] = await this.repo.listRequests(
-      familyId,
-      FamilyRequestStatus.PENDING,
-      q.skip,
-      q.limit,
-    );
+    const [rows, total] = await this.repo.listRequests(familyId, 'PENDING', q.skip, q.limit);
     return buildPaginated(rows, total, q.page, q.limit);
   }
 
@@ -292,7 +270,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (request.status !== FamilyRequestStatus.PENDING) {
+    if (request.status !== 'PENDING') {
       throw new BusinessException(
         ERROR_CODES.CONFLICT,
         'This join request has already been processed.',
@@ -300,7 +278,6 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    // Validate authority: Leaders, Co-leaders, or Elders
     const member = await this.repo.findMemberByUserId(actorId);
     if (!member || member.familyId !== familyId) {
       throw new BusinessException(
@@ -310,7 +287,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (member.role === FamilyRole.MEMBER) {
+    if (member.role === 'MEMBER') {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only Leaders, Co-Leaders, and Elders can approve or reject join requests.',
@@ -320,7 +297,7 @@ export class FamiliesService implements IFamiliesService {
 
     const family = await this.get(familyId);
 
-    if (dto.status === FamilyRequestStatus.APPROVED) {
+    if (dto.status === 'APPROVED') {
       if (family.memberCount >= family.maxMembers) {
         throw new BusinessException(
           ERROR_CODES.FAMILY_LIMIT_REACHED,
@@ -329,10 +306,8 @@ export class FamiliesService implements IFamiliesService {
         );
       }
 
-      // Check if target user is already in a family
       const targetExistingMember = await this.repo.findMemberByUserId(request.userId);
       if (targetExistingMember) {
-        // Automatically reject since they joined another family in the meantime
         await this.repo.rejectRequest(requestId, familyId, request.userId, actorId);
         throw new BusinessException(
           ERROR_CODES.ALREADY_IN_FAMILY,
@@ -367,7 +342,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (member.role === FamilyRole.LEADER) {
+    if (member.role === 'FOUNDER') {
       throw new BusinessException(
         ERROR_CODES.LEADER_CANNOT_LEAVE,
         'Leaders cannot leave without transferring leadership or disbanding the family.',
@@ -414,14 +389,10 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    // Role Hierarchy Checks:
-    // Leader can kick Co-Leader, Elder, Member
-    // Co-Leader can kick Elder, Member
-    // Elder/Member cannot kick anyone
-    const roleWeight = (r: FamilyRole) => {
-      if (r === FamilyRole.LEADER) return 4;
-      if (r === FamilyRole.CO_LEADER) return 3;
-      if (r === FamilyRole.ELDER) return 2;
+    const roleWeight = (r: string) => {
+      if (r === 'FOUNDER') return 4;
+      if (r === 'CO_FOUNDER') return 3;
+      if (r === 'ELDER') return 2;
       return 1;
     };
 
@@ -464,7 +435,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (target.role === FamilyRole.LEADER) {
+    if (target.role === 'FOUNDER') {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'You cannot promote or demote the family Leader. Use leadership transfer.',
@@ -472,11 +443,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    // Role promotions/demotions restrictions:
-    // 1. Only Leader can promote to Co-Leader or demote Co-Leader.
-    // 2. Leader and Co-Leader can promote to Elder or demote Elder.
-    // 3. Actors cannot promote someone to their own level or above.
-    if (dto.role === FamilyRole.CO_LEADER && actor.role !== FamilyRole.LEADER) {
+    if (dto.role === 'CO_FOUNDER' && actor.role !== 'FOUNDER') {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only the Leader can promote a member to Co-Leader.',
@@ -484,7 +451,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (target.role === FamilyRole.CO_LEADER && actor.role !== FamilyRole.LEADER) {
+    if (target.role === 'CO_FOUNDER' && actor.role !== 'FOUNDER') {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only the Leader can demote a Co-Leader.',
@@ -492,7 +459,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (actor.role !== FamilyRole.LEADER && actor.role !== FamilyRole.CO_LEADER) {
+    if (actor.role !== 'FOUNDER' && actor.role !== 'CO_FOUNDER') {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only Leaders and Co-Leaders can promote or demote members.',
@@ -518,7 +485,7 @@ export class FamiliesService implements IFamiliesService {
   ): Promise<Family> {
     const family = await this.get(familyId);
 
-    if (family.leaderId !== actorId) {
+    if (family.founderId !== actorId) {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only the family Leader can transfer leadership.',
@@ -545,11 +512,9 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    // Process Transfer:
-    // Update target member to LEADER, actor member to MEMBER (or CO_LEADER, standard is MEMBER/CO_LEADER, we use CO_LEADER so the founder remains admin, or MEMBER. Let's make actor MEMBER).
-    await this.repo.updateMember(targetMember.id, { role: FamilyRole.LEADER });
-    await this.repo.updateMember(actorMember.id, { role: FamilyRole.MEMBER });
-    const updatedFamily = await this.repo.updateFamily(familyId, { leaderId: dto.userId });
+    await this.repo.updateMember(targetMember.id, { role: 'FOUNDER' });
+    await this.repo.updateMember(actorMember.id, { role: 'CO_FOUNDER' });
+    const updatedFamily = await this.repo.updateFamily(familyId, { founderId: dto.userId });
 
     await this.repo.logAction(familyId, actorId, 'TRANSFER_LEADERSHIP', {
       previousLeaderId: actorId,
@@ -562,7 +527,7 @@ export class FamiliesService implements IFamiliesService {
   async disband(actorId: string, familyId: string): Promise<void> {
     const family = await this.get(familyId);
 
-    if (family.leaderId !== actorId) {
+    if (family.founderId !== actorId) {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only the family Leader can disband the family.',
@@ -580,32 +545,22 @@ export class FamiliesService implements IFamiliesService {
     );
   }
 
-  async list(q: {
-    skip: number;
-    limit: number;
-    page: number;
-    search?: string;
-  }): Promise<Paginated<Family>> {
-    const [rows, total] = await this.repo.listFamilies(q.skip, q.limit, q.search);
-    return buildPaginated(rows, total, q.page, q.limit);
+  async listFamilies(page = 1, limit = 20, search?: string): Promise<Paginated<Family>> {
+    const skip = (page - 1) * limit;
+    const [rows, total] = await this.repo.listFamilies(skip, limit, search);
+    return buildPaginated(rows, total, page, limit);
   }
 
-  async getMembers(
-    familyId: string,
-    q: { skip: number; limit: number; page: number },
-  ): Promise<Paginated<FamilyMember>> {
-    await this.get(familyId); // Enforces existence
-    const [rows, total] = await this.repo.listMembers(familyId, q.skip, q.limit);
-    return buildPaginated(rows, total, q.page, q.limit);
+  async listMembers(familyId: string, page = 1, limit = 20): Promise<Paginated<FamilyMember>> {
+    await this.get(familyId);
+    const skip = (page - 1) * limit;
+    const [rows, total] = await this.repo.listMembers(familyId, skip, limit);
+    return buildPaginated(rows, total, page, limit);
   }
 
-  async getLogs(
-    actorId: string,
-    familyId: string,
-    q: { skip: number; limit: number; page: number },
-  ): Promise<Paginated<FamilyLog>> {
-    const actor = await this.repo.findMemberByUserId(actorId);
-    if (!actor || actor.familyId !== familyId) {
+  async listLogs(userId: string, familyId: string, page = 1, limit = 20): Promise<Paginated<any>> {
+    const member = await this.repo.findMemberByUserId(userId);
+    if (!member || member.familyId !== familyId) {
       throw new BusinessException(
         ERROR_CODES.NOT_IN_FAMILY,
         'You are not a member of this family.',
@@ -613,19 +568,8 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    const [rows, total] = await this.repo.listLogs(familyId, q.skip, q.limit);
-    return buildPaginated(rows, total, q.page, q.limit);
-  }
-
-  // ---- Internal helper methods ----
-
-  private calculateLevel(exp: bigint): number {
-    let level = 1;
-    for (const entry of FAMILY_LEVEL_LADDER) {
-      if (exp >= entry.minExp) {
-        level = Math.max(level, entry.level);
-      }
-    }
-    return level;
+    const skip = (page - 1) * limit;
+    const [rows, total] = await this.repo.listLogs(familyId, skip, limit);
+    return buildPaginated(rows, total, page, limit);
   }
 }

@@ -1,28 +1,38 @@
 import { Global, Module } from '@nestjs/common';
-import { WalletAdminController } from './controllers/wallet-admin.controller';
-import { WalletController } from './controllers/wallet.controller';
-import { WALLET_SERVICE } from './interfaces/wallet.service.interface';
-import { WalletRepository } from './repositories/wallet.repository';
+import { PrismaModule } from 'src/infra/prisma/prisma.module';
+import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
+import { TreasuryModule } from 'src/modules/treasury/treasury.module';
+import { BalanceService } from './services/balance.service';
+import { LedgerService } from './services/ledger.service';
+import { ReservationService } from './services/reservation.service';
+import { TransactionQueryService } from './services/transaction-query.service';
+import { WalletAuditService } from './services/wallet-audit.service';
+import { WalletTransactionService } from './services/wallet-transaction.service';
+import { WalletValidationService } from './services/wallet-validation.service';
 import { WalletService } from './services/wallet.service';
 
-/**
- * Wallet domain — gold/free/earnings balances and the immutable wallet
- * transaction ledger. The economy authority: every coin movement is an
- * append-only, idempotent ledger entry applied under a per-user lock inside a DB
- * transaction, and balances never go negative.
- *
- * @Global so economy features (gifts, VIP, treasure boxes, games, payments)
- * resolve WALLET_SERVICE by token without importing this module — cross-module
- * access only via `interfaces/` or the EVENT_BUS.
- */
 @Global()
 @Module({
-  controllers: [WalletController, WalletAdminController],
+  imports: [PrismaModule, PlatformConfigurationModule, TreasuryModule],
   providers: [
-    WalletRepository,
+    WalletAuditService,
+    WalletValidationService,
     WalletService,
-    { provide: WALLET_SERVICE, useExisting: WalletService },
+    LedgerService,
+    BalanceService,
+    ReservationService,
+    WalletTransactionService,
+    TransactionQueryService,
   ],
-  exports: [WALLET_SERVICE, WalletService],
+  exports: [
+    WalletAuditService,
+    WalletValidationService,
+    WalletService,
+    LedgerService,
+    BalanceService,
+    ReservationService,
+    WalletTransactionService,
+    TransactionQueryService,
+  ],
 })
 export class WalletModule {}

@@ -1,4 +1,4 @@
-import type { VipLevel } from '@prisma/client';
+import type { VipLevel } from 'src/common/enums/vip-level.enum';
 import { DomainEvent } from 'src/common/events';
 
 /**

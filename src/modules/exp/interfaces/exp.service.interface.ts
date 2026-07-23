@@ -1,4 +1,4 @@
-import type { ExpSource } from '@prisma/client';
+import type { ExpSource } from 'src/common/enums/exp-source.enum';
 
 /**
  * Public contract for the EXP module — the ONLY surface other modules may

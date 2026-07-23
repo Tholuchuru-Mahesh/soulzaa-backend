@@ -1,6 +1,111 @@
 // ============================================================
-// Payments — recharge orders, IAP receipts, coin packages, gateways
-// Owned by the "payments" module. Add models/enums here as the module
-// is implemented. No cross-module relations by default — reference
-// other domains by id and coordinate via the event bus.
+// Soulzaa — Coin Purchase & Payment Infrastructure Schema
+// Entities: CoinPackage, PurchaseOrder, PaymentReceipt, PurchaseAudit
 // ============================================================
+
+enum PaymentProvider {
+  GOOGLE_PLAY
+  APPLE_IAP
+  RAZORPAY
+  STRIPE
+  MOCK_GATEWAY
+}
+
+enum PurchaseOrderStatus {
+  CREATED
+  PENDING_PAYMENT
+  VERIFICATION_PENDING
+  COMPLETED
+  FAILED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+/// Purchasable Soul Coin Package
+model CoinPackage {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  coins       BigInt
+  bonusCoins  BigInt   @default(0)
+  priceAmount Decimal  @db.Decimal(12, 2)
+  currency    String   @default("USD")
+  country     String?  @default("GLOBAL")
+  platform    String?  @default("ALL")
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdBy   String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders PurchaseOrder[]
+
+  @@index([isActive])
+  @@index([platform])
+  @@map("coin_packages")
+}
+
+/// Purchase Order Lifecycle Entity
+model PurchaseOrder {
+  id                  String              @id @default(uuid()) @db.Uuid
+  orderNumber         String              @unique
+  userId              String              @db.Uuid
+  packageId           String              @db.Uuid
+  provider            PaymentProvider
+  coinsAmount         BigInt
+  bonusCoinsAmount    BigInt              @default(0)
+  totalCoins          BigInt
+  priceAmount         Decimal             @db.Decimal(12, 2)
+  currency            String
+  status              PurchaseOrderStatus @default(CREATED)
+  providerTxnRef      String?
+  walletTransactionId String?             @db.Uuid
+  idempotencyKey      String              @unique
+  metadata            Json?
+  expiresAt           DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  package  CoinPackage      @relation(fields: [packageId], references: [id], onDelete: Restrict)
+  receipts PaymentReceipt[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([provider, providerTxnRef])
+  @@map("purchase_orders")
+}
+
+/// Payment Receipt verification record for IAP and Gateway Webhooks
+model PaymentReceipt {
+  id                 String          @id @default(uuid()) @db.Uuid
+  purchaseOrderId    String          @db.Uuid
+  provider           PaymentProvider
+  receiptData        String
+  signature          String?
+  providerTxnId      String?         @unique
+  isVerified         Boolean         @default(false)
+  verificationResult Json?
+  verifiedAt         DateTime?
+  createdAt          DateTime        @default(now())
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseOrderId])
+  @@map("payment_receipts")
+}
+
+/// Operational Audit Log for Purchase and Verification Events
+model PurchaseAudit {
+  id              String   @id @default(uuid()) @db.Uuid
+  purchaseOrderId String?  @db.Uuid
+  action          String
+  details         Json?
+  actorId         String?  @db.Uuid
+  createdAt       DateTime @default(now())
+
+  @@index([purchaseOrderId])
+  @@index([createdAt])
+  @@map("purchase_audits")
+}

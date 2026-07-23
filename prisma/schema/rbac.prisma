@@ -1,0 +1,202 @@
+// ============================================================
+// Soulzaa — RBAC & Authorization Domain Schema
+// Entities: Role, Permission, RolePermission, UserRole,
+//           RoleHierarchy, Country, State, Region, RoleScope,
+//           AuditLog
+// ============================================================
+
+enum ScopeType {
+  GLOBAL
+  COUNTRY
+  STATE
+  REGION
+}
+
+/// Dynamic platform system roles (SUPER_ADMIN, ADMIN, etc.)
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  displayName String?
+  description String?
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // ---- Relations ----
+  rolePermissions  RolePermission[]
+  userRoles        UserRole[]
+  parentHierarchies RoleHierarchy[]  @relation("ParentRole")
+  childHierarchies  RoleHierarchy[]  @relation("ChildRole")
+
+  @@map("roles")
+}
+
+/// Granular platform permission (code format: `resource:action` or `module.action`)
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  module      String
+  action      String
+  category    String   @default("SYSTEM")
+  displayName String?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // ---- Relations ----
+  rolePermissions RolePermission[]
+
+  @@index([module])
+  @@index([category])
+  @@map("permissions")
+}
+
+/// M:N Mapping between Role and Permission
+model RolePermission {
+  id           String     @id @default(uuid()) @db.Uuid
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  createdAt    DateTime   @default(now())
+
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+/// Assignment of a Role to a User account
+model UserRole {
+  id         String      @id @default(uuid()) @db.Uuid
+  userId     String      @db.Uuid
+  roleId     String      @db.Uuid
+  assignedBy String?     @db.Uuid
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  role       Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleScopes RoleScope[]
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+/// Data-driven DAG / tree role inheritance (parent inherits child permissions)
+model RoleHierarchy {
+  id           String   @id @default(uuid()) @db.Uuid
+  parentRoleId String   @db.Uuid
+  childRoleId  String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  parentRole   Role     @relation("ParentRole", fields: [parentRoleId], references: [id], onDelete: Cascade)
+  childRole    Role     @relation("ChildRole", fields: [childRoleId], references: [id], onDelete: Cascade)
+
+  @@unique([parentRoleId, childRoleId])
+  @@index([parentRoleId])
+  @@index([childRoleId])
+  @@map("role_hierarchies")
+}
+
+/// Geographic Country entity
+model Country {
+  id          String      @id @default(uuid()) @db.Uuid
+  code        String      @unique
+  name        String
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  states    State[]
+  roleScopes RoleScope[]
+
+  @@index([isActive])
+  @@map("countries")
+}
+
+/// Geographic State / Province entity
+model State {
+  id          String      @id @default(uuid()) @db.Uuid
+  countryId   String      @db.Uuid
+  code        String
+  name        String
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  country   Country     @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  regions   Region[]
+  roleScopes RoleScope[]
+
+  @@unique([countryId, code])
+  @@index([countryId])
+  @@index([isActive])
+  @@map("states")
+}
+
+/// Geographic Region / District entity
+model Region {
+  id          String      @id @default(uuid()) @db.Uuid
+  stateId     String      @db.Uuid
+  code        String
+  name        String
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  state     State       @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  roleScopes RoleScope[]
+
+  @@unique([stateId, code])
+  @@index([stateId])
+  @@index([isActive])
+  @@map("regions")
+}
+
+/// Geographic Scope assignment for operational user roles
+model RoleScope {
+  id         String    @id @default(uuid()) @db.Uuid
+  userRoleId String    @db.Uuid
+  scopeType  ScopeType
+  countryId  String?   @db.Uuid
+  stateId    String?   @db.Uuid
+  regionId   String?   @db.Uuid
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  userRole   UserRole  @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
+  country    Country?  @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  state      State?    @relation(fields: [stateId], references: [id], onDelete: SetNull)
+  region     Region?   @relation(fields: [regionId], references: [id], onDelete: SetNull)
+
+  @@index([userRoleId])
+  @@index([scopeType])
+  @@map("role_scopes")
+}
+
+/// Audit logging entity for platform privileged operations
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @db.Uuid
+  actorRole  String?
+  action     String
+  resource   String
+  resourceId String?
+  details    Json?
+  ipAddress  String?
+  userAgent  String?
+  status     String   @default("SUCCESS")
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([action])
+  @@index([resource, resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

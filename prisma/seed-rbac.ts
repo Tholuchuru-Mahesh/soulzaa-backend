@@ -1,0 +1,732 @@
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+const SYSTEM_ROLES = [
+  'SUPER_ADMIN',
+  'ADMIN',
+  'COUNTRY_MANAGER',
+  'OFFICIAL',
+  'MODERATOR',
+  'BUSINESS_DEVELOPMENT',
+  'AGENCY',
+  'COIN_SELLER',
+  'HOST',
+  'USER',
+];
+
+const DEFAULT_PERMISSIONS = [
+  {
+    code: 'user.view',
+    module: 'user',
+    action: 'view',
+    category: 'USER',
+    displayName: 'View Users',
+    description: 'Can view user profile details and list users',
+  },
+  {
+    code: 'user.update',
+    module: 'user',
+    action: 'update',
+    category: 'USER',
+    displayName: 'Update User',
+    description: 'Can update user profiles and account details',
+  },
+  {
+    code: 'user.ban',
+    module: 'user',
+    action: 'ban',
+    category: 'USER',
+    displayName: 'Ban User',
+    description: 'Can suspend or ban user accounts',
+  },
+  {
+    code: 'user.delete',
+    module: 'user',
+    action: 'delete',
+    category: 'USER',
+    displayName: 'Delete User',
+    description: 'Can soft or hard delete user accounts',
+  },
+  {
+    code: 'wallet.view',
+    module: 'wallet',
+    action: 'view',
+    category: 'WALLET',
+    displayName: 'View Wallet',
+    description: 'Can view wallet balances and transactions',
+  },
+  {
+    code: 'wallet.adjust',
+    module: 'wallet',
+    action: 'adjust',
+    category: 'WALLET',
+    displayName: 'Adjust Wallet',
+    description: 'Can credit/debit user balances manually',
+  },
+  {
+    code: 'room.create',
+    module: 'room',
+    action: 'create',
+    category: 'ROOM',
+    displayName: 'Create Room',
+    description: 'Can create audio/video rooms',
+  },
+  {
+    code: 'room.update',
+    module: 'room',
+    action: 'update',
+    category: 'ROOM',
+    displayName: 'Update Room',
+    description: 'Can update room settings and metadata',
+  },
+  {
+    code: 'room.close',
+    module: 'room',
+    action: 'close',
+    category: 'ROOM',
+    displayName: 'Close Room',
+    description: 'Can forcefully close audio/video rooms',
+  },
+  {
+    code: 'room.delete',
+    module: 'room',
+    action: 'delete',
+    category: 'ROOM',
+    displayName: 'Delete Room',
+    description: 'Can delete room records',
+  },
+  {
+    code: 'room.mute',
+    module: 'room',
+    action: 'mute',
+    category: 'ROOM',
+    displayName: 'Mute Room User',
+    description: 'Can mute users in audio/video rooms',
+  },
+  {
+    code: 'agency.create',
+    module: 'agency',
+    action: 'create',
+    category: 'AGENCY',
+    displayName: 'Create Agency',
+    description: 'Can create new host/talent agencies',
+  },
+  {
+    code: 'agency.approve',
+    module: 'agency',
+    action: 'approve',
+    category: 'AGENCY',
+    displayName: 'Approve Agency',
+    description: 'Can approve agency registration requests',
+  },
+  {
+    code: 'agency.reject',
+    module: 'agency',
+    action: 'reject',
+    category: 'AGENCY',
+    displayName: 'Reject Agency',
+    description: 'Can reject agency registration requests',
+  },
+  {
+    code: 'seller.approve',
+    module: 'seller',
+    action: 'approve',
+    category: 'COIN_SELLER',
+    displayName: 'Approve Coin Seller',
+    description: 'Can approve coin seller applications',
+  },
+  {
+    code: 'seller.reject',
+    module: 'seller',
+    action: 'reject',
+    category: 'COIN_SELLER',
+    displayName: 'Reject Coin Seller',
+    description: 'Can reject coin seller applications',
+  },
+  {
+    code: 'event.create',
+    module: 'event',
+    action: 'create',
+    category: 'EVENT',
+    displayName: 'Create Event',
+    description: 'Can create platform events',
+  },
+  {
+    code: 'event.publish',
+    module: 'event',
+    action: 'publish',
+    category: 'EVENT',
+    displayName: 'Publish Event',
+    description: 'Can publish scheduled events',
+  },
+  {
+    code: 'analytics.view',
+    module: 'analytics',
+    action: 'view',
+    category: 'ANALYTICS',
+    displayName: 'View Analytics',
+    description: 'Can view platform analytics and operational metrics',
+  },
+  {
+    code: 'gift.manage',
+    module: 'gift',
+    action: 'manage',
+    category: 'GIFTS',
+    displayName: 'Manage Gifts',
+    description: 'Can configure virtual gifts and pricing',
+  },
+  {
+    code: 'coin.manage',
+    module: 'coin',
+    action: 'manage',
+    category: 'COIN',
+    displayName: 'Manage Coins',
+    description: 'Can manage coin rates, packages, and distributions',
+  },
+  {
+    code: 'game.manage',
+    module: 'game',
+    action: 'manage',
+    category: 'GAME',
+    displayName: 'Manage Games',
+    description: 'Can configure platform mini-games and rules',
+  },
+  {
+    code: 'vip.manage',
+    module: 'vip',
+    action: 'manage',
+    category: 'VIP',
+    displayName: 'Manage VIP',
+    description: 'Can manage VIP tiers, perks, and subscriptions',
+  },
+  {
+    code: 'treasure.view',
+    module: 'treasure',
+    action: 'view',
+    category: 'TREASURE',
+    displayName: 'View Treasure Box',
+    description: 'Can view live treasure box status and progress',
+  },
+  {
+    code: 'treasure.history.view',
+    module: 'treasure',
+    action: 'history.view',
+    category: 'TREASURE',
+    displayName: 'View Treasure History',
+    description: 'Can view treasure session and reward history',
+  },
+  {
+    code: 'treasure.audit.view',
+    module: 'treasure',
+    action: 'audit.view',
+    category: 'TREASURE',
+    displayName: 'View Treasure Audit',
+    description: 'Can view treasure audit events',
+  },
+  {
+    code: 'treasure.configuration.manage',
+    module: 'treasure',
+    action: 'configuration.manage',
+    category: 'TREASURE',
+    displayName: 'Manage Treasure Configuration',
+    description: 'Can configure treasure box thresholds and reward pools',
+  },
+  {
+    code: 'revenue.view',
+    module: 'revenue',
+    action: 'view',
+    category: 'REVENUE',
+    displayName: 'View Revenue',
+    description: 'Can view host revenue summaries and statistics',
+  },
+  {
+    code: 'revenue.history.view',
+    module: 'revenue',
+    action: 'history.view',
+    category: 'REVENUE',
+    displayName: 'View Revenue History',
+    description: 'Can view revenue distribution history logs',
+  },
+  {
+    code: 'revenue.audit.view',
+    module: 'revenue',
+    action: 'audit.view',
+    category: 'REVENUE',
+    displayName: 'View Revenue Audit',
+    description: 'Can view revenue audit logs',
+  },
+  {
+    code: 'revenue.configuration.manage',
+    module: 'revenue',
+    action: 'configuration.manage',
+    category: 'REVENUE',
+    displayName: 'Manage Revenue Configuration',
+    description: 'Can configure revenue split percentages',
+  },
+  {
+    code: 'agency.settlement.view',
+    module: 'agency',
+    action: 'settlement.view',
+    category: 'AGENCY',
+    displayName: 'View Agency Settlement',
+    description: 'Can view agency settlement summaries and statistics',
+  },
+  {
+    code: 'agency.settlement.history.view',
+    module: 'agency',
+    action: 'settlement.history.view',
+    category: 'AGENCY',
+    displayName: 'View Agency Settlement History',
+    description: 'Can view agency settlement history logs',
+  },
+  {
+    code: 'agency.settlement.audit.view',
+    module: 'agency',
+    action: 'settlement.audit.view',
+    category: 'AGENCY',
+    displayName: 'View Agency Settlement Audit',
+    description: 'Can view agency settlement audit logs',
+  },
+  {
+    code: 'agency.settlement.configuration.manage',
+    module: 'agency',
+    action: 'settlement.configuration.manage',
+    category: 'AGENCY',
+    displayName: 'Manage Agency Settlement Configuration',
+    description: 'Can configure agency commission percentages',
+  },
+  {
+    code: 'coin_seller.settlement.view',
+    module: 'coin_seller',
+    action: 'settlement.view',
+    category: 'COIN_SELLER',
+    displayName: 'View Coin Seller Settlement',
+    description: 'Can view coin seller settlement summaries and statistics',
+  },
+  {
+    code: 'coin_seller.settlement.history.view',
+    module: 'coin_seller',
+    action: 'settlement.history.view',
+    category: 'COIN_SELLER',
+    displayName: 'View Coin Seller Settlement History',
+    description: 'Can view coin seller settlement history logs',
+  },
+  {
+    code: 'coin_seller.settlement.audit.view',
+    module: 'coin_seller',
+    action: 'settlement.audit.view',
+    category: 'COIN_SELLER',
+    displayName: 'View Coin Seller Settlement Audit',
+    description: 'Can view coin seller settlement audit logs',
+  },
+  {
+    code: 'coin_seller.settlement.configuration.manage',
+    module: 'coin_seller',
+    action: 'settlement.configuration.manage',
+    category: 'COIN_SELLER',
+    displayName: 'Manage Coin Seller Settlement Configuration',
+    description: 'Can configure coin seller commission percentages',
+  },
+  {
+    code: 'withdrawal.request',
+    module: 'withdrawal',
+    action: 'request',
+    category: 'WITHDRAWAL',
+    displayName: 'Request Withdrawal',
+    description: 'Can request withdrawal of eligible earnings',
+  },
+  {
+    code: 'withdrawal.view',
+    module: 'withdrawal',
+    action: 'view',
+    category: 'WITHDRAWAL',
+    displayName: 'View Withdrawal',
+    description: 'Can view withdrawal summaries and statistics',
+  },
+  {
+    code: 'withdrawal.history.view',
+    module: 'withdrawal',
+    action: 'history.view',
+    category: 'WITHDRAWAL',
+    displayName: 'View Withdrawal History',
+    description: 'Can view withdrawal history logs',
+  },
+  {
+    code: 'withdrawal.audit.view',
+    module: 'withdrawal',
+    action: 'audit.view',
+    category: 'WITHDRAWAL',
+    displayName: 'View Withdrawal Audit',
+    description: 'Can view withdrawal audit logs',
+  },
+  {
+    code: 'withdrawal.approve',
+    module: 'withdrawal',
+    action: 'approve',
+    category: 'WITHDRAWAL',
+    displayName: 'Approve Withdrawal',
+    description: 'Can review, approve, or reject withdrawal requests',
+  },
+  {
+    code: 'withdrawal.configuration.manage',
+    module: 'withdrawal',
+    action: 'configuration.manage',
+    category: 'WITHDRAWAL',
+    displayName: 'Manage Withdrawal Configuration',
+    description: 'Can configure withdrawal thresholds, limits, and fees',
+  },
+  {
+    code: 'family.create',
+    module: 'family',
+    action: 'create',
+    category: 'FAMILY',
+    displayName: 'Create Family',
+    description: 'Can create a new family community',
+  },
+  {
+    code: 'family.view',
+    module: 'family',
+    action: 'view',
+    category: 'FAMILY',
+    displayName: 'View Family',
+    description: 'Can view family details and statistics',
+  },
+  {
+    code: 'family.update',
+    module: 'family',
+    action: 'update',
+    category: 'FAMILY',
+    displayName: 'Update Family',
+    description: 'Can update family profile and announcements',
+  },
+  {
+    code: 'family.delete',
+    module: 'family',
+    action: 'delete',
+    category: 'FAMILY',
+    displayName: 'Delete Family',
+    description: 'Can delete or disband a family',
+  },
+  {
+    code: 'family.member.manage',
+    module: 'family',
+    action: 'member.manage',
+    category: 'FAMILY',
+    displayName: 'Manage Family Members',
+    description: 'Can invite, approve, kick, or ban family members',
+  },
+  {
+    code: 'family.role.manage',
+    module: 'family',
+    action: 'role.manage',
+    category: 'FAMILY',
+    displayName: 'Manage Family Roles',
+    description: 'Can promote, demote, or configure family roles',
+  },
+  {
+    code: 'family.audit.view',
+    module: 'family',
+    action: 'audit.view',
+    category: 'FAMILY',
+    displayName: 'View Family Audit',
+    description: 'Can view family audit event logs',
+  },
+  {
+    code: 'family.statistics.view',
+    module: 'family',
+    action: 'statistics.view',
+    category: 'FAMILY',
+    displayName: 'View Family Statistics',
+    description: 'Can view family growth and member statistics',
+  },
+  {
+    code: 'vip.view',
+    module: 'vip',
+    action: 'view',
+    category: 'VIP',
+    displayName: 'View VIP',
+    description: 'Can view VIP membership and active benefits',
+  },
+  {
+    code: 'vip.purchase',
+    module: 'vip',
+    action: 'purchase',
+    category: 'VIP',
+    displayName: 'Purchase VIP',
+    description: 'Can purchase or renew VIP membership subscriptions',
+  },
+  {
+    code: 'vip.manage',
+    module: 'vip',
+    action: 'manage',
+    category: 'VIP',
+    displayName: 'Manage VIP',
+    description: 'Can suspend, revoke, restore, or grant VIP memberships',
+  },
+  {
+    code: 'vip.configuration.manage',
+    module: 'vip',
+    action: 'configuration.manage',
+    category: 'VIP',
+    displayName: 'Manage VIP Configuration',
+    description: 'Can configure VIP tiers, benefits, and price settings',
+  },
+  {
+    code: 'vip.audit.view',
+    module: 'vip',
+    action: 'audit.view',
+    category: 'VIP',
+    displayName: 'View VIP Audit',
+    description: 'Can view VIP operational audit event logs',
+  },
+  {
+    code: 'vip.statistics.view',
+    module: 'vip',
+    action: 'statistics.view',
+    category: 'VIP',
+    displayName: 'View VIP Statistics',
+    description: 'Can view VIP sales and renewal statistics',
+  },
+  // Phase 13: Level & Experience Engine Permissions
+  {
+    code: 'level.view',
+    module: 'exp',
+    action: 'view',
+    category: 'LEVEL',
+    displayName: 'View User Level & EXP',
+    description: 'Can view user level, progress, and experience history',
+  },
+  {
+    code: 'level.manage',
+    module: 'exp',
+    action: 'manage',
+    category: 'LEVEL',
+    displayName: 'Manage User Levels & EXP',
+    description: 'Can award or deduct user EXP and trigger level recalculation',
+  },
+  {
+    code: 'level.configuration.manage',
+    module: 'exp',
+    action: 'configuration.manage',
+    category: 'LEVEL',
+    displayName: 'Manage Level Configuration',
+    description: 'Can configure level definitions, thresholds, and EXP sources',
+  },
+  {
+    code: 'level.audit.view',
+    module: 'exp',
+    action: 'audit.view',
+    category: 'LEVEL',
+    displayName: 'View Level Audit Logs',
+    description: 'Can view operational audit logs for level engine events',
+  },
+  {
+    code: 'level.statistics.view',
+    module: 'exp',
+    action: 'statistics.view',
+    category: 'LEVEL',
+    displayName: 'View Level Statistics',
+    description: 'Can view aggregated user progression and level statistics',
+  },
+];
+
+const DEFAULT_ROLE_HIERARCHY = [
+  { parent: 'SUPER_ADMIN', child: 'ADMIN' },
+  { parent: 'ADMIN', child: 'COUNTRY_MANAGER' },
+  { parent: 'ADMIN', child: 'BUSINESS_DEVELOPMENT' },
+  { parent: 'COUNTRY_MANAGER', child: 'OFFICIAL' },
+  { parent: 'OFFICIAL', child: 'MODERATOR' },
+  { parent: 'OFFICIAL', child: 'AGENCY' },
+  { parent: 'OFFICIAL', child: 'COIN_SELLER' },
+  { parent: 'MODERATOR', child: 'HOST' },
+  { parent: 'HOST', child: 'USER' },
+];
+
+const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
+  SUPER_ADMIN: ['*'],
+  ADMIN: [
+    'user.view',
+    'user.update',
+    'user.ban',
+    'user.delete',
+    'wallet.view',
+    'wallet.adjust',
+    'room.create',
+    'room.update',
+    'room.close',
+    'room.delete',
+    'room.mute',
+    'agency.create',
+    'agency.approve',
+    'agency.reject',
+    'seller.approve',
+    'seller.reject',
+    'event.create',
+    'event.publish',
+    'analytics.view',
+    'gift.manage',
+    'coin.manage',
+    'game.manage',
+    'vip.manage',
+    'level.view',
+    'level.manage',
+    'level.configuration.manage',
+    'level.audit.view',
+    'level.statistics.view',
+  ],
+  COUNTRY_MANAGER: [
+    'user.view',
+    'user.update',
+    'user.ban',
+    'wallet.view',
+    'room.create',
+    'room.update',
+    'room.close',
+    'room.mute',
+    'agency.create',
+    'agency.approve',
+    'agency.reject',
+    'seller.approve',
+    'seller.reject',
+    'event.create',
+    'event.publish',
+    'analytics.view',
+  ],
+  OFFICIAL: [
+    'user.view',
+    'user.update',
+    'user.ban',
+    'room.create',
+    'room.update',
+    'room.close',
+    'room.mute',
+    'agency.approve',
+    'agency.reject',
+    'seller.approve',
+    'seller.reject',
+    'event.create',
+  ],
+  MODERATOR: ['user.view', 'user.ban', 'room.update', 'room.close', 'room.mute'],
+  BUSINESS_DEVELOPMENT: [
+    'user.view',
+    'agency.create',
+    'agency.approve',
+    'seller.approve',
+    'analytics.view',
+  ],
+  AGENCY: ['user.view', 'room.create'],
+  COIN_SELLER: ['wallet.view'],
+  HOST: ['room.create', 'room.update'],
+  USER: ['room.create'],
+};
+
+async function main() {
+  console.log('Starting standalone RBAC seed script...');
+
+  const roleMap = new Map<string, string>();
+  for (const roleName of SYSTEM_ROLES) {
+    const role = await prisma.role.upsert({
+      where: { name: roleName },
+      create: {
+        name: roleName,
+        displayName: roleName.replace(/_/g, ' '),
+        description: `System defined ${roleName} role`,
+        isSystem: true,
+      },
+      update: { isSystem: true },
+    });
+    roleMap.set(roleName, role.id);
+  }
+  console.log(`Roles seeded: ${roleMap.size}`);
+
+  const permMap = new Map<string, string>();
+  for (const p of DEFAULT_PERMISSIONS) {
+    const perm = await prisma.permission.upsert({
+      where: { code: p.code },
+      create: {
+        code: p.code,
+        module: p.module,
+        action: p.action,
+        category: p.category || 'SYSTEM',
+        displayName: p.displayName,
+        description: p.description,
+      },
+      update: {
+        category: p.category || 'SYSTEM',
+        displayName: p.displayName,
+        description: p.description,
+      },
+    });
+    permMap.set(p.code, perm.id);
+  }
+  console.log(`Permissions seeded: ${permMap.size}`);
+
+  for (const [roleName, permCodes] of Object.entries(DEFAULT_ROLE_PERMISSIONS)) {
+    const roleId = roleMap.get(roleName);
+    if (!roleId) continue;
+
+    if (permCodes.includes('*')) {
+      for (const permId of permMap.values()) {
+        await prisma.rolePermission.upsert({
+          where: { roleId_permissionId: { roleId, permissionId: permId } },
+          create: { roleId, permissionId: permId },
+          update: {},
+        });
+      }
+    } else {
+      for (const code of permCodes) {
+        const permId = permMap.get(code);
+        if (!permId) continue;
+        await prisma.rolePermission.upsert({
+          where: { roleId_permissionId: { roleId, permissionId: permId } },
+          create: { roleId, permissionId: permId },
+          update: {},
+        });
+      }
+    }
+  }
+  console.log('Role-Permission mappings seeded.');
+
+  for (const edge of DEFAULT_ROLE_HIERARCHY) {
+    const parentRoleId = roleMap.get(edge.parent);
+    const childRoleId = roleMap.get(edge.child);
+    if (parentRoleId && childRoleId) {
+      await prisma.roleHierarchy.upsert({
+        where: { parentRoleId_childRoleId: { parentRoleId, childRoleId } },
+        create: { parentRoleId, childRoleId },
+        update: {},
+      });
+    }
+  }
+  console.log('Role hierarchy seeded.');
+
+  const country = await prisma.country.upsert({
+    where: { code: 'IN' },
+    create: { code: 'IN', name: 'India' },
+    update: { name: 'India' },
+  });
+
+  const state = await prisma.state.upsert({
+    where: { countryId_code: { countryId: country.id, code: 'KA' } },
+    create: { countryId: country.id, code: 'KA', name: 'Karnataka' },
+    update: { name: 'Karnataka' },
+  });
+
+  await prisma.region.upsert({
+    where: { stateId_code: { stateId: state.id, code: 'BLR' } },
+    create: { stateId: state.id, code: 'BLR', name: 'Bengaluru Region' },
+    update: { name: 'Bengaluru Region' },
+  });
+
+  console.log('Geographic reference data seeded successfully.');
+}
+
+main()
+  .catch((e) => {
+    console.error('Error during RBAC seed:', e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

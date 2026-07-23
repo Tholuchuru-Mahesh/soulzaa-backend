@@ -21,7 +21,7 @@ async function main() {
           country: 'IN',
           preferredLanguage: 'en',
           mobileVerifiedAt: new Date(),
-        }
+        },
       });
       await tx.userProfile.create({ data: { userId: u.id } });
       await tx.userStatistics.create({ data: { userId: u.id } });
@@ -44,14 +44,14 @@ async function main() {
         slug: 'chat',
         sortOrder: 1,
         isActive: true,
-      }
+      },
     });
   }
   console.log(`Using category: ${category.id} (${category.name})`);
 
   // 3. Check for live rooms
   const liveRooms = await prisma.audioRoom.findMany({
-    where: { status: 'LIVE' }
+    where: { status: 'LIVE' },
   });
 
   console.log(`Found ${liveRooms.length} live rooms in DB.`);
@@ -76,7 +76,7 @@ async function main() {
           status: 'LIVE',
           agoraChannel,
           zegoRoomId,
-        }
+        },
       });
 
       await tx.roomSettings.create({
@@ -84,7 +84,7 @@ async function main() {
           roomId: r.id,
           speakerSeatCount: 8,
           premiumAdminSeatCount: 0,
-        }
+        },
       });
 
       await tx.roomMember.create({
@@ -93,7 +93,7 @@ async function main() {
           userId: user.id,
           role: 'OWNER',
           isActive: true,
-        }
+        },
       });
 
       return r;

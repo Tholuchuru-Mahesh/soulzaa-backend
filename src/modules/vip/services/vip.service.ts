@@ -6,7 +6,8 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common';
-import { BackpackItemSource, VipConfig, VipLevel } from '@prisma/client';
+import { BackpackItemSource } from '@prisma/client';
+import { VipLevel } from 'src/common/enums/vip-level.enum';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { LockService } from 'src/infra/redis/lock.service';
@@ -37,7 +38,7 @@ const CONFIG_RELOAD_MS = 300_000;
 @Injectable()
 export class VipService implements IVipService, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(VipService.name);
-  private configs: VipConfig[] = [];
+  private configs: any[] = [];
   private timer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -139,7 +140,7 @@ export class VipService implements IVipService, OnModuleInit, OnModuleDestroy {
 
   // ---- Internals ----
 
-  private nextTier(level: VipLevel): VipConfig | null {
+  private nextTier(level: VipLevel): any | null {
     const ord = vipOrdinal(level);
     const higher = this.configs
       .filter((c) => vipOrdinal(c.level) > ord)

@@ -30,20 +30,26 @@ export const VIDEO_ROOM_GIFT_QUEUE_JOB = 'video-room.gift.deliver';
  * cheap gifts.
  */
 export const GIFT_CATEGORY_PRIORITY: Record<GiftCategory, number> = {
-  [GiftCategory.VIP_EXCLUSIVE]: 1,
+  [GiftCategory.VIP]: 1,
   [GiftCategory.LUXURY]: 1,
   [GiftCategory.PREMIUM]: 2,
-  [GiftCategory.EVENT]: 3,
-  [GiftCategory.STANDARD]: 4,
+  [GiftCategory.ANIMATED]: 2,
+  [GiftCategory.LIMITED_EDITION]: 2,
+  [GiftCategory.SPECIAL_EVENT]: 3,
+  [GiftCategory.FESTIVAL]: 3,
+  [GiftCategory.CLASSIC]: 4,
 };
 
 /** Delivery attempts per category before dead-lettering. */
 export const GIFT_CATEGORY_ATTEMPTS: Record<GiftCategory, number> = {
-  [GiftCategory.VIP_EXCLUSIVE]: 5,
+  [GiftCategory.VIP]: 5,
   [GiftCategory.LUXURY]: 5,
   [GiftCategory.PREMIUM]: 5,
-  [GiftCategory.EVENT]: 5,
-  [GiftCategory.STANDARD]: 3,
+  [GiftCategory.ANIMATED]: 5,
+  [GiftCategory.LIMITED_EDITION]: 5,
+  [GiftCategory.SPECIAL_EVENT]: 5,
+  [GiftCategory.FESTIVAL]: 5,
+  [GiftCategory.CLASSIC]: 3,
 };
 
 /** Exponential backoff base for delivery retries. */

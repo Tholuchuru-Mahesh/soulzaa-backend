@@ -7,7 +7,8 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { EventType, ExpSource, LevelConfig, RoomLevelConfig } from '@prisma/client';
+import { EventType } from '@prisma/client';
+import { ExpSource } from 'src/common/enums/exp-source.enum';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
@@ -40,8 +41,8 @@ const CONFIG_RELOAD_MS = 300_000;
 @Injectable()
 export class ExpService implements IExpService, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ExpService.name);
-  private userLevels: LevelConfig[] = [];
-  private roomLevels: RoomLevelConfig[] = [];
+  private userLevels: any[] = [];
+  private roomLevels: any[] = [];
   private timer: NodeJS.Timeout | null = null;
 
   private eventsRef: IEventsService | null = null;
@@ -82,7 +83,7 @@ export class ExpService implements IExpService, OnModuleInit, OnModuleDestroy {
 
   async reload(): Promise<void> {
     this.userLevels = await this.repo.listLevelConfigs();
-    this.roomLevels = await this.repo.listRoomLevelConfigs();
+    this.roomLevels = await this.repo.listLevelConfigs();
   }
 
   // ---- IExpService ----
@@ -152,8 +153,8 @@ export class ExpService implements IExpService, OnModuleInit, OnModuleDestroy {
   }): Promise<ExpAwardResult> {
     this.assertAmount(input.amount);
     return this.locks.withLock(roomExpLockKey(input.roomId), async () => {
-      if (await this.repo.findRoomLog(input.idempotencyKey)) {
-        const current = await this.repo.getRoomExp(input.roomId);
+      if (await this.repo.findUserLog(input.idempotencyKey)) {
+        const current = await this.repo.getUserExp(input.roomId);
         return {
           totalExp: Number(current?.totalExp ?? 0n),
           level: current?.level ?? 1,
@@ -164,15 +165,16 @@ export class ExpService implements IExpService, OnModuleInit, OnModuleDestroy {
       const multiplier = await this.doubleExpMultiplier();
       const effectiveAmount = input.amount * multiplier;
 
-      const current = await this.repo.getRoomExp(input.roomId);
+      const current = await this.repo.getUserExp(input.roomId);
       const oldLevel = current?.level ?? 1;
       const newTotal = (current?.totalExp ?? 0n) + BigInt(effectiveAmount);
       const newLevel = this.levelForExp(newTotal, this.roomLevels);
 
-      await this.repo.applyRoomExp({
-        roomId: input.roomId,
+      await this.repo.applyUserExp({
+        userId: input.roomId,
         amount: effectiveAmount,
         source: input.source,
+        referenceType: 'ROOM',
         referenceId: input.referenceId ?? null,
         idempotencyKey: input.idempotencyKey,
         newLevel,
@@ -230,7 +232,7 @@ export class ExpService implements IExpService, OnModuleInit, OnModuleDestroy {
   async getRoomExpView(
     roomId: string,
   ): Promise<{ roomId: string; totalExp: number; level: number }> {
-    const row = await this.repo.getRoomExp(roomId);
+    const row = await this.repo.getUserExp(roomId);
     return { roomId, totalExp: Number(row?.totalExp ?? 0n), level: row?.level ?? 1 };
   }
 

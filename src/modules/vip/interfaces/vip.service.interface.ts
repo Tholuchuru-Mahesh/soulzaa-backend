@@ -1,4 +1,4 @@
-import type { VipLevel } from '@prisma/client';
+import type { VipLevel } from 'src/common/enums/vip-level.enum';
 
 /**
  * Public contract for the VIP module — the ONLY surface other modules may

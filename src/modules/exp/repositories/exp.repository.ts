@@ -1,176 +1,150 @@
 import { Injectable } from '@nestjs/common';
-import {
-  ExpLog,
-  ExpSource,
-  LevelConfig,
-  Prisma,
-  RoomExp,
-  RoomLevelConfig,
-  UserExp,
-} from '@prisma/client';
-import { auditCreate, auditUpdate } from 'src/common/utils/audit.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 
-/**
- * Data layer for EXP & levels: the user/room EXP aggregates, the append-only
- * EXP ledgers, and the admin level configs. The award read-modify-write is done
- * transactionally in `applyUserExp`/`applyRoomExp`; the service serialises
- * callers per-user/room with a lock.
- */
 @Injectable()
 export class ExpRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ---- User EXP ----
-
-  getUserExp(userId: string): Promise<UserExp | null> {
-    return this.prisma.userExp.findUnique({ where: { userId } });
+  async getUserExp(userId: string) {
+    const ul = await this.prisma.userLevel.findUnique({ where: { userId } });
+    if (!ul) return null;
+    return {
+      userId: ul.userId,
+      totalExp: ul.lifetimeExp,
+      level: ul.currentLevel,
+      updatedAt: ul.updatedAt,
+    };
   }
 
-  findUserLog(idempotencyKey: string): Promise<ExpLog | null> {
-    return this.prisma.expLog.findUnique({ where: { idempotencyKey } });
+  async findUserLog(idempotencyKey: string) {
+    const h = await this.prisma.experienceHistory.findUnique({ where: { idempotencyKey } });
+    if (!h) return null;
+    return {
+      id: h.id,
+      userId: h.userId,
+      amount: h.amount,
+      source: h.sourceCode as any,
+      referenceType: h.referenceType,
+      referenceId: h.referenceId as any,
+      idempotencyKey: h.idempotencyKey,
+      totalAfter: h.totalExpAfter,
+      createdAt: h.createdAt,
+    };
   }
 
-  /** Apply a user EXP delta + ledger row atomically; returns the new total + level. */
-  applyUserExp(input: {
+  async applyUserExp(input: {
     userId: string;
     amount: number;
-    source: ExpSource;
+    source: any;
     referenceType: string | null;
     referenceId: string | null;
     idempotencyKey: string;
     newLevel: number;
-  }): Promise<UserExp> {
+  }) {
     return this.prisma.$transaction(async (tx) => {
-      const wallet = await tx.userExp.upsert({
+      const updated = await tx.userLevel.upsert({
         where: { userId: input.userId },
-        create: { userId: input.userId },
-        update: {},
+        create: {
+          userId: input.userId,
+          currentLevel: input.newLevel,
+          lifetimeExp: BigInt(input.amount),
+        },
+        update: {
+          currentLevel: input.newLevel,
+          lifetimeExp: { increment: BigInt(input.amount) },
+        },
       });
-      const totalAfter = wallet.totalExp + BigInt(input.amount);
-      const updated = await tx.userExp.update({
-        where: { userId: input.userId },
-        data: { totalExp: totalAfter, level: input.newLevel },
-      });
-      await tx.expLog.create({
+
+      await tx.experienceHistory.create({
         data: {
           userId: input.userId,
           amount: input.amount,
-          source: input.source,
+          sourceCode: String(input.source),
           referenceType: input.referenceType,
           referenceId: input.referenceId,
           idempotencyKey: input.idempotencyKey,
-          totalAfter,
+          previousLevel: 1,
+          newLevel: input.newLevel,
+          totalExpAfter: updated.lifetimeExp,
         },
       });
-      return updated;
+
+      return {
+        userId: updated.userId,
+        totalExp: updated.lifetimeExp,
+        level: updated.currentLevel,
+        updatedAt: updated.updatedAt,
+      };
     });
   }
 
-  listUserLogs(userId: string, skip: number, take: number): Promise<[ExpLog[], number]> {
-    const where: Prisma.ExpLogWhereInput = { userId };
-    return this.prisma.$transaction([
-      this.prisma.expLog.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
-      this.prisma.expLog.count({ where }),
+  async listUserLogs(userId: string, skip: number, take: number) {
+    const where = { userId };
+    const [histories, count] = await Promise.all([
+      this.prisma.experienceHistory.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
+      this.prisma.experienceHistory.count({ where }),
     ]);
+
+    const mapped = histories.map((h) => ({
+      id: h.id,
+      userId: h.userId,
+      amount: h.amount,
+      source: h.sourceCode as any,
+      referenceType: h.referenceType,
+      referenceId: h.referenceId as any,
+      idempotencyKey: h.idempotencyKey,
+      totalAfter: h.totalExpAfter,
+      createdAt: h.createdAt,
+    }));
+
+    return [mapped, count] as [any[], number];
   }
 
-  // ---- Room EXP ----
-
-  getRoomExp(roomId: string): Promise<RoomExp | null> {
-    return this.prisma.roomExp.findUnique({ where: { roomId } });
+  async listLevelConfigs() {
+    const defs = await this.prisma.levelDefinition.findMany({ orderBy: { level: 'asc' } });
+    return defs.map((d) => ({
+      level: d.level,
+      minExp: d.requiredExp,
+      title: d.title,
+      rewards: [],
+      createdBy: null,
+      updatedBy: null,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
+    }));
   }
 
-  findRoomLog(idempotencyKey: string): Promise<{ id: string } | null> {
-    return this.prisma.roomExpLog.findUnique({
-      where: { idempotencyKey },
-      select: { id: true },
-    });
-  }
-
-  applyRoomExp(input: {
-    roomId: string;
-    amount: number;
-    source: ExpSource;
-    referenceId: string | null;
-    idempotencyKey: string;
-    newLevel: number;
-  }): Promise<RoomExp> {
-    return this.prisma.$transaction(async (tx) => {
-      const row = await tx.roomExp.upsert({
-        where: { roomId: input.roomId },
-        create: { roomId: input.roomId },
-        update: {},
-      });
-      const totalAfter = row.totalExp + BigInt(input.amount);
-      const updated = await tx.roomExp.update({
-        where: { roomId: input.roomId },
-        data: { totalExp: totalAfter, level: input.newLevel },
-      });
-      await tx.roomExpLog.create({
-        data: {
-          roomId: input.roomId,
-          amount: input.amount,
-          source: input.source,
-          referenceId: input.referenceId,
-          idempotencyKey: input.idempotencyKey,
-          totalAfter,
-        },
-      });
-      return updated;
-    });
-  }
-
-  // ---- Level configs ----
-
-  listLevelConfigs(): Promise<LevelConfig[]> {
-    return this.prisma.levelConfig.findMany({ orderBy: { level: 'asc' } });
-  }
-
-  listRoomLevelConfigs(): Promise<RoomLevelConfig[]> {
-    return this.prisma.roomLevelConfig.findMany({ orderBy: { level: 'asc' } });
-  }
-
-  upsertLevelConfig(
+  async upsertLevelConfig(
     level: number,
-    data: { minExp: bigint; title: string | null; rewards: Prisma.InputJsonValue },
-    actorId: string,
-  ): Promise<LevelConfig> {
-    return this.prisma.levelConfig.upsert({
+    data: { minExp: bigint; title: string | null; rewards: any },
+    _actorId: string,
+  ) {
+    const def = await this.prisma.levelDefinition.upsert({
       where: { level },
-      create: { level, ...data, ...auditCreate(actorId) },
-      update: { ...data, ...auditUpdate(actorId) },
+      update: { requiredExp: data.minExp, title: data.title },
+      create: { level, requiredExp: data.minExp, title: data.title },
     });
-  }
-
-  upsertRoomLevelConfig(
-    level: number,
-    data: { minExp: bigint; title: string | null },
-    actorId: string,
-  ): Promise<RoomLevelConfig> {
-    return this.prisma.roomLevelConfig.upsert({
-      where: { level },
-      create: { level, ...data, ...auditCreate(actorId) },
-      update: { ...data, ...auditUpdate(actorId) },
-    });
+    return {
+      level: def.level,
+      minExp: def.requiredExp,
+      title: def.title,
+      rewards: [],
+      createdBy: null,
+      updatedBy: null,
+      createdAt: def.createdAt,
+      updatedAt: def.updatedAt,
+    };
   }
 
   async seedLevelConfig(
     level: number,
     minExp: bigint,
     title: string,
-    rewards: Prisma.InputJsonValue,
+    _rewards: any,
   ): Promise<boolean> {
-    const exists = await this.prisma.levelConfig.count({ where: { level } });
+    const exists = await this.prisma.levelDefinition.count({ where: { level } });
     if (exists > 0) return false;
-    await this.prisma.levelConfig.create({ data: { level, minExp, title, rewards } });
-    return true;
-  }
-
-  async seedRoomLevelConfig(level: number, minExp: bigint, title: string): Promise<boolean> {
-    const exists = await this.prisma.roomLevelConfig.count({ where: { level } });
-    if (exists > 0) return false;
-    await this.prisma.roomLevelConfig.create({ data: { level, minExp, title } });
+    await this.prisma.levelDefinition.create({ data: { level, requiredExp: minExp, title } });
     return true;
   }
 }

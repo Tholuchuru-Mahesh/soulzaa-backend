@@ -68,15 +68,18 @@ export class RewardDistributor {
       if (!userId) continue; // no contributor at this rank → reward unclaimed
 
       if (reward.kind === 'COINS' && reward.coins && reward.coins > 0) {
-        const res = await this.wallet.credit({
-          userId,
-          currency: WalletCurrency.GOLD,
-          amount: reward.coins,
-          reason: input.walletReason,
-          idempotencyKey: `${input.idempotencyPrefix}:r${reward.rank}:coins`,
-          referenceType: input.referenceType,
-          referenceId: input.referenceId,
-        }, tx);
+        const res = await this.wallet.credit(
+          {
+            userId,
+            currency: WalletCurrency.GOLD,
+            amount: reward.coins,
+            reason: input.walletReason,
+            idempotencyKey: `${input.idempotencyPrefix}:r${reward.rank}:coins`,
+            referenceType: input.referenceType,
+            referenceId: input.referenceId,
+          },
+          tx,
+        );
         distributed.push({
           userId,
           rank: reward.rank,
@@ -88,16 +91,19 @@ export class RewardDistributor {
           backpackItemId: null,
         });
       } else if (reward.kind === 'BACKPACK_ITEM' && reward.itemType && reward.itemName) {
-        const res = await this.backpack.grant({
-          userId,
-          type: reward.itemType as BackpackItemType,
-          name: reward.itemName,
-          source: input.backpackSource,
-          refId: reward.itemRefId,
-          transferable: reward.transferable ?? false,
-          grantKey: `${input.idempotencyPrefix}:r${reward.rank}:item`,
-          metadata: { referenceType: input.referenceType, referenceId: input.referenceId },
-        }, tx);
+        const res = await this.backpack.grant(
+          {
+            userId,
+            type: reward.itemType as BackpackItemType,
+            name: reward.itemName,
+            source: input.backpackSource,
+            refId: reward.itemRefId,
+            transferable: reward.transferable ?? false,
+            grantKey: `${input.idempotencyPrefix}:r${reward.rank}:item`,
+            metadata: { referenceType: input.referenceType, referenceId: input.referenceId },
+          },
+          tx,
+        );
         distributed.push({
           userId,
           rank: reward.rank,

@@ -123,7 +123,10 @@ export class TreasureService implements ITreasureBoxesService {
       }
 
       // Check if session was already completed TODAY
-      const completedToday = await this.repo.getLatestCompletedSessionCreatedAfter(roomId, todayStart);
+      const completedToday = await this.repo.getLatestCompletedSessionCreatedAfter(
+        roomId,
+        todayStart,
+      );
       if (completedToday) {
         return null; // All 5 boxes for today completed
       }
@@ -135,7 +138,9 @@ export class TreasureService implements ITreasureBoxesService {
       const configs = await this.repo.listEnabledConfigs();
       const byLevel = new Map(configs.map((c) => [c.level, c]));
       if (byLevel.size < TREASURE_BOX_COUNT) {
-        this.logger.warn(`Cannot auto-start treasure session for room ${roomId}: configs incomplete`);
+        this.logger.warn(
+          `Cannot auto-start treasure session for room ${roomId}: configs incomplete`,
+        );
         return null;
       }
 
@@ -370,14 +375,17 @@ export class TreasureService implements ITreasureBoxesService {
         const added = remainingToContribute >= needed ? needed : remainingToContribute;
 
         // Record contribution
-        await this.repo.addContribution({
-          boxId: box.id,
-          sessionId: session.id,
-          roomId,
-          userId: senderId,
-          amount: added,
-          giftTxnId,
-        }, tx);
+        await this.repo.addContribution(
+          {
+            boxId: box.id,
+            sessionId: session.id,
+            roomId,
+            userId: senderId,
+            amount: added,
+            giftTxnId,
+          },
+          tx,
+        );
 
         // Update progress
         const updatedBox = await tx.treasureBox.update({
@@ -439,15 +447,18 @@ export class TreasureService implements ITreasureBoxesService {
     const cfg = await tx.treasureBoxConfig.findUnique({ where: { level: box.level } });
     const rewards = (cfg?.rewards as unknown as RewardEntry[]) ?? [];
 
-    const distributed = await this.distributor.distribute({
-      recipients: topGifters.map((g) => ({ rank: g.rank, userId: g.userId })),
-      rewards,
-      idempotencyPrefix: `treasure:${box.id}`,
-      walletReason: WalletTxnReason.TREASURE_BOX,
-      backpackSource: BackpackItemSource.TREASURE_BOX,
-      referenceType: 'treasure_box',
-      referenceId: box.id,
-    }, tx);
+    const distributed = await this.distributor.distribute(
+      {
+        recipients: topGifters.map((g) => ({ rank: g.rank, userId: g.userId })),
+        rewards,
+        idempotencyPrefix: `treasure:${box.id}`,
+        walletReason: WalletTxnReason.TREASURE_BOX,
+        backpackSource: BackpackItemSource.TREASURE_BOX,
+        referenceType: 'treasure_box',
+        referenceId: box.id,
+      },
+      tx,
+    );
 
     for (const d of distributed) {
       await tx.treasureReward.create({
@@ -476,8 +487,6 @@ export class TreasureService implements ITreasureBoxesService {
         topGifters: topGifters as unknown as Prisma.InputJsonValue,
       },
     });
-
-
 
     const nextLevel = box.level + 1;
     const completed = nextLevel > TREASURE_BOX_COUNT;
@@ -529,9 +538,7 @@ export class TreasureService implements ITreasureBoxesService {
     );
 
     if (completed) {
-      events.push(
-        new TreasureSessionCompletedEvent({ roomId: box.roomId, sessionId: session.id }),
-      );
+      events.push(new TreasureSessionCompletedEvent({ roomId: box.roomId, sessionId: session.id }));
     }
 
     return { events, postCommit };
@@ -637,7 +644,10 @@ export class TreasureService implements ITreasureBoxesService {
     if (!session) {
       const todayStart = new Date();
       todayStart.setUTCHours(0, 0, 0, 0);
-      const completedToday = await this.repo.getLatestCompletedSessionCreatedAfter(roomId, todayStart);
+      const completedToday = await this.repo.getLatestCompletedSessionCreatedAfter(
+        roomId,
+        todayStart,
+      );
       if (completedToday) {
         const boxes = await this.repo.listBoxes(completedToday.id);
         return {
@@ -715,8 +725,6 @@ export class TreasureService implements ITreasureBoxesService {
     }
 
     await this.repo.openBox(box.id, topGifters as unknown as Prisma.InputJsonValue);
-
-
 
     const nextLevel = box.level + 1;
     const completed = nextLevel > TREASURE_BOX_COUNT;

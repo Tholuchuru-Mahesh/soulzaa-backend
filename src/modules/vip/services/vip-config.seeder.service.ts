@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
-import { CosmeticRarity, CosmeticType, Prisma, VipLevel } from '@prisma/client';
+import { CosmeticRarity, CosmeticType, Prisma } from '@prisma/client';
+import { VipLevel } from 'src/common/enums/vip-level.enum';
 import {
   COSMETICS_SERVICE,
   type ICosmeticsService,

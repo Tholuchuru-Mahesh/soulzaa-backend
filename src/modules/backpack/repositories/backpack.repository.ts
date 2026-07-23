@@ -37,7 +37,10 @@ export class BackpackRepository {
     return count > 0;
   }
 
-  create(data: Prisma.BackpackItemUncheckedCreateInput, tx?: Prisma.TransactionClient): Promise<BackpackItem> {
+  create(
+    data: Prisma.BackpackItemUncheckedCreateInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BackpackItem> {
     const client = tx || this.prisma;
     return client.backpackItem.create({ data });
   }

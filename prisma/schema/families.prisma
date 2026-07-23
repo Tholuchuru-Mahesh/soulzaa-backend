@@ -1,76 +1,167 @@
 // ============================================================
-// Families (Guilds) — families, members, roles, join requests, logs
-// Owned by the "families" module.
-// No cross-module relations — reference other domains by id.
+// Soulzaa — Enterprise Family System Schema
+// Entities: Family, FamilyMember, FamilyRole, FamilyInvitation, FamilyJoinRequest, FamilyBan, FamilyHistory, FamilyAudit, FamilyStatistics, FamilyConfiguration
 // ============================================================
 
-enum FamilyRole {
-  LEADER
-  CO_LEADER
-  ELDER
-  MEMBER
-}
-
-enum FamilyRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
+/// Enterprise Family Entity
 model Family {
-  id          String    @id @default(uuid()) @db.Uuid
-  name        String    @unique
-  description String?
-  logoKey     String?
-  leaderId    String    @db.Uuid
-  level       Int       @default(1)
-  exp         BigInt    @default(0)
-  memberCount Int       @default(1)
-  maxMembers  Int       @default(100)
-  autoAccept  Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String   @unique
+  tag                String   @unique
+  badge              String?
+  logo               String?
+  banner             String?
+  description        String?
+  country            String   @default("GLOBAL")
+  language           String   @default("en")
+  category           String   @default("GENERAL")
+  founderId          String   @db.Uuid
+  status             String   @default("ACTIVE")
+  isVerified         Boolean  @default(false)
+  privacy            String   @default("PUBLIC")
+  announcement       String?
+  welcomeMessage     String?
+  level              Int      @default(1)
+  exp                BigInt   @default(0)
+  coins              BigInt   @default(0)
+  score              BigInt   @default(0)
+  reputation         BigInt   @default(0)
+  memberCount        Int      @default(1)
+  maxMembers         Int      @default(100)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  @@index([leaderId])
+  @@index([founderId])
+  @@index([status])
+  @@index([tag])
   @@map("families")
 }
 
+/// Family Membership
 model FamilyMember {
-  id                 String     @id @default(uuid()) @db.Uuid
-  familyId           String     @db.Uuid
-  userId             String     @unique @db.Uuid // A user can only belong to one family at a time
-  role               FamilyRole @default(MEMBER)
-  contributionPoints Int        @default(0)
-  joinedAt           DateTime   @default(now())
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  id               String   @id @default(uuid()) @db.Uuid
+  familyId         String   @db.Uuid
+  userId           String   @unique @db.Uuid
+  role             String   @default("MEMBER")
+  expContribution  BigInt   @default(0)
+  coinContribution BigInt   @default(0)
+  joinedAt         DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  @@index([familyId])
+  @@index([familyId, role])
+  @@index([userId])
   @@map("family_members")
 }
 
+/// Configurable Family Role & Permission Definition
+model FamilyRole {
+  id          String   @id @default(uuid()) @db.Uuid
+  familyId    String?  @db.Uuid
+  name        String
+  rank        Int      @default(1)
+  permissions Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([familyId, name])
+  @@map("family_roles")
+}
+
+/// Family Member Invitations
+model FamilyInvitation {
+  id        String   @id @default(uuid()) @db.Uuid
+  familyId  String   @db.Uuid
+  inviterId String   @db.Uuid
+  inviteeId String   @db.Uuid
+  status    String   @default("PENDING")
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inviteeId, status])
+  @@index([familyId])
+  @@map("family_invitations")
+}
+
+/// Family Join Requests
 model FamilyJoinRequest {
-  id        String              @id @default(uuid()) @db.Uuid
-  familyId  String              @db.Uuid
-  userId    String              @db.Uuid
-  status    FamilyRequestStatus @default(PENDING)
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  id         String   @id @default(uuid()) @db.Uuid
+  familyId   String   @db.Uuid
+  userId     String   @db.Uuid
+  status     String   @default("PENDING")
+  reviewerId String?  @db.Uuid
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([familyId, status])
   @@index([userId, status])
   @@map("family_join_requests")
 }
 
-model FamilyLog {
+/// Family Blacklist / Banned Members
+model FamilyBan {
+  id         String   @id @default(uuid()) @db.Uuid
+  familyId   String   @db.Uuid
+  userId     String   @db.Uuid
+  bannedById String   @db.Uuid
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@unique([familyId, userId])
+  @@map("family_bans")
+}
+
+/// Family Activity & Member State Transition History
+model FamilyHistory {
   id        String   @id @default(uuid()) @db.Uuid
   familyId  String   @db.Uuid
-  userId    String   @db.Uuid // Actor ID
-  action    String // E.g., "CREATE", "JOIN", "LEAVE", "KICK", "PROMOTE", "DEMOTE", "EDIT_PROFILE"
-  metadata  Json?
+  userId    String?  @db.Uuid
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([familyId, createdAt])
+  @@map("family_histories")
+}
+
+/// Operational Audit Log for Family Engine Events
+model FamilyAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  familyId  String?  @db.Uuid
+  userId    String?  @db.Uuid
+  action    String
+  details   Json?
+  actorId   String?  @db.Uuid
   createdAt DateTime @default(now())
 
   @@index([familyId])
-  @@map("family_logs")
+  @@index([createdAt])
+  @@map("family_audits")
+}
+
+/// Pre-aggregated statistics for families
+model FamilyStatistics {
+  id                 String   @id @default(uuid()) @db.Uuid
+  familyId           String   @db.Uuid
+  period             String   @default("DAILY")
+  dateKey            String
+  activeMembersCount Int      @default(0)
+  expGained          BigInt   @default(0)
+  coinsContributed   BigInt   @default(0)
+  updatedAt          DateTime @updatedAt
+
+  @@unique([familyId, period, dateKey])
+  @@index([familyId, period])
+  @@map("family_statistics")
+}
+
+/// Dynamic Family Configuration Parameters
+model FamilyConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("family_configurations")
 }

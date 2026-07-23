@@ -1,102 +1,108 @@
 // ============================================================
-// EXP & Levels (AR-7) — user and room experience points, immutable
-// EXP ledgers, and the level threshold + reward configs. Owned by the
-// "exp" module. EXP accrues from gifts/room activity (consumed from
-// domain events) and admin awards; crossing a level threshold grants
-// the configured rewards (free coins + cosmetics via the backpack).
-// No cross-module relations — reference users/rooms by id.
+// Soulzaa — Enterprise Level & Experience Engine Schema
+// Entities: UserLevel, LevelDefinition, ExperienceSource, ExperienceHistory, LevelStatistics, LevelAudit, LevelConfiguration
 // ============================================================
 
-/// Where an EXP award came from (PRD EXP sources).
-enum ExpSource {
-  DAILY_LOGIN
-  GIFT_SENT
-  GIFT_RECEIVED
-  ROOM_JOIN
-  LIVE_STREAM
-  GAME
-  EVENT
-  TASK
-  ADMIN
+/// User Level & EXP Aggregate
+model UserLevel {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @unique @db.Uuid
+  currentLevel Int      @default(1)
+  lifetimeExp  BigInt   @default(0)
+  dailyExp     BigInt   @default(0)
+  weeklyExp    BigInt   @default(0)
+  monthlyExp   BigInt   @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([currentLevel])
+  @@index([lifetimeExp])
+  @@map("user_levels")
 }
 
-/// A user's aggregate EXP + current level (denormalised for fast reads).
-model UserExp {
-  userId    String   @id @db.Uuid
-  totalExp  BigInt   @default(0)
-  level     Int      @default(1)
+/// Level Threshold & Title Definition
+model LevelDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  level       Int      @unique
+  title       String?
+  requiredExp BigInt   @default(0)
+  icon        String?
+  badgeUrl    String?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("level_definitions")
+}
+
+/// Configurable Experience Award Source
+model ExperienceSource {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  baseExp   Int      @default(10)
+  dailyCap  Int      @default(0)
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("user_exp")
+  @@map("experience_sources")
 }
 
-/// Append-only, immutable ledger of every user EXP award. `idempotencyKey` makes
-/// awarding exactly-once (a replayed event maps to the same row).
-model ExpLog {
-  id             String    @id @default(uuid()) @db.Uuid
-  userId         String    @db.Uuid
+/// Immutable Experience Transaction & Replay Protection Ledger
+model ExperienceHistory {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
   amount         Int
-  source         ExpSource
+  sourceCode     String
+  idempotencyKey String   @unique
   referenceType  String?
-  referenceId    String?   @db.Uuid
-  idempotencyKey String    @unique
-  totalAfter     BigInt
-  createdAt      DateTime  @default(now())
+  referenceId    String?
+  previousLevel  Int
+  newLevel       Int
+  totalExpAfter  BigInt
+  createdAt      DateTime @default(now())
 
   @@index([userId, createdAt])
-  @@map("exp_logs")
+  @@index([sourceCode])
+  @@map("experience_histories")
 }
 
-/// Admin-managed user level ladder. `minExp` is the cumulative EXP to reach the
-/// level; `rewards` is a JSON array of `{ kind, coins?, currency?, cosmeticId? }`
-/// granted on reaching it.
-model LevelConfig {
-  level     Int      @id
-  minExp    BigInt
-  title     String?
-  rewards   Json     @default("[]")
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
+/// Pre-aggregated Level & EXP Statistics
+model LevelStatistics {
+  id               String   @id @default(uuid()) @db.Uuid
+  period           String   @default("DAILY")
+  dateKey          String
+  totalExpGranted  BigInt   @default(0)
+  levelUpsCount    Int      @default(0)
+  activeUsersCount Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  @@unique([period, dateKey])
+  @@map("level_statistics")
+}
+
+/// Operational Audit Log for Level Engine Events
+model LevelAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  actorId   String?  @db.Uuid
+  action    String
+  details   Json?
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  @@map("level_configs")
+  @@index([userId])
+  @@index([createdAt])
+  @@map("level_audits")
 }
 
-/// A room's aggregate EXP + current level (room progression).
-model RoomExp {
-  roomId    String   @id @db.Uuid
-  totalExp  BigInt   @default(0)
-  level     Int      @default(1)
+/// Dynamic Level & Experience Configuration Parameters
+model LevelConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
   updatedAt DateTime @updatedAt
 
-  @@map("room_exp")
-}
-
-/// Append-only ledger of room EXP awards.
-model RoomExpLog {
-  id             String    @id @default(uuid()) @db.Uuid
-  roomId         String    @db.Uuid
-  amount         Int
-  source         ExpSource
-  referenceId    String?   @db.Uuid
-  idempotencyKey String    @unique
-  totalAfter     BigInt
-  createdAt      DateTime  @default(now())
-
-  @@index([roomId, createdAt])
-  @@map("room_exp_logs")
-}
-
-/// Admin-managed room level ladder (thresholds + optional title/perks).
-model RoomLevelConfig {
-  level     Int      @id
-  minExp    BigInt
-  title     String?
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("room_level_configs")
+  @@map("level_configurations")
 }

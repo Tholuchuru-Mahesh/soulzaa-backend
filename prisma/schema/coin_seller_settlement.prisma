@@ -1,0 +1,105 @@
+// ============================================================
+// Soulzaa — Enterprise Coin Seller Settlement Schema
+// Entities: CoinSellerRelationship, CoinSellerSettlement, CoinSellerCommission, CoinSellerHistory, CoinSellerAudit, CoinSellerStatistics, CoinSellerConfiguration
+// ============================================================
+
+/// Active mapping relationship between Coin Seller and Buyer
+model CoinSellerRelationship {
+  id            String    @id @default(uuid()) @db.Uuid
+  sellerId      String    @db.Uuid
+  buyerId       String    @db.Uuid
+  status        String    @default("ACTIVE")
+  effectiveFrom DateTime  @default(now())
+  effectiveUntil DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([sellerId, buyerId])
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@map("coin_seller_relationships")
+}
+
+/// Immutable master record of every coin seller commission calculation & settlement
+model CoinSellerSettlement {
+  id                    String   @id @default(uuid()) @db.Uuid
+  purchaseTxnId         String   @unique
+  sellerId              String   @db.Uuid
+  buyerId               String   @db.Uuid
+  purchaseAmountCoins   BigInt
+  commissionPercentage  Float    @default(5.0)
+  sellerCommissionCoins BigInt
+  walletTxnId           String?  @db.Uuid
+  status                String   @default("COMPLETED")
+  createdAt             DateTime @default(now())
+
+  @@index([sellerId, createdAt])
+  @@index([buyerId, createdAt])
+  @@map("coin_seller_settlements")
+}
+
+/// Granular commission record linked to settlement
+model CoinSellerCommission {
+  id           String   @id @default(uuid()) @db.Uuid
+  settlementId String   @unique @db.Uuid
+  sellerId     String   @db.Uuid
+  buyerId       String   @db.Uuid
+  amount       BigInt
+  createdAt    DateTime @default(now())
+
+  @@index([sellerId])
+  @@map("coin_seller_commissions")
+}
+
+/// Granular history ledger of coin seller settlements
+model CoinSellerHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  sellerId   String   @db.Uuid
+  buyerId    String   @db.Uuid
+  amount     BigInt
+  sourceType String   @default("COIN_PURCHASE")
+  createdAt  DateTime @default(now())
+
+  @@index([sellerId, createdAt])
+  @@map("coin_seller_histories")
+}
+
+/// Operational Audit Log for Coin Seller Events
+model CoinSellerAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  sellerId  String?  @db.Uuid
+  buyerId   String?  @db.Uuid
+  action    String
+  details   Json?
+  actorId   String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([sellerId])
+  @@index([createdAt])
+  @@map("coin_seller_audits")
+}
+
+/// Pre-aggregated daily, weekly, monthly, lifetime statistics for coin sellers
+model CoinSellerStatistics {
+  id                   String   @id @default(uuid()) @db.Uuid
+  sellerId             String   @db.Uuid
+  period               String   @default("DAILY")
+  dateKey              String
+  totalCommissionCoins BigInt   @default(0)
+  settlementCount      Int      @default(0)
+  updatedAt            DateTime @updatedAt
+
+  @@unique([sellerId, period, dateKey])
+  @@index([sellerId, period])
+  @@map("coin_seller_statistics")
+}
+
+/// Dynamic Coin Seller Configuration Parameters
+model CoinSellerConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("coin_seller_configurations")
+}

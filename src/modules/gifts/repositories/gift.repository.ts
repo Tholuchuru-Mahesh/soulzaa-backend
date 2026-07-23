@@ -94,7 +94,10 @@ export class GiftRepository {
 
   // ---- Gift ledger (immutable) ----
 
-  findTxnByIdempotencyKey(idempotencyKey: string, tx?: Prisma.TransactionClient): Promise<GiftTransaction | null> {
+  findTxnByIdempotencyKey(
+    idempotencyKey: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<GiftTransaction | null> {
     const client = tx || this.prisma;
     return client.giftTransaction.findUnique({ where: { idempotencyKey } });
   }

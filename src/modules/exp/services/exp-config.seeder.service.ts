@@ -83,10 +83,11 @@ export class ExpConfigSeeder implements OnApplicationBootstrap {
       [5, 100_000],
     ];
     for (const [level, minExp] of roomLevels) {
-      const inserted = await this.repo.seedRoomLevelConfig(
+      const inserted = await this.repo.seedLevelConfig(
         level,
         BigInt(minExp),
         `Room Level ${level}`,
+        [],
       );
       if (inserted) created += 1;
     }

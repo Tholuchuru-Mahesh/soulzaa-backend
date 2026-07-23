@@ -14,7 +14,9 @@ enum Gender {
 
 enum AccountStatus {
   ACTIVE
+  INACTIVE
   SUSPENDED
+  LOCKED
   BANNED
   DELETED
 }

@@ -1,0 +1,89 @@
+// ============================================================
+// Soulzaa — Enterprise Host Earnings & Revenue Distribution Schema
+// Entities: RevenueDistribution, HostEarnings, RevenueHistory, RevenueAudit, RevenueStatistics, RevenueConfiguration
+// ============================================================
+
+/// Immutable master record of every revenue calculation and host earnings payout
+model RevenueDistribution {
+  id                    String   @id @default(uuid()) @db.Uuid
+  giftTxnId             String   @unique @db.Uuid
+  contextType           String   @default("AUDIO_ROOM")
+  contextId             String   @db.Uuid
+  hostId                String   @db.Uuid
+  totalCoinValue        BigInt
+  hostPercentage        Float    @default(50.0)
+  platformPercentage    Float    @default(50.0)
+  hostEarningsCoins     BigInt
+  platformEarningsCoins BigInt
+  walletTxnId           String?  @db.Uuid
+  createdAt             DateTime @default(now())
+
+  @@index([hostId, createdAt])
+  @@index([contextId, createdAt])
+  @@map("revenue_distributions")
+}
+
+/// Cumulative host earnings accumulator
+model HostEarnings {
+  id               String   @id @default(uuid()) @db.Uuid
+  hostId           String   @unique @db.Uuid
+  totalEarnedCoins BigInt   @default(0)
+  totalGiftCount   Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  @@map("host_earnings")
+}
+
+/// Granular history log of revenue payouts
+model RevenueHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  hostId     String   @db.Uuid
+  contextId  String?  @db.Uuid
+  amount     BigInt
+  sourceType String   @default("GIFT")
+  createdAt  DateTime @default(now())
+
+  @@index([hostId, createdAt])
+  @@map("revenue_histories")
+}
+
+/// Operational Audit Log for Revenue Events
+model RevenueAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  hostId    String?  @db.Uuid
+  action    String
+  details   Json?
+  actorId   String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([hostId])
+  @@index([createdAt])
+  @@map("revenue_audits")
+}
+
+/// Aggregated revenue statistics per host & room
+model RevenueStatistics {
+  id         String   @id @default(uuid()) @db.Uuid
+  hostId     String   @db.Uuid
+  roomId     String?  @db.Uuid
+  period     String   @default("DAILY")
+  dateKey    String
+  totalCoins BigInt   @default(0)
+  giftCount  Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([hostId, period, dateKey])
+  @@index([hostId, period])
+  @@index([roomId, period])
+  @@map("revenue_statistics")
+}
+
+/// Dynamic Revenue Configuration Parameters
+model RevenueConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("revenue_configurations")
+}

@@ -119,18 +119,11 @@ export class GamesGateway extends BaseGateway {
   ): void {
     const sessionId = typeof body?.sessionId === 'string' ? body.sessionId : null;
     const emoteId = typeof body?.emoteId === 'string' ? body.emoteId : null;
-    if (
-      !sessionId ||
-      !emoteId ||
-      !client.rooms.has(sessionId) ||
-      !GAME_EMOTE_IDS.has(emoteId)
-    ) {
+    if (!sessionId || !emoteId || !client.rooms.has(sessionId) || !GAME_EMOTE_IDS.has(emoteId)) {
       return;
     }
     const user = client.data.user as AuthenticatedUser | undefined;
-    client
-      .to(sessionId)
-      .emit('game.emote_received', { sessionId, playerId: user?.id, emoteId });
+    client.to(sessionId).emit('game.emote_received', { sessionId, playerId: user?.id, emoteId });
   }
 }
 

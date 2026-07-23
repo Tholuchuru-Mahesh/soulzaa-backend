@@ -287,11 +287,7 @@ export class AudioRoomsService implements IAudioRoomsService {
 
   async start(actor: RoomActor, roomId: string): Promise<RoomView> {
     const room = await this.getManageableRoom(roomId, actor);
-    const updated = await this.repo.updateRoom(
-      roomId,
-      { status: 'LIVE', endedAt: null },
-      actor.id,
-    );
+    const updated = await this.repo.updateRoom(roomId, { status: 'LIVE', endedAt: null }, actor.id);
     await this.seatsService.onRoomOpened(roomId, room.ownerId);
     const view = await this.toView(updated);
     await this.repo.setCachedSnapshot(view, this.cacheTtl);

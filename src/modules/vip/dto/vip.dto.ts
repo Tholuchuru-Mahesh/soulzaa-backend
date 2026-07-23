@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { VipLevel } from '@prisma/client';
+import { VipLevel } from 'src/common/enums/vip-level.enum';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,

@@ -1,71 +1,160 @@
 // ============================================================
-// VIP (AR-7) — membership tiers driven by lifetime Gold-coin
-// recharge. Owned by the "vip" module. Recharge is accumulated from
-// the wallet's RECHARGE credits (consumed from WalletCreditedEvent);
-// crossing a tier threshold auto-upgrades and grants the tier's
-// benefits (badge/frame/entrance-effect cosmetics via the backpack).
-// Immutable upgrade + recharge ledgers. No cross-module relations.
+// Soulzaa — Enterprise VIP Membership Engine Schema
+// Entities: VipTier, VipMembership, VipSubscription, VipBenefit, VipReward, VipHistory, VipAudit, VipStatistics, VipConfiguration
 // ============================================================
 
-/// VIP tiers (PRD). NONE is the default (no VIP). Ordinal order is the tier rank.
-enum VipLevel {
-  NONE
-  BRONZE
-  SILVER
-  GOLD
-  PLATINUM
-  DIAMOND
-  ELITE
-  TITAN
+/// VIP Tier Definition
+model VipTier {
+  id                 String   @id @default(uuid()) @db.Uuid
+  level              Int      @unique
+  name               String
+  displayOrder       Int      @default(1)
+  requiredExp        BigInt   @default(0)
+  requiredSpending   BigInt   @default(0)
+  subscriptionType   String   @default("MONTHLY")
+  durationDays       Int      @default(30)
+  price              BigInt   @default(0)
+  badge              String?
+  frame              String?
+  entranceEffect     String?
+  chatBubble         String?
+  nameColor          String?
+  profileDecoration  String?
+  seatDecoration     String?
+  giftDiscount       Float    @default(0.0)
+  storeDiscount      Float    @default(0.0)
+  dailyRewards       Json     @default("[]")
+  weeklyRewards      Json     @default("[]")
+  monthlyRewards     Json     @default("[]")
+  maxRooms           Int      @default(1)
+  priorityMatching   Boolean  @default(false)
+  exclusiveGifts     Json     @default("[]")
+  exclusiveEvents    Json     @default("[]")
+  visibility         Boolean  @default(true)
+  status             String   @default("ACTIVE")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@map("vip_tiers")
 }
 
-/// A user's current VIP tier + lifetime recharge (denormalised for fast reads).
-model VipStatus {
-  userId           String   @id @db.Uuid
-  level            VipLevel @default(NONE)
-  lifetimeRecharge BigInt   @default(0)
-  updatedAt        DateTime @updatedAt
+/// Active User VIP Membership
+model VipMembership {
+  id                   String    @id @default(uuid()) @db.Uuid
+  userId               String    @unique @db.Uuid
+  tierId               String    @db.Uuid
+  level                Int       @default(1)
+  status               String    @default("ACTIVE")
+  autoRenew            Boolean   @default(false)
+  expGained            BigInt    @default(0)
+  totalSpent           BigInt    @default(0)
+  startedAt            DateTime  @default(now())
+  expiresAt            DateTime
+  lastClaimedDailyAt   DateTime?
+  lastClaimedWeeklyAt  DateTime?
+  lastClaimedMonthlyAt DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  @@map("vip_status")
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("vip_memberships")
 }
 
-/// Admin-managed tier config. `minRecharge` is the lifetime gold recharge to
-/// reach the tier; `benefits` is a JSON array of `{ kind, cosmeticId? , ... }`
-/// (cosmetics granted on reaching it) + free-text perk descriptors.
-model VipConfig {
-  level       VipLevel @id
-  minRecharge BigInt
-  benefits    Json     @default("[]")
-  createdBy   String?  @db.Uuid
-  updatedBy   String?  @db.Uuid
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+/// VIP Subscription Transaction Audit Ledger
+model VipSubscription {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  tierId       String   @db.Uuid
+  pricePaid    BigInt   @default(0)
+  action       String
+  gifterUserId String?  @db.Uuid
+  durationDays Int      @default(30)
+  startedAt    DateTime @default(now())
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
 
-  @@map("vip_configs")
+  @@index([userId])
+  @@index([createdAt])
+  @@map("vip_subscriptions")
 }
 
-/// Append-only, idempotent ledger of recharge contributions to VIP progress.
-model VipRechargeLog {
+/// VIP Entitlement / Benefit Parameter
+model VipBenefit {
+  id        String   @id @default(uuid()) @db.Uuid
+  tierId    String   @db.Uuid
+  type      String
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vip_benefits")
+}
+
+/// Claimed Reward Audit Record
+model VipReward {
+  id           String   @id @default(uuid()) @db.Uuid
+  membershipId String   @db.Uuid
+  userId       String   @db.Uuid
+  rewardType   String
+  rewardData   Json
+  claimedAt    DateTime @default(now())
+
+  @@index([userId, rewardType])
+  @@map("vip_rewards")
+}
+
+/// VIP Member Lifecycle History
+model VipHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("vip_histories")
+}
+
+/// Operational Audit Log for VIP Engine Events
+model VipAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  actorId   String?  @db.Uuid
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("vip_audits")
+}
+
+/// Pre-aggregated statistics for VIP memberships
+model VipStatistics {
   id             String   @id @default(uuid()) @db.Uuid
-  userId         String   @db.Uuid
-  amount         BigInt
-  idempotencyKey String   @unique
-  totalAfter     BigInt
-  createdAt      DateTime @default(now())
+  period         String   @default("DAILY")
+  dateKey        String
+  purchasesCount Int      @default(0)
+  activeVipCount Int      @default(0)
+  expiredCount   Int      @default(0)
+  renewalsCount  Int      @default(0)
+  upgradesCount  Int      @default(0)
+  totalRevenue   BigInt   @default(0)
+  updatedAt      DateTime @updatedAt
 
-  @@index([userId, createdAt])
-  @@map("vip_recharge_logs")
+  @@unique([period, dateKey])
+  @@map("vip_statistics")
 }
 
-/// Immutable record of every VIP tier upgrade.
-model VipLog {
-  id               String   @id @default(uuid()) @db.Uuid
-  userId           String   @db.Uuid
-  fromLevel        VipLevel
-  toLevel          VipLevel
-  lifetimeRecharge BigInt
-  createdAt        DateTime @default(now())
+/// Dynamic VIP Configuration Parameters
+model VipConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
 
-  @@index([userId, createdAt])
-  @@map("vip_logs")
+  @@map("vip_configurations")
 }

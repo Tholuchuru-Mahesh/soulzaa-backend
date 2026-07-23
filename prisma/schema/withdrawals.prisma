@@ -1,0 +1,106 @@
+// ============================================================
+// Soulzaa — Enterprise Withdrawal Engine Schema
+// Entities: WithdrawalRequest, WithdrawalReview, WithdrawalFailure, WithdrawalHistory, WithdrawalAudit, WithdrawalStatistics, WithdrawalConfiguration
+// ============================================================
+
+/// Master withdrawal request record
+model WithdrawalRequest {
+  id                   String   @id @default(uuid()) @db.Uuid
+  userId               String   @db.Uuid
+  amountCoins          BigInt
+  processingFeeCoins   BigInt   @default(0)
+  netPayoutAmountCoins BigInt
+  payoutMethod         String   @default("BANK_TRANSFER")
+  payoutDetails        Json?
+  status               String   @default("PENDING")
+  holdTxnId            String?  @db.Uuid
+  payoutTxnId          String?  @db.Uuid
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("withdrawal_requests")
+}
+
+/// Admin review & approval trail for withdrawal requests
+model WithdrawalReview {
+  id         String   @id @default(uuid()) @db.Uuid
+  requestId  String   @db.Uuid
+  reviewerId String   @db.Uuid
+  action     String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@index([requestId])
+  @@map("withdrawal_reviews")
+}
+
+/// Failure logs for failed payout attempts
+model WithdrawalFailure {
+  id           String   @id @default(uuid()) @db.Uuid
+  requestId    String   @db.Uuid
+  errorCode    String
+  errorMessage String
+  createdAt    DateTime @default(now())
+
+  @@index([requestId])
+  @@map("withdrawal_failures")
+}
+
+/// State transition history ledger for withdrawal requests
+model WithdrawalHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  requestId  String   @db.Uuid
+  userId     String   @db.Uuid
+  fromStatus String
+  toStatus   String
+  actorId    String?  @db.Uuid
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([requestId])
+  @@map("withdrawal_histories")
+}
+
+/// Operational Audit Log for Withdrawal Engine Events
+model WithdrawalAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  requestId String?  @db.Uuid
+  action    String
+  details   Json?
+  actorId   String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("withdrawal_audits")
+}
+
+/// Pre-aggregated withdrawal statistics for users and platform
+model WithdrawalStatistics {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @db.Uuid
+  period              String   @default("DAILY")
+  dateKey             String
+  totalRequestedCoins BigInt   @default(0)
+  totalCompletedCoins BigInt   @default(0)
+  totalRejectedCoins  BigInt   @default(0)
+  count               Int      @default(0)
+  updatedAt           DateTime @updatedAt
+
+  @@unique([userId, period, dateKey])
+  @@index([userId, period])
+  @@map("withdrawal_statistics")
+}
+
+/// Dynamic Withdrawal Configuration Parameters
+model WithdrawalConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("withdrawal_configurations")
+}

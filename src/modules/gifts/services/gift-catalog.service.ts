@@ -1,106 +1,175 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { Gift, Prisma } from '@prisma/client';
-import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
-import type { Paginated } from 'src/common/interfaces/api-response.interface';
-import { buildPaginated } from 'src/common/utils/pagination.util';
-import type {
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import {
+  CreateGiftCategoryDto,
   CreateGiftDto,
-  ListGiftsAdminDto,
-  ListGiftsDto,
+  GiftQueryDto,
   UpdateGiftDto,
-} from '../dto/gift.dto';
-import type { IGiftsService } from '../interfaces/gifts.service.interface';
-import { GiftRepository } from '../repositories/gift.repository';
+} from '../dto/gift-catalog.dto';
+import { GiftAuditService } from './gift-audit.service';
 
-/**
- * The gift catalog: the public read seam (IGiftsService) other modules resolve,
- * plus platform-admin CRUD. The send pipeline reads gifts through this service.
- */
 @Injectable()
-export class GiftCatalogService implements IGiftsService {
-  constructor(private readonly repo: GiftRepository) {}
+export class GiftCatalogService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: GiftAuditService,
+  ) {}
 
-  // ---- IGiftsService (cross-module read seam) ----
-
-  getGift(giftId: string): Promise<Gift | null> {
-    return this.repo.getGift(giftId);
-  }
-
-  async isGiftEnabled(giftId: string): Promise<boolean> {
-    const gift = await this.repo.getGift(giftId);
-    return !!gift?.enabled;
-  }
-
-  listActiveGifts(): Promise<Gift[]> {
-    return this.repo.listActiveGifts();
-  }
-
-  // ---- Public catalog ----
-
-  listCatalog(filter: ListGiftsDto): Promise<Gift[]> {
-    return this.repo.listActiveGifts({ category: filter.category, type: filter.type });
-  }
-
-  // ---- Admin CRUD ----
-
-  async list(q: ListGiftsAdminDto): Promise<Paginated<Gift>> {
-    const [rows, total] = await this.repo.listGifts(q.skip, q.limit, {
-      category: q.category,
-      enabled: q.enabled,
+  /**
+   * List all active gift categories
+   */
+  async listCategories() {
+    return this.prisma.giftCategoryEntity.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' },
     });
-    return buildPaginated(rows, total, q.page, q.limit);
   }
 
-  create(actorId: string, dto: CreateGiftDto): Promise<Gift> {
-    return this.repo.createGift(
-      {
+  /**
+   * Create a new gift category
+   */
+  async createCategory(dto: CreateGiftCategoryDto) {
+    const existing = await this.prisma.giftCategoryEntity.findUnique({
+      where: { code: dto.code },
+    });
+    if (existing) {
+      throw new BadRequestException(`Gift category '${dto.code}' already exists`);
+    }
+
+    return this.prisma.giftCategoryEntity.create({
+      data: {
+        code: dto.code,
         name: dto.name,
+        description: dto.description,
+        iconUrl: dto.iconUrl,
+        sortOrder: dto.sortOrder ?? 0,
+        isActive: true,
+      },
+    });
+  }
+
+  /**
+   * List gifts in catalog with optional category / type filter
+   */
+  async listGifts(dto: GiftQueryDto) {
+    const { category, type, enabled = true } = dto;
+    const where: any = {};
+
+    if (enabled !== undefined) {
+      where.enabled = enabled;
+    }
+
+    if (category) {
+      where.category = category.toUpperCase();
+    }
+
+    if (type) {
+      where.type = type.toUpperCase();
+    }
+
+    return this.prisma.gift.findMany({
+      where,
+      orderBy: [{ sortOrder: 'asc' }, { priority: 'desc' }, { coinValue: 'asc' }],
+    });
+  }
+
+  /**
+   * Get single gift by ID or code
+   */
+  async getGiftById(id: string) {
+    const gift = await this.prisma.gift.findFirst({
+      where: {
+        OR: [{ id }, { code: id }],
+      },
+    });
+
+    if (!gift) {
+      throw new NotFoundException(`Gift '${id}' not found`);
+    }
+
+    return gift;
+  }
+
+  /**
+   * Alias for getGiftById (backward compatibility)
+   */
+  async getGift(id: string) {
+    return this.getGiftById(id);
+  }
+
+  /**
+   * Create a new catalog gift
+   */
+  async createGift(dto: CreateGiftDto, actorId?: string) {
+    const existing = await this.prisma.gift.findUnique({
+      where: { code: dto.code },
+    });
+    if (existing) {
+      throw new BadRequestException(`Gift code '${dto.code}' already exists`);
+    }
+
+    const gift = await this.prisma.gift.create({
+      data: {
+        code: dto.code,
+        name: dto.name,
+        displayName: dto.displayName ?? dto.name,
+        description: dto.description,
         category: dto.category,
         type: dto.type,
         coinValue: dto.coinValue,
-        thumbnailUrl: dto.thumbnailUrl ?? null,
-        animationUrl: dto.animationUrl ?? null,
-        soundUrl: dto.soundUrl ?? null,
+        thumbnailUrl: dto.thumbnailUrl,
+        animationUrl: dto.animationUrl,
+        lottieUrl: dto.lottieUrl,
+        svgaUrl: dto.svgaUrl,
+        mp4Url: dto.mp4Url,
+        soundUrl: dto.soundUrl,
+        priority: dto.priority ?? 0,
+        tags: dto.tags ?? [],
         minVipLevel: dto.minVipLevel ?? 0,
         comboEnabled: dto.comboEnabled ?? false,
-        comboWindowSeconds: dto.comboWindowSeconds ?? 10,
-        luckyMultipliers: dto.luckyMultipliers ?? [],
-        luckyWinChanceBp: dto.luckyWinChanceBp ?? 0,
-        festivalTag: dto.festivalTag ?? null,
         enabled: dto.enabled ?? true,
-        sortOrder: dto.sortOrder ?? 0,
+        createdBy: actorId,
       },
+    });
+
+    await this.auditService.logAudit(
+      gift.id,
+      'GIFT_CREATED',
+      { code: gift.code, coinValue: gift.coinValue },
       actorId,
     );
+
+    return gift;
   }
 
-  async update(actorId: string, id: string, dto: UpdateGiftDto): Promise<Gift> {
-    if (!(await this.repo.getGift(id))) {
-      throw new BusinessException(
-        ERROR_CODES.GIFT_NOT_FOUND,
-        'Gift not found.',
-        HttpStatus.NOT_FOUND,
-      );
-    }
-    const data: Prisma.GiftUpdateInput = {
-      ...(dto.name !== undefined ? { name: dto.name } : {}),
-      ...(dto.category !== undefined ? { category: dto.category } : {}),
-      ...(dto.type !== undefined ? { type: dto.type } : {}),
-      ...(dto.coinValue !== undefined ? { coinValue: dto.coinValue } : {}),
-      ...(dto.thumbnailUrl !== undefined ? { thumbnailUrl: dto.thumbnailUrl } : {}),
-      ...(dto.animationUrl !== undefined ? { animationUrl: dto.animationUrl } : {}),
-      ...(dto.soundUrl !== undefined ? { soundUrl: dto.soundUrl } : {}),
-      ...(dto.minVipLevel !== undefined ? { minVipLevel: dto.minVipLevel } : {}),
-      ...(dto.comboEnabled !== undefined ? { comboEnabled: dto.comboEnabled } : {}),
-      ...(dto.comboWindowSeconds !== undefined
-        ? { comboWindowSeconds: dto.comboWindowSeconds }
-        : {}),
-      ...(dto.luckyMultipliers !== undefined ? { luckyMultipliers: dto.luckyMultipliers } : {}),
-      ...(dto.luckyWinChanceBp !== undefined ? { luckyWinChanceBp: dto.luckyWinChanceBp } : {}),
-      ...(dto.festivalTag !== undefined ? { festivalTag: dto.festivalTag } : {}),
-      ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
-      ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
-    };
-    return this.repo.updateGift(id, data, actorId);
+  /**
+   * Update an existing gift
+   */
+  async updateGift(id: string, dto: UpdateGiftDto, actorId?: string) {
+    const gift = await this.getGiftById(id);
+
+    const updated = await this.prisma.gift.update({
+      where: { id: gift.id },
+      data: {
+        displayName: dto.displayName,
+        coinValue: dto.coinValue,
+        thumbnailUrl: dto.thumbnailUrl,
+        animationUrl: dto.animationUrl,
+        lottieUrl: dto.lottieUrl,
+        svgaUrl: dto.svgaUrl,
+        mp4Url: dto.mp4Url,
+        enabled: dto.enabled,
+        updatedBy: actorId,
+      },
+    });
+
+    await this.auditService.logAudit(
+      gift.id,
+      'GIFT_UPDATED',
+      { enabled: updated.enabled },
+      actorId,
+    );
+
+    return updated;
   }
 }

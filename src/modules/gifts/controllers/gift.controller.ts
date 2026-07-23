@@ -4,6 +4,7 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { NotGuest } from 'src/common/decorators/not-guest.decorator';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { GiftHistoryDto, LeaderboardQueryDto, ListGiftsDto, SendGiftDto } from '../dto/gift.dto';
+import { GiftQueryDto } from '../dto/gift-catalog.dto';
 import { GiftCatalogService } from '../services/gift-catalog.service';
 import { GiftLeaderboardService } from '../services/gift-leaderboard.service';
 import { GiftService } from '../services/gift.service';
@@ -34,8 +35,8 @@ export class GiftController {
 
   @Get('catalog')
   @ApiOperation({ summary: 'Active gift catalog' })
-  catalogList(@Query() q: ListGiftsDto) {
-    return this.catalog.listCatalog(q);
+  catalogList(@Query() q: GiftQueryDto) {
+    return this.catalog.listGifts(q);
   }
 
   @Get('history')

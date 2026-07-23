@@ -26,7 +26,10 @@ import {
 } from '../events/audio-room-seat.events';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
 import { PresenceService } from 'src/infra/redis/presence.service';
-import { PROFILE_SERVICE, type IProfileService } from 'src/modules/users/interfaces/profile.interface';
+import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
 import { USER_EVENTS, type UserAvatarUpdatedEvent } from 'src/modules/users/events/user.events';
 
 /**
@@ -60,14 +63,20 @@ export class AudioRoomSocketListener implements OnModuleInit {
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.CLOSED, e.payload),
     );
     this.bus.subscribe<RoomJoinedEvent>(AUDIO_ROOM_EVENTS.JOINED, async (e) => {
-      const payload = await this.getAudiencePreviewPayload(e.payload.roomId, e.payload.participantCount);
+      const payload = await this.getAudiencePreviewPayload(
+        e.payload.roomId,
+        e.payload.participantCount,
+      );
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.JOINED, {
         ...e.payload,
         ...payload,
       });
     });
     this.bus.subscribe<RoomLeftEvent>(AUDIO_ROOM_EVENTS.LEFT, async (e) => {
-      const payload = await this.getAudiencePreviewPayload(e.payload.roomId, e.payload.participantCount);
+      const payload = await this.getAudiencePreviewPayload(
+        e.payload.roomId,
+        e.payload.participantCount,
+      );
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.LEFT, {
         ...e.payload,
         ...payload,

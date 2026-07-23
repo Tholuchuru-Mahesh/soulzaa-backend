@@ -6,7 +6,6 @@ import {
   VideoRoomPkParticipant,
   VideoRoomPkStatus,
   VideoRoomPkTeam,
-  VipStatus,
 } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { PK_TERMINAL_STATUSES } from '../constants/video-room-pk.constants';
@@ -248,8 +247,10 @@ export class VideoRoomPkRepository {
    * so this PK repository, which already threads `db` through every method,
    * owns the read instead.
    */
-  getVipStatus(userId: string, db: Db = this.prisma): Promise<VipStatus | null> {
-    return db.vipStatus.findUnique({ where: { userId } });
+  async getVipStatus(userId: string, db: Db = this.prisma): Promise<any> {
+    const m = await db.vipMembership.findUnique({ where: { userId } });
+    if (!m) return null;
+    return { level: `VIP_${m.level}`, lifetimeRecharge: m.totalSpent };
   }
 
   // ---- Listing / recovery ----
