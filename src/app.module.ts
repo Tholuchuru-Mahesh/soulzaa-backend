@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from './infra/observability/logger.module';
 import { AppController } from './app.controller';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -8,6 +9,7 @@ import { EventBusModule } from './common/events/event-bus.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './common/guards/permission.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { CustomThrottlerGuard } from './common/guards/rate-limiting.guard';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { configurations } from './config/configuration';
 import { validateEnv } from './config/env.validation';
@@ -24,6 +26,13 @@ import { DOMAIN_MODULES } from './modules';
       load: configurations,
       validate: validateEnv,
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'global',
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
     LoggerModule,
     EventBusModule,
     InfraModule,
@@ -36,6 +45,8 @@ import { DOMAIN_MODULES } from './modules';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    // Global dynamic rate limiting guard
+    { provide: APP_GUARD, useClass: CustomThrottlerGuard },
     // Metrics first (outermost), then success-envelope wrapping.
     { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },

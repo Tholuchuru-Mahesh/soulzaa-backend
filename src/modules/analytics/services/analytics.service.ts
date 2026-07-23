@@ -119,16 +119,8 @@ export class AnalyticsService implements IAnalyticsService {
       );
     }
 
-    // 1. Calculate average stay duration
-    const [visitors] = await this.repo.listVisitors(roomId, 0, 100000); // pull stats
-    const finishedVisitors = visitors.filter((v) => v.leftAt !== null);
-    const averageStayDurationSeconds =
-      finishedVisitors.length > 0
-        ? Math.round(
-            finishedVisitors.reduce((sum, v) => sum + v.durationSeconds, 0) /
-              finishedVisitors.length,
-          )
-        : 0;
+    // 1. Calculate average stay duration (using database aggregation)
+    const averageStayDurationSeconds = await this.repo.getAverageVisitorDuration(roomId);
 
     // 2. Speaking to viewer ratio
     const [, totalSpeakers] = await this.repo.getSpeakingDurationsGrouped(roomId, 0, 100000);

@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { SocketAdapter } from './infra/socket/socket.adapter';
 
@@ -39,6 +40,23 @@ async function bootstrap(): Promise<void> {
   );
 
   app.enableCors({ origin: appCfg.corsOrigins, credentials: true });
+
+  // Global Helmet middleware registration for production hardening
+  // Disable CSP specifically to allow Swagger UI scripts and assets to load without blockers
+  app.use(helmet({ contentSecurityPolicy: false }));
+
+  // Security: Check BullMQ dashboard password credentials
+  const nodeEnv = config.get<string>('NODE_ENV', 'development');
+  const queueCfg = config.get<any>('queue');
+  if (
+    nodeEnv === 'production' &&
+    (!queueCfg || queueCfg.dashboardPassword === 'soulzaa' || !queueCfg.dashboardPassword)
+  ) {
+    throw new Error(
+      'CRITICAL: BullMQ Dashboard using default or missing password in production environment. Configure QUEUE_DASHBOARD_PASSWORD.',
+    );
+  }
+
   app.enableShutdownHooks();
 
   // Socket.IO with Redis adapter for horizontal scaling.

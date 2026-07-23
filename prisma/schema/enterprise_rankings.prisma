@@ -1,0 +1,148 @@
+// ============================================================
+// Soulzaa — Enterprise Ranking Engine Schema (Phase 15)
+// Extends the existing RankingSnapshot table in rankings.prisma.
+// All models are append-only, no modifications to frozen schemas.
+// ============================================================
+
+/// Configurable Ranking Category Definition
+model RankingDefinition {
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique
+  name            String
+  description     String?
+  category        String   // OVERALL | HOST | RECEIVER | GIFT_SENDER | FAMILY | VIP | LEVEL | ACHIEVEMENT | GAME | EVENT | AGENCY | COIN_SELLER | MODERATOR | SEASON | COUNTRY | REGION | CUSTOM
+  subcategory     String?
+  entityType      String   @default("USER")  // USER | FAMILY | ROOM | AGENCY | TEAM
+  timeWindow      String   @default("DAILY") // REALTIME | HOURLY | DAILY | WEEKLY | MONTHLY | QUARTERLY | YEARLY | SEASON | LIFETIME
+  scoreFormula    Json?    // configurable JSON scoring rules
+  visibility      String   @default("PUBLIC")
+  status          String   @default("ACTIVE")
+  maxEntries      Int      @default(1000)
+  country         String?
+  region          String?
+  season          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  entries   RankingEntry[]
+  snapshots EnterpriseRankingSnapshot[]
+
+  @@index([category])
+  @@index([status])
+  @@index([timeWindow])
+  @@index([country])
+  @@map("ranking_definitions")
+}
+
+/// Individual Ranking Entry (current score state)
+model RankingEntry {
+  id               String   @id @default(uuid()) @db.Uuid
+  rankingId        String   @db.Uuid
+  entityId         String   @db.Uuid   // userId | familyId | roomId | agencyId
+  entityType       String
+  score            BigInt   @default(0)
+  rank             Int
+  previousRank     Int?
+  rankDelta        Int      @default(0)  // positive = promoted, negative = demoted
+  country          String?
+  region           String?
+  period           String
+  dateKey          String
+  season           String?
+  metadata         Json?
+  updatedAt        DateTime @updatedAt
+
+  ranking RankingDefinition @relation(fields: [rankingId], references: [id])
+
+  @@unique([rankingId, entityId, dateKey])
+  @@index([rankingId, rank])
+  @@index([entityId])
+  @@index([dateKey])
+  @@index([country])
+  @@map("ranking_entries")
+}
+
+/// Immutable Point-in-Time Ranking Snapshot
+model EnterpriseRankingSnapshot {
+  id          String   @id @default(uuid()) @db.Uuid
+  rankingId   String   @db.Uuid
+  period      String
+  dateKey     String
+  entityId    String   @db.Uuid
+  entityType  String
+  rank        Int
+  previousRank Int?
+  score       BigInt
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  ranking RankingDefinition @relation(fields: [rankingId], references: [id])
+
+  @@unique([rankingId, period, dateKey, entityId])
+  @@index([rankingId, dateKey, rank])
+  @@map("enterprise_ranking_snapshots")
+}
+
+/// Ranking Score History (immutable event log)
+model RankingHistory {
+  id          String   @id @default(uuid()) @db.Uuid
+  rankingId   String   @db.Uuid
+  entityId    String   @db.Uuid
+  entityType  String
+  eventCode   String
+  scoreDelta  BigInt
+  scoreBefore BigInt
+  scoreAfter  BigInt
+  rankBefore  Int?
+  rankAfter   Int?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([rankingId, entityId, createdAt])
+  @@index([entityId])
+  @@index([eventCode])
+  @@map("ranking_histories")
+}
+
+/// Pre-aggregated Ranking Statistics
+model RankingStatistics {
+  id                  String   @id @default(uuid()) @db.Uuid
+  period              String   @default("DAILY")
+  dateKey             String
+  category            String
+  totalEntries        Int      @default(0)
+  totalScoreAwarded   BigInt   @default(0)
+  topEntityId         String?
+  topEntityScore      BigInt?
+  promotions          Int      @default(0)
+  demotions           Int      @default(0)
+  updatedAt           DateTime @updatedAt
+
+  @@unique([period, dateKey, category])
+  @@map("ranking_statistics")
+}
+
+/// Operational Audit Log for Ranking Engine Events
+model RankingAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  entityId  String?  @db.Uuid
+  actorId   String?  @db.Uuid
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("ranking_audits")
+}
+
+/// Dynamic Ranking Engine Configuration
+model RankingConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("ranking_configurations")
+}

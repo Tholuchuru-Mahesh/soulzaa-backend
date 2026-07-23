@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { PrismaModule } from '../../infra/prisma/prisma.module';
 import { AnalyticsController } from './controllers/analytics.controller';
+import { AnalyticsEngineController } from './controllers/analytics-engine.controller';
 import { ANALYTICS_SERVICE } from './interfaces/analytics.service.interface';
 import { AnalyticsActivityListener } from './listeners/analytics-activity.listener';
 import { AnalyticsProcessor } from './processors/analytics.processor';
@@ -10,18 +12,37 @@ import { AnalyticsRollupService } from './services/analytics-rollup.service';
 import { AnalyticsScheduler } from './services/analytics.scheduler';
 import { AnalyticsService } from './services/analytics.service';
 
-/**
- * Analytics & Reporting (AR-13). Ingests source DomainEvents (room lifecycle,
- * voice/seat air-time, gifts) into durable aggregates + real-time Redis counters
- * (AnalyticsActivityListener + AnalyticsCountersService); a nightly BullMQ rollup
- * (AnalyticsScheduler → ANALYTICS_PROCESSING worker → AnalyticsRollupService)
- * materializes per-room and per-creator daily-stat tables. Reads: gated
- * room-owner reports and creator self-analytics (AnalyticsReportingService),
- * plus admin revenue reports. Owns the analytics aggregate, revenue, and daily
- * rollup tables plus the analytics Redis counters.
- */
+import { ReportService } from './services/report.service';
+import { DashboardService } from './services/dashboard.service';
+import { TrendService } from './services/trend.service';
+import { ExportService } from './services/export.service';
+import { AnalyticsStatisticsService } from './services/analytics-statistics.service';
+import { AnalyticsAuditService } from './services/analytics-audit.service';
+import { AnalyticsConfigurationService } from './services/analytics-configuration.service';
+import { AnalyticsQueryService } from './services/analytics-query.service';
+import { AnalyticsValidationService } from './services/analytics-validation.service';
+import { AnalyticsCenterService } from './services/analytics-center.service';
+import { AggregationService } from './services/aggregation.service';
+import { AnalyticsEventService } from './services/analytics-event.service';
+
+const ENTERPRISE_ANALYTICS_SERVICES = [
+  ReportService,
+  DashboardService,
+  TrendService,
+  ExportService,
+  AnalyticsStatisticsService,
+  AnalyticsAuditService,
+  AnalyticsConfigurationService,
+  AnalyticsQueryService,
+  AnalyticsValidationService,
+  AnalyticsCenterService,
+  AggregationService,
+  AnalyticsEventService,
+];
+
 @Module({
-  controllers: [AnalyticsController],
+  imports: [PrismaModule],
+  controllers: [AnalyticsController, AnalyticsEngineController],
   providers: [
     AnalyticsRepository,
     AnalyticsService,
@@ -31,11 +52,19 @@ import { AnalyticsService } from './services/analytics.service';
     AnalyticsScheduler,
     AnalyticsProcessor,
     AnalyticsActivityListener,
+    ...ENTERPRISE_ANALYTICS_SERVICES,
     {
       provide: ANALYTICS_SERVICE,
       useClass: AnalyticsService,
     },
   ],
-  exports: [AnalyticsRepository, AnalyticsService, AnalyticsRollupService, ANALYTICS_SERVICE],
+  exports: [
+    AnalyticsRepository,
+    AnalyticsService,
+    AnalyticsRollupService,
+    ANALYTICS_SERVICE,
+    ...ENTERPRISE_ANALYTICS_SERVICES,
+  ],
 })
 export class AnalyticsModule {}
+

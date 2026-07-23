@@ -2,6 +2,10 @@ import { Global, Module } from '@nestjs/common';
 import { PrismaModule } from 'src/infra/prisma/prisma.module';
 import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
 import { TreasuryModule } from 'src/modules/treasury/treasury.module';
+import { WalletAdminController } from './controllers/wallet-admin.controller';
+import { WalletController } from './controllers/wallet.controller';
+import { WALLET_SERVICE } from './interfaces/wallet.service.interface';
+import { WalletRepository } from './repositories/wallet.repository';
 import { BalanceService } from './services/balance.service';
 import { LedgerService } from './services/ledger.service';
 import { ReservationService } from './services/reservation.service';
@@ -14,10 +18,13 @@ import { WalletService } from './services/wallet.service';
 @Global()
 @Module({
   imports: [PrismaModule, PlatformConfigurationModule, TreasuryModule],
+  controllers: [WalletController, WalletAdminController],
   providers: [
+    WalletRepository,
+    WalletService,
+    { provide: WALLET_SERVICE, useExisting: WalletService },
     WalletAuditService,
     WalletValidationService,
-    WalletService,
     LedgerService,
     BalanceService,
     ReservationService,
@@ -25,9 +32,11 @@ import { WalletService } from './services/wallet.service';
     TransactionQueryService,
   ],
   exports: [
+    WALLET_SERVICE,
+    WalletRepository,
+    WalletService,
     WalletAuditService,
     WalletValidationService,
-    WalletService,
     LedgerService,
     BalanceService,
     ReservationService,

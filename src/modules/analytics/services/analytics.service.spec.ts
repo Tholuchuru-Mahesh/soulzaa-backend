@@ -44,6 +44,7 @@ describe('AnalyticsService', () => {
       ]),
       getUsersDetails: jest.fn().mockResolvedValue([{ id: 'user-1', username: 'gamer1' }]),
       getUserProfiles: jest.fn().mockResolvedValue([{ userId: 'user-1', avatarKey: 'avatar-1' }]),
+      getAverageVisitorDuration: jest.fn().mockResolvedValue(60),
     };
 
     service = new AnalyticsService(repo as unknown as AnalyticsRepository);
@@ -93,7 +94,7 @@ describe('AnalyticsService', () => {
     it('calculates average stay, speaking ratio and gift intensities', async () => {
       const res = await service.getEngagement('room-1');
       expect(repo.findRoomActivity).toHaveBeenCalledWith('room-1');
-      expect(repo.listVisitors).toHaveBeenCalledWith('room-1', 0, 100000);
+      expect(repo.getAverageVisitorDuration).toHaveBeenCalledWith('room-1');
       expect(repo.getSpeakingDurationsGrouped).toHaveBeenCalledWith('room-1', 0, 100000);
       expect(res).toEqual({
         roomId: 'room-1',

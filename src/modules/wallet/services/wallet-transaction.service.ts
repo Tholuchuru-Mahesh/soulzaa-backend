@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   TransactionStatus,
   TransactionType,
@@ -50,7 +45,13 @@ export class WalletTransactionService {
     this.validationService.validateWalletActive(wallet);
 
     return this.prisma.$transaction(async (tx) => {
-      const balanceBefore = wallet.availableBalance;
+      // Row-level pessimistic locking
+      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
+      const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
+      if (!freshWallet) throw new NotFoundException(`Wallet not found`);
+      this.validationService.validateWalletActive(freshWallet);
+
+      const balanceBefore = freshWallet.availableBalance;
       const balanceAfter = balanceBefore + amountBig;
 
       // Create transaction header
@@ -140,7 +141,14 @@ export class WalletTransactionService {
     this.validationService.validateSufficientBalance(wallet, amountBig);
 
     return this.prisma.$transaction(async (tx) => {
-      const balanceBefore = wallet.availableBalance;
+      // Row-level pessimistic locking
+      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
+      const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
+      if (!freshWallet) throw new NotFoundException(`Wallet not found`);
+      this.validationService.validateWalletActive(freshWallet);
+      this.validationService.validateSufficientBalance(freshWallet, amountBig);
+
+      const balanceBefore = freshWallet.availableBalance;
       const balanceAfter = balanceBefore - amountBig;
 
       // Create transaction header
@@ -238,10 +246,26 @@ export class WalletTransactionService {
     this.validationService.validateSufficientBalance(senderWallet, amountBig);
 
     return this.prisma.$transaction(async (tx) => {
-      const senderBefore = senderWallet.availableBalance;
+      // Prevent deadlocks by sorting the IDs lexicographically before acquiring row locks
+      const [firstId, secondId] = [senderWallet.id, recipientWallet.id].sort();
+      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${firstId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${secondId}::uuid FOR UPDATE`;
+
+      const freshSender = await tx.wallet.findUnique({ where: { id: senderWallet.id } });
+      const freshRecipient = await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
+
+      if (!freshSender || !freshRecipient) {
+        throw new NotFoundException('One or both transfer wallets not found');
+      }
+
+      this.validationService.validateWalletActive(freshSender);
+      this.validationService.validateWalletActive(freshRecipient);
+      this.validationService.validateSufficientBalance(freshSender, amountBig);
+
+      const senderBefore = freshSender.availableBalance;
       const senderAfter = senderBefore - amountBig;
 
-      const recipientBefore = recipientWallet.availableBalance;
+      const recipientBefore = freshRecipient.availableBalance;
       const recipientAfter = recipientBefore + amountBig;
 
       // 1. Transaction header

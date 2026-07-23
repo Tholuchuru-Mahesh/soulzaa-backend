@@ -1,0 +1,174 @@
+// ============================================================
+// Soulzaa — Enterprise Referral System Schema (Phase 18)
+// Owned by the "referrals" module.
+// Append-only, no modifications to frozen schemas.
+// ============================================================
+
+/// Referral Campaign Definition
+model ReferralCampaign {
+  id                 String   @id @default(uuid()) @db.Uuid
+  code               String   @unique
+  name               String
+  description        String?
+  category           String   // USER | VIP | CREATOR | AGENCY | SELLER | CAMPAIGN | EVENT | FAMILY | PROMOTIONAL | INVITE_LINK | QR_CODE | CUSTOM
+  qualificationRules Json?
+  rewardDefinition   Json?
+  maxUses            Int      @default(10000)
+  usesCount          Int      @default(0)
+  startTime          DateTime?
+  endTime            DateTime?
+  status             String   @default("ACTIVE") // DRAFT | SCHEDULED | ACTIVE | PAUSED | COMPLETED | EXPIRED | CANCELLED | ARCHIVED
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  codes         ReferralCode[]
+  relationships ReferralRelationship[]
+
+  @@index([category])
+  @@index([status])
+  @@map("referral_campaigns")
+}
+
+/// Referral Code Instance
+model ReferralCode {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  referrerId  String   @db.Uuid
+  campaignId  String?  @db.Uuid
+  inviteLink  String?
+  qrCodeUrl   String?
+  maxUses     Int      @default(100)
+  usesCount   Int      @default(0)
+  expiresAt   DateTime?
+  status      String   @default("ACTIVE") // ACTIVE | EXPIRED | INACTIVE | CANCELLED
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  campaign      ReferralCampaign?      @relation(fields: [campaignId], references: [id])
+  relationships ReferralRelationship[]
+
+  @@index([referrerId])
+  @@index([campaignId])
+  @@index([status])
+  @@map("referral_codes")
+}
+
+/// Referrer-Referee Binding Relationship
+model ReferralRelationship {
+  id             String    @id @default(uuid()) @db.Uuid
+  referralCodeId String?   @db.Uuid
+  referrerId     String    @db.Uuid
+  refereeId      String    @unique @db.Uuid // One referee can only be referred once
+  campaignId     String?   @db.Uuid
+  referralType   String    @default("USER")
+  status         String    @default("REGISTERED") // CREATED | SHARED | REGISTERED | QUALIFIED | REWARDED | EXPIRED | REJECTED | CANCELLED
+  registeredAt   DateTime  @default(now())
+  qualifiedAt    DateTime?
+  rewardedAt     DateTime?
+  expiresAt      DateTime?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  referralCode   ReferralCode?          @relation(fields: [referralCodeId], references: [id])
+  campaign       ReferralCampaign?      @relation(fields: [campaignId], references: [id])
+  qualifications ReferralQualification[]
+  rewards        ReferralReward[]
+
+  @@index([referrerId])
+  @@index([status])
+  @@index([campaignId])
+  @@map("referral_relationships")
+}
+
+/// Qualification Evaluation Records
+model ReferralQualification {
+  id             String   @id @default(uuid()) @db.Uuid
+  relationshipId String   @db.Uuid
+  ruleName       String
+  passed         Boolean  @default(false)
+  reasons        Json?
+  evaluatedAt    DateTime @default(now())
+
+  relationship ReferralRelationship @relation(fields: [relationshipId], references: [id])
+
+  @@index([relationshipId])
+  @@map("referral_qualifications")
+}
+
+/// Referral Reward Dispatch Log (Dispatched via Domain Events)
+model ReferralReward {
+  id               String    @id @default(uuid()) @db.Uuid
+  relationshipId   String    @db.Uuid
+  referrerId       String    @db.Uuid
+  refereeId        String    @db.Uuid
+  rewardDefinition Json
+  dispatched       Boolean   @default(false)
+  dispatchedAt     DateTime?
+  createdAt        DateTime  @default(now())
+
+  relationship ReferralRelationship @relation(fields: [relationshipId], references: [id])
+
+  @@index([relationshipId])
+  @@index([referrerId])
+  @@index([refereeId])
+  @@map("referral_rewards")
+}
+
+/// Immutable Referral History Log
+model ReferralHistory {
+  id             String   @id @default(uuid()) @db.Uuid
+  relationshipId String?  @db.Uuid
+  referrerId     String   @db.Uuid
+  refereeId      String?  @db.Uuid
+  action         String
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([referrerId, createdAt])
+  @@index([refereeId])
+  @@map("referral_histories")
+}
+
+/// Pre-Aggregated Referral Statistics
+model ReferralStatistics {
+  id              String   @id @default(uuid()) @db.Uuid
+  period          String   @default("DAILY")
+  dateKey         String
+  category        String
+  codesCreated    Int      @default(0)
+  registeredCount Int      @default(0)
+  qualifiedCount  Int      @default(0)
+  rewardedCount   Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@unique([period, dateKey, category])
+  @@map("referral_statistics")
+}
+
+/// Operational Audit Log for Referral Engine
+model ReferralAudit {
+  id             String   @id @default(uuid()) @db.Uuid
+  relationshipId String?  @db.Uuid
+  actorId        String?  @db.Uuid
+  action         String
+  details        Json?
+  createdAt      DateTime @default(now())
+
+  @@index([relationshipId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("referral_audits")
+}
+
+/// Dynamic Referral Engine Configuration
+model ReferralConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("referral_configurations")
+}

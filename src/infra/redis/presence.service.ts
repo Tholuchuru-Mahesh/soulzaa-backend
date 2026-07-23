@@ -37,6 +37,7 @@ export class PresenceService {
    */
   async connect(userId: string, socketId: string): Promise<boolean> {
     await this.client.sadd(this.userSocketsKey(userId), socketId);
+    await this.client.expire(this.userSocketsKey(userId), 86400); // 24 hours TTL
     const liveSockets = await this.client.scard(this.userSocketsKey(userId));
     if (liveSockets === 1) {
       await this.client.sadd(PresenceService.ONLINE_KEY, userId);
@@ -53,8 +54,12 @@ export class PresenceService {
     await this.client.srem(this.userSocketsKey(userId), socketId);
     const liveSockets = await this.client.scard(this.userSocketsKey(userId));
     if (liveSockets === 0) {
+      await this.client.del(this.userSocketsKey(userId));
+      await this.client.del(this.userRoomsKey(userId));
       await this.client.srem(PresenceService.ONLINE_KEY, userId);
       return true;
+    } else {
+      await this.client.expire(this.userSocketsKey(userId), 86400);
     }
     return false;
   }
@@ -75,12 +80,18 @@ export class PresenceService {
 
   async joinRoom(roomId: string, userId: string): Promise<void> {
     await this.client.sadd(this.roomMembersKey(roomId), userId);
+    await this.client.expire(this.roomMembersKey(roomId), 86400);
     await this.client.sadd(this.userRoomsKey(userId), roomId);
+    await this.client.expire(this.userRoomsKey(userId), 86400);
   }
 
   async leaveRoom(roomId: string, userId: string): Promise<void> {
     await this.client.srem(this.roomMembersKey(roomId), userId);
     await this.client.srem(this.userRoomsKey(userId), roomId);
+    const count = await this.client.scard(this.roomMembersKey(roomId));
+    if (count === 0) {
+      await this.client.del(this.roomMembersKey(roomId));
+    }
   }
 
   async roomMembers(roomId: string): Promise<string[]> {

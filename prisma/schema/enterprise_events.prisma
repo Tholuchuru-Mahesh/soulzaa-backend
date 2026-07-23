@@ -1,0 +1,150 @@
+// ============================================================
+// Soulzaa — Enterprise Events Engine Schema (Phase 16)
+// Owned by the "enterprise-events" module.
+// Append-only, no modifications to frozen schemas.
+// ============================================================
+
+/// Enterprise Platform Event Definition
+model EventDefinition {
+  id                 String   @id @default(uuid()) @db.Uuid
+  code               String   @unique
+  name               String
+  description        String?
+  category           String   // AUDIO_ROOM | VIDEO_ROOM | GIFT | FAMILY | VIP | TOURNAMENT | PK_COMPETITION | GAME | FESTIVAL | SEASON | REFERRAL_CAMPAIGN | CREATOR_CAMPAIGN | OFFICIAL_CAMPAIGN | AGENCY_CAMPAIGN | MODERATOR_CAMPAIGN | PLATFORM_CHALLENGE | CUSTOM
+  banner             String?
+  thumbnail          String?
+  startTime          DateTime
+  endTime            DateTime
+  regStartTime       DateTime?
+  regEndTime         DateTime?
+  participationRules Json?
+  eligibilityRules   Json?
+  rewardDefinition   Json?
+  maxParticipants    Int      @default(1000)
+  visibility         String   @default("PUBLIC") // PUBLIC | HIDDEN | PRIVATE | VIP_ONLY
+  country            String?
+  region             String?
+  season             String?
+  priority           Int      @default(0)
+  status             String   @default("DRAFT") // DRAFT | SCHEDULED | REGISTRATION_OPEN | REGISTRATION_CLOSED | ACTIVE | PAUSED | COMPLETED | CANCELLED | ARCHIVED
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  registrations EventRegistration[]
+  participants  EventParticipant[]
+  rewards       EventReward[]
+
+  @@index([category])
+  @@index([status])
+  @@index([startTime, endTime])
+  @@index([country])
+  @@map("event_definitions")
+}
+
+/// User Event Registration
+model EventRegistration {
+  id           String   @id @default(uuid()) @db.Uuid
+  eventId      String   @db.Uuid
+  userId       String   @db.Uuid
+  registeredAt DateTime @default(now())
+  status       String   @default("REGISTERED") // REGISTERED | CANCELLED
+
+  event EventDefinition @relation(fields: [eventId], references: [id])
+
+  @@unique([eventId, userId])
+  @@index([userId])
+  @@index([status])
+  @@map("event_registrations")
+}
+
+/// Active Event Participant
+model EventParticipant {
+  id          String    @id @default(uuid()) @db.Uuid
+  eventId     String    @db.Uuid
+  userId      String    @db.Uuid
+  joinedAt    DateTime  @default(now())
+  completedAt DateTime?
+  status      String    @default("PARTICIPATING") // CHECKED_IN | PARTICIPATING | COMPLETED | DISQUALIFIED
+  score       BigInt    @default(0)
+  metadata    Json?
+
+  event EventDefinition @relation(fields: [eventId], references: [id])
+
+  @@unique([eventId, userId])
+  @@index([eventId, status])
+  @@index([userId])
+  @@map("event_participants")
+}
+
+/// Event Reward Record (Dispatched via Domain Events)
+model EventReward {
+  id               String    @id @default(uuid()) @db.Uuid
+  eventId          String    @db.Uuid
+  userId           String    @db.Uuid
+  rewardDefinition Json
+  dispatched       Boolean   @default(false)
+  dispatchedAt     DateTime?
+
+  event EventDefinition @relation(fields: [eventId], references: [id])
+
+  @@index([eventId])
+  @@index([userId])
+  @@index([dispatched])
+  @@map("event_rewards")
+}
+
+/// Event History Log
+model EventHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventId   String   @db.Uuid
+  userId    String?  @db.Uuid
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([eventId, createdAt])
+  @@index([userId])
+  @@map("event_histories")
+}
+
+/// Pre-aggregated Event Statistics
+model EventStatistics {
+  id                     String   @id @default(uuid()) @db.Uuid
+  period                 String   @default("DAILY")
+  dateKey                String
+  category               String
+  activeEvents           Int      @default(0)
+  completedEvents        Int      @default(0)
+  totalRegistrations     Int      @default(0)
+  totalParticipants      Int      @default(0)
+  totalRewardsDispatched Int      @default(0)
+  updatedAt              DateTime @updatedAt
+
+  @@unique([period, dateKey, category])
+  @@map("event_statistics")
+}
+
+/// Operational Audit Log for Event Engine
+model EventAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  eventId   String?  @db.Uuid
+  actorId   String?  @db.Uuid
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([eventId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("event_audits")
+}
+
+/// Dynamic Event Engine Configuration
+model EventConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("event_configurations")
+}

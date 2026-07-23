@@ -1,0 +1,86 @@
+// ============================================================
+// Phase 21: Enterprise Business Admin Dashboard Models
+// Owned by the "admin-dashboard" module.
+// ============================================================
+
+/// Dashboard Widget metadata and permissions
+model DashboardWidget {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  type           String   // CHART | NUMBER | TABLE | LIST | STATE
+  metricKey      String
+  visibleToRoles Json?    // Array of roles allowed to view
+  config         Json?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("dashboard_widgets")
+}
+
+/// User custom grid layout configuration
+model DashboardLayout {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  name       String
+  isDefault  Boolean  @default(false)
+  gridConfig Json?    // Positions mapping configuration
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("dashboard_layouts")
+}
+
+/// Operational and System Health Alerts
+model DashboardAlert {
+  id         String    @id @default(uuid()) @db.Uuid
+  severity   String    @default("WARNING") // INFO | WARNING | ERROR | CRITICAL
+  title      String
+  message    String
+  source     String    // DATABASE | REDIS | QUEUE | SOCKET | API
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime?
+
+  createdAt  DateTime  @default(now())
+
+  @@map("dashboard_alerts")
+}
+
+/// Dashboard Dynamic Configurations
+model DashboardConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("dashboard_configurations")
+}
+
+/// Administrative Audit trail logs
+model DashboardAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  action    String   // DASHBOARD_VIEWED | DASHBOARD_WIDGET_UPDATED | DASHBOARD_LAYOUT_UPDATED | DASHBOARD_CONFIGURATION_UPDATED | DASHBOARD_EXPORT_GENERATED
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([action])
+  @@index([createdAt])
+  @@map("dashboard_audits")
+}
+
+/// Dynamic aggregated statistics for dashboard queries
+model DashboardStatistics {
+  id              String   @id @default(uuid()) @db.Uuid
+  period          String   @default("DAILY") // DAILY | WEEKLY | MONTHLY
+  dateKey         String
+  widgetRefreshes Int      @default(0)
+  alertsRaised    Int      @default(0)
+  exportsCount    Int      @default(0)
+
+  updatedAt       DateTime @updatedAt
+
+  @@unique([period, dateKey])
+  @@map("dashboard_statistics")
+}

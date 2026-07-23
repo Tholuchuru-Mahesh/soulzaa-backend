@@ -104,3 +104,118 @@ model CreatorDailyStat {
   @@index([userId, dateKey])
   @@map("creator_daily_stats")
 }
+
+// ============================================================
+// Phase 20: Enterprise Reports & Analytics Engine Models
+// ============================================================
+
+/// Analytics Report Record
+model AnalyticsReport {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  domain      String   // PLATFORM | FINANCIAL | WALLET | REVENUE | GIFT | TREASURE_BOX | WITHDRAWAL | AGENCY | COIN_SELLER | FAMILY | VIP | LEVEL | ACHIEVEMENT | RANKING | EVENT | TASK | REFERRAL | NOTIFICATION | GROWTH | RETENTION | MODERATION
+  parameters  Json?
+  data        Json?
+  generatedBy String?  @db.Uuid
+
+  createdAt   DateTime @default(now())
+
+  exports     ReportExport[]
+
+  @@index([domain])
+  @@index([createdAt])
+  @@map("analytics_reports")
+}
+
+/// Analytics Time-series Snapshot for aggregation trends
+model AnalyticsSnapshot {
+  id          String   @id @default(uuid()) @db.Uuid
+  domain      String
+  metricKey   String
+  metricValue Float
+  timestamp   DateTime @default(now())
+
+  @@index([domain, metricKey, timestamp])
+  @@map("analytics_snapshots")
+}
+
+/// Live KPI Metric Value
+model AnalyticsMetric {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("analytics_metrics")
+}
+
+/// Configurable Dashboard Layouts
+model AnalyticsDashboard {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  layout      Json?
+  metrics     Json?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("analytics_dashboards")
+}
+
+/// Dynamic aggregated statistics per period
+model AnalyticsStatistics {
+  id         String   @id @default(uuid()) @db.Uuid
+  period     String   @default("DAILY") // DAILY | WEEKLY | MONTHLY | YEARLY
+  dateKey    String
+  metricType String
+  count      Int      @default(0)
+  amount     Decimal  @default(0.0) @db.Decimal(20, 2)
+
+  updatedAt  DateTime @updatedAt
+
+  @@unique([period, dateKey, metricType])
+  @@map("analytics_statistics")
+}
+
+/// Analytical Engine Audit Log
+model AnalyticsAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  reportId  String?  @db.Uuid
+  actorId   String?  @db.Uuid
+  action    String   // REPORT_GENERATED | REPORT_EXPORTED | DASHBOARD_REFRESHED | ANALYTICS_CONFIGURATION_UPDATED
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([reportId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("analytics_audits")
+}
+
+/// Analytics configuration settings
+model AnalyticsConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("analytics_configurations")
+}
+
+/// Export requests registry
+model ReportExport {
+  id        String   @id @default(uuid()) @db.Uuid
+  reportId  String   @db.Uuid
+  format    String   // CSV | EXCEL | PDF | JSON
+  url       String?
+  status    String   @default("PENDING") // PENDING | COMPLETED | FAILED
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  report    AnalyticsReport @relation(fields: [reportId], references: [id])
+
+  @@index([reportId])
+  @@map("report_exports")
+}

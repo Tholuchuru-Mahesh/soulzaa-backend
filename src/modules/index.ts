@@ -39,6 +39,12 @@ import { TreasuryModule } from './treasury/treasury.module';
 import { RevenueModule } from './revenue/revenue.module';
 import { CoinSellerSettlementModule } from './coin-seller-settlement/coin-seller-settlement.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
+import { AchievementsModule } from './achievements/achievements.module';
+import { EnterpriseRankingsModule } from './enterprise-rankings/enterprise-rankings.module';
+import { EnterpriseEventsModule } from './enterprise-events/enterprise-events.module';
+import { TasksModule } from './tasks/tasks.module';
+import { ReferralsModule } from './referrals/referrals.module';
+import { AdminDashboardModule } from './admin-dashboard/admin-dashboard.module';
 
 export const DOMAIN_MODULES = [
   TreasuryModule,
@@ -79,4 +85,10 @@ export const DOMAIN_MODULES = [
   RevenueModule,
   CoinSellerSettlementModule,
   WithdrawalsModule,
+  AchievementsModule,
+  EnterpriseRankingsModule,
+  EnterpriseEventsModule,
+  TasksModule,
+  ReferralsModule,
+  AdminDashboardModule,
 ];

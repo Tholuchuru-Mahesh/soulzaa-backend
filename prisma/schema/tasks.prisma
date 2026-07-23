@@ -1,0 +1,182 @@
+// ============================================================
+// Soulzaa — Enterprise Tasks & Missions Engine Schema (Phase 17)
+// Owned by the "tasks" module.
+// Append-only, no modifications to frozen schemas.
+// ============================================================
+
+/// Mission Grouping Definition
+model MissionDefinition {
+  id                String   @id @default(uuid()) @db.Uuid
+  code              String   @unique
+  name              String
+  description       String?
+  category          String   // DAILY_TASK | WEEKLY_MISSION | MONTHLY_MISSION | SEASON_MISSION | EVENT_MISSION | FAMILY_MISSION | VIP_MISSION | GIFT_MISSION | AUDIO_ROOM_MISSION | VIDEO_ROOM_MISSION | GAME_MISSION | REFERRAL_MISSION | CREATOR_MISSION | MODERATOR_MISSION | AGENCY_MISSION | OFFICIAL_MISSION | PLATFORM_CHALLENGE | CUSTOM
+  requiredTaskCount Int      @default(1)
+  rewardDefinition  Json?
+  status            String   @default("ACTIVE") // DRAFT | SCHEDULED | ACTIVE | PAUSED | COMPLETED | EXPIRED | CANCELLED | ARCHIVED
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tasks             TaskDefinition[]
+  missionProgresses MissionProgress[]
+
+  @@index([category])
+  @@index([status])
+  @@map("mission_definitions")
+}
+
+/// Task Definition
+model TaskDefinition {
+  id                 String   @id @default(uuid()) @db.Uuid
+  code               String   @unique
+  missionId          String?  @db.Uuid
+  name               String
+  description        String?
+  category           String
+  objective          String
+  requiredProgress   Int      @default(1)
+  progressRules      Json?    // JSON evaluation rule
+  completionRules    Json?
+  rewardDefinition   Json?
+  visibility         String   @default("PUBLIC") // PUBLIC | PRIVATE | HIDDEN
+  priority           Int      @default(0)
+  difficulty         String   @default("EASY")   // EASY | MEDIUM | HARD | EXPERT
+  startTime          DateTime?
+  endTime            DateTime?
+  repeatable         Boolean  @default(false)
+  resetPolicy        String   @default("DAILY")  // NONE | DAILY | WEEKLY | MONTHLY | SEASONAL
+  maxCompletions     Int      @default(1)
+  status             String   @default("ACTIVE")
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  mission            MissionDefinition? @relation(fields: [missionId], references: [id])
+  taskProgresses     TaskProgress[]
+
+  @@index([category])
+  @@index([status])
+  @@index([missionId])
+  @@index([resetPolicy])
+  @@map("task_definitions")
+}
+
+/// Per-User Task Progress Tracking
+model TaskProgress {
+  id               String    @id @default(uuid()) @db.Uuid
+  taskId           String    @db.Uuid
+  userId           String    @db.Uuid
+  currentProgress  Int       @default(0)
+  requiredProgress Int
+  percentComplete  Float     @default(0)
+  isCompleted      Boolean   @default(false)
+  completionCount  Int       @default(0)
+  periodKey        String    @default("alltime")
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  task TaskDefinition @relation(fields: [taskId], references: [id])
+
+  @@unique([taskId, userId, periodKey])
+  @@index([userId])
+  @@index([isCompleted])
+  @@map("task_progress")
+}
+
+/// Per-User Mission Progress Tracking
+model MissionProgress {
+  id                String    @id @default(uuid()) @db.Uuid
+  missionId         String    @db.Uuid
+  userId            String    @db.Uuid
+  completedTaskCount Int      @default(0)
+  requiredTaskCount Int
+  isCompleted       Boolean   @default(false)
+  rewardClaimed     Boolean   @default(false)
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  mission MissionDefinition @relation(fields: [missionId], references: [id])
+
+  @@unique([missionId, userId])
+  @@index([userId])
+  @@index([isCompleted])
+  @@map("mission_progress")
+}
+
+/// Task & Mission Reward Claim Log (Dispatched via Domain Events)
+model TaskReward {
+  id               String    @id @default(uuid()) @db.Uuid
+  taskId           String?   @db.Uuid
+  missionId        String?   @db.Uuid
+  userId           String    @db.Uuid
+  rewardDefinition Json
+  claimed          Boolean   @default(false)
+  claimedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([userId])
+  @@index([taskId])
+  @@index([missionId])
+  @@map("task_rewards")
+}
+
+/// Immutable Task History Log
+model TaskHistory {
+  id             String   @id @default(uuid()) @db.Uuid
+  taskId         String?  @db.Uuid
+  missionId      String?  @db.Uuid
+  userId         String   @db.Uuid
+  eventCode      String
+  progressBefore Int
+  progressAfter  Int
+  completed      Boolean
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([taskId])
+  @@map("task_histories")
+}
+
+/// Pre-Aggregated Task Statistics
+model TaskStatistics {
+  id                 String   @id @default(uuid()) @db.Uuid
+  period             String   @default("DAILY")
+  dateKey            String
+  category           String
+  activeTasks        Int      @default(0)
+  completedTasks     Int      @default(0)
+  completedMissions  Int      @default(0)
+  rewardsDispatched  Int      @default(0)
+  updatedAt          DateTime @updatedAt
+
+  @@unique([period, dateKey, category])
+  @@map("task_statistics")
+}
+
+/// Operational Audit Log for Task Engine
+model TaskAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  taskId    String?  @db.Uuid
+  actorId   String?  @db.Uuid
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("task_audits")
+}
+
+/// Dynamic Task Engine Configuration
+model TaskConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("task_configurations")
+}

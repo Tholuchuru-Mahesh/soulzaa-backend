@@ -18,7 +18,7 @@ enum NotificationType {
   NEW_MESSAGE
   CHAT_REQUEST
   /// An inbound call that went unanswered. Durable on purpose: a missed call is
-  /// something the user has to be able to come back to, not a banner they may
+  /// something the user has to be able to come back to, not a durable banner they may
   /// have swiped away while driving.
   MISSED_CALL
   /// Someone sent this user a gift. Durable because it is worth money — a reward
@@ -92,4 +92,142 @@ model NotificationPreference {
   updatedAt DateTime @updatedAt
 
   @@map("notification_preferences")
+}
+
+// ============================================================
+// Phase 19: Enterprise Notification Center Models
+// ============================================================
+
+/// Enterprise Notification Record
+model EnterpriseNotification {
+  id          String    @id @default(uuid()) @db.Uuid
+  recipientId String?   @db.Uuid // Null indicates a global announcement or broadcast
+  type        String    // WALLET | GIFT | VIP | LEVEL_UP | ACHIEVEMENT_UNLOCK | BADGE_UNLOCK | RANKING_PROMOTION | EVENT_REMINDER | TASK_COMPLETION | MISSION_COMPLETION | REFERRAL_QUALIFIED | WITHDRAWAL_UPDATES | FAMILY_UPDATES | MODERATION_ALERT | ANNOUNCEMENT | SYSTEM
+  priority    String    @default("NORMAL") // LOW | NORMAL | HIGH | CRITICAL
+  title       String?
+  body        String?
+  scheduledAt DateTime?
+  status      String    @default("PENDING") // PENDING | DISPATCHED | FAILED | CANCELLED
+  retryCount  Int       @default(0)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  inboxes     NotificationInbox[]
+  histories   NotificationHistory[]
+
+  @@index([recipientId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+  @@map("enterprise_notifications")
+}
+
+/// Notification Template Definition
+model NotificationTemplate {
+  id            String   @id @default(uuid()) @db.Uuid
+  code          String   @unique
+  titleTemplate String
+  bodyTemplate  String
+  locale        String   @default("en")
+  variables     Json?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("notification_templates")
+}
+
+/// User Notification Preference
+model EnterpriseNotificationPreference {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  type      String   // WALLET | GIFT | VIP | etc.
+  channel   String   // IN_APP | PUSH | WEBSOCKET | EMAIL | SMS
+  enabled   Boolean  @default(true)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type, channel])
+  @@map("enterprise_notification_preferences")
+}
+
+/// In-App Inbox Notification Instance
+model NotificationInbox {
+  id             String   @id @default(uuid()) @db.Uuid
+  notificationId String   @db.Uuid
+  recipientId    String   @db.Uuid
+  title          String
+  body           String
+  read           Boolean  @default(false)
+  readAt         DateTime?
+  deleted        Boolean  @default(false)
+  deletedAt      DateTime?
+
+  createdAt      DateTime @default(now())
+
+  notification   EnterpriseNotification @relation(fields: [notificationId], references: [id])
+
+  @@index([recipientId])
+  @@index([read])
+  @@index([deleted])
+  @@map("notification_inboxes")
+}
+
+/// Dispatch/Delivery Channels History Log
+model NotificationHistory {
+  id             String   @id @default(uuid()) @db.Uuid
+  notificationId String   @db.Uuid
+  recipientId    String?  @db.Uuid
+  channel        String   // IN_APP | PUSH | WEBSOCKET | EMAIL | SMS
+  status         String   // SENT | FAILED
+  errorMessage   String?
+  dispatchedAt   DateTime @default(now())
+
+  notification   EnterpriseNotification @relation(fields: [notificationId], references: [id])
+
+  @@index([notificationId])
+  @@index([recipientId])
+  @@map("notification_histories")
+}
+
+/// Pre-Aggregated Notification Statistics
+model NotificationStatistics {
+  id          String   @id @default(uuid()) @db.Uuid
+  period      String   @default("DAILY")
+  dateKey     String
+  channel     String
+  sentCount   Int      @default(0)
+  readCount   Int      @default(0)
+  failedCount Int      @default(0)
+
+  updatedAt   DateTime @updatedAt
+
+  @@unique([period, dateKey, channel])
+  @@map("notification_statistics")
+}
+
+/// Audit Log for Notification Center Operations
+model NotificationAudit {
+  id             String   @id @default(uuid()) @db.Uuid
+  notificationId String?  @db.Uuid
+  actorId        String?  @db.Uuid
+  action         String
+  details        Json?
+  createdAt      DateTime @default(now())
+
+  @@index([notificationId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("notification_audits")
+}
+
+/// Dynamic Configuration Store
+model NotificationConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("notification_configurations")
 }

@@ -1,0 +1,183 @@
+// ============================================================
+// Soulzaa — Enterprise Badge & Achievement Engine Schema
+// Entities: AchievementDefinition, AchievementProgress, UserAchievement,
+//           BadgeDefinition, BadgeInventory, AchievementHistory,
+//           AchievementStatistics, AchievementAudit, AchievementConfiguration
+// ============================================================
+
+/// Configurable Achievement Catalog Entry
+model AchievementDefinition {
+  id               String   @id @default(uuid()) @db.Uuid
+  code             String   @unique
+  name             String
+  description      String?
+  category         String   // e.g. GIFT, LEVEL, FAMILY, VIP, AUDIO_ROOM, VIDEO_ROOM, ...
+  badgeCode        String?  // optional FK-like ref to BadgeDefinition.code
+  icon             String?
+  displayOrder     Int      @default(0)
+  visibility       String   @default("PUBLIC")   // PUBLIC | HIDDEN | SEASONAL
+  requiredProgress Int      @default(1)          // how many units needed
+  unlockRule       Json?    // flexible rule JSON evaluated by AchievementEvaluationService
+  rewardDefinition Json?    // reward payload (exp, coins, badge, etc.)
+  repeatable       Boolean  @default(false)
+  hidden           Boolean  @default(false)
+  expiresAt        DateTime?
+  status           String   @default("ACTIVE")   // ACTIVE | INACTIVE | ARCHIVED
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  progresses  AchievementProgress[]
+  unlocks     UserAchievement[]
+  history     AchievementHistory[]
+
+  @@index([category])
+  @@index([status])
+  @@index([visibility])
+  @@map("achievement_definitions")
+}
+
+/// Per-User Progress Toward an Achievement
+model AchievementProgress {
+  id                   String   @id @default(uuid()) @db.Uuid
+  userId               String   @db.Uuid
+  achievementId        String   @db.Uuid
+  currentProgress      Int      @default(0)
+  requiredProgress     Int      @default(1)
+  percentComplete      Float    @default(0.0)
+  isCompleted          Boolean  @default(false)
+  completedAt          DateTime?
+  lastEventCode        String?
+  lastEventAt          DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  achievement AchievementDefinition @relation(fields: [achievementId], references: [id])
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@index([achievementId])
+  @@index([isCompleted])
+  @@map("achievement_progresses")
+}
+
+/// Unlocked / Awarded Achievement Record (immutable)
+model UserAchievement {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  achievementId String   @db.Uuid
+  unlockedAt    DateTime @default(now())
+  claimedAt     DateTime?
+  rewardClaimed Boolean  @default(false)
+  grantedBy     String?  @db.Uuid  // actorId for manual grants
+  unlockIteration Int    @default(1)   // for repeatable achievements
+
+  achievement AchievementDefinition @relation(fields: [achievementId], references: [id])
+
+  @@index([userId])
+  @@index([achievementId])
+  @@index([userId, achievementId])
+  @@map("user_achievements")
+}
+
+/// Badge Catalog (tiers, types, animated, seasonal, limited)
+model BadgeDefinition {
+  code        String   @id
+  name        String
+  description String?
+  tier        String   @default("BRONZE")  // BRONZE|SILVER|GOLD|PLATINUM|DIAMOND|LEGEND|CUSTOM
+  badgeType   String   @default("STANDARD") // STANDARD|ANIMATED|SEASONAL|LIMITED_EDITION
+  iconUrl     String?
+  animationUrl String?
+  rarity      String   @default("COMMON")  // COMMON|UNCOMMON|RARE|EPIC|LEGENDARY
+  season      String?
+  expiresAt   DateTime?
+  status      String   @default("ACTIVE")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  inventory BadgeInventory[]
+
+  @@index([tier])
+  @@index([badgeType])
+  @@index([status])
+  @@map("badge_definitions")
+}
+
+/// Per-User Badge Collection & Equip State
+model BadgeInventory {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  badgeCode   String
+  equipped    Boolean  @default(false)
+  equippedAt  DateTime?
+  acquiredAt  DateTime @default(now())
+  source      String?  // HOW it was acquired: ACHIEVEMENT|PURCHASE|ADMIN_GRANT|EVENT
+  sourceRefId String?
+
+  badge BadgeDefinition @relation(fields: [badgeCode], references: [code])
+
+  @@unique([userId, badgeCode])
+  @@index([userId])
+  @@index([userId, equipped])
+  @@map("badge_inventories")
+}
+
+/// Immutable Achievement Unlock History Log
+model AchievementHistory {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @db.Uuid
+  achievementId String   @db.Uuid
+  eventCode     String
+  progressBefore Int     @default(0)
+  progressAfter  Int     @default(0)
+  unlocked      Boolean  @default(false)
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  achievement AchievementDefinition @relation(fields: [achievementId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([achievementId])
+  @@index([eventCode])
+  @@map("achievement_histories")
+}
+
+/// Pre-aggregated Platform Achievement Statistics
+model AchievementStatistics {
+  id                    String   @id @default(uuid()) @db.Uuid
+  period                String   @default("DAILY")
+  dateKey               String
+  totalUnlocks          Int      @default(0)
+  uniqueUsersUnlocked   Int      @default(0)
+  totalBadgesAwarded    Int      @default(0)
+  totalRewardsClaimed   Int      @default(0)
+  updatedAt             DateTime @updatedAt
+
+  @@unique([period, dateKey])
+  @@map("achievement_statistics")
+}
+
+/// Operational Audit Log for Achievement Engine Events
+model AchievementAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  actorId   String?  @db.Uuid
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("achievement_audits")
+}
+
+/// Dynamic Achievement Engine Configuration
+model AchievementConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("achievement_configurations")
+}

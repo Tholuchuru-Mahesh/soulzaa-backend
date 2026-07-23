@@ -374,4 +374,13 @@ export class AnalyticsRepository {
       speakingSeconds: agg._sum.speakingSeconds ?? 0n,
     };
   }
+
+  /** Database-level aggregated average of visitor stay duration to eliminate N+1 memory issues. */
+  async getAverageVisitorDuration(roomId: string): Promise<number> {
+    const agg = await this.prisma.roomVisitor.aggregate({
+      where: { roomId, leftAt: { not: null } },
+      _avg: { durationSeconds: true },
+    });
+    return Math.round(agg._avg.durationSeconds ?? 0);
+  }
 }

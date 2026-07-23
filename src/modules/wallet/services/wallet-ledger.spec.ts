@@ -1,14 +1,10 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   ReservationStatus,
   TransactionStatus,
-  TransactionType,
-  WalletCurrency,
   WalletEntryType,
   WalletStatus,
   WalletType,
-  WalletTxnReason,
 } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { FeatureFlagService } from 'src/modules/platform-configuration/services/feature-flag.service';
@@ -24,15 +20,12 @@ import { WalletService } from './wallet.service';
 
 describe('Phase 3: Enterprise Wallet & Double-Entry Ledger Infrastructure', () => {
   let walletService: WalletService;
-  let ledgerService: LedgerService;
   let balanceService: BalanceService;
   let reservationService: ReservationService;
   let transactionService: WalletTransactionService;
-  let validationService: WalletValidationService;
-  let auditService: WalletAuditService;
-  let queryService: TransactionQueryService;
 
   const mockPrismaService: any = {
+    $queryRaw: jest.fn().mockResolvedValue([]),
     wallet: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
@@ -92,13 +85,9 @@ describe('Phase 3: Enterprise Wallet & Double-Entry Ledger Infrastructure', () =
     }).compile();
 
     walletService = module.get<WalletService>(WalletService);
-    ledgerService = module.get<LedgerService>(LedgerService);
     balanceService = module.get<BalanceService>(BalanceService);
     reservationService = module.get<ReservationService>(ReservationService);
     transactionService = module.get<WalletTransactionService>(WalletTransactionService);
-    validationService = module.get<WalletValidationService>(WalletValidationService);
-    auditService = module.get<WalletAuditService>(WalletAuditService);
-    queryService = module.get<TransactionQueryService>(TransactionQueryService);
 
     jest.clearAllMocks();
   });

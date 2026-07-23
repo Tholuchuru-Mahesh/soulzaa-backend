@@ -1,5 +1,7 @@
 import { Global, Module } from '@nestjs/common';
+import { PrismaModule } from '../../infra/prisma/prisma.module';
 import { NotificationController } from './controllers/notification.controller';
+import { NotificationCenterController } from './controllers/notification-center.controller';
 import { NOTIFICATION_SERVICE } from './interfaces/notification.interface';
 import { ChatNotificationListener } from './listeners/chat-notification.listener';
 import { GiftNotificationListener } from './listeners/gift-notification.listener';
@@ -9,6 +11,34 @@ import { NotificationPreferenceRepository } from './repositories/notification-pr
 import { NotificationRepository } from './repositories/notification.repository';
 import { NotificationService } from './services/notification.service';
 import { PushPolicy } from './services/push.policy';
+
+import { NotificationCenterService } from './services/notification-center.service';
+import { NotificationInboxService } from './services/notification-inbox.service';
+import { NotificationPreferenceService } from './services/notification-preference.service';
+import { NotificationTemplateService } from './services/notification-template.service';
+import { NotificationStatisticsService } from './services/notification-statistics.service';
+import { NotificationAuditService } from './services/notification-audit.service';
+import { NotificationConfigurationService } from './services/notification-configuration.service';
+import { NotificationQueryService } from './services/notification-query.service';
+import { NotificationChannelService } from './services/notification-channel.service';
+import { NotificationDispatchService } from './services/notification-dispatch.service';
+import { NotificationValidationService } from './services/notification-validation.service';
+import { NotificationEventService } from './services/notification-event.service';
+
+const ENTERPRISE_SERVICES = [
+  NotificationCenterService,
+  NotificationInboxService,
+  NotificationPreferenceService,
+  NotificationTemplateService,
+  NotificationStatisticsService,
+  NotificationAuditService,
+  NotificationConfigurationService,
+  NotificationQueryService,
+  NotificationChannelService,
+  NotificationDispatchService,
+  NotificationValidationService,
+  NotificationEventService,
+];
 
 /**
  * Notification domain — durable in-app notifications, the user's delivery
@@ -26,7 +56,8 @@ import { PushPolicy } from './services/push.policy';
  */
 @Global()
 @Module({
-  controllers: [NotificationController],
+  imports: [PrismaModule],
+  controllers: [NotificationController, NotificationCenterController],
   providers: [
     // repositories
     NotificationRepository,
@@ -34,6 +65,7 @@ import { PushPolicy } from './services/push.policy';
     // services
     PushPolicy,
     NotificationService,
+    ...ENTERPRISE_SERVICES,
     // listeners
     SocialNotificationListener,
     ChatNotificationListener,
@@ -42,6 +74,6 @@ import { PushPolicy } from './services/push.policy';
     // public token
     { provide: NOTIFICATION_SERVICE, useExisting: NotificationService },
   ],
-  exports: [NOTIFICATION_SERVICE],
+  exports: [NOTIFICATION_SERVICE, ...ENTERPRISE_SERVICES],
 })
 export class NotificationModule {}

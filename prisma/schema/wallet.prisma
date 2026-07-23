@@ -133,6 +133,7 @@ model Wallet {
   @@index([userId])
   @@index([type])
   @@index([status])
+  @@index([version])
   @@map("wallets")
 }
 
