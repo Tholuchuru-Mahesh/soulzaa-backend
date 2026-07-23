@@ -103,5 +103,7 @@ model TreasureWinner {
   @@unique([boxId, userId])
   @@index([roomId])
   @@index([userId])
+  /// VR-13: treasure-dimension recompute selects winners by selectedAt window.
+  @@index([selectedAt])
   @@map("treasure_winners")
 }

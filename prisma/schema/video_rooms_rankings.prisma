@@ -1,0 +1,93 @@
+// ============================================================
+// Video Room Rankings (VR-13) — historical snapshots, materialised
+// leaderboards and the aggregation audit. Live ladders are Redis ZSETs
+// (`vrank:{scope|dimension}:period:dateKey`); this file is the durable record.
+//
+// No cross-module relations — other domains are referenced by id, matching
+// rankings.prisma and every other video_rooms_*.prisma file. `scope` is an
+// opaque string ('g', 'r:<uuid>', 'c:IN', 'y:<uuid>') rather than a set of
+// nullable FK columns, so adding a scope later is a constant, not a migration.
+// ============================================================
+
+/// One entity's position on one ladder at one period close. The per-user
+/// "my ranking history" read model.
+model VideoRoomRankingSnapshot {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// 'g' | 'r:<roomId>' | 'c:<ISO2>' | 'y:<cityId>'
+  scope     String
+  /// 'hosts' | 'gifters' | 'receivers' | 'rooms' | 'pk' | 'treasure' | 'vip'
+  dimension String
+  /// 'hourly' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'alltime'
+  period    String
+  /// '2026072214' | '20260722' | '2026W30' | '202607' | '2026Q3' | '2026' | 'alltime'
+  dateKey   String
+  /// User id or room id, depending on the dimension.
+  targetId  String   @db.Uuid
+  rank      Int
+  /// The composite score, as produced by VideoRoomRankingScoreEngine.
+  score     BigInt
+  /// Authoritative per-metric breakdown from the recompute pass, e.g.
+  /// { coins, gifts, watchSeconds, peakViewers, pkWins, treasureEvents }.
+  /// Null for rows written before a recompute has run for that window.
+  metrics   Json?
+  createdAt DateTime @default(now())
+
+  @@unique([scope, dimension, period, dateKey, targetId])
+  @@index([scope, dimension, period, dateKey, rank])
+  @@index([targetId, dimension, period])
+  /// Serves the retention/prune sweep, which deletes by
+  /// `WHERE period = ? AND createdAt < ?` with no scope predicate —
+  /// scope is effectively unenumerable (per-room values), so every
+  /// other index here is useless to that query.
+  @@index([period, createdAt])
+  @@map("video_room_ranking_snapshots")
+}
+
+/// The whole top-N of one ladder as a single row. Serves a historical
+/// leaderboard read and a cache warm-up in one query instead of N snapshot
+/// rows, which is why it is worth denormalising alongside the table above.
+model VideoRoomLeaderboardSnapshot {
+  id           String   @id @default(uuid()) @db.Uuid
+  scope        String
+  dimension    String
+  period       String
+  dateKey      String
+  /// Ordered top-N: [{ targetId, rank, score }]. Score is a string in JSON —
+  /// BigInt has no JSON representation and coin totals can exceed 2^53.
+  entries      Json
+  /// Cardinality of the FULL ladder, not of `entries` — lets a paginated
+  /// response report an honest total without re-reading Redis.
+  totalEntries Int
+  capturedAt   DateTime @default(now())
+
+  @@unique([scope, dimension, period, dateKey])
+  @@index([scope, dimension, period, capturedAt])
+  @@map("video_room_leaderboard_snapshots")
+}
+
+/// One row per aggregation run. Doubles as the idempotency guard: a run that
+/// finds a SUCCEEDED row for its key returns without work, which is what makes
+/// the jobs safe under BullMQ redelivery.
+model VideoRoomRankingAggregationLog {
+  id             String    @id @default(uuid()) @db.Uuid
+  scope          String
+  dimension      String
+  period         String
+  dateKey        String
+  /// 'RUNNING' | 'SUCCEEDED' | 'FAILED'
+  status         String
+  windowStart    DateTime
+  windowEnd      DateTime
+  /// Source rows scanned during the recompute.
+  sourceRows     Int       @default(0)
+  /// Ladder entries written by the recompute.
+  entriesWritten Int       @default(0)
+  durationMs     Int       @default(0)
+  error          String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  @@unique([scope, dimension, period, dateKey])
+  @@index([status, startedAt])
+  @@map("video_room_ranking_aggregation_logs")
+}

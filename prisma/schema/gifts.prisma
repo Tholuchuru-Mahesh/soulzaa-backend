@@ -105,6 +105,11 @@ model GiftTransaction {
   createdAt           DateTime        @default(now())
 
   @@index([contextType, contextId, createdAt])
+  /// VR-13: the global video-room recompute filters on contextType + a time
+  /// window with no contextId. The composite index above cannot serve that —
+  /// contextId is the second column — so an hourly global aggregation would
+  /// sequential-scan gift_transactions. Additive: no column or constraint change.
+  @@index([contextType, createdAt])
   @@index([senderId, createdAt])
   @@index([receiverId, createdAt])
   @@index([giftId])

@@ -15,6 +15,7 @@ import {
 } from '../dto/rankings.dto';
 import type { IRankingsService } from '../interfaces/rankings.service.interface';
 import { RankingsRepository, RedisRankedEntry } from '../repositories/rankings.repository';
+import { RankingPeriodResolver } from './ranking-period.resolver';
 
 @Injectable()
 export class RankingsService implements IRankingsService {
@@ -23,6 +24,7 @@ export class RankingsService implements IRankingsService {
   constructor(
     private readonly repo: RankingsRepository,
     @Inject(FAMILIES_SERVICE) private readonly families: IFamiliesService,
+    private readonly periods: RankingPeriodResolver,
   ) {}
 
   // ---- IRankingsService ----
@@ -417,22 +419,21 @@ export class RankingsService implements IRankingsService {
     await Promise.all(keys.map((k) => this.repo.incrementScore(k, member, delta)));
   }
 
+  /**
+   * Legacy key derivation, preserved exactly.
+   *
+   * `'local'` is passed deliberately: all three legacy keys — daily, weekly and
+   * monthly — derive from the host's local calendar date. `dateKeyFor` defaults
+   * to `'utc'`, so omitting `'local'` here would silently move the day boundary
+   * under ladders already accumulating scores and split one day's data across
+   * two Redis keys on the deploy. VR-13's own ladders are UTC throughout; this
+   * seam is not the place to correct history.
+   */
   private getDateKeys(date: Date): { daily: string; weekly: string; monthly: string } {
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const dd = String(date.getDate()).padStart(2, '0');
-
-    const daily = `${yyyy}${mm}${dd}`;
-    const monthly = `${yyyy}${mm}`;
-
-    // ISO week number calculation
-    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-    const dayNum = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-    const weekly = `${d.getUTCFullYear()}W${String(weekNo).padStart(2, '0')}`;
-
-    return { daily, weekly, monthly };
+    return {
+      daily: this.periods.dateKeyFor('daily', date, 'local'),
+      weekly: this.periods.dateKeyFor('weekly', date, 'local'),
+      monthly: this.periods.dateKeyFor('monthly', date, 'local'),
+    };
   }
 }

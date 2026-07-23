@@ -361,6 +361,35 @@ export const videoRoomPkConfig = registerAs('videoRoomPk', () => ({
   maxPerSweep: env().VIDEO_ROOM_PK_MAX_PER_SWEEP,
 }));
 
+export const videoRoomRankingConfig = registerAs('videoRoomRanking', () => ({
+  enabled: process.env.VIDEO_ROOM_RANKING_ENABLED,
+  cacheTtlSeconds: process.env.VIDEO_ROOM_RANKING_CACHE_TTL_SECONDS,
+  dedupeTtlSeconds: process.env.VIDEO_ROOM_RANKING_DEDUPE_TTL_SECONDS,
+  roomLadderTtlSeconds: process.env.VIDEO_ROOM_RANKING_ROOM_LADDER_TTL_SECONDS,
+  derivedLadderTtlSeconds: process.env.VIDEO_ROOM_RANKING_DERIVED_LADDER_TTL_SECONDS,
+  coalesceWindowMs: process.env.VIDEO_ROOM_RANKING_COALESCE_WINDOW_MS,
+  broadcastTopN: process.env.VIDEO_ROOM_RANKING_BROADCAST_TOP_N,
+  hostCoinWeight: process.env.VIDEO_ROOM_RANKING_HOST_COIN_WEIGHT,
+  hostGiftWeight: process.env.VIDEO_ROOM_RANKING_HOST_GIFT_WEIGHT,
+  hostWatchSecondWeight: process.env.VIDEO_ROOM_RANKING_HOST_WATCH_SECOND_WEIGHT,
+  hostPeakViewerWeight: process.env.VIDEO_ROOM_RANKING_HOST_PEAK_VIEWER_WEIGHT,
+  hostPkWinWeight: process.env.VIDEO_ROOM_RANKING_HOST_PK_WIN_WEIGHT,
+  hostTreasureEventWeight: process.env.VIDEO_ROOM_RANKING_HOST_TREASURE_EVENT_WEIGHT,
+  roomGiftCoinWeight: process.env.VIDEO_ROOM_RANKING_ROOM_GIFT_COIN_WEIGHT,
+  roomPeakViewerWeight: process.env.VIDEO_ROOM_RANKING_ROOM_PEAK_VIEWER_WEIGHT,
+  roomAvgWatchSecondWeight: process.env.VIDEO_ROOM_RANKING_ROOM_AVG_WATCH_SECOND_WEIGHT,
+  roomPkCountWeight: process.env.VIDEO_ROOM_RANKING_ROOM_PK_COUNT_WEIGHT,
+  roomTreasureCountWeight: process.env.VIDEO_ROOM_RANKING_ROOM_TREASURE_COUNT_WEIGHT,
+  pkWinWeight: process.env.VIDEO_ROOM_RANKING_PK_WIN_WEIGHT,
+  pkLossWeight: process.env.VIDEO_ROOM_RANKING_PK_LOSS_WEIGHT,
+  pkScoreWeight: process.env.VIDEO_ROOM_RANKING_PK_SCORE_WEIGHT,
+  pkGiftCoinWeight: process.env.VIDEO_ROOM_RANKING_PK_GIFT_COIN_WEIGHT,
+  retentionHourlyDays: process.env.VIDEO_ROOM_RANKING_RETENTION_HOURLY_DAYS,
+  retentionDailyDays: process.env.VIDEO_ROOM_RANKING_RETENTION_DAILY_DAYS,
+  retentionWeeklyDays: process.env.VIDEO_ROOM_RANKING_RETENTION_WEEKLY_DAYS,
+  maxCustomRangeDays: process.env.VIDEO_ROOM_RANKING_MAX_CUSTOM_RANGE_DAYS,
+}));
+
 export const chatConfig = registerAs('chat', () => ({
   messageMaxLength: env().CHAT_MESSAGE_MAX_LENGTH,
   maxAttachments: env().CHAT_MAX_ATTACHMENTS,
@@ -466,6 +495,7 @@ export const configurations = [
   videoRoomGiftConfig,
   videoRoomTreasureConfig,
   videoRoomPkConfig,
+  videoRoomRankingConfig,
   chatConfig,
   callsConfig,
   giftConfig,

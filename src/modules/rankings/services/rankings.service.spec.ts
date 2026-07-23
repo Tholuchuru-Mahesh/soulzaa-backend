@@ -1,6 +1,7 @@
 import { RankingPeriod } from '../dto/rankings.dto';
 import type { IFamiliesService } from 'src/modules/families/interfaces/families.service.interface';
 import { RankingsRepository } from '../repositories/rankings.repository';
+import { RankingPeriodResolver } from './ranking-period.resolver';
 import { RankingsService } from './rankings.service';
 
 describe('RankingsService', () => {
@@ -52,6 +53,7 @@ describe('RankingsService', () => {
     service = new RankingsService(
       repo as unknown as RankingsRepository,
       families as unknown as IFamiliesService,
+      new RankingPeriodResolver(),
     );
   });
 

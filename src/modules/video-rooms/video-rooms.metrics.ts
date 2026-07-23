@@ -114,6 +114,15 @@ export class VideoRoomsMetrics {
   private readonly pkRewardDistributionH: Histogram;
   private readonly pkRedisSyncC: Counter<'result'>;
   private readonly pkRecoveryQueueDepthG: Gauge;
+  // ---- VR-13 rankings ----
+  private readonly rankingUpdates: Counter<'dimension'>;
+  private readonly rankingCacheHits: Counter;
+  private readonly rankingCacheMisses: Counter;
+  private readonly rankingAggregationDuration: Histogram<'period'>;
+  private readonly rankingSnapshotDuration: Histogram<'period'>;
+  private readonly rankingApiLatency: Histogram<'dimension'>;
+  private readonly rankingBroadcasts: Counter;
+  private readonly rankingLadderSize: Gauge<'dimension'>;
 
   constructor(metrics: MetricsService) {
     const registers = [metrics.registry];
@@ -631,6 +640,74 @@ export class VideoRoomsMetrics {
       help: 'PK battles/invitations awaiting the recovery sweep',
       registers,
     });
+
+    // ---- VR-13 rankings ----
+    // `video_rooms_ranking_dedupe_skips_total` (a Counter for "the write path
+    // skipped an already-applied source event") was registered here but never
+    // had a producer: the only place that knows a write was skipped is
+    // `VideoRoomRankingService.record()`'s `!fresh` branch, and that hot-path
+    // service deliberately does not inject VideoRoomsMetrics (see its class
+    // doc, invariant 3). Piggy-backing a bus-published signal on that branch
+    // was considered and rejected — `video-room-ranking.service.spec.ts`
+    // pins "writes nothing at all when the transaction was already applied"
+    // (`bus.publish` included), so the dedupe-skip path is a genuine no-op by
+    // contract, not an oversight. With no honest producer available, the
+    // metric and its `incRankingDedupeSkip()` helper were removed rather than
+    // shipped as a permanently-zero counter (VR-13 Task 18 review, Finding 2).
+    // A `rankingUpdateLatency` histogram was intentionally NOT registered: the
+    // only signal any subscriber has is the movement event, published AFTER the
+    // write commits with no start timestamp, so no honest duration exists to
+    // observe. Rather than ship a permanently-zero series, it was dropped —
+    // `rankingApiLatency` (read-path timing) is the latency signal that has a
+    // real producer. Reinstate only alongside a `durationMs` on the payload.
+    this.rankingUpdates = new Counter({
+      name: 'video_rooms_ranking_updates_total',
+      help: 'Ranking movement events observed, by dimension',
+      labelNames: ['dimension'] as const,
+      registers,
+    });
+    this.rankingCacheHits = new Counter({
+      name: 'video_rooms_ranking_cache_hits_total',
+      help: 'Leaderboard page cache hits, drained from LeaderboardCache on each aggregation tick',
+      registers,
+    });
+    this.rankingCacheMisses = new Counter({
+      name: 'video_rooms_ranking_cache_misses_total',
+      help: 'Leaderboard page cache misses, drained from LeaderboardCache on each aggregation tick',
+      registers,
+    });
+    this.rankingAggregationDuration = new Histogram({
+      name: 'video_rooms_ranking_aggregation_duration_seconds',
+      help: 'Time to recompute a ranking ladder, by period',
+      buckets: [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+      labelNames: ['period'] as const,
+      registers,
+    });
+    this.rankingSnapshotDuration = new Histogram({
+      name: 'video_rooms_ranking_snapshot_duration_seconds',
+      help: 'Time to persist a ranking ladder snapshot at period close, by period',
+      buckets: [0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+      labelNames: ['period'] as const,
+      registers,
+    });
+    this.rankingApiLatency = new Histogram({
+      name: 'video_rooms_ranking_api_latency_seconds',
+      help: 'Video-room ranking read-path latency, by dimension (recorded on every exit, including throws)',
+      buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2],
+      labelNames: ['dimension'] as const,
+      registers,
+    });
+    this.rankingBroadcasts = new Counter({
+      name: 'video_rooms_ranking_broadcasts_total',
+      help: 'Coalesced ranking-movement broadcasts flushed to /video-room sockets',
+      registers,
+    });
+    this.rankingLadderSize = new Gauge({
+      name: 'video_rooms_ranking_ladder_size',
+      help: 'Entries written to a ranking ladder at the last aggregation, by dimension',
+      labelNames: ['dimension'] as const,
+      registers,
+    });
   }
 
   // ---- VR-4 seat helpers ----
@@ -1054,5 +1131,37 @@ export class VideoRoomsMetrics {
   /** Same "read every tick, act only when enabled" rationale as `setPkActive`. */
   setPkRecoveryQueueDepth(count: number): void {
     this.pkRecoveryQueueDepthG.set(count);
+  }
+
+  // ---- VR-13 ranking helpers ----
+
+  incRankingUpdate(dimension: string, count = 1): void {
+    this.rankingUpdates.inc({ dimension }, count);
+  }
+
+  /** Drained from LeaderboardCache.snapshotCounters() by the metrics listener. */
+  incRankingCache(hits: number, misses: number): void {
+    if (hits > 0) this.rankingCacheHits.inc(hits);
+    if (misses > 0) this.rankingCacheMisses.inc(misses);
+  }
+
+  observeRankingAggregation(period: string, seconds: number): void {
+    this.rankingAggregationDuration.observe({ period }, seconds);
+  }
+
+  observeRankingSnapshot(period: string, seconds: number): void {
+    this.rankingSnapshotDuration.observe({ period }, seconds);
+  }
+
+  observeRankingApi(dimension: string, seconds: number): void {
+    this.rankingApiLatency.observe({ dimension }, seconds);
+  }
+
+  incRankingBroadcast(count = 1): void {
+    this.rankingBroadcasts.inc(count);
+  }
+
+  setRankingLadderSize(dimension: string, size: number): void {
+    this.rankingLadderSize.set({ dimension }, size);
   }
 }

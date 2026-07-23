@@ -1,6 +1,11 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
 import { VIDEO_ROOM_QUEUES } from './constants/video-room.constants';
+import {
+  LeaderboardCache,
+  LeaderboardStore,
+  RankingPeriodResolver,
+} from 'src/modules/rankings/interfaces';
 import { RewardDistributor } from 'src/modules/treasure-boxes/services/reward-distributor.service';
 import { VideoRoomsChatController } from './controllers/video-rooms-chat.controller';
 import { VideoRoomsGiftsController } from './controllers/video-rooms-gifts.controller';
@@ -131,6 +136,23 @@ import { VideoRoomViewerQueryService } from './services/video-room-viewer-query.
 import { VideoRoomViewerService } from './services/video-room-viewer.service';
 import { VideoRoomsService } from './services/video-rooms.service';
 import { VideoRoomsMetrics } from './video-rooms.metrics';
+// ---- VR-13 ranking & leaderboard engine ----
+import { VideoRoomsRankingsController } from './controllers/video-rooms-rankings.controller';
+import { VideoRoomRankingActivityListener } from './listeners/video-room-ranking-activity.listener';
+import { VideoRoomRankingAuditListener } from './listeners/video-room-ranking-audit.listener';
+import { VideoRoomRankingMetricsListener } from './listeners/video-room-ranking-metrics.listener';
+import { VideoRoomRankingSocketListener } from './listeners/video-room-ranking-socket.listener';
+import { VideoRoomRankingRepository } from './repositories/video-room-ranking.repository';
+import { VideoRoomRankingScheduler } from './scheduler/video-room-ranking.scheduler';
+import { VideoRoomRankingAggregationService } from './services/video-room-ranking-aggregation.service';
+import { VideoRoomRankingJobsService } from './services/video-room-ranking-jobs.service';
+import { VideoRoomRankingQueryService } from './services/video-room-ranking-query.service';
+import { VideoRoomRankingRecoveryService } from './services/video-room-ranking-recovery.service';
+import { VideoRoomRankingScopeResolver } from './services/video-room-ranking-scope.resolver';
+import { VideoRoomRankingScoreEngine } from './services/video-room-ranking-score.engine';
+import { VideoRoomRankingSnapshotService } from './services/video-room-ranking-snapshot.service';
+import { VideoRoomRankingService } from './services/video-room-ranking.service';
+import { VideoRoomLeaderboardService } from './services/video-room-leaderboard.service';
 
 /**
  * Video Rooms domain — VR-0: Enterprise Foundation.
@@ -167,6 +189,7 @@ import { VideoRoomsMetrics } from './video-rooms.metrics';
     VideoRoomsGiftsController,
     VideoRoomsTreasureController,
     VideoRoomsPkController,
+    VideoRoomsRankingsController,
   ],
   providers: [
     VideoRoomsRepository,
@@ -306,6 +329,36 @@ import { VideoRoomsMetrics } from './video-rooms.metrics';
     VideoRoomPkMetricsListener,
     VideoRoomPkReversalListener,
     VideoRoomPkRecoveryListener,
+    // ---- VR-13 ranking & leaderboard engine ----
+    // The generic ranking CORE (RankingPeriodResolver / LeaderboardStore /
+    // LeaderboardCache) is provided directly here rather than by importing
+    // RankingsModule: RankingsModule is NOT @Global, and importing the module
+    // itself (rather than the classes it exports from its `interfaces/`
+    // surface) would be a `no-cross-module-imports` boundary violation — only
+    // `interfaces/`/`events/` may cross a module line, not another module's
+    // `*.module.ts`. Providing these three stateless classes here gives every
+    // VR-13 provider below a single shared instance (they all resolve from
+    // this module's own injector), while RankingsModule keeps its own
+    // separate instances for the platform `rankings:*` ladder — the two never
+    // need to share state, since VR-13 exclusively uses the `vrank` namespace.
+    RankingPeriodResolver,
+    LeaderboardStore,
+    LeaderboardCache,
+    VideoRoomRankingRepository,
+    VideoRoomRankingScoreEngine,
+    VideoRoomRankingScopeResolver,
+    VideoRoomRankingService,
+    VideoRoomRankingQueryService,
+    VideoRoomLeaderboardService,
+    VideoRoomRankingAggregationService,
+    VideoRoomRankingSnapshotService,
+    VideoRoomRankingRecoveryService,
+    VideoRoomRankingJobsService,
+    VideoRoomRankingScheduler,
+    VideoRoomRankingActivityListener,
+    VideoRoomRankingSocketListener,
+    VideoRoomRankingMetricsListener,
+    VideoRoomRankingAuditListener,
     // Task-18 seam (see video-room-pk.service.ts): VideoRoomPkService injects
     // settlement `@Optional()` via this token so `end()` can fail loudly with
     // NOT_IMPLEMENTED instead of silently doing nothing if it is ever missing.
