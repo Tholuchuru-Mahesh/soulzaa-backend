@@ -32,6 +32,13 @@ export interface GameLiveState {
   seatOrder: string[];
   moves: GameMoveFrame[];
   isOver: boolean;
+  /**
+   * Consecutive turn-watchdog timeouts per seat (userId -> count). Reset to 0
+   * whenever that seat completes a turn normally; incremented when the
+   * watchdog force-advances past them. Lets the watchdog fold a client that's
+   * stuck turn after turn into the normal forfeit path.
+   */
+  timeoutCounts: Record<string, number>;
 }
 
 /**
@@ -61,6 +68,7 @@ export function initLiveState(
     seatOrder: [...seatOrder],
     moves: [],
     isOver: false,
+    timeoutCounts: {},
   };
 }
 
@@ -99,11 +107,49 @@ export function applyMove(state: GameLiveState, frame: GameMoveFrame): GameLiveS
     turnStartedAt = frame.timestamp;
   }
 
+  // A real move from the mover's seat proves it isn't stuck — clear its
+  // watchdog strike count. Only relevant once the seat holds the turn again.
+  const timeoutCounts =
+    frame.playerId in state.timeoutCounts && state.timeoutCounts[frame.playerId] !== 0
+      ? { ...state.timeoutCounts, [frame.playerId]: 0 }
+      : state.timeoutCounts;
+
   return {
     ...state,
     moves,
     currentTurnUserId,
     turnStartedAt,
+    timeoutCounts,
     isOver: state.isOver || action === 'game_over',
+  };
+}
+
+/**
+ * Server-forced turn rotation, used only by the turn watchdog when a turn has
+ * sat unresolved past its grace period with no relayed move. Skips the stuck
+ * seat, bumps its consecutive-timeout strike count, and clears the strike
+ * count for whoever now holds the turn. Never mutates the input.
+ */
+export function forceAdvanceTurn(
+  state: GameLiveState,
+  now: number,
+): { state: GameLiveState; skippedUserId: string | null; skippedStrikes: number } {
+  const skippedUserId = state.currentTurnUserId;
+  const nextUserId = nextSeat(state.seatOrder, skippedUserId);
+  const skippedStrikes = skippedUserId ? (state.timeoutCounts[skippedUserId] ?? 0) + 1 : 0;
+
+  const timeoutCounts = { ...state.timeoutCounts };
+  if (skippedUserId) timeoutCounts[skippedUserId] = skippedStrikes;
+  if (nextUserId) timeoutCounts[nextUserId] = 0;
+
+  return {
+    state: {
+      ...state,
+      currentTurnUserId: nextUserId,
+      turnStartedAt: now,
+      timeoutCounts,
+    },
+    skippedUserId,
+    skippedStrikes,
   };
 }

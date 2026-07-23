@@ -41,17 +41,24 @@ import {
   type IWalletService,
 } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import {
+  GAME_DISCONNECT_GRACE_SECONDS,
   GAME_JOIN_CODE_ALPHABET,
   GAME_JOIN_CODE_LENGTH,
   GAME_LIVE_STATE_TTL_SECONDS,
   GAME_LOBBY_TTL_MS,
   GAME_MATCH_BUCKET_INDEX_KEY,
   GAME_MATCH_READY_INDEX_KEY,
+  GAME_MAX_CONSECUTIVE_TURN_TIMEOUTS,
+  GAME_MAX_SESSION_DURATION_SECONDS,
+  GAME_TURN_RESYNC_GRACE_MS,
+  GAME_TURN_RESYNC_PENDING_TTL_SECONDS,
   GAME_TURN_SECONDS,
+  GAME_TURN_STALL_GRACE_MS,
   GAME_WINS_LEADERBOARD_KEY,
   MATCHMAKING_PROTOCOL_VERSION,
   TEAM_2V2_CAPABLE_GAMES,
   effectiveMaxPlayers,
+  gameDisconnectKey,
   gameLiveStateKey,
   gameLobbyLockKey,
   gameMatchBucketLockKey,
@@ -61,11 +68,13 @@ import {
   gameMatchReadyUserKey,
   gameMatchUserKey,
   gameSessionLockKey,
+  gameTurnResyncPendingKey,
   gameWinningsLeaderboardKey,
   matchMaxRetries,
   matchQueueTtlSeconds,
   matchReadySeconds,
   matchmakingEnabled,
+  type GameDisconnectPointer,
 } from '../constants/games.constants';
 import type { CreateLobbyDto, ListSessionsDto, UpdateGameDefinitionDto } from '../dto/games.dto';
 import {
@@ -84,11 +93,13 @@ import {
   GameMoveEvent,
   GameSettledEvent,
   GameStartedEvent,
+  GameTurnForceAdvancedEvent,
+  GameTurnResyncRequestedEvent,
   type GameLobbyView,
 } from '../events/game.events';
 import type { GameActor } from '../interfaces/game-actor.interface';
 import { GamesRepository } from '../repositories/games.repository';
-import { applyMove, initLiveState, type GameLiveState } from './game-live-state';
+import { applyMove, forceAdvanceTurn, initLiveState, type GameLiveState } from './game-live-state';
 import {
   assignTeamsAndSeats,
   expandTeamWinners,
@@ -1718,6 +1729,162 @@ export class GamesService {
     }
   }
 
+  /**
+   * Sweeps active sessions to check for any disconnected participants whose
+   * reconnection timeout (GAME_DISCONNECT_GRACE_SECONDS) has expired.
+   */
+  async sweepExpiredDisconnections(now: Date): Promise<void> {
+    const activeSessions = await this.repo.listActiveSessions();
+    const graceMs = Math.max(0, GAME_DISCONNECT_GRACE_SECONDS) * 1000;
+    for (const session of activeSessions) {
+      const participants = await this.repo.listParticipants(session.id);
+      for (const p of participants) {
+        if (p.isBot || p.status !== GameParticipantStatus.PLAYING) continue;
+        const ptr = await this.cache.get<GameDisconnectPointer>(gameDisconnectKey(p.userId));
+        if (ptr && now.getTime() - ptr.disconnectedAt > graceMs) {
+          await this.cache.del(gameDisconnectKey(p.userId));
+          void this.forfeitOnDisconnect(p.userId);
+        }
+      }
+    }
+  }
+
+  /**
+   * Turn watchdog: recovers a stalled turn so a match can never freeze
+   * indefinitely on one unresponsive seat (client crash/background, dropped
+   * relay, a bot whose host stalled, etc). GAME_TURN_SECONDS is advisory —
+   * clients drive the happy-path countdown — so this is the server-side
+   * backstop, run on the same cadence as the other sweeps.
+   *
+   * Two-phase per session, gated on `turnStartedAt` staying identical between
+   * phases (i.e. genuinely no move landed in between):
+   *   1. Turn age > turnSeconds + GAME_TURN_STALL_GRACE_MS and no resync
+   *      pending yet → request a resync from the room, stamp a pending
+   *      marker for this turnStartedAt.
+   *   2. Turn age > turnSeconds + GAME_TURN_STALL_GRACE_MS + GAME_TURN_RESYNC_GRACE_MS
+   *      and the pending marker still matches this turnStartedAt → force-advance
+   *      past the stuck seat. A seat that racks up
+   *      GAME_MAX_CONSECUTIVE_TURN_TIMEOUTS force-advances in a row is folded
+   *      into the normal disconnect/forfeit path, same as `forfeitOnDisconnect`.
+   *
+   * Everything that mutates live state runs under the session lock so this
+   * can never race a genuine client-relayed move.
+   */
+  async sweepStalledTurns(now: Date): Promise<void> {
+    const activeSessions = await this.repo.listActiveSessions();
+    const nowMs = now.getTime();
+    for (const session of activeSessions) {
+      try {
+        await this.sweepStalledTurnForSession(session, nowMs);
+      } catch (err) {
+        this.logger.warn(
+          `Turn watchdog sweep failed for session ${session.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  private async sweepStalledTurnForSession(session: GameSession, nowMs: number): Promise<void> {
+    const stallThresholdMs = GAME_TURN_SECONDS * 1000 + GAME_TURN_STALL_GRACE_MS;
+
+    // Cheap pre-check outside the lock — most sessions aren't stalled.
+    const peek = await this.cache.get<GameLiveState>(gameLiveStateKey(session.id));
+    if (!peek || peek.isOver || !peek.currentTurnUserId) return;
+    if (nowMs - peek.turnStartedAt <= stallThresholdMs) return;
+
+    await this.locks.withLock(gameSessionLockKey(session.id), async () => {
+      const state = await this.loadOrInitLiveState(session);
+      if (state.isOver || !state.currentTurnUserId) return;
+      const turnAgeMs = nowMs - state.turnStartedAt;
+      if (turnAgeMs <= stallThresholdMs) return;
+
+      const pendingKey = gameTurnResyncPendingKey(session.id);
+      const pending = await this.cache.get<{ turnStartedAt: number }>(pendingKey);
+
+      if (!pending || pending.turnStartedAt !== state.turnStartedAt) {
+        // Phase 1: first time we've seen this exact turn go stale — ask the
+        // room to resync before we force anything, in case this is just a
+        // desync/missed-broadcast rather than a genuinely stuck client.
+        await this.cache.set(
+          pendingKey,
+          { turnStartedAt: state.turnStartedAt },
+          GAME_TURN_RESYNC_PENDING_TTL_SECONDS,
+        );
+        await this.bus.publish(
+          new GameTurnResyncRequestedEvent({
+            sessionId: session.id,
+            currentTurnUserId: state.currentTurnUserId,
+            turnStartedAt: state.turnStartedAt,
+          }),
+        );
+        return;
+      }
+
+      if (turnAgeMs <= stallThresholdMs + GAME_TURN_RESYNC_GRACE_MS) return;
+
+      // Phase 2: still the same unresolved turn after the resync grace —
+      // force-advance past the stuck seat so the match keeps moving.
+      const stuckUserId = state.currentTurnUserId;
+      const { state: advanced, skippedUserId, skippedStrikes } = forceAdvanceTurn(state, nowMs);
+      await this.cache.set(gameLiveStateKey(session.id), advanced, GAME_LIVE_STATE_TTL_SECONDS);
+      await this.cache.del(pendingKey);
+
+      await this.repo.logEvent({
+        sessionId: session.id,
+        userId: skippedUserId ?? undefined,
+        action: 'session.turn_force_advanced',
+        detail: { skippedUserId, skippedStrikes, currentTurnUserId: advanced.currentTurnUserId },
+      });
+      await this.bus.publish(
+        new GameTurnForceAdvancedEvent({
+          sessionId: session.id,
+          roomId: session.roomId,
+          skippedUserId,
+          skippedStrikes,
+          currentTurnUserId: advanced.currentTurnUserId,
+        }),
+      );
+
+      // A seat that never completes a turn across several force-advances in a
+      // row behaves like a client that's actually gone — fold it into the
+      // same forfeit path a real disconnect would take, bot or human.
+      if (stuckUserId && skippedStrikes >= GAME_MAX_CONSECUTIVE_TURN_TIMEOUTS) {
+        void this.forfeitOnDisconnect(stuckUserId);
+      }
+    });
+  }
+
+  /**
+   * Sweeps and aborts active sessions older than GAME_MAX_SESSION_DURATION_SECONDS
+   * (e.g. 15 minutes), preventing abandoned matches from persisting in status ACTIVE.
+   */
+  async sweepStaleSessions(now: Date): Promise<void> {
+    const cutoff = new Date(now.getTime() - GAME_MAX_SESSION_DURATION_SECONDS * 1000);
+    const staleSessions = await this.repo.findStaleActiveSessions(cutoff);
+    for (const session of staleSessions) {
+      try {
+        await this.locks.withLock(gameSessionLockKey(session.id), async () => {
+          const fresh = await this.repo.getSession(session.id);
+          if (!fresh || fresh.status !== GameSessionStatus.ACTIVE) return;
+          await this.repo.abortStaleSession(fresh.id, now);
+          await this.cache.del(gameLiveStateKey(fresh.id));
+          await this.repo.logEvent({ sessionId: fresh.id, action: 'session.aborted_stale' });
+          await this.bus.publish(
+            new GameCancelledEvent({
+              sessionId: fresh.id,
+              gameCode: fresh.code,
+              roomId: fresh.roomId,
+              status: GameSessionStatus.ABORTED,
+              refundedUserIds: [],
+            }),
+          );
+        });
+      } catch (err) {
+        this.logger.warn(`Failed to abort stale session ${session.id}: ${(err as Error).message}`);
+      }
+    }
+  }
+
   // ======================= Reads =======================
 
   async getSession(sessionId: string): Promise<unknown> {
@@ -1729,47 +1896,51 @@ export class GamesService {
 
   /**
    * Resume-on-launch: what should the client automatically route the actor
-   * BACK into right now, if anything — the single source of truth the app
-   * checks on cold start and on every foreground-resume so a player who
-   * closed/backgrounded the app mid-match (or mid-waiting-room) never has to
-   * manually rejoin. Checked in priority order — an in-progress match always
-   * wins over an unseen old result, which always wins over a waiting room:
-   *   1. An ACTIVE session the actor is still `PLAYING` in.
-   *   2. A COMPLETED session whose result the actor hasn't acknowledged yet
-   *      (`resultSeenAt IS NULL` — see `markResultSeen`/the `ack-result`
-   *      endpoint the client calls once the player dismisses that screen).
-   *   3. A still-open (OPEN/STARTED) lobby the actor is a member of.
+   * BACK into right now, if anything — checked ONLY for active matches and
+   * temporary disconnections within the reconnect grace period (60s).
    *
-   * Response shape (discriminated by `kind`) — one variant per client
-   * decision-table branch:
-   *   { kind: 'session', session: <sessionView> }  — the client branches on
-   *     `session.status` itself: IN_PROGRESS → reconnect + restore state;
-   *     COMPLETED → show the result screen straight from this same payload,
-   *     no second round-trip needed.
-   *   { kind: 'lobby', lobby: <lobbyView> }         — rejoin the waiting room.
-   *   { kind: 'none' }                              — nothing to resume;
-   *     stay on whatever screen normal navigation would show (e.g. Home).
+   * Reconnect ONLY if:
+   *   - Match status is WAITING, STARTING, or IN_PROGRESS.
+   *   - The player is still an active participant (PLAYING).
+   *   - The reconnect timeout has NOT expired.
    *
-   * CANCELLED/ABORTED sessions and CANCELLED/EXPIRED lobbies are never
-   * returned by any of the three lookups above, so those terminal states
-   * fall straight through to `{ kind: 'none' }` — matching the spec's
-   * "cancelled → just go Home" rule without the client special-casing it.
+   * Otherwise returns { kind: 'none' }.
    */
   async getMyActiveMatch(actor: GameActor): Promise<unknown> {
     const activeSessionId = await this.repo.findActiveSessionForParticipant(actor.id);
-    const sessionId =
-      activeSessionId ?? (await this.repo.findUnseenCompletedSessionForParticipant(actor.id));
-    if (sessionId) {
-      const session = await this.repo.getSession(sessionId);
-      if (session) {
-        const participants = await this.repo.listParticipants(sessionId);
+    if (activeSessionId) {
+      const session = await this.repo.getSession(activeSessionId);
+      if (session && session.status === GameSessionStatus.ACTIVE) {
+        // 1. Abort stale sessions older than max allowed duration (e.g. 15 minutes)
+        const ageSeconds = (Date.now() - session.startedAt.getTime()) / 1000;
+        if (ageSeconds > GAME_MAX_SESSION_DURATION_SECONDS) {
+          await this.repo.abortStaleSession(session.id, new Date());
+          await this.cache.del(gameLiveStateKey(session.id));
+          return { kind: 'none' };
+        }
+
+        // 2. Check if player has a disconnect record in Redis exceeding 60s
+        const disconnectPtr = await this.cache.get<GameDisconnectPointer>(
+          gameDisconnectKey(actor.id),
+        );
+        if (disconnectPtr) {
+          const elapsedMs = Date.now() - disconnectPtr.disconnectedAt;
+          const graceMs = Math.max(0, GAME_DISCONNECT_GRACE_SECONDS) * 1000;
+          if (elapsedMs > graceMs) {
+            await this.cache.del(gameDisconnectKey(actor.id));
+            void this.forfeitOnDisconnect(actor.id);
+            return { kind: 'none' };
+          }
+        }
+
+        const participants = await this.repo.listParticipants(activeSessionId);
         return { kind: 'session', session: await this.sessionView(session, participants) };
       }
     }
     const lobbyCode = await this.repo.findActiveLobbyForParticipant(actor.id);
     if (lobbyCode) {
       const lobby = await this.repo.getLobbyByCode(lobbyCode);
-      if (lobby) {
+      if (lobby && lobby.status === GameLobbyStatus.OPEN) {
         return {
           kind: 'lobby',
           lobby: await this.lobbyView(lobby, await this.gameCodeOf(lobby.definitionId)),

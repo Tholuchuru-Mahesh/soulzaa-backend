@@ -1,4 +1,10 @@
-import { applyMove, GameLiveState, GameMoveFrame, initLiveState } from './game-live-state';
+import {
+  applyMove,
+  forceAdvanceTurn,
+  GameLiveState,
+  GameMoveFrame,
+  initLiveState,
+} from './game-live-state';
 
 const SEATS = ['u1', 'u2', 'u3', 'u4'];
 
@@ -91,5 +97,63 @@ describe('game-live-state', () => {
     const next = applyMove(state, frame('u1', { action: 'roll_dice' }));
     expect(state.moves).toHaveLength(0);
     expect(next).not.toBe(state);
+  });
+
+  describe('applyMove timeout-strike reset', () => {
+    it('clears a mover seat strike count on a real relayed move', () => {
+      const state = baseState({ timeoutCounts: { u1: 2 } });
+      const next = applyMove(state, frame('u1', { action: 'roll_dice' }));
+      expect(next.timeoutCounts.u1).toBe(0);
+    });
+
+    it('leaves other seats strike counts untouched', () => {
+      const state = baseState({ timeoutCounts: { u1: 2, u2: 1 } });
+      const next = applyMove(state, frame('u1', { action: 'roll_dice' }));
+      expect(next.timeoutCounts.u2).toBe(1);
+    });
+  });
+
+  describe('forceAdvanceTurn (turn watchdog)', () => {
+    it('rotates past the stuck seat to the next one', () => {
+      const state = baseState();
+      const { state: next, skippedUserId } = forceAdvanceTurn(state, 5000);
+      expect(skippedUserId).toBe('u1');
+      expect(next.currentTurnUserId).toBe('u2');
+      expect(next.turnStartedAt).toBe(5000);
+    });
+
+    it('wraps rotation around to the first seat', () => {
+      const state = baseState({ currentTurnUserId: 'u4' });
+      const { state: next } = forceAdvanceTurn(state, 5000);
+      expect(next.currentTurnUserId).toBe('u1');
+    });
+
+    it('increments the skipped seat strike count and reports it', () => {
+      const state = baseState({ timeoutCounts: { u1: 1 } });
+      const { state: next, skippedStrikes } = forceAdvanceTurn(state, 5000);
+      expect(skippedStrikes).toBe(2);
+      expect(next.timeoutCounts.u1).toBe(2);
+    });
+
+    it('resets the strike count of the seat that now holds the turn', () => {
+      const state = baseState({ timeoutCounts: { u2: 3 } });
+      const { state: next } = forceAdvanceTurn(state, 5000);
+      expect(next.currentTurnUserId).toBe('u2');
+      expect(next.timeoutCounts.u2).toBe(0);
+    });
+
+    it('never mutates the input state', () => {
+      const state = baseState({ timeoutCounts: { u1: 1 } });
+      forceAdvanceTurn(state, 5000);
+      expect(state.currentTurnUserId).toBe('u1');
+      expect(state.timeoutCounts.u1).toBe(1);
+    });
+
+    it('is a no-op turn-wise when no seats exist', () => {
+      const state = baseState({ seatOrder: [], currentTurnUserId: null });
+      const { state: next, skippedUserId } = forceAdvanceTurn(state, 5000);
+      expect(skippedUserId).toBeNull();
+      expect(next.currentTurnUserId).toBeNull();
+    });
   });
 });

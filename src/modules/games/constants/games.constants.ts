@@ -28,6 +28,14 @@ export const GAME_SOCKET_EVENTS = {
   LOBBY_MEMBER_KICKED: 'game.lobby_member_kicked',
   /** A member toggled their ready state (lobby-room fan-out). */
   LOBBY_MEMBER_READY: 'game.lobby_member_ready',
+  /**
+   * The turn watchdog suspects the current turn is stalled and is giving the
+   * room one last chance to prove otherwise before it force-advances — clients
+   * should push a fresh `sync_state` move if they're actually still mid-turn.
+   */
+  TURN_RESYNC_REQUESTED: 'game.turn_resync_requested',
+  /** The turn watchdog force-advanced a stalled turn past an unresponsive seat. */
+  TURN_FORCE_ADVANCED: 'game.turn_force_advanced',
 } as const;
 
 /** Bumped when a matchmaking socket payload shape changes (clients gate on it). */
@@ -43,6 +51,36 @@ export const GAME_LIVE_STATE_TTL_SECONDS = 60 * 60;
 export const GAME_TURN_SECONDS = 30;
 
 /**
+ * Turn watchdog: the server-side backstop for `GAME_TURN_SECONDS`. Clients
+ * still drive the happy-path timeout, but if a turn sits unresolved well past
+ * its clock (client crash, background, dropped relay, stuck bot host, etc.)
+ * the periodic sweep (see GameExpiryMonitor) recovers it in two steps so a
+ * merely-slow client isn't unfairly skipped:
+ *
+ *   1. Once a turn is older than `turnSeconds + GAME_TURN_STALL_GRACE_MS`,
+ *      request a resync from the room (TURN_RESYNC_REQUESTED) and remember
+ *      the turnStartedAt this was requested for.
+ *   2. If, `GAME_TURN_RESYNC_GRACE_MS` later, the turn is STILL the same
+ *      unresolved one, force-advance past the stuck seat.
+ *
+ * A seat that racks up `GAME_MAX_CONSECUTIVE_TURN_TIMEOUTS` force-advances in
+ * a row (i.e. never completes a turn in between) is folded into the normal
+ * disconnect/forfeit path — it behaves like a client that's actually gone,
+ * even if presence never detected a drop.
+ */
+export const GAME_TURN_STALL_GRACE_MS = Number(process.env.GAME_TURN_STALL_GRACE_MS ?? 15_000);
+export const GAME_TURN_RESYNC_GRACE_MS = Number(process.env.GAME_TURN_RESYNC_GRACE_MS ?? 10_000);
+export const GAME_MAX_CONSECUTIVE_TURN_TIMEOUTS = Number(
+  process.env.GAME_MAX_CONSECUTIVE_TURN_TIMEOUTS ?? 3,
+);
+
+/** Redis key marking a turn as "resync requested, pending force-advance" for a session. */
+export const gameTurnResyncPendingKey = (sessionId: string): string =>
+  `game:turn-resync:${sessionId}`;
+/** TTL for the resync-pending marker — a little longer than the resync grace itself. */
+export const GAME_TURN_RESYNC_PENDING_TTL_SECONDS = 60;
+
+/**
  * Reconnect grace period (seconds) before a disconnected player is auto-forfeited
  * from an active match. A brief network blip / socket drop should not instantly
  * forfeit or cancel a match (especially a bet match, where a forfeit refunds and
@@ -53,6 +91,19 @@ export const GAME_TURN_SECONDS = 30;
 export const GAME_DISCONNECT_GRACE_SECONDS = Number(
   process.env.GAME_DISCONNECT_GRACE_SECONDS ?? 60,
 );
+
+/** Maximum duration (seconds) an active match session can remain alive before being auto-aborted as stale (default: 15 min). */
+export const GAME_MAX_SESSION_DURATION_SECONDS = Number(
+  process.env.GAME_MAX_SESSION_DURATION_SECONDS ?? 15 * 60,
+);
+
+/** Redis key tracking a player's temporary disconnection state and timestamp. */
+export const gameDisconnectKey = (userId: string): string => `game:disconnect:${userId}`;
+
+export interface GameDisconnectPointer {
+  userId: string;
+  disconnectedAt: number;
+}
 
 /** Redis lock keys — hash-tagged so a lobby and its derived session share a slot. */
 export const gameLobbyLockKey = (lobbyId: string): string => `game:lock:lobby:{${lobbyId}}`;

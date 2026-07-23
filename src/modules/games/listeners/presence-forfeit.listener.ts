@@ -1,8 +1,13 @@
 import { Inject, Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
+import { CacheService } from 'src/infra/redis/cache.service';
 import { PresenceService } from 'src/infra/redis/presence.service';
 import { INFRA_PRESENCE_EVENTS, PresenceChangedEvent } from 'src/infra/socket/presence.events';
-import { GAME_DISCONNECT_GRACE_SECONDS } from '../constants/games.constants';
+import {
+  GAME_DISCONNECT_GRACE_SECONDS,
+  gameDisconnectKey,
+  type GameDisconnectPointer,
+} from '../constants/games.constants';
 import { GamesService } from '../services/games.service';
 
 /**
@@ -25,6 +30,7 @@ export class PresenceForfeitListener implements OnModuleInit, OnModuleDestroy {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly games: GamesService,
     private readonly presence: PresenceService,
+    private readonly cache: CacheService,
   ) {}
 
   onModuleInit(): void {
@@ -32,6 +38,7 @@ export class PresenceForfeitListener implements OnModuleInit, OnModuleDestroy {
       const { userId, online } = e.payload;
       if (online) {
         this.cancelPending(userId); // reconnected within the grace window
+        void this.cache.del(gameDisconnectKey(userId));
         return;
       }
       this.scheduleForfeit(userId);
@@ -41,7 +48,15 @@ export class PresenceForfeitListener implements OnModuleInit, OnModuleDestroy {
   /** Schedule a grace-delayed forfeit; a second offline event before it fires is ignored. */
   private scheduleForfeit(userId: string): void {
     if (this.pending.has(userId)) return;
-    const graceMs = Math.max(0, GAME_DISCONNECT_GRACE_SECONDS) * 1000;
+    const graceSeconds = Math.max(0, GAME_DISCONNECT_GRACE_SECONDS);
+    const graceMs = graceSeconds * 1000;
+
+    void this.cache.set<GameDisconnectPointer>(
+      gameDisconnectKey(userId),
+      { userId, disconnectedAt: Date.now() },
+      graceSeconds + 30,
+    );
+
     const timer = setTimeout(() => {
       void this.fireForfeit(userId);
     }, graceMs);
@@ -61,6 +76,7 @@ export class PresenceForfeitListener implements OnModuleInit, OnModuleDestroy {
   /** Grace expired: forfeit only if the player is STILL offline. */
   private async fireForfeit(userId: string): Promise<void> {
     this.pending.delete(userId);
+    await this.cache.del(gameDisconnectKey(userId));
     // Defensive re-check: if the reconnect (online) event was missed for any
     // reason, the presence store is the source of truth — never forfeit a
     // player who is actually back online.

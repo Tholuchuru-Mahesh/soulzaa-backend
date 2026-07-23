@@ -281,6 +281,37 @@ export class GamesRepository {
     ]);
   }
 
+  /** List all currently ACTIVE sessions for monitoring/sweeping. */
+  async listActiveSessions(): Promise<GameSession[]> {
+    return this.prisma.gameSession.findMany({
+      where: { status: GameSessionStatus.ACTIVE },
+    });
+  }
+
+  /** List active sessions started before cutoff timestamp for stale cleanup. */
+  async findStaleActiveSessions(cutoff: Date): Promise<GameSession[]> {
+    return this.prisma.gameSession.findMany({
+      where: {
+        status: GameSessionStatus.ACTIVE,
+        startedAt: { lt: cutoff },
+      },
+    });
+  }
+
+  /** Abort a stale active session and mark playing participants refunded. */
+  async abortStaleSession(sessionId: string, now: Date): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.gameSession.update({
+        where: { id: sessionId },
+        data: { status: GameSessionStatus.ABORTED, cancelledAt: now },
+      }),
+      this.prisma.gameParticipant.updateMany({
+        where: { sessionId, status: GameParticipantStatus.PLAYING },
+        data: { status: GameParticipantStatus.REFUNDED, settledAt: now },
+      }),
+    ]);
+  }
+
   /** The active session a user is currently a PLAYING participant of, if any. */
   async findActiveSessionForParticipant(userId: string): Promise<string | null> {
     const parts = await this.prisma.gameParticipant.findMany({
@@ -313,7 +344,7 @@ export class GamesRepository {
     const lobby = await this.prisma.gameLobby.findFirst({
       where: {
         id: membership.lobbyId,
-        status: { in: [GameLobbyStatus.OPEN, GameLobbyStatus.STARTED] },
+        status: GameLobbyStatus.OPEN,
       },
       select: { code: true },
     });

@@ -12,11 +12,19 @@ import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { sha256 } from 'src/modules/auth/services/hash.util';
 import {
   GAME_MATCH_READY_INDEX_KEY,
+  GAME_MAX_CONSECUTIVE_TURN_TIMEOUTS,
+  GAME_TURN_RESYNC_GRACE_MS,
+  GAME_TURN_SECONDS,
+  GAME_TURN_STALL_GRACE_MS,
+  gameDisconnectKey,
+  gameLiveStateKey,
   gameMatchQueueKey,
   gameMatchReadyKey,
   gameMatchReadyUserKey,
   gameMatchUserKey,
+  gameTurnResyncPendingKey,
 } from '../constants/games.constants';
+import type { GameLiveState } from './game-live-state';
 import { IEventBus } from 'src/common/events';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { LockService } from 'src/infra/redis/lock.service';
@@ -162,6 +170,7 @@ describe('GamesService', () => {
       listMembersWithTeams: jest.fn().mockResolvedValue([]),
       setMemberTeam: jest.fn().mockResolvedValue({ id: 'm1' }),
       findActiveSessionForParticipant: jest.fn().mockResolvedValue(null),
+      listActiveSessions: jest.fn().mockResolvedValue([]),
       findActiveLobbyForParticipant: jest.fn().mockResolvedValue(null),
       findUnseenCompletedSessionForParticipant: jest.fn().mockResolvedValue(null),
       markResultSeen: jest.fn().mockResolvedValue(undefined),
@@ -673,6 +682,121 @@ describe('GamesService', () => {
     });
   });
 
+  describe('sweepStalledTurns (turn watchdog)', () => {
+    const stallMs = GAME_TURN_SECONDS * 1000 + GAME_TURN_STALL_GRACE_MS;
+
+    function liveState(overrides: Partial<GameLiveState> = {}): GameLiveState {
+      return {
+        currentTurnUserId: HOST,
+        turnStartedAt: 0,
+        turnSeconds: GAME_TURN_SECONDS,
+        seatOrder: [HOST, P2],
+        moves: [],
+        isOver: false,
+        timeoutCounts: {},
+        ...overrides,
+      };
+    }
+
+    beforeEach(() => {
+      repo.listActiveSessions.mockResolvedValue([session()]);
+    });
+
+    it('does nothing while the turn is within its normal window', async () => {
+      await cache.set(gameLiveStateKey('sess-1'), liveState({ turnStartedAt: 0 }));
+      await service.sweepStalledTurns(new Date(5_000));
+      expect(bus.publish).not.toHaveBeenCalled();
+    });
+
+    it('requests a resync the first time a turn goes stale, without rotating yet', async () => {
+      await cache.set(gameLiveStateKey('sess-1'), liveState({ turnStartedAt: 0 }));
+      await service.sweepStalledTurns(new Date(stallMs + 1));
+
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.turn_resync_requested' }),
+      );
+      const state = (await cache.get(gameLiveStateKey('sess-1'))) as GameLiveState;
+      expect(state?.currentTurnUserId).toBe(HOST); // not rotated yet
+      await expect(cache.get(gameTurnResyncPendingKey('sess-1'))).resolves.toMatchObject({
+        turnStartedAt: 0,
+      });
+    });
+
+    it('does not re-request a resync on a subsequent tick within the resync grace window', async () => {
+      await cache.set(gameLiveStateKey('sess-1'), liveState({ turnStartedAt: 0 }));
+      await service.sweepStalledTurns(new Date(stallMs + 1));
+      bus.publish.mockClear();
+
+      await service.sweepStalledTurns(new Date(stallMs + 1_000));
+      expect(bus.publish).not.toHaveBeenCalled();
+    });
+
+    it('force-advances the turn once the resync grace also elapses with no move', async () => {
+      await cache.set(gameLiveStateKey('sess-1'), liveState({ turnStartedAt: 0 }));
+      await service.sweepStalledTurns(new Date(stallMs + 1)); // phase 1: resync requested
+      bus.publish.mockClear();
+
+      const forceAt = stallMs + GAME_TURN_RESYNC_GRACE_MS + 1;
+      await service.sweepStalledTurns(new Date(forceAt)); // phase 2: force-advance
+
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'game.turn_force_advanced',
+          payload: expect.objectContaining({ skippedUserId: HOST, currentTurnUserId: P2 }),
+        }),
+      );
+      const state = (await cache.get(gameLiveStateKey('sess-1'))) as GameLiveState;
+      expect(state?.currentTurnUserId).toBe(P2);
+      expect(state?.turnStartedAt).toBe(forceAt);
+      expect(state?.timeoutCounts[HOST]).toBe(1);
+      await expect(cache.get(gameTurnResyncPendingKey('sess-1'))).resolves.toBeNull();
+    });
+
+    it('does not force-advance if a real move landed between the two phases', async () => {
+      await cache.set(gameLiveStateKey('sess-1'), liveState({ turnStartedAt: 0 }));
+      await service.sweepStalledTurns(new Date(stallMs + 1)); // phase 1: resync requested
+
+      // A real move landed and moved the turn on — turnStartedAt changes.
+      await cache.set(gameLiveStateKey('sess-1'), liveState({ turnStartedAt: stallMs + 500 }));
+      bus.publish.mockClear();
+
+      await service.sweepStalledTurns(new Date(stallMs + GAME_TURN_RESYNC_GRACE_MS + 1));
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.turn_force_advanced' }),
+      );
+    });
+
+    it('folds a seat into forfeitOnDisconnect after enough consecutive force-advances', async () => {
+      await cache.set(
+        gameLiveStateKey('sess-1'),
+        liveState({
+          turnStartedAt: 0,
+          timeoutCounts: { [HOST]: GAME_MAX_CONSECUTIVE_TURN_TIMEOUTS - 1 },
+        }),
+      );
+      repo.findActiveSessionForParticipant.mockResolvedValue('sess-1');
+      repo.getParticipant.mockResolvedValue(participant('p1', HOST));
+      repo.listParticipants.mockResolvedValue([participant('p1', HOST), participant('p2', P2)]);
+
+      await service.sweepStalledTurns(new Date(stallMs + 1));
+      await service.sweepStalledTurns(new Date(stallMs + GAME_TURN_RESYNC_GRACE_MS + 1));
+      await new Promise((resolve) => setImmediate(resolve)); // flush the fire-and-forget forfeit
+
+      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.forfeited' }));
+    });
+
+    it('skips a session with no cached live state', async () => {
+      await service.sweepStalledTurns(new Date(stallMs + 1));
+      expect(bus.publish).not.toHaveBeenCalled();
+    });
+
+    it('skips a session already marked isOver', async () => {
+      await cache.set(gameLiveStateKey('sess-1'), liveState({ turnStartedAt: 0, isOver: true }));
+      await service.sweepStalledTurns(new Date(stallMs + 1));
+      expect(bus.publish).not.toHaveBeenCalled();
+    });
+  });
+
   describe('admin + reads', () => {
     it('blocks a non-admin from editing a definition', async () => {
       await expect(
@@ -704,22 +828,34 @@ describe('GamesService', () => {
       expect(repo.findUnseenCompletedSessionForParticipant).not.toHaveBeenCalled();
     });
 
-    it(
-      'falls back to an UNSEEN completed session (resultSeenAt IS NULL) when no ' +
-        'session is currently active — the "missed the result while offline" case',
-      async () => {
-        repo.findActiveSessionForParticipant.mockResolvedValue(null);
-        repo.findUnseenCompletedSessionForParticipant.mockResolvedValue('sess-2');
-        repo.getSession.mockResolvedValue(
-          session({ id: 'sess-2', status: GameSessionStatus.COMPLETED }),
-        );
-        const result = (await service.getMyActiveMatch(ACTOR)) as Record<string, unknown>;
-        expect(result.kind).toBe('session');
-        const view = result.session as Record<string, unknown>;
-        expect(view.id).toBe('sess-2');
-        expect(view.status).toBe(GameSessionStatus.COMPLETED);
-      },
-    );
+    it('does not reconnect to completed sessions on launch — returns none', async () => {
+      repo.findActiveSessionForParticipant.mockResolvedValue(null);
+      repo.findUnseenCompletedSessionForParticipant.mockResolvedValue('sess-2');
+      repo.getSession.mockResolvedValue(
+        session({ id: 'sess-2', status: GameSessionStatus.COMPLETED }),
+      );
+      const result = (await service.getMyActiveMatch(ACTOR)) as Record<string, unknown>;
+      expect(result.kind).toBe('none');
+    });
+
+    it('returns active session if player disconnected within 60s reconnect window', async () => {
+      repo.findActiveSessionForParticipant.mockResolvedValue('sess-1');
+      repo.getSession.mockResolvedValue(
+        session({ id: 'sess-1', status: GameSessionStatus.ACTIVE }),
+      );
+      repo.listParticipants.mockResolvedValue([]);
+      cache.get.mockResolvedValue({ userId: ACTOR.id, disconnectedAt: Date.now() - 10000 });
+      const result = (await service.getMyActiveMatch(ACTOR)) as Record<string, unknown>;
+      expect(result.kind).toBe('session');
+    });
+
+    it('forfeits player and returns none if disconnect timeout expired (>60s)', async () => {
+      repo.findActiveSessionForParticipant.mockResolvedValue('sess-1');
+      cache.get.mockResolvedValue({ userId: ACTOR.id, disconnectedAt: Date.now() - 70000 });
+      const result = (await service.getMyActiveMatch(ACTOR)) as Record<string, unknown>;
+      expect(result.kind).toBe('none');
+      expect(cache.del).toHaveBeenCalledWith(gameDisconnectKey(ACTOR.id));
+    });
 
     it('falls back to an open lobby when no session (active or unseen) exists', async () => {
       repo.findActiveLobbyForParticipant.mockResolvedValue('LOBBY1');

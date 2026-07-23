@@ -6,8 +6,10 @@ import { GamesService } from './games.service';
 /**
  * Sweeps time-based game state on a short cadence, single-instance via a Redis
  * lock: unstarted lobbies past their TTL (EXPIRED), matchmaking ready-checks past
- * their deadline (dissolved), and stale queue entries. On shutdown it best-effort
- * drains live ready-checks so another instance can rematch.
+ * their deadline (dissolved), stale queue entries, expired disconnect grace
+ * periods, stalled in-session turns (the turn watchdog — see
+ * `GamesService.sweepStalledTurns`), and stale active sessions. On shutdown it
+ * best-effort drains live ready-checks so another instance can rematch.
  */
 @Injectable()
 export class GameExpiryMonitor implements OnModuleInit, OnModuleDestroy {
@@ -23,6 +25,8 @@ export class GameExpiryMonitor implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     this.timer = setInterval(() => void this.tick(), GAME_MONITOR_INTERVAL_MS);
     this.timer.unref();
+    // Run an initial sweep on bootstrap to clear any stale active sessions left over from previous downtime
+    void this.tick();
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -45,6 +49,9 @@ export class GameExpiryMonitor implements OnModuleInit, OnModuleDestroy {
         await this.games.sweepExpiredLobbies(now);
         await this.games.sweepExpiredReadyChecks(now);
         await this.games.sweepStaleQueueEntries(now);
+        await this.games.sweepExpiredDisconnections(now);
+        await this.games.sweepStalledTurns(now);
+        await this.games.sweepStaleSessions(now);
       } finally {
         await release();
       }

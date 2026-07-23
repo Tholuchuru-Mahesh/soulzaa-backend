@@ -19,6 +19,8 @@ import {
   GameMoveEvent,
   GameSettledEvent,
   GameStartedEvent,
+  GameTurnForceAdvancedEvent,
+  GameTurnResyncRequestedEvent,
 } from '../events/game.events';
 
 /**
@@ -155,6 +157,24 @@ export class GameSocketListener implements OnModuleInit {
     this.bus.subscribe<GameLobbyMemberReadyEvent>(GAME_EVENTS.LOBBY_MEMBER_READY, (e) =>
       this.toLobby(e.payload.code, GAME_SOCKET_EVENTS.LOBBY_MEMBER_READY, e.payload),
     );
+    // Turn watchdog: give the room a last chance to resync before a force-advance.
+    this.bus.subscribe<GameTurnResyncRequestedEvent>(GAME_EVENTS.TURN_RESYNC_REQUESTED, (e) => {
+      this.sockets.emitToNamespaceRoom(
+        GAMES_NAMESPACE,
+        e.payload.sessionId,
+        GAME_SOCKET_EVENTS.TURN_RESYNC_REQUESTED,
+        e.payload,
+      );
+    });
+    // Turn watchdog: a stalled turn was force-advanced past an unresponsive seat.
+    this.bus.subscribe<GameTurnForceAdvancedEvent>(GAME_EVENTS.TURN_FORCE_ADVANCED, (e) => {
+      this.sockets.emitToNamespaceRoom(
+        GAMES_NAMESPACE,
+        e.payload.sessionId,
+        GAME_SOCKET_EVENTS.TURN_FORCE_ADVANCED,
+        e.payload,
+      );
+    });
   }
 
   private toLobby(code: string, event: string, payload: unknown): void {

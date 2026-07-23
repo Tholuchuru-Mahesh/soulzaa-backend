@@ -32,6 +32,8 @@ export const GAME_EVENTS = {
   LOBBY_TEAM_CHANGED: 'game.lobby_team_changed',
   LOBBY_MEMBER_KICKED: 'game.lobby_member_kicked',
   LOBBY_MEMBER_READY: 'game.lobby_member_ready',
+  TURN_RESYNC_REQUESTED: 'game.turn_resync_requested',
+  TURN_FORCE_ADVANCED: 'game.turn_force_advanced',
 } as const;
 
 export interface GameLobbyView {
@@ -202,4 +204,29 @@ export class GameLobbyMemberReadyEvent extends DomainEvent<{
   memberDetails: LobbyMemberView[];
 }> {
   readonly name = GAME_EVENTS.LOBBY_MEMBER_READY;
+}
+
+/**
+ * The turn watchdog suspects `currentTurnUserId`'s turn is stalled and is
+ * giving the room one last chance to prove otherwise (see
+ * GAME_TURN_STALL_GRACE_MS) before force-advancing it. A client that's
+ * actually still mid-turn should push a fresh `sync_state` move.
+ */
+export class GameTurnResyncRequestedEvent extends DomainEvent<{
+  sessionId: string;
+  currentTurnUserId: string | null;
+  turnStartedAt: number;
+}> {
+  readonly name = GAME_EVENTS.TURN_RESYNC_REQUESTED;
+}
+
+/** The turn watchdog force-advanced a stalled turn past an unresponsive seat. */
+export class GameTurnForceAdvancedEvent extends DomainEvent<{
+  sessionId: string;
+  roomId: string | null;
+  skippedUserId: string | null;
+  skippedStrikes: number;
+  currentTurnUserId: string | null;
+}> {
+  readonly name = GAME_EVENTS.TURN_FORCE_ADVANCED;
 }
