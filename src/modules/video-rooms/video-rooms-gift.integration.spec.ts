@@ -175,11 +175,17 @@ describe('VR-10 gift engine (integration)', () => {
       incGiftRecovery: jest.fn(),
     };
 
+    const walletMetrics = {
+      recordMovement: jest.fn(),
+      recordFailed: jest.fn(),
+      recordReconciliationDrift: jest.fn(),
+    };
+
     // ---- REAL objects under test ----
     const registry = new GiftContextRegistry();
     new VideoRoomGiftContextHandler(
       rooms as never,
-      { findActiveBlock: jest.fn().mockResolvedValue(null) } as never,
+      { isActivelyBlocked: jest.fn().mockResolvedValue(false) } as never,
       config as never,
       registry,
       // VR-11: no ladder in this fixture, so the treasure counter reports an
@@ -263,6 +269,7 @@ describe('VR-10 gift engine (integration)', () => {
       queue as never,
       metrics as never,
       bus as never,
+      walletMetrics as never,
     );
 
     const delivery = new VideoRoomGiftDeliveryService(

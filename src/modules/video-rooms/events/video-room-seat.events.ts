@@ -119,6 +119,7 @@ export class SeatInvitationSentEvent extends DomainEvent<{
   inviteeUserId: string;
   seatIndex: number | null;
   expiresAt: string;
+  type?: 'SEAT' | 'ROOM';
 }> {
   readonly name = VIDEO_ROOM_SEAT_EVENTS.INVITATION_SENT;
 }

@@ -14,6 +14,11 @@ import { WalletAuditService } from './services/wallet-audit.service';
 import { WalletTransactionService } from './services/wallet-transaction.service';
 import { WalletValidationService } from './services/wallet-validation.service';
 import { WalletService } from './services/wallet.service';
+import { WalletReadService } from './services/wallet-read.service';
+import { WalletReconciliationService } from './services/wallet-reconciliation.service';
+import { WalletReconciliationScheduler } from './schedulers/wallet-reconciliation.scheduler';
+import { WalletMetrics } from './metrics/wallet.metrics';
+import { WalletRealtimeListener } from './listeners/wallet-realtime.listener';
 
 @Global()
 @Module({
@@ -22,6 +27,11 @@ import { WalletService } from './services/wallet.service';
   providers: [
     WalletRepository,
     WalletService,
+    WalletReadService,
+    WalletReconciliationService,
+    WalletReconciliationScheduler,
+    WalletMetrics,
+    WalletRealtimeListener,
     { provide: WALLET_SERVICE, useExisting: WalletService },
     WalletAuditService,
     WalletValidationService,
@@ -42,6 +52,9 @@ import { WalletService } from './services/wallet.service';
     ReservationService,
     WalletTransactionService,
     TransactionQueryService,
+    WalletReadService,
+    WalletMetrics,
+    WalletReconciliationService,
   ],
 })
 export class WalletModule {}

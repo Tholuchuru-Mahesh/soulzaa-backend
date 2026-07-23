@@ -10,6 +10,7 @@ import {
   RoomDeletedEvent,
   RoomLockedEvent,
   RoomRestoredEvent,
+  RoomStartedEvent,
   RoomSynchronizedEvent,
   RoomUpdatedEvent,
   SessionCreatedEvent,
@@ -62,6 +63,10 @@ export class VideoRoomEventService {
 
   emitRoomRestored(payload: RoomRestoredEvent['payload']): Promise<void> {
     return this.bus.publish(new RoomRestoredEvent(payload));
+  }
+
+  emitRoomStarted(payload: RoomStartedEvent['payload']): Promise<void> {
+    return this.bus.publish(new RoomStartedEvent(payload));
   }
 
   emitUserJoined(payload: UserJoinedEvent['payload']): Promise<void> {

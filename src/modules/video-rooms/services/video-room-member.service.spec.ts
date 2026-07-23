@@ -42,6 +42,7 @@ describe('VideoRoomMemberService.join', () => {
   let query: any;
   let metrics: any;
   let locks: any;
+  let seats: any;
   let service: VideoRoomMemberService;
 
   const actor = (id = 'u1', roles: any[] = []) => ({ id, roles });
@@ -59,7 +60,7 @@ describe('VideoRoomMemberService.join', () => {
       deactivateMember: jest.fn().mockResolvedValue(undefined),
       bumpStatsOnLeave: jest.fn().mockResolvedValue(undefined),
     };
-    moderation = { findActiveBlock: jest.fn().mockResolvedValue(null) };
+    moderation = { isActivelyBlocked: jest.fn().mockResolvedValue(false) };
     passwords = { verify: jest.fn().mockResolvedValue(false) };
     state = {
       applyUpdate: jest.fn().mockResolvedValue(undefined),
@@ -109,6 +110,7 @@ describe('VideoRoomMemberService.join', () => {
       setViewers: jest.fn(),
     };
     locks = { withLock: jest.fn((_k: string, fn: () => Promise<unknown>) => fn()) };
+    seats = { hasActiveRoomInvitation: jest.fn().mockResolvedValue(false) };
 
     service = new VideoRoomMemberService(
       repo,
@@ -123,6 +125,7 @@ describe('VideoRoomMemberService.join', () => {
       metrics,
       locks,
       configMock(),
+      seats as never,
     );
   });
 
@@ -142,7 +145,7 @@ describe('VideoRoomMemberService.join', () => {
   });
 
   it('throws VIDEO_ROOM_BLOCKED when the user is on the block-list', async () => {
-    moderation.findActiveBlock.mockResolvedValue({ id: 'b1' });
+    moderation.isActivelyBlocked.mockResolvedValue(true);
     await expectCode(service.join(actor(), ROOM, {}, ctx), ERROR_CODES.VIDEO_ROOM_BLOCKED);
   });
 
@@ -153,6 +156,20 @@ describe('VideoRoomMemberService.join', () => {
       service.join(actor(), ROOM, { password: 'nope' }, ctx),
       ERROR_CODES.VIDEO_ROOM_PASSWORD_INVALID,
     );
+  });
+
+  // VR-15 — a held ROOM invitation bypasses the private-room password gate.
+  it('lets a user with an active ROOM invitation join a locked room without a password', async () => {
+    repo.findById.mockResolvedValue(liveRoom({ isLocked: true, passwordHash: 'h' }));
+    seats.hasActiveRoomInvitation.mockResolvedValue(true);
+    await expect(service.join(actor(), ROOM, {}, ctx)).resolves.toBeDefined();
+    expect(seats.hasActiveRoomInvitation).toHaveBeenCalledWith(ROOM, 'u1');
+  });
+
+  it('still throws VIDEO_ROOM_PASSWORD_INVALID for a no-password join without a room invitation', async () => {
+    repo.findById.mockResolvedValue(liveRoom({ isLocked: true, passwordHash: 'h' }));
+    seats.hasActiveRoomInvitation.mockResolvedValue(false);
+    await expectCode(service.join(actor(), ROOM, {}, ctx), ERROR_CODES.VIDEO_ROOM_PASSWORD_INVALID);
   });
 
   it('throws VIDEO_ROOM_CAPACITY_EXCEEDED when the room is full', async () => {

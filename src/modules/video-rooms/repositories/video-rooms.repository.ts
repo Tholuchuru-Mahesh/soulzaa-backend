@@ -569,9 +569,37 @@ export class VideoRoomsRepository {
     });
   }
 
+  /** Active member user-ids for a room (bounded by room capacity). */
+  async listActiveMemberIds(roomId: string): Promise<string[]> {
+    const rows = await this.prisma.videoRoomMember.findMany({
+      where: { roomId, isActive: true },
+      select: { userId: true },
+    });
+    return rows.map((r) => r.userId);
+  }
+
   /** Count active members in a room. */
   countActiveMembers(roomId: string): Promise<number> {
     return this.prisma.videoRoomMember.count({ where: { roomId, isActive: true } });
+  }
+
+  /** A page of active member user-ids for a room, plus the total (fan-out cursor source). */
+  async pageActiveMemberIds(
+    roomId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ ids: string[]; total: number }> {
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.videoRoomMember.findMany({
+        where: { roomId, isActive: true },
+        orderBy: { joinedAt: 'asc' },
+        select: { userId: true },
+        skip,
+        take,
+      }),
+      this.prisma.videoRoomMember.count({ where: { roomId, isActive: true } }),
+    ]);
+    return { ids: rows.map((r) => r.userId), total };
   }
 
   /** A page of active members excluding the given user ids (audience roster; seated users filtered at the query, so pages never under-fill). */

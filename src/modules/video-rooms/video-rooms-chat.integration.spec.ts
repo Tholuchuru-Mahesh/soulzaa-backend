@@ -44,8 +44,8 @@ describe('VR-9 chat integration', () => {
       resolveEffectiveRole: jest.fn().mockResolvedValue(VideoRoomMemberRole.VIEWER),
     };
     moderation = {
-      findActiveMute: jest.fn().mockResolvedValue(null),
-      findActiveBlock: jest.fn().mockResolvedValue(null),
+      isActivelyMuted: jest.fn().mockResolvedValue(false),
+      isActivelyBlocked: jest.fn().mockResolvedValue(false),
     };
     repo = {
       createMessage: jest.fn().mockResolvedValue({
@@ -151,7 +151,7 @@ describe('VR-9 chat integration', () => {
   });
 
   it('a muted member is stopped before the write', async () => {
-    moderation.findActiveMute.mockResolvedValue({ id: 'mute-1' });
+    moderation.isActivelyMuted.mockResolvedValue(true);
 
     await expect(
       chat.send({ id: 'u1', roles: [] }, 'r1', { content: 'hello' }),

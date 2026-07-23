@@ -1,12 +1,39 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { WalletStatus, WalletType } from '@prisma/client';
+import { HttpStatus, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  LedgerEntry,
+  Prisma,
+  WalletCurrency,
+  WalletEntryType,
+  WalletStatus,
+  WalletType,
+} from '@prisma/client';
+import { EVENT_BUS, type IEventBus } from 'src/common/events';
+import { BusinessException } from 'src/common/exceptions/business.exception';
+import { ERROR_CODES } from 'src/common/exceptions/error-codes';
+import { buildPaginated } from 'src/common/utils/pagination.util';
+import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { LockService } from 'src/infra/redis/lock.service';
+import { walletLockKey } from '../constants/wallet.constants';
+import {
+  IWalletService,
+  WalletBalances,
+  WalletMovementInput,
+  WalletMovementResult,
+} from '../interfaces/wallet.service.interface';
+import { WalletMetrics } from '../metrics/wallet.metrics';
+import { WalletRepository } from '../repositories/wallet.repository';
+import { WalletCreditedEvent, WalletDebitedEvent } from '../events/wallet.events';
 import { WalletAuditService } from './wallet-audit.service';
 
 @Injectable()
-export class WalletService {
+export class WalletService implements IWalletService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly repo: WalletRepository,
+    private readonly locks: LockService,
+    @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    private readonly metrics: WalletMetrics,
     private readonly auditService: WalletAuditService,
   ) {}
 
@@ -35,6 +62,146 @@ export class WalletService {
     }
 
     return wallet;
+  }
+
+  async ensureWallet(userId: string): Promise<void> {
+    await this.repo.ensureWallet(userId);
+  }
+
+  async getBalance(userId: string): Promise<WalletBalances> {
+    const wallet = await this.repo.getWallet(userId);
+    return {
+      gold: Number(wallet?.goldBalance ?? 0n),
+      free: Number(wallet?.freeBalance ?? 0n),
+      earnings: Number(wallet?.earningsBalance ?? 0n),
+    };
+  }
+
+  debit(input: WalletMovementInput, tx?: Prisma.TransactionClient): Promise<WalletMovementResult> {
+    return this.move(WalletEntryType.DEBIT, input, tx);
+  }
+
+  credit(input: WalletMovementInput, tx?: Prisma.TransactionClient): Promise<WalletMovementResult> {
+    return this.move(WalletEntryType.CREDIT, input, tx);
+  }
+
+  async listTransactions(
+    userId: string,
+    q: { skip: number; limit: number; page: number; currency?: WalletCurrency },
+  ): Promise<Paginated<unknown>> {
+    const [rows, total] = await this.repo.listTransactions(userId, q.skip, q.limit, q.currency);
+    return buildPaginated(
+      rows.map((t) => this.toView(t)),
+      total,
+      q.page,
+      q.limit,
+    );
+  }
+
+  // ---- Internals ----
+
+  private async move(
+    type: WalletEntryType,
+    input: WalletMovementInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<WalletMovementResult> {
+    if (!Number.isInteger(input.amount) || input.amount <= 0) {
+      throw new BusinessException(
+        ERROR_CODES.INVALID_AMOUNT,
+        'Amount must be a positive integer.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const run = async (t?: Prisma.TransactionClient) => {
+      // Idempotent replay: return the stored result without re-applying.
+      const existing = await this.repo.findByIdempotencyKey(input.idempotencyKey, t);
+      if (existing) {
+        return {
+          transactionId: existing.id,
+          currency: existing.currency,
+          balanceAfter: Number(existing.amount),
+          duplicate: true,
+        };
+      }
+
+      const entry = await this.repo.applyMovement(
+        {
+          userId: input.userId,
+          currency: input.currency,
+          type,
+          reason: input.reason,
+          amount: BigInt(input.amount),
+          referenceType: input.referenceType ?? null,
+          referenceId: input.referenceId ?? null,
+          idempotencyKey: input.idempotencyKey,
+          metadata: input.metadata as Prisma.InputJsonValue | undefined,
+          actorId: input.actorId ?? input.userId,
+        },
+        t,
+      );
+
+      await this.publish(type, entry);
+      return {
+        transactionId: entry.transactionId,
+        currency: entry.currency,
+        balanceAfter: Number(entry.balanceAfter),
+        duplicate: false,
+      };
+    };
+
+    if (tx) {
+      return run(tx);
+    } else {
+      return this.locks.withLock(walletLockKey(input.userId), async () => {
+        return run();
+      });
+    }
+  }
+
+  private async publish(type: WalletEntryType, entry: LedgerEntry): Promise<void> {
+    this.metrics.recordMovement(entry.reason, type, entry.currency, 0);
+    const wallet = await this.prisma.wallet.findUnique({ where: { id: entry.walletId } });
+    const event =
+      type === WalletEntryType.CREDIT
+        ? new WalletCreditedEvent({
+            transactionId: entry.transactionId,
+            userId: wallet?.userId ?? '',
+            currency: entry.currency,
+            amount: Number(entry.amount),
+            reason: entry.reason,
+            balanceAfter: Number(entry.balanceAfter),
+            referenceType: entry.referenceType ?? null,
+            referenceId: entry.referenceId ?? null,
+          })
+        : new WalletDebitedEvent({
+            transactionId: entry.transactionId,
+            userId: wallet?.userId ?? '',
+            currency: entry.currency,
+            amount: Number(entry.amount),
+            reason: entry.reason,
+            balanceAfter: Number(entry.balanceAfter),
+            referenceType: entry.referenceType ?? null,
+            referenceId: entry.referenceId ?? null,
+          });
+    await this.bus.publish(event);
+  }
+
+  private toView(t: LedgerEntry) {
+    return {
+      id: t.id,
+      transactionId: t.transactionId,
+      walletId: t.walletId,
+      currency: t.currency,
+      type: t.type,
+      reason: t.reason,
+      amount: Number(t.amount),
+      balanceBefore: Number(t.balanceBefore),
+      balanceAfter: Number(t.balanceAfter),
+      referenceType: t.referenceType,
+      referenceId: t.referenceId,
+      createdAt: t.createdAt,
+    };
   }
 
   /**

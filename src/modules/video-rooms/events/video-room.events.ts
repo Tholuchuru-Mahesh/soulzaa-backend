@@ -43,6 +43,8 @@ export const VIDEO_ROOM_EVENTS = {
   VIEWER_PROMOTED: 'video_room.viewer_promoted',
   VIEWER_DEMOTED: 'video_room.viewer_demoted',
   VIEWER_PRESENCE_CHANGED: 'video_room.viewer_presence_changed',
+  // ---- VR-15 notifications ----
+  STARTED: 'video_room.started',
 } as const;
 
 export class RoomCreatedEvent extends DomainEvent<{
@@ -63,6 +65,15 @@ export class RoomClosedEvent extends DomainEvent<{
   durationSeconds: number;
 }> {
   readonly name = VIDEO_ROOM_EVENTS.CLOSED;
+}
+
+/** A room went LIVE (OFFLINE→LIVE). Drives the followers "X is live" fan-out. */
+export class RoomStartedEvent extends DomainEvent<{
+  roomId: string;
+  ownerId: string;
+  actorId: string;
+}> {
+  readonly name = VIDEO_ROOM_EVENTS.STARTED;
 }
 
 /** A room's mutable fields / settings / access policy changed (VR-2). */

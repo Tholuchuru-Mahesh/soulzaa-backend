@@ -1,4 +1,5 @@
 import { SOCKET_NAMESPACES } from 'src/common/constants/socket.constants';
+import { VIDEO_ROOM_MODERATION_QUEUES } from './video-room-moderation.constants';
 
 /**
  * Video Room module constants: the socket namespace, client-facing
@@ -280,6 +281,10 @@ export const VIDEO_ROOM_TRENDING_KEY = 'video-room:trending';
 export const VIDEO_ROOM_QUEUES = {
   MAIN: 'video-rooms',
   CLEANUP: 'video-rooms-cleanup',
+  // ---- Phase 16 moderation queues (see video-room-moderation.constants.ts) ----
+  MODERATION_PROCESSING: VIDEO_ROOM_MODERATION_QUEUES.PROCESSING,
+  MODERATION_REPORT: VIDEO_ROOM_MODERATION_QUEUES.REPORT,
+  MODERATION_CLEANUP: VIDEO_ROOM_MODERATION_QUEUES.CLEANUP,
 } as const;
 
 // ============================================================

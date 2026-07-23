@@ -183,6 +183,25 @@ export class SocketManager {
   }
 
   /**
+   * Force-disconnect a user's sockets within one registered namespace only
+   * (cross-instance via the Redis adapter) — the namespace-scoped counterpart
+   * to `disconnectUserEverywhere`. Domain moderation actions (e.g. a Video
+   * Room kick/blacklist) must use this instead of the "everywhere" variant:
+   * severing only the target's sockets in the acting namespace, leaving their
+   * DMs, 1:1 calls, other rooms, etc. untouched. Mirrors `emitToNamespaceRoom`
+   * — the namespace is matched by its path; a no-op if that namespace has not
+   * initialised yet.
+   */
+  disconnectUserInNamespace(namespace: string, userId: string): void {
+    const server = this.serverForNamespace(namespace);
+    if (!server) {
+      this.logger.warn(`disconnectUserInNamespace: no server for namespace "${namespace}"`);
+      return;
+    }
+    this.disconnectUser(server, userId);
+  }
+
+  /**
    * Broadcast an event to everyone in a room on a specific namespace (e.g.
    * `/audio-room`), cross-instance via the Redis adapter. Domain modules push
    * realtime room updates through this from an event-bus listener rather than

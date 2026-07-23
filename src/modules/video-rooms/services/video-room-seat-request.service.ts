@@ -423,7 +423,7 @@ export class VideoRoomSeatRequestService {
     }
 
     // VR-8 — room-level ban/block.
-    if (await this.moderation.findActiveBlock(roomId, userId)) {
+    if (await this.moderation.isActivelyBlocked(roomId, userId)) {
       throw new BusinessException(
         ERROR_CODES.VIDEO_ROOM_BLOCKED,
         'You are blocked from this room.',

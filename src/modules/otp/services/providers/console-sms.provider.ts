@@ -10,7 +10,7 @@ export class ConsoleSmsProvider implements ISmsProvider {
   readonly name: SmsProviderName = 'console';
   private readonly logger = new Logger(ConsoleSmsProvider.name);
 
-  async send(to: string, message: string): Promise<void> {
+  async send(_to: string, _message: string): Promise<void> {
     // Dev SMS printing disabled. Firebase Phone Auth is used exclusively.
   }
 }

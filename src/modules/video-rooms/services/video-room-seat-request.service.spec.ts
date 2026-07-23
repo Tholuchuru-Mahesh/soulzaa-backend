@@ -46,7 +46,7 @@ beforeEach(() => {
     permissions: { assertPermission: jest.fn(), authorityRank: jest.fn().mockResolvedValue(0) },
     events: { appendEvent: jest.fn() },
     bus: { publish: jest.fn() },
-    moderation: { findActiveBlock: jest.fn().mockResolvedValue(null) },
+    moderation: { isActivelyBlocked: jest.fn().mockResolvedValue(false) },
     queue: {
       enqueue: jest.fn().mockResolvedValue(1),
       dequeue: jest.fn(),
@@ -208,7 +208,7 @@ describe('VideoRoomSeatRequestService', () => {
 
 describe('request validations (VR-8)', () => {
   it('refuses a user blocked from the room', async () => {
-    deps.moderation.findActiveBlock.mockResolvedValue({ id: 'b1' });
+    deps.moderation.isActivelyBlocked.mockResolvedValue(true);
     await expect(svc.request(actor('u1'), 'r1')).rejects.toMatchObject({
       errorCode: ERROR_CODES.VIDEO_ROOM_BLOCKED,
     });
@@ -578,7 +578,7 @@ describe('restore', () => {
       createdAt: new Date(),
       resolvedAt: new Date(Date.now() - 1_000),
     });
-    deps.moderation.findActiveBlock.mockResolvedValue({ id: 'b1' });
+    deps.moderation.isActivelyBlocked.mockResolvedValue(true);
     await expect(svc.restore('r1', 'u1')).resolves.toBeNull();
     expect(deps.seats.restoreRequest).not.toHaveBeenCalled();
     expect(deps.queue.enqueue).not.toHaveBeenCalled();

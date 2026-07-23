@@ -56,7 +56,7 @@ describe('VideoRoomGiftContextHandler', () => {
       getSettings: jest.fn().mockResolvedValue({ allowGifts: true, metadata: null }),
       getMember: jest.fn().mockResolvedValue(member()),
     };
-    moderation = { findActiveBlock: jest.fn().mockResolvedValue(null) };
+    moderation = { isActivelyBlocked: jest.fn().mockResolvedValue(false) };
     config = { get: jest.fn() };
     registry = { register: jest.fn() };
     treasureProgress = {
@@ -148,7 +148,7 @@ describe('VideoRoomGiftContextHandler', () => {
     });
 
     it('rejects a blocked sender even with a stale membership row', async () => {
-      moderation.findActiveBlock.mockResolvedValue({ id: 'block-1' });
+      moderation.isActivelyBlocked.mockResolvedValue(true);
       await expect(handler.validate(REQ as never)).rejects.toMatchObject({
         errorCode: ERROR_CODES.VIDEO_ROOM_BLOCKED,
       });

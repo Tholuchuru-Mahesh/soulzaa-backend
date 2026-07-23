@@ -78,6 +78,7 @@ describe('VideoRoomLifecycleService', () => {
       emitRoomDeleted: jest.fn().mockResolvedValue(undefined),
       emitRoomLocked: jest.fn().mockResolvedValue(undefined),
       emitRoomRestored: jest.fn().mockResolvedValue(undefined),
+      emitRoomStarted: jest.fn().mockResolvedValue(undefined),
     };
     passwords = { hash: jest.fn().mockResolvedValue('HASH') };
     locks = { withLock: jest.fn((_key: string, fn: () => unknown) => fn()) };

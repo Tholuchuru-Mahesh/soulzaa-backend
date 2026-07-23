@@ -372,6 +372,54 @@ export class VideoRoomSeatsController {
     return this.invitations.retry(this.actor(user), id, invitationId, ip);
   }
 
+  // ---- Room invitation workflow (VR-15) ----
+
+  @Post(':id/invitations/room')
+  @NotGuest()
+  @ApiOperation({ summary: 'Invite a non-member into the room (owner/admin/mod; INVITE_USERS)' })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Room invitation created; invitee notified.',
+  })
+  inviteToRoom(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: CreateVideoRoomInvitationDto,
+    @Ip() ip: string,
+  ) {
+    return this.invitations.inviteToRoom(this.actor(user), id, dto.inviteeUserId, ip);
+  }
+
+  @Post(':id/invitations/room/accept')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Accept a room invitation (invitee) → gains private-room access on next join',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Room invitation accepted.' })
+  acceptRoomInvite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: AcceptSeatInvitationDto,
+    @Ip() ip: string,
+  ) {
+    return this.invitations.acceptRoomInvite(this.actor(user), id, dto.invitationId, ip);
+  }
+
+  @Post(':id/invitations/room/reject')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reject a room invitation (invitee)' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Room invitation rejected.' })
+  rejectRoomInvite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: RejectSeatInvitationDto,
+    @Ip() ip: string,
+  ) {
+    return this.invitations.rejectRoomInvite(this.actor(user), id, dto.invitationId, ip);
+  }
+
   // ---- Lock / unlock (bulk-capable) ----
 
   @Post(':id/seats/lock')

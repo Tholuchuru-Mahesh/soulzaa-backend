@@ -296,6 +296,27 @@ export const videoRoomConfig = registerAs('videoRoom', () => ({
   // Viewer-mode audience source (VR-6): 'durable' (member-is-viewer) today;
   // 'ephemeral' (Redis-only, broadcast-scale) is a future implementation.
   viewerPresenceMode: env().VIDEO_ROOM_VIEWER_PRESENCE_MODE,
+  // Moderation & safety engine (VR-16): auto-mod detector thresholds/windows,
+  // cooldown, expiry-sweep cadence, and text-bound mirrors. Every moderation
+  // service/detector reads thresholds through this namespace — nothing is
+  // hardcoded downstream.
+  moderation: {
+    spamThreshold: env().VIDEO_ROOM_MOD_SPAM_THRESHOLD,
+    spamWindowSec: env().VIDEO_ROOM_MOD_SPAM_WINDOW_SEC,
+    floodThreshold: env().VIDEO_ROOM_MOD_FLOOD_THRESHOLD,
+    floodWindowSec: env().VIDEO_ROOM_MOD_FLOOD_WINDOW_SEC,
+    duplicateWindowSec: env().VIDEO_ROOM_MOD_DUP_WINDOW_SEC,
+    rapidJoinLeaveThreshold: env().VIDEO_ROOM_MOD_RAPID_JOINLEAVE_THRESHOLD,
+    rapidJoinLeaveWindowSec: env().VIDEO_ROOM_MOD_RAPID_JOINLEAVE_WINDOW_SEC,
+    excessiveReportsThreshold: env().VIDEO_ROOM_MOD_EXCESSIVE_REPORTS_THRESHOLD,
+    excessiveReportsWindowSec: env().VIDEO_ROOM_MOD_EXCESSIVE_REPORTS_WINDOW_SEC,
+    warningThreshold: env().VIDEO_ROOM_MOD_WARNING_THRESHOLD,
+    autoMuteMinutes: env().VIDEO_ROOM_MOD_AUTO_MUTE_MINUTES,
+    autoActionCooldownSec: env().VIDEO_ROOM_MOD_AUTO_ACTION_COOLDOWN_SEC,
+    expiryMonitorIntervalMs: env().VIDEO_ROOM_MOD_EXPIRY_MONITOR_INTERVAL_MS,
+    reasonMax: env().VIDEO_ROOM_MOD_REASON_MAX,
+    descriptionMax: env().VIDEO_ROOM_MOD_DESCRIPTION_MAX,
+  },
 }));
 
 /**

@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   Post,
   Query,
@@ -23,9 +24,10 @@ import {
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { RbacRolesGuard } from 'src/modules/authorization/guards/rbac-roles.guard';
 import { AuditLogInterceptor } from 'src/modules/authorization/interceptors/audit-log.interceptor';
-import { AdminAdjustWalletDto } from '../dto/wallet.dto';
+import { AdminAdjustWalletDto, WalletRecoveryDto } from '../dto/wallet.dto';
 import { TransactionQueryFilterDto } from '../dto/wallet-query.dto';
 import { TransactionQueryService } from '../services/transaction-query.service';
+import { WalletReconciliationService } from '../services/wallet-reconciliation.service';
 import { WalletTransactionService } from '../services/wallet-transaction.service';
 import { WalletService } from '../services/wallet.service';
 
@@ -39,10 +41,13 @@ import { WalletService } from '../services/wallet.service';
 @UseInterceptors(AuditLogInterceptor)
 @Controller('admin/wallet')
 export class WalletAdminController {
+  private readonly logger = new Logger(WalletAdminController.name);
+
   constructor(
     private readonly walletService: WalletService,
     private readonly transactionService: WalletTransactionService,
     private readonly queryService: TransactionQueryService,
+    private readonly reconciliation: WalletReconciliationService,
   ) {}
 
   @Post('adjust')
@@ -80,6 +85,16 @@ export class WalletAdminController {
         adminId,
       );
     }
+  }
+
+  @Post('recovery')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reconcile a user wallet (ledger vs balance) — report only, never auto-writes',
+  })
+  recovery(@CurrentUser('id') adminId: string, @Body() dto: WalletRecoveryDto) {
+    this.logger.log(`admin ${adminId} triggered wallet recovery for ${dto.userId}`);
+    return this.reconciliation.reconcileUser(dto.userId);
   }
 
   @Get(':userId/transactions')

@@ -12,7 +12,6 @@ import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
-import { MAX_STANDARD_ROOMS_PER_USER } from 'src/common/constants/room.constants';
 import { LockService } from 'src/infra/redis/lock.service';
 import { PresenceService } from 'src/infra/redis/presence.service';
 import {
@@ -31,7 +30,6 @@ import type { UpdateRoomDto } from '../dto/update-room.dto';
 import type { TransferOwnershipDto } from '../dto/transfer-ownership.dto';
 import {
   RoomCreatedEvent,
-  RoomDeletedEvent,
   RoomEndedEvent,
   RoomJoinedEvent,
   RoomLeftEvent,
@@ -259,7 +257,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     return this.update(actor, roomId, { isLocked });
   }
 
-  async remove(actor: RoomActor, roomId: string): Promise<void> {
+  async remove(_actor: RoomActor, _roomId: string): Promise<void> {
     throw new BusinessException(
       ERROR_CODES.FORBIDDEN,
       'Permanent rooms cannot be deleted.',

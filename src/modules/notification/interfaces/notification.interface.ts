@@ -46,6 +46,12 @@ export interface NotificationPreferenceView {
   inviteEvents: boolean;
   giftEvents: boolean;
   systemEvents: boolean;
+  // ---- VR-15 video-room categories ----
+  roomEvents: boolean;
+  seatEvents: boolean;
+  treasureEvents: boolean;
+  pkEvents: boolean;
+  announcementEvents: boolean;
   sound: boolean;
   vibration: boolean;
   showPreview: boolean;

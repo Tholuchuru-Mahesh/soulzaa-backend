@@ -35,7 +35,7 @@ const TEXT = {
 describe('VideoRoomChatPolicyService', () => {
   let rooms: { findById: jest.Mock; getSettings: jest.Mock; getMember: jest.Mock };
   let permissions: { resolveEffectiveRole: jest.Mock };
-  let moderation: { findActiveMute: jest.Mock; findActiveBlock: jest.Mock };
+  let moderation: { isActivelyMuted: jest.Mock; isActivelyBlocked: jest.Mock };
   let config: { get: jest.Mock };
   let policy: VideoRoomChatPolicyService;
 
@@ -49,8 +49,8 @@ describe('VideoRoomChatPolicyService', () => {
       resolveEffectiveRole: jest.fn().mockResolvedValue(VideoRoomMemberRole.VIEWER),
     };
     moderation = {
-      findActiveMute: jest.fn().mockResolvedValue(null),
-      findActiveBlock: jest.fn().mockResolvedValue(null),
+      isActivelyMuted: jest.fn().mockResolvedValue(false),
+      isActivelyBlocked: jest.fn().mockResolvedValue(false),
     };
     config = { get: jest.fn().mockReturnValue(CFG) };
     policy = new VideoRoomChatPolicyService(
@@ -100,14 +100,14 @@ describe('VideoRoomChatPolicyService', () => {
   });
 
   it('rejects a blocked user', async () => {
-    moderation.findActiveBlock.mockResolvedValue({ id: 'b1' });
+    moderation.isActivelyBlocked.mockResolvedValue(true);
     await expect(policy.assertCanSend(actor('u1'), 'r1', TEXT)).rejects.toMatchObject({
       errorCode: ERROR_CODES.VIDEO_ROOM_BLOCKED,
     });
   });
 
   it('rejects a muted user', async () => {
-    moderation.findActiveMute.mockResolvedValue({ id: 'm1' });
+    moderation.isActivelyMuted.mockResolvedValue(true);
     await expect(policy.assertCanSend(actor('u1'), 'r1', TEXT)).rejects.toMatchObject({
       errorCode: ERROR_CODES.MEMBER_MUTED,
     });

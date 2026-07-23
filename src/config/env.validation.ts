@@ -293,6 +293,33 @@ export const envSchema = z.object({
   VIDEO_ROOM_PK_RECOVERY_GRACE_SECONDS: z.coerce.number().int().positive().optional(),
   VIDEO_ROOM_PK_MAX_PER_SWEEP: z.coerce.number().int().positive().optional(),
 
+  // ---- VR-16 Moderation & safety engine ----
+  // Auto-mod thresholds mirror the audio-room chat auto-mod defaults above
+  // (AUDIO_ROOM_CHAT_AUTO_MUTE_THRESHOLD 3, _AUTO_KICK_THRESHOLD 6,
+  // _AUTO_MUTE_MINUTES 15, _DEDUP_WINDOW_SECONDS 30).
+  VIDEO_ROOM_MOD_SPAM_THRESHOLD: z.coerce.number().int().positive().default(5),
+  VIDEO_ROOM_MOD_SPAM_WINDOW_SEC: z.coerce.number().int().positive().default(60),
+  VIDEO_ROOM_MOD_FLOOD_THRESHOLD: z.coerce.number().int().positive().default(10),
+  VIDEO_ROOM_MOD_FLOOD_WINDOW_SEC: z.coerce.number().int().positive().default(10),
+  // Duplicate-message suppression window feeding the duplicate detector.
+  VIDEO_ROOM_MOD_DUP_WINDOW_SEC: z.coerce.number().int().positive().default(30),
+  VIDEO_ROOM_MOD_RAPID_JOINLEAVE_THRESHOLD: z.coerce.number().int().positive().default(5),
+  VIDEO_ROOM_MOD_RAPID_JOINLEAVE_WINDOW_SEC: z.coerce.number().int().positive().default(60),
+  VIDEO_ROOM_MOD_EXCESSIVE_REPORTS_THRESHOLD: z.coerce.number().int().positive().default(5),
+  VIDEO_ROOM_MOD_EXCESSIVE_REPORTS_WINDOW_SEC: z.coerce.number().int().positive().default(300),
+  // Informational only — a warning count crossing this never auto-escalates.
+  VIDEO_ROOM_MOD_WARNING_THRESHOLD: z.coerce.number().int().positive().default(3),
+  VIDEO_ROOM_MOD_AUTO_MUTE_MINUTES: z.coerce.number().int().positive().default(15),
+  // Per-user cooldown after an auto action fires, suppressing repeat auto actions.
+  VIDEO_ROOM_MOD_AUTO_ACTION_COOLDOWN_SEC: z.coerce.number().int().positive().default(30),
+  // How often the temp-mute expiry sweep runs (ms).
+  VIDEO_ROOM_MOD_EXPIRY_MONITOR_INTERVAL_MS: z.coerce.number().int().positive().default(15_000),
+  // Mirror the fixed VIDEO_ROOM_MODERATION_REASON_MAX / _DESCRIPTION_MAX DTO
+  // bounds (video-room(-moderation).constants.ts) through config, so services
+  // read the same ceiling without importing the DTO-layer constants directly.
+  VIDEO_ROOM_MOD_REASON_MAX: z.coerce.number().int().positive().default(500),
+  VIDEO_ROOM_MOD_DESCRIPTION_MAX: z.coerce.number().int().positive().default(1000),
+
   // ---- Direct messaging (chat module) ----
   CHAT_MESSAGE_MAX_LENGTH: z.coerce.number().int().positive().default(4000),
   CHAT_MAX_ATTACHMENTS: z.coerce.number().int().positive().default(10),

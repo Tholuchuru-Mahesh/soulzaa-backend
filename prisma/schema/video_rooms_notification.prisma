@@ -1,0 +1,15 @@
+// prisma/schema/video_rooms_notification.prisma
+// VR-15 — per-room notification mute. Durable (survives Redis flush); the mute
+// service keeps a Redis read-cache in front of it. No cross-module FK (platform
+// convention) — userId/roomId are UUID values.
+
+model VideoRoomNotificationMute {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  roomId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roomId])
+  @@index([userId])
+  @@map("video_room_notification_mutes")
+}

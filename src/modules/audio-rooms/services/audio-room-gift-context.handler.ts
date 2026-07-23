@@ -178,6 +178,7 @@ export class AudioRoomGiftContextHandler implements IGiftContextHandler, OnModul
         new GiftRefundedEvent({
           transactionId: ctx.transactionId,
           senderId: ctx.senderId,
+          receiverId,
           roomId: ctx.contextId,
           giftId: ctx.gift.id,
           giftName: ctx.gift.name,

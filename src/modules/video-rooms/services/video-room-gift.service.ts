@@ -6,7 +6,9 @@ import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import { QueueService } from 'src/infra/queue/queue.service';
 import { GiftCatalogService } from 'src/modules/gifts/services/gift-catalog.service';
 import { GiftService } from 'src/modules/gifts/services/gift.service';
+import { WalletMetrics } from 'src/modules/wallet/metrics/wallet.metrics';
 import type { RoomActor } from '../interfaces/room-actor.interface';
+import { VideoRoomEconomyFailedEvent } from '../events/video-room-economy.events';
 import {
   GIFT_CATEGORY_ATTEMPTS,
   GIFT_CATEGORY_PRIORITY,
@@ -79,6 +81,7 @@ export class VideoRoomGiftService {
     private readonly queue: QueueService,
     private readonly metrics: VideoRoomsMetrics,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    private readonly walletMetrics: WalletMetrics,
   ) {}
 
   async send(
@@ -100,14 +103,40 @@ export class VideoRoomGiftService {
 
     // ---- ACID boundary: everything that moves coins happens here. ----
     const walletStartedAt = Date.now();
-    const transactions = await this.gifts.sendGiftBatch(actor, {
-      giftId: dto.giftId,
-      receiverIds,
-      contextType: GiftContextType.VIDEO_ROOM,
-      contextId: roomId,
-      quantity: dto.quantity,
-      idempotencyKey: dto.idempotencyKey,
-    } as never);
+    const transactions = await this.gifts
+      .sendGiftBatch(actor, {
+        giftId: dto.giftId,
+        receiverIds,
+        contextType: GiftContextType.VIDEO_ROOM,
+        contextId: roomId,
+        quantity: dto.quantity,
+        idempotencyKey: dto.idempotencyKey,
+      } as never)
+      .catch(async (err: unknown) => {
+        // A failed wallet movement rolls back — no wallet event fires. Record the
+        // failure metric, surface it to the sender as an app-layer event, then
+        // rethrow the ORIGINAL error unchanged. The publish is guarded so a
+        // bridge failure can never mask the real wallet error.
+        const be = err as { errorCode?: string; code?: string; message?: string };
+        const errorCode = be?.errorCode ?? be?.code ?? 'GIFT_SEND_FAILED';
+        this.walletMetrics.recordFailed(errorCode);
+        try {
+          await this.bus.publish(
+            new VideoRoomEconomyFailedEvent({
+              userId: actor.id,
+              roomId,
+              giftId: dto.giftId,
+              errorCode,
+              message: be?.message ?? 'Gift send failed.',
+            }),
+          );
+        } catch (publishErr) {
+          this.logger.warn(
+            `failed to publish GIFT_FAILED for room ${roomId}: ${(publishErr as Error).message}`,
+          );
+        }
+        throw err;
+      });
     this.metrics.observeGiftWalletLatency((Date.now() - walletStartedAt) / 1000);
 
     // Revenue + volume, one call per ledger row: an N-receiver send is N gifts.

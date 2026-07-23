@@ -23,6 +23,14 @@ export class SocialService implements ISocialService {
     return this.follows.followerIds(userId);
   }
 
+  pageFollowerIds(
+    userId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ ids: string[]; total: number }> {
+    return this.follows.pageFollowerIds(userId, skip, take);
+  }
+
   async presenceAudienceIds(userId: string): Promise<string[]> {
     const [friends, followers] = await Promise.all([
       this.friendIds(userId),

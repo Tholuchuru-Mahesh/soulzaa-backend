@@ -10,7 +10,7 @@ import {
   RoomStatus,
   RoomVisibility,
 } from '@prisma/client';
-import { auditCreate, auditUpdate, auditSoftDelete } from 'src/common/utils/audit.util';
+import { auditCreate, auditUpdate } from 'src/common/utils/audit.util';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
@@ -242,7 +242,7 @@ export class AudioRoomsRepository {
     });
   }
 
-  async softDeleteRoom(roomId: string, actorId: string): Promise<void> {
+  async softDeleteRoom(roomId: string, _actorId: string): Promise<void> {
     await this.prisma.$transaction([
       this.prisma.roomSettings.deleteMany({ where: { roomId } }),
       this.prisma.roomMember.deleteMany({ where: { roomId } }),

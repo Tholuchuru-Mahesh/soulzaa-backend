@@ -1,6 +1,8 @@
+import { HttpStatus } from '@nestjs/common';
 import { GiftCategory } from '@prisma/client';
-import { ERROR_CODES } from 'src/common/exceptions/error-codes';
+import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { VideoRoomGiftTarget } from '../dto/send-video-room-gift.dto';
+import { VIDEO_ROOM_ECONOMY_EVENTS } from '../constants/video-room-economy.constants';
 import { VideoRoomGiftService } from './video-room-gift.service';
 
 const ACTOR = { id: 'sender-1', roles: ['USER'] } as never;
@@ -43,6 +45,7 @@ describe('VideoRoomGiftService.send', () => {
   let queue: Record<string, jest.Mock>;
   let metrics: Record<string, jest.Mock>;
   let bus: { publish: jest.Mock };
+  let walletMetrics: Record<string, jest.Mock>;
   let service: VideoRoomGiftService;
 
   beforeEach(() => {
@@ -65,6 +68,11 @@ describe('VideoRoomGiftService.send', () => {
       incGiftFailure: jest.fn(),
     };
     bus = { publish: jest.fn().mockResolvedValue(undefined) };
+    walletMetrics = {
+      recordMovement: jest.fn(),
+      recordFailed: jest.fn(),
+      recordReconciliationDrift: jest.fn(),
+    };
     service = new VideoRoomGiftService(
       resolver as never,
       gifts as never,
@@ -75,6 +83,7 @@ describe('VideoRoomGiftService.send', () => {
       queue as never,
       metrics as never,
       bus as never,
+      walletMetrics as never,
     );
   });
 
@@ -172,6 +181,30 @@ describe('VideoRoomGiftService.send', () => {
     await expect(service.send(ACTOR, ROOM, dto())).rejects.toThrow('insufficient balance');
     expect(queue.enqueue).not.toHaveBeenCalled();
     expect(statistics.record).not.toHaveBeenCalled();
+  });
+
+  it('publishes GIFT_FAILED and rethrows the ORIGINAL wallet error on send failure', async () => {
+    const walletError = new BusinessException(
+      ERROR_CODES.INSUFFICIENT_BALANCE,
+      'Insufficient balance for this transaction.',
+      HttpStatus.CONFLICT,
+    );
+    gifts.sendGiftBatch.mockRejectedValue(walletError);
+
+    await expect(service.send(ACTOR, ROOM, dto())).rejects.toBe(walletError);
+
+    expect(walletMetrics.recordFailed).toHaveBeenCalledWith(ERROR_CODES.INSUFFICIENT_BALANCE);
+
+    expect(bus.publish).toHaveBeenCalledTimes(1);
+    const failedEvent = bus.publish.mock.calls
+      .map((c) => c[0] as { name: string; payload: Record<string, unknown> })
+      .find((e) => e.name === VIDEO_ROOM_ECONOMY_EVENTS.GIFT_FAILED);
+    expect(failedEvent?.payload).toMatchObject({
+      userId: 'sender-1',
+      roomId: ROOM,
+      giftId: 'g1',
+      errorCode: ERROR_CODES.INSUFFICIENT_BALANCE,
+    });
   });
 
   it('still succeeds when the queue is down — the gift is already paid for', async () => {

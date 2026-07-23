@@ -36,6 +36,14 @@ enum VideoRoomModerationActionType {
   ROLE_REVOKED
   ANNOUNCEMENT_POSTED
   ANNOUNCEMENT_REMOVED
+  // ---- VR-16: Moderation Engine additions (additive only) ----
+  FORCE_DISCONNECT
+  REPORT_REVIEWED
+  ROOM_MUTED
+  ROOM_UNMUTED
+  AUTO_MUTED
+  AUTO_KICKED
+  AUTO_FLAGGED
 }
 
 /// A per-room member mute (independent of seat occupancy). PERMANENT + null
@@ -109,4 +117,84 @@ model VideoRoomModerationAction {
   @@index([action])
   @@index([targetUserId])
   @@map("video_room_moderation_actions")
+}
+
+// ============================================================
+// VR-16: Moderation Engine — user reports (message/user reports
+// filed by members, triaged by moderators) and warnings (a
+// lighter-weight moderator action than mute/block/kick, logged
+// separately from the append-only action trail so it can carry
+// its own review lifecycle). Additive only — no changes to the
+// tables/enums above.
+// ============================================================
+
+/// Why a report was filed.
+enum VideoRoomReportReason {
+  USER
+  MESSAGE
+  SPAM
+  HARASSMENT
+  ABUSE
+  FAKE_ACCOUNT
+  OTHER
+}
+
+/// Triage lifecycle of a VideoRoomReport.
+enum VideoRoomReportStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+  ACTIONED
+}
+
+/// A member-filed report against a user (and, optionally, a specific chat
+/// message) within a room. PENDING until a moderator reviews it; REVIEWED/
+/// DISMISSED/ACTIONED record the outcome. No DB foreign keys — reference
+/// rooms/users/messages by id (@@index).
+model VideoRoomReport {
+  id               String                @id @default(uuid()) @db.Uuid
+  roomId           String                @db.Uuid
+  reporterId       String                @db.Uuid
+  targetUserId     String                @db.Uuid
+  messageId        String?               @db.Uuid
+  reason           VideoRoomReportReason
+  description      String?
+  status           VideoRoomReportStatus @default(PENDING)
+  reviewedBy       String?               @db.Uuid
+  reviewedAt       DateTime?
+  resolutionAction String?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, status])
+  @@index([targetUserId])
+  @@index([reporterId])
+  @@map("video_room_reports")
+}
+
+/// A moderator-issued warning — recorded against a user/room independent of
+/// the append-only moderation action trail so warnings can be queried and
+/// (later) surfaced to the user on their own. No DB foreign keys — reference
+/// rooms/users by id (@@index).
+model VideoRoomWarning {
+  id          String   @id @default(uuid()) @db.Uuid
+  roomId      String   @db.Uuid
+  userId      String   @db.Uuid
+  moderatorId String   @db.Uuid
+  reason      String
+  metadata    Json?
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, userId])
+  @@index([userId])
+  @@map("video_room_warnings")
 }

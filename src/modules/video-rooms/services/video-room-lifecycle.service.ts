@@ -289,6 +289,7 @@ export class VideoRoomLifecycleService {
     });
     const view = await this.refreshCache(roomId);
     await this.events.emitRoomUpdated({ roomId, actorId: actor.id, changed: ['status'] });
+    await this.events.emitRoomStarted({ roomId, ownerId: room.ownerId, actorId: actor.id });
     return view;
   }
 

@@ -199,14 +199,14 @@ export class VideoRoomChatPolicyService {
   }
 
   private async assertNotBlockedOrMuted(roomId: string, userId: string): Promise<void> {
-    if (await this.moderation.findActiveBlock(roomId, userId)) {
+    if (await this.moderation.isActivelyBlocked(roomId, userId)) {
       throw new BusinessException(
         ERROR_CODES.VIDEO_ROOM_BLOCKED,
         'You are blocked from this room.',
         HttpStatus.FORBIDDEN,
       );
     }
-    if (await this.moderation.findActiveMute(roomId, userId)) {
+    if (await this.moderation.isActivelyMuted(roomId, userId)) {
       throw new BusinessException(
         ERROR_CODES.MEMBER_MUTED,
         'You are muted in this room.',

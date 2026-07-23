@@ -22,6 +22,7 @@ import type { VideoRoomSessionRecord } from '../interfaces/room-session-manager.
 import { toVideoRoomMemberView, toVideoRoomSessionView } from '../mappers/video-room-member.mapper';
 import { VideoRoomEventsRepository } from '../repositories/video-room-events.repository';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
+import { VideoRoomSeatsRepository } from '../repositories/video-room-seats.repository';
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 import { VideoRoomsMetrics } from '../video-rooms.metrics';
 import { derivePresenceState } from './video-room-presence-state';
@@ -87,6 +88,7 @@ export class VideoRoomMemberService {
     private readonly metrics: VideoRoomsMetrics,
     private readonly locks: LockService,
     config: ConfigService,
+    private readonly seats: VideoRoomSeatsRepository,
   ) {
     this.cfg = loadVideoRoomConfig(config);
   }
@@ -120,8 +122,7 @@ export class VideoRoomMemberService {
       const privileged = isOwner || this.isPlatformAdmin(actor);
 
       if (!privileged) {
-        const block = await this.moderation.findActiveBlock(roomId, actor.id);
-        if (block) {
+        if (await this.moderation.isActivelyBlocked(roomId, actor.id)) {
           throw this.err(
             ERROR_CODES.VIDEO_ROOM_BLOCKED,
             'You are blocked from this room.',
@@ -131,15 +132,18 @@ export class VideoRoomMemberService {
       }
 
       if (room.isLocked && room.passwordHash && !alreadyMember && !privileged) {
-        const ok = dto.password
-          ? await this.passwords.verify(dto.password, room.passwordHash)
-          : false;
-        if (!ok) {
-          throw this.err(
-            ERROR_CODES.VIDEO_ROOM_PASSWORD_INVALID,
-            'Incorrect room password.',
-            HttpStatus.BAD_REQUEST,
-          );
+        const invited = await this.seats.hasActiveRoomInvitation(roomId, actor.id);
+        if (!invited) {
+          const ok = dto.password
+            ? await this.passwords.verify(dto.password, room.passwordHash)
+            : false;
+          if (!ok) {
+            throw this.err(
+              ERROR_CODES.VIDEO_ROOM_PASSWORD_INVALID,
+              'Incorrect room password.',
+              HttpStatus.BAD_REQUEST,
+            );
+          }
         }
       }
 

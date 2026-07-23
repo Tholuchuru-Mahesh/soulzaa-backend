@@ -2,6 +2,7 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   VideoRoomInvitation,
   VideoRoomInvitationStatus,
+  VideoRoomInvitationType,
   VideoRoomSeatStatus,
 } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
@@ -75,7 +76,7 @@ export class VideoRoomSeatInvitationService {
         HttpStatus.CONFLICT,
       );
     }
-    if (await this.moderation.findActiveBlock(roomId, inviteeUserId)) {
+    if (await this.moderation.isActivelyBlocked(roomId, inviteeUserId)) {
       throw new BusinessException(
         ERROR_CODES.VIDEO_ROOM_BLOCKED,
         'That user is blocked from this room.',
@@ -117,7 +118,11 @@ export class VideoRoomSeatInvitationService {
     }
 
     const pending = await this.seats.listPendingInvitations(roomId, inviteeUserId);
-    if (pending.some((p) => (p.seatIndex ?? null) === (seatIndex ?? null))) {
+    if (
+      pending
+        .filter((p) => p.type !== VideoRoomInvitationType.ROOM)
+        .some((p) => (p.seatIndex ?? null) === (seatIndex ?? null))
+    ) {
       throw new BusinessException(
         ERROR_CODES.DUPLICATE_SEAT_INVITATION,
         'That user already has a pending invitation for this seat.',
@@ -148,6 +153,7 @@ export class VideoRoomSeatInvitationService {
         inviteeUserId,
         seatIndex: seatIndex ?? null,
         expiresAt: expiresAt.toISOString(),
+        type: inv.type,
       }),
     );
     return toVideoRoomInvitationView(inv);
@@ -180,6 +186,13 @@ export class VideoRoomSeatInvitationService {
         ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
         'Only the invited user may accept this invitation.',
         HttpStatus.FORBIDDEN,
+      );
+    }
+    if (inv.type === VideoRoomInvitationType.ROOM) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
+        'That invitation is a room invitation; use the room-invitation endpoints.',
+        HttpStatus.CONFLICT,
       );
     }
     const seatIndex = inv.seatIndex ?? (await this.seatSvc.findOpenSeat(actor, roomId));
@@ -242,6 +255,13 @@ export class VideoRoomSeatInvitationService {
         ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
         'Only the invited user may reject this invitation.',
         HttpStatus.FORBIDDEN,
+      );
+    }
+    if (inv.type === VideoRoomInvitationType.ROOM) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
+        'That invitation is a room invitation; use the room-invitation endpoints.',
+        HttpStatus.CONFLICT,
       );
     }
     await this.seats.setInvitationStatus(inv.id, VideoRoomInvitationStatus.REJECTED, actor.id);
@@ -402,6 +422,156 @@ export class VideoRoomSeatInvitationService {
     await this.permissions.assertPermission(actor, room, VideoRoomPermission.INVITE_USERS);
     const rows = await this.seats.listPendingInvitations(roomId);
     return rows.map(toVideoRoomInvitationView);
+  }
+
+  // ---- Room invitations (VR-15) ----
+
+  /**
+   * VR-15 — invite a NON-member into the room (private-room invitation). Distinct
+   * from seat invitations: no seat, invitee need not be a member. Emitting
+   * SeatInvitationSentEvent with type ROOM fires the ROOM_INVITATION notification.
+   */
+  async inviteToRoom(
+    actor: RoomActor,
+    roomId: string,
+    inviteeUserId: string,
+    ip?: string,
+  ): Promise<VideoRoomInvitationView> {
+    const room = await this.seatSvc.requireLiveRoom(roomId);
+    await this.permissions.assertPermission(actor, room, VideoRoomPermission.INVITE_USERS);
+
+    const member = await this.rooms.getMember(roomId, inviteeUserId);
+    if (member?.isActive) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
+        'That user is already in this room.',
+        HttpStatus.CONFLICT,
+      );
+    }
+    const existing = await this.seats.findActiveRoomInvitation(roomId, inviteeUserId);
+    if (existing) {
+      throw new BusinessException(
+        ERROR_CODES.DUPLICATE_SEAT_INVITATION,
+        'That user already has a pending room invitation.',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const expiresAt = new Date(Date.now() + VIDEO_ROOM_INVITATION_TTL_SECONDS * 1000);
+    const inv = await this.seats.createInvitation(
+      {
+        roomId,
+        inviterId: actor.id,
+        inviteeUserId,
+        type: VideoRoomInvitationType.ROOM,
+        seatIndex: null,
+        expiresAt,
+      },
+      actor.id,
+    );
+    await this.events.appendEvent({
+      roomId,
+      actorId: actor.id,
+      eventType: 'room.invitation_sent',
+      payload: { invitationId: inv.id, inviteeUserId, ...(ip ? { ip } : {}) },
+    });
+    await this.bus.publish(
+      new SeatInvitationSentEvent({
+        roomId,
+        invitationId: inv.id,
+        inviterId: actor.id,
+        inviteeUserId,
+        seatIndex: null,
+        expiresAt: expiresAt.toISOString(),
+        type: inv.type,
+      }),
+    );
+    return toVideoRoomInvitationView(inv);
+  }
+
+  /** Accept a ROOM invitation (invitee only). Marks ACCEPTED — while the invitation
+   * is still within its TTL, the invitee's join() bypasses the private-room password
+   * (see member service + hasActiveRoomInvitation's expiry bound). Does not seat/join. */
+  async acceptRoomInvite(
+    actor: RoomActor,
+    roomId: string,
+    invitationId: string,
+    ip?: string,
+  ): Promise<void> {
+    await this.seatSvc.requireLiveRoom(roomId);
+    const inv = await this.requirePendingInvitation(roomId, invitationId, actor.id);
+    if (inv.inviteeUserId !== actor.id) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+        'Only the invited user may accept this invitation.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    if (inv.type !== VideoRoomInvitationType.ROOM) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
+        'That invitation is not a room invitation.',
+        HttpStatus.CONFLICT,
+      );
+    }
+    await this.seats.setInvitationStatus(inv.id, VideoRoomInvitationStatus.ACCEPTED, actor.id, {
+      bumpAttempt: true,
+      lastError: null,
+    });
+    await this.events.appendEvent({
+      roomId,
+      actorId: actor.id,
+      eventType: 'room.invitation_accepted',
+      payload: { invitationId: inv.id, ...(ip ? { ip } : {}) },
+    });
+    await this.bus.publish(
+      new SeatInvitationResolvedEvent({
+        roomId,
+        invitationId: inv.id,
+        inviteeUserId: actor.id,
+        status: 'ACCEPTED',
+      }),
+    );
+  }
+
+  /** Reject a ROOM invitation (invitee only). */
+  async rejectRoomInvite(
+    actor: RoomActor,
+    roomId: string,
+    invitationId: string,
+    ip?: string,
+  ): Promise<void> {
+    await this.seatSvc.requireLiveRoom(roomId);
+    const inv = await this.requirePendingInvitation(roomId, invitationId, actor.id);
+    if (inv.inviteeUserId !== actor.id) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+        'Only the invited user may reject this invitation.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    if (inv.type !== VideoRoomInvitationType.ROOM) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
+        'That invitation is not a room invitation.',
+        HttpStatus.CONFLICT,
+      );
+    }
+    await this.seats.setInvitationStatus(inv.id, VideoRoomInvitationStatus.REJECTED, actor.id);
+    await this.events.appendEvent({
+      roomId,
+      actorId: actor.id,
+      eventType: 'room.invitation_rejected',
+      payload: { invitationId: inv.id, ...(ip ? { ip } : {}) },
+    });
+    await this.bus.publish(
+      new SeatInvitationResolvedEvent({
+        roomId,
+        invitationId: inv.id,
+        inviteeUserId: actor.id,
+        status: 'REJECTED',
+      }),
+    );
   }
 
   // ---- Internal ----

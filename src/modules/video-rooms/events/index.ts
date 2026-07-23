@@ -7,3 +7,4 @@ export * from './video-room-gift.events';
 export * from './video-room-treasure.events';
 export * from './video-room-pk.events';
 export * from './video-room-ranking.events';
+export * from './video-room-moderation.events';

@@ -102,6 +102,9 @@ describe('VideoRoomSeatsController — VR-8 routes', () => {
         cancel: jest.fn(),
         acknowledge: jest.fn().mockResolvedValue({ id: 'i1' }),
         retry: jest.fn().mockResolvedValue({ version: 4 }),
+        inviteToRoom: jest.fn().mockResolvedValue({ id: 'ri1' }),
+        acceptRoomInvite: jest.fn().mockResolvedValue(undefined),
+        rejectRoomInvite: jest.fn().mockResolvedValue(undefined),
       },
       queue: {
         list: jest.fn().mockResolvedValue([{ userId: 'u2', position: 1, vipLevel: 0, score: 1 }]),
@@ -181,6 +184,38 @@ describe('VideoRoomSeatsController — VR-8 routes', () => {
       expect.objectContaining({ id: 'u' }),
       ROOM,
       'i1',
+      IP,
+    );
+  });
+
+  // ---- VR-15 room invitations ----
+
+  it('invites a non-member into the room', async () => {
+    await ctrl.inviteToRoom(user, ROOM, { inviteeUserId: 'g' } as never, IP);
+    expect(deps.invitations.inviteToRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+      'g',
+      IP,
+    );
+  });
+
+  it('accepts a room invitation', async () => {
+    await ctrl.acceptRoomInvite(user, ROOM, { invitationId: 'ri1' } as never, IP);
+    expect(deps.invitations.acceptRoomInvite).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+      'ri1',
+      IP,
+    );
+  });
+
+  it('rejects a room invitation', async () => {
+    await ctrl.rejectRoomInvite(user, ROOM, { invitationId: 'ri1' } as never, IP);
+    expect(deps.invitations.rejectRoomInvite).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+      'ri1',
       IP,
     );
   });

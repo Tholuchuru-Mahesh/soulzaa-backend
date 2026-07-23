@@ -24,7 +24,6 @@ import {
   type AuthResult,
   type AuthTokens,
   type IAuthService,
-  type MobileOtpLoginCommand,
   type OtpVerifyCommand,
   type PasswordLoginCommand,
   type RegisterCommand,

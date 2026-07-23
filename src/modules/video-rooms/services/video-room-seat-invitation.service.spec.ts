@@ -1,5 +1,5 @@
 import { HttpStatus } from '@nestjs/common';
-import { VideoRoomInvitationStatus } from '@prisma/client';
+import { VideoRoomInvitationStatus, VideoRoomInvitationType } from '@prisma/client';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { VideoRoomSeatInvitationService } from './video-room-seat-invitation.service';
@@ -40,11 +40,12 @@ describe('VideoRoomSeatInvitationService', () => {
         findSeat: jest
           .fn()
           .mockResolvedValue({ seatIndex: 3, isLocked: false, seatStatus: 'EMPTY' }),
+        findActiveRoomInvitation: jest.fn().mockResolvedValue(null),
       },
       permissions: { assertPermission: jest.fn() },
       events: { appendEvent: jest.fn() },
       bus: { publish: jest.fn() },
-      moderation: { findActiveBlock: jest.fn().mockResolvedValue(null) },
+      moderation: { isActivelyBlocked: jest.fn().mockResolvedValue(false) },
       rooms: { getMember: jest.fn().mockResolvedValue({ isActive: true }) },
     };
     svc = new VideoRoomSeatInvitationService(
@@ -106,7 +107,7 @@ describe('VideoRoomSeatInvitationService', () => {
     });
 
     it('refuses a target blocked from the room', async () => {
-      deps.moderation.findActiveBlock.mockResolvedValue({ id: 'b1' });
+      deps.moderation.isActivelyBlocked.mockResolvedValue(true);
       await expect(svc.invite(actor('owner'), 'r1', 'u2', 3)).rejects.toMatchObject({
         errorCode: ERROR_CODES.VIDEO_ROOM_BLOCKED,
       });
@@ -158,6 +159,60 @@ describe('VideoRoomSeatInvitationService', () => {
       await svc.invite(actor('owner'), 'r1', 'u2');
       expect(deps.seats.findSeat).not.toHaveBeenCalled();
       expect(deps.seats.createInvitation).toHaveBeenCalled();
+    });
+  });
+
+  describe('inviteToRoom (VR-15)', () => {
+    beforeEach(() => {
+      // The invitee is a NON-member for a room invitation — unlike seat invites.
+      deps.rooms.getMember.mockResolvedValue({ isActive: false });
+      deps.seats.createInvitation.mockResolvedValue({
+        id: 'i1',
+        inviterId: 'owner',
+        inviteeUserId: 'u2',
+        type: 'ROOM',
+        seatIndex: null,
+        status: 'PENDING',
+        expiresAt: new Date(Date.now() + 120_000),
+      });
+    });
+
+    it('creates a ROOM invitation with seatIndex null and publishes a ROOM-typed event', async () => {
+      const view = await svc.inviteToRoom(actor('owner'), 'r1', 'u2');
+      expect(deps.permissions.assertPermission).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        'INVITE_USERS',
+      );
+      expect(deps.seats.createInvitation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roomId: 'r1',
+          inviterId: 'owner',
+          inviteeUserId: 'u2',
+          type: VideoRoomInvitationType.ROOM,
+          seatIndex: null,
+        }),
+        'owner',
+      );
+      expect(pub()).toContain('SeatInvitationSentEvent');
+      expect(publishedPayload('SeatInvitationSentEvent')).toMatchObject({ type: 'ROOM' });
+      expect(view.id).toBe('i1');
+    });
+
+    it('rejects when the invitee is already an active member', async () => {
+      deps.rooms.getMember.mockResolvedValue({ isActive: true });
+      await expect(svc.inviteToRoom(actor('owner'), 'r1', 'u2')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
+      });
+      expect(deps.seats.createInvitation).not.toHaveBeenCalled();
+    });
+
+    it('rejects a duplicate outstanding room invitation for the same invitee', async () => {
+      deps.seats.findActiveRoomInvitation.mockResolvedValue({ id: 'existing' });
+      await expect(svc.inviteToRoom(actor('owner'), 'r1', 'u2')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.DUPLICATE_SEAT_INVITATION,
+      });
+      expect(deps.seats.createInvitation).not.toHaveBeenCalled();
     });
   });
 
@@ -306,6 +361,147 @@ describe('VideoRoomSeatInvitationService', () => {
         expiresAt: new Date(Date.now() + 60_000),
       });
       await expect(svc.reject(actor('u2'), 'r1', 'i1')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('seat path rejects ROOM invitations (VR-15 cross-path guard)', () => {
+    const roomInv = {
+      id: 'i1',
+      roomId: 'r1',
+      inviteeUserId: 'u2',
+      type: VideoRoomInvitationType.ROOM,
+      seatIndex: null,
+      status: VideoRoomInvitationStatus.PENDING,
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+
+    it('accept() refuses a ROOM invitation (must use the room-invite endpoints)', async () => {
+      deps.seats.findInvitationById.mockResolvedValue({ ...roomInv });
+      await expect(svc.accept(actor('u2'), 'r1', 'i1')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
+      });
+      expect(deps.seatSvc.seatUser).not.toHaveBeenCalled();
+    });
+
+    it('reject() refuses a ROOM invitation', async () => {
+      deps.seats.findInvitationById.mockResolvedValue({ ...roomInv });
+      await expect(svc.reject(actor('u2'), 'r1', 'i1')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
+      });
+      expect(deps.seats.setInvitationStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('acceptRoomInvite (VR-15)', () => {
+    it('marks the room invitation ACCEPTED and publishes ACCEPTED (no seating)', async () => {
+      deps.seats.findInvitationById.mockResolvedValue({
+        id: 'i1',
+        roomId: 'r1',
+        inviteeUserId: 'u2',
+        type: VideoRoomInvitationType.ROOM,
+        seatIndex: null,
+        status: VideoRoomInvitationStatus.PENDING,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      await svc.acceptRoomInvite(actor('u2'), 'r1', 'i1');
+      expect(deps.seats.setInvitationStatus).toHaveBeenCalledWith(
+        'i1',
+        VideoRoomInvitationStatus.ACCEPTED,
+        'u2',
+        expect.objectContaining({ bumpAttempt: true, lastError: null }),
+      );
+      expect(deps.seatSvc.seatUser).not.toHaveBeenCalled();
+      expect(pub()).toContain('SeatInvitationResolvedEvent');
+      expect(publishedPayload('SeatInvitationResolvedEvent')).toMatchObject({
+        invitationId: 'i1',
+        inviteeUserId: 'u2',
+        status: 'ACCEPTED',
+      });
+    });
+
+    it('rejects a non-invitee', async () => {
+      deps.seats.findInvitationById.mockResolvedValue({
+        id: 'i1',
+        roomId: 'r1',
+        inviteeUserId: 'u2',
+        type: VideoRoomInvitationType.ROOM,
+        seatIndex: null,
+        status: VideoRoomInvitationStatus.PENDING,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      await expect(svc.acceptRoomInvite(actor('intruder'), 'r1', 'i1')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+      });
+    });
+
+    it('rejects a non-ROOM (SEAT) invitation', async () => {
+      deps.seats.findInvitationById.mockResolvedValue({
+        id: 'i1',
+        roomId: 'r1',
+        inviteeUserId: 'u2',
+        type: VideoRoomInvitationType.SEAT,
+        seatIndex: 3,
+        status: VideoRoomInvitationStatus.PENDING,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      await expect(svc.acceptRoomInvite(actor('u2'), 'r1', 'i1')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
+      });
+    });
+  });
+
+  describe('rejectRoomInvite (VR-15)', () => {
+    it('marks the room invitation REJECTED', async () => {
+      deps.seats.findInvitationById.mockResolvedValue({
+        id: 'i1',
+        roomId: 'r1',
+        inviteeUserId: 'u2',
+        type: VideoRoomInvitationType.ROOM,
+        seatIndex: null,
+        status: VideoRoomInvitationStatus.PENDING,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      await svc.rejectRoomInvite(actor('u2'), 'r1', 'i1');
+      expect(deps.seats.setInvitationStatus).toHaveBeenCalledWith(
+        'i1',
+        VideoRoomInvitationStatus.REJECTED,
+        'u2',
+      );
+      expect(pub()).toContain('SeatInvitationResolvedEvent');
+      expect(publishedPayload('SeatInvitationResolvedEvent')).toMatchObject({
+        invitationId: 'i1',
+        status: 'REJECTED',
+      });
+    });
+
+    it('rejects a non-invitee', async () => {
+      deps.seats.findInvitationById.mockResolvedValue({
+        id: 'i1',
+        roomId: 'r1',
+        inviteeUserId: 'u2',
+        type: VideoRoomInvitationType.ROOM,
+        seatIndex: null,
+        status: VideoRoomInvitationStatus.PENDING,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      await expect(svc.rejectRoomInvite(actor('intruder'), 'r1', 'i1')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+      });
+    });
+
+    it('rejects a non-ROOM (SEAT) invitation', async () => {
+      deps.seats.findInvitationById.mockResolvedValue({
+        id: 'i1',
+        roomId: 'r1',
+        inviteeUserId: 'u2',
+        type: VideoRoomInvitationType.SEAT,
+        seatIndex: 3,
+        status: VideoRoomInvitationStatus.PENDING,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      await expect(svc.rejectRoomInvite(actor('u2'), 'r1', 'i1')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
+      });
     });
   });
 

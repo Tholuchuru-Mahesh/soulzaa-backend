@@ -8,7 +8,6 @@ import {
   TreasureRewardKind,
   TreasureSession,
   TreasureSessionStatus,
-  WalletCurrency,
   WalletTxnReason,
 } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
@@ -41,7 +40,6 @@ import {
   TreasureProgressEvent,
   TreasureSessionCompletedEvent,
   TreasureSessionStartedEvent,
-  TreasureReceiverRewardEvent,
   ContributionCounterUpdatedEvent,
   type RankedContributor,
   type RewardSummary,

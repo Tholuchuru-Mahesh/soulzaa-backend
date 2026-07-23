@@ -475,4 +475,46 @@ export class VideoRoomSeatsRepository {
   isSeatOccupied(seat: VideoRoomSeat): boolean {
     return seat.seatStatus === VideoRoomSeatStatus.OCCUPIED && seat.occupantUserId != null;
   }
+
+  // ---- Room invitations (VR-15) ----
+
+  /** An outstanding (PENDING/DELIVERED) ROOM invitation for this invitee, if any. */
+  async findActiveRoomInvitation(
+    roomId: string,
+    inviteeUserId: string,
+  ): Promise<VideoRoomInvitation | null> {
+    return this.prisma.videoRoomInvitation.findFirst({
+      where: {
+        roomId,
+        inviteeUserId,
+        type: VideoRoomInvitationType.ROOM,
+        status: { in: [VideoRoomInvitationStatus.PENDING, VideoRoomInvitationStatus.DELIVERED] },
+      },
+    });
+  }
+
+  /** True if the user holds a still-valid ROOM invitation (grants private-room access). */
+  async hasActiveRoomInvitation(roomId: string, userId: string): Promise<boolean> {
+    const row = await this.prisma.videoRoomInvitation.findFirst({
+      where: {
+        roomId,
+        inviteeUserId: userId,
+        type: VideoRoomInvitationType.ROOM,
+        status: {
+          in: [
+            VideoRoomInvitationStatus.PENDING,
+            VideoRoomInvitationStatus.DELIVERED,
+            VideoRoomInvitationStatus.ACCEPTED,
+          ],
+        },
+        // Expiry-bound the grant: an ACCEPTED invitation is never swept to
+        // EXPIRED, so without this an accepted invite would bypass the room
+        // password indefinitely (surviving leave/rejoin and even a password
+        // rotation). The bypass now lasts only within the invitation's TTL.
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
 }

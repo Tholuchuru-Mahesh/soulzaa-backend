@@ -50,6 +50,12 @@ export class UpdateNotificationPreferencesDto {
   @IsBoolean()
   systemEvents?: boolean;
 
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() roomEvents?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() seatEvents?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() treasureEvents?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() pkEvents?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() announcementEvents?: boolean;
+
   @ApiPropertyOptional({ description: 'Selects the audible vs silent Android channel.' })
   @IsOptional()
   @IsBoolean()

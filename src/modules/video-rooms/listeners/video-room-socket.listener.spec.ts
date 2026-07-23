@@ -26,6 +26,9 @@ describe('VideoRoomSocketListener', () => {
     VIDEO_ROOM_EVENTS.HEARTBEAT_MISSED,
     VIDEO_ROOM_EVENTS.SESSION_CREATED,
     VIDEO_ROOM_EVENTS.SESSION_EXPIRED,
+    // VR-15: go-live drives the followers fan-out push (delivered on the
+    // /notifications namespace + push), not an in-room /video-room relay.
+    VIDEO_ROOM_EVENTS.STARTED,
   ];
 
   it('subscribes to every client-facing domain event but not the bus-only ones', () => {

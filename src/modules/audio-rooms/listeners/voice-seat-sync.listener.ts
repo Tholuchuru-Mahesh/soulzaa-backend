@@ -31,7 +31,7 @@ export class VoiceSeatSyncListener implements OnModuleInit {
     );
     this.bus.subscribe<SeatUpdatedEvent>(AUDIO_ROOM_SEAT_EVENTS.UPDATED, (e) => {
       if (e.payload.subjectUserId) {
-        this.voice.syncRoleFromSeat(e.payload.roomId, e.payload.subjectUserId);
+        void this.voice.syncRoleFromSeat(e.payload.roomId, e.payload.subjectUserId);
       }
     });
   }

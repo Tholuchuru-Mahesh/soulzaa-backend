@@ -65,6 +65,12 @@ export class GiftLuckyWinEvent extends DomainEvent<{
 export interface GiftRefundedPayload {
   transactionId: string;
   senderId: string;
+  /**
+   * The refunded gift's receiver, when known at the emit site. Optional for
+   * backward compatibility (VR-14). Present where the publisher has an
+   * unambiguous receiver; absent otherwise.
+   */
+  receiverId?: string;
   roomId: string;
   giftId: string;
   giftName: string;

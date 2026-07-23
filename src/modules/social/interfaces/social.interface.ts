@@ -69,4 +69,10 @@ export interface ISocialService {
   followerIds(userId: string): Promise<string[]>;
   /** Union of friends ∪ followers — the audience for a presence broadcast. */
   presenceAudienceIds(userId: string): Promise<string[]>;
+  /** One page of follower ids (most recent first) + total, for chunked fan-out. */
+  pageFollowerIds(
+    userId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ ids: string[]; total: number }>;
 }

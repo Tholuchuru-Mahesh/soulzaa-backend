@@ -24,6 +24,27 @@ enum NotificationType {
   /// Someone sent this user a gift. Durable because it is worth money — a reward
   /// the recipient can only see if they happened to be looking is not a reward.
   GIFT_RECEIVED
+
+  // ---- VR-15: video-room notification types (append-only) ----
+  ROOM_STARTED
+  ROOM_CLOSED
+  ROOM_LOCKED
+  ROOM_UNLOCKED
+  SEAT_INVITE
+  SEAT_APPROVED
+  SEAT_REJECTED
+  VIEWER_PROMOTED
+  VIEWER_DEMOTED
+  TREASURE_UNLOCKED
+  TREASURE_REWARD
+  PK_ACCEPTED
+  PK_REJECTED
+  PK_STARTED
+  PK_ENDED
+  PK_WINNER
+  ANNOUNCEMENT
+  MENTION
+  SYSTEM
 }
 
 /// A single in-app notification for `userId`, optionally caused by
@@ -69,6 +90,13 @@ model NotificationPreference {
   inviteEvents  Boolean @default(true)
   giftEvents    Boolean @default(true)
   systemEvents  Boolean @default(true)
+
+  // ---- VR-15: video-room per-category switches (additive, default on) ----
+  roomEvents         Boolean @default(true)
+  seatEvents         Boolean @default(true)
+  treasureEvents     Boolean @default(true)
+  pkEvents           Boolean @default(true)
+  announcementEvents Boolean @default(true)
 
   // ---- Presentation ----
   /// Drives which Android channel the push is delivered on (channels own their

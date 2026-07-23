@@ -54,7 +54,7 @@ import { GiftService } from './services/gift.service';
     GiftHistoryService,
     GiftQueryService,
     GiftLeaderboardService,
-    GiftCatalogSeederService,
   ],
 })
 export class GiftsModule {}
+

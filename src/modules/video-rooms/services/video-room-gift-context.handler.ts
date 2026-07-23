@@ -106,7 +106,7 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
     }
 
     // A blocked sender may still hold a stale membership row; check explicitly.
-    if (await this.moderation.findActiveBlock(roomId, senderId)) {
+    if (await this.moderation.isActivelyBlocked(roomId, senderId)) {
       throw new BusinessException(
         ERROR_CODES.VIDEO_ROOM_BLOCKED,
         'You are blocked from this room.',

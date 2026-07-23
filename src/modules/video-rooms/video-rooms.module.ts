@@ -1,5 +1,6 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
+import { VIDEO_ROOM_MODERATION_QUEUES } from './constants/video-room-moderation.constants';
 import { VIDEO_ROOM_QUEUES } from './constants/video-room.constants';
 import {
   LeaderboardCache,
@@ -40,6 +41,7 @@ import { VideoRoomMediaSocketListener } from './listeners/video-room-media-socke
 import { VideoRoomChatAuditListener } from './listeners/video-room-chat-audit.listener';
 import { VideoRoomChatMetricsListener } from './listeners/video-room-chat-metrics.listener';
 import { VideoRoomChatSocketListener } from './listeners/video-room-chat-socket.listener';
+import { VideoRoomEconomySocketListener } from './listeners/video-room-economy-socket.listener';
 import { VideoRoomGiftSocketListener } from './listeners/video-room-gift-socket.listener';
 import { VideoRoomPkAuditListener } from './listeners/video-room-pk-audit.listener';
 import { VideoRoomPkMetricsListener } from './listeners/video-room-pk-metrics.listener';
@@ -70,6 +72,27 @@ import { VideoRoomChatRepository } from './repositories/video-room-chat.reposito
 import { VideoRoomEventsRepository } from './repositories/video-room-events.repository';
 import { VideoRoomMediaSessionRepository } from './repositories/video-room-media-session.repository';
 import { VideoRoomModerationRepository } from './repositories/video-room-moderation.repository';
+import { ModerationCleanupProcessor } from './processors/moderation-cleanup.processor';
+import { ModerationProcessingProcessor } from './processors/moderation-processing.processor';
+import { ReportProcessingProcessor } from './processors/report-processing.processor';
+// ---- VR-16 moderation engine (Task 24): remaining providers ----
+import { VideoRoomsModerationController } from './controllers/video-rooms-moderation.controller';
+import { VideoRoomModerationSocketListener } from './listeners/video-room-moderation-socket.listener';
+import { VideoRoomAutoModerationListener } from './listeners/video-room-auto-moderation.listener';
+import { VideoRoomModerationExpiryMonitor } from './scheduler/video-room-moderation-expiry.monitor';
+import { VideoRoomModerationCleanupScheduler } from './scheduler/video-room-moderation-cleanup.scheduler';
+import { VideoRoomModerationMetrics } from './metrics/video-room-moderation.metrics';
+import { VideoRoomReportRepository } from './repositories/video-room-report.repository';
+import { VideoRoomWarningRepository } from './repositories/video-room-warning.repository';
+import { VideoRoomModerationService } from './services/video-room-moderation.service';
+import { VideoRoomReportService } from './services/video-room-report.service';
+import { VideoRoomModerationQueryService } from './services/video-room-moderation-query.service';
+import { VideoRoomAutoModerationService } from './services/video-room-auto-moderation.service';
+import { SpamDetector } from './services/detectors/spam.detector';
+import { FloodDetector } from './services/detectors/flood.detector';
+import { DuplicateDetector } from './services/detectors/duplicate.detector';
+import { RapidJoinLeaveDetector } from './services/detectors/rapid-join-leave.detector';
+import { ExcessiveReportsDetector } from './services/detectors/excessive-reports.detector';
 import { VideoRoomPkInvitationRepository } from './repositories/video-room-pk-invitation.repository';
 import { VideoRoomPkRewardRepository } from './repositories/video-room-pk-reward.repository';
 import { VideoRoomPkRepository } from './repositories/video-room-pk.repository';
@@ -153,6 +176,19 @@ import { VideoRoomRankingScoreEngine } from './services/video-room-ranking-score
 import { VideoRoomRankingSnapshotService } from './services/video-room-ranking-snapshot.service';
 import { VideoRoomRankingService } from './services/video-room-ranking.service';
 import { VideoRoomLeaderboardService } from './services/video-room-leaderboard.service';
+// ---- VR-15 notifications ----
+import { VideoRoomsNotificationController } from './controllers/video-rooms-notification.controller';
+import { VideoRoomChatNotificationListener } from './listeners/video-room-chat-notification.listener';
+import { VideoRoomEngagementNotificationListener } from './listeners/video-room-engagement-notification.listener';
+import { VideoRoomLifecycleNotificationListener } from './listeners/video-room-lifecycle-notification.listener';
+import { VideoRoomNotificationSocketListener } from './listeners/video-room-notification-socket.listener';
+import { VideoRoomSeatNotificationListener } from './listeners/video-room-seat-notification.listener';
+import { VideoRoomNotificationMuteRepository } from './repositories/video-room-notification-mute.repository';
+import { VideoRoomNotificationFanoutService } from './services/video-room-notification-fanout.service';
+import { VideoRoomNotificationMuteService } from './services/video-room-notification-mute.service';
+import { VideoRoomNotificationService } from './services/video-room-notification.service';
+import { VideoRoomSystemNotificationService } from './services/video-room-system-notification.service';
+import { VideoRoomNotificationMetrics } from './metrics/video-room-notification.metrics';
 
 /**
  * Video Rooms domain — VR-0: Enterprise Foundation.
@@ -177,6 +213,12 @@ import { VideoRoomLeaderboardService } from './services/video-room-leaderboard.s
   imports: [
     // Register the lean queue producers now; workers land with their phases.
     BullModule.registerQueue({ name: VIDEO_ROOM_QUEUES.MAIN }, { name: VIDEO_ROOM_QUEUES.CLEANUP }),
+    // ---- VR-16 moderation engine: the 3 dedicated queues (Task 21) ----
+    BullModule.registerQueue(
+      { name: VIDEO_ROOM_MODERATION_QUEUES.PROCESSING },
+      { name: VIDEO_ROOM_MODERATION_QUEUES.REPORT },
+      { name: VIDEO_ROOM_MODERATION_QUEUES.CLEANUP },
+    ),
   ],
   controllers: [
     VideoRoomsController,
@@ -190,6 +232,8 @@ import { VideoRoomLeaderboardService } from './services/video-room-leaderboard.s
     VideoRoomsTreasureController,
     VideoRoomsPkController,
     VideoRoomsRankingsController,
+    VideoRoomsNotificationController,
+    VideoRoomsModerationController,
   ],
   providers: [
     VideoRoomsRepository,
@@ -198,6 +242,39 @@ import { VideoRoomLeaderboardService } from './services/video-room-leaderboard.s
     VideoRoomRolesRepository,
     VideoRoomSeatsRepository,
     VideoRoomModerationRepository,
+    // VR-16 moderation engine: the 3 dedicated queue processors (Task 21).
+    ModerationProcessingProcessor,
+    ReportProcessingProcessor,
+    ModerationCleanupProcessor,
+    // VR-16 moderation engine (Task 24): the remaining providers — reports/
+    // warnings repos, the 5 stateless auto-mod detectors (injected into
+    // VideoRoomAutoModerationService's constructor, so each must be its own
+    // provider rather than instantiated internally), metrics, the 4 command/
+    // query/auto-mod services, the socket + auto-mod signal listeners, and the
+    // temp-mute expiry monitor. VideoRoomReportService is injected by
+    // VideoRoomModerationService (autoFlag's system-report path) — verified
+    // no cycle: VideoRoomReportService does not depend on
+    // VideoRoomModerationService, so plain constructor injection (no
+    // forwardRef) resolves cleanly. Nothing here is consumed outside this
+    // module, so nothing new is added to `exports`.
+    VideoRoomReportRepository,
+    VideoRoomWarningRepository,
+    VideoRoomModerationMetrics,
+    SpamDetector,
+    FloodDetector,
+    DuplicateDetector,
+    RapidJoinLeaveDetector,
+    ExcessiveReportsDetector,
+    VideoRoomReportService,
+    VideoRoomModerationService,
+    VideoRoomModerationQueryService,
+    VideoRoomAutoModerationService,
+    VideoRoomModerationSocketListener,
+    VideoRoomAutoModerationListener,
+    VideoRoomModerationExpiryMonitor,
+    // Producer for the CLEANUP queue (VR-16 minor fix): the queue +
+    // ModerationCleanupProcessor existed with nothing enqueuing to them.
+    VideoRoomModerationCleanupScheduler,
     VideoRoomMediaSessionRepository,
     VideoRoomEventsRepository,
     VideoRoomReferenceRepository,
@@ -359,6 +436,23 @@ import { VideoRoomLeaderboardService } from './services/video-room-leaderboard.s
     VideoRoomRankingSocketListener,
     VideoRoomRankingMetricsListener,
     VideoRoomRankingAuditListener,
+    // ---- VR-14 wallet & economy socket bridge ----
+    // Bridges events the gift/treasure/PK engines already emit to room-facing
+    // socket events; also relays the app-layer gift-failure event published by
+    // VideoRoomGiftService on a wallet-boundary failure.
+    VideoRoomEconomySocketListener,
+    // ---- VR-15 notifications ----
+    VideoRoomNotificationMuteRepository,
+    VideoRoomNotificationMuteService,
+    VideoRoomNotificationMetrics,
+    VideoRoomNotificationService,
+    VideoRoomSystemNotificationService,
+    VideoRoomNotificationFanoutService,
+    VideoRoomLifecycleNotificationListener,
+    VideoRoomSeatNotificationListener,
+    VideoRoomEngagementNotificationListener,
+    VideoRoomChatNotificationListener,
+    VideoRoomNotificationSocketListener,
     // Task-18 seam (see video-room-pk.service.ts): VideoRoomPkService injects
     // settlement `@Optional()` via this token so `end()` can fail loudly with
     // NOT_IMPLEMENTED instead of silently doing nothing if it is ever missing.
