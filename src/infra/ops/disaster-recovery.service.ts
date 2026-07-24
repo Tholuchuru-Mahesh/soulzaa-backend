@@ -34,7 +34,7 @@ export class DisasterRecoveryService {
       redisStatus = 'FAIL';
     }
 
-    const s3Bucket = this.config.get<string>('AWS_S3_BUCKET');
+    const s3Bucket = this.config.get<string>('S3_BUCKET');
     if (!s3Bucket) {
       s3Status = 'WARNING';
     }

@@ -124,7 +124,10 @@ export class VideoRoomMediaService {
     await this.assertMember(room, actor.id);
     const mediaRoomId = await this.ensureMediaRoomId(room, actor.id);
     const seatIndex = await this.resolveSeatIndex(roomId, actor.id);
-    const canPublish = seatIndex !== null;
+    // The room owner is the host/broadcaster: authorise publishing even before
+    // they take an explicit seat, so their ZEGO token grants publish privilege
+    // in production (otherwise the host's own stream is denied and no one sees them).
+    const canPublish = seatIndex !== null || actor.id === room.ownerId;
     const role = canPublish ? ConnectionType.PUBLISHER : ConnectionType.SUBSCRIBER;
 
     await this.mediaSessions.start({
@@ -594,6 +597,11 @@ export class VideoRoomMediaService {
     ip?: string,
   ): Promise<MediaStageView> {
     await this.assertSeated(roomId, actor.id);
+    await this.assertMediaAllowed(
+      roomId,
+      'allowCameraSwitch',
+      'Camera switching is disabled in this room.',
+    );
     const stage = await this.mutateStage(roomId, async (base) => {
       const me = base.participants.find((p) => p.userId === actor.id);
       if (!me) {
@@ -777,6 +785,11 @@ export class VideoRoomMediaService {
     roomId: string,
     dto: Partial<BeautySettings>,
   ): Promise<MediaStageView> {
+    await this.assertMediaAllowed(
+      roomId,
+      'allowBeauty',
+      'Beauty filters are disabled in this room.',
+    );
     const stage = await this.mutateStage(roomId, async (base) => {
       const me = base.participants.find((p) => p.userId === actor.id);
       const beauty = clampBeauty(dto, me?.beauty);
@@ -844,6 +857,22 @@ export class VideoRoomMediaService {
           bitrateKbps,
         }),
       );
+    }
+  }
+
+  /**
+   * VR-17 room-policy gate for media capabilities. These flags were write-only
+   * columns until this phase; without this check the corresponding settings
+   * toggles would be placeholders.
+   */
+  private async assertMediaAllowed(
+    roomId: string,
+    flag: 'allowBeauty' | 'allowCameraSwitch',
+    message: string,
+  ): Promise<void> {
+    const settings = await this.rooms.getSettings(roomId);
+    if (settings && !settings[flag]) {
+      throw new BusinessException(ERROR_CODES.VIDEO_ROOM_FORBIDDEN, message, HttpStatus.FORBIDDEN);
     }
   }
 

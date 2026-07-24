@@ -69,6 +69,16 @@ export class VideoRoomReportService {
    * elevated member + the owner (never the reporter) via both the domain
    * event (bridged to sockets, recipients-only — never a room broadcast) and
    * the shared `notifications` queue.
+   *
+   * Task 9: gated by `settings.allowReporting`, checked after the active-
+   * member assertion (so membership errors still take precedence) and
+   * before the duplicate-report lookup — no owner/admin bypass, whoever can
+   * flip the flag can turn it back on. This is the ONLY guarded entry point
+   * in this service: `reviewReport`/`listReports` stay unguarded so
+   * moderators can still triage a pre-existing queue, and
+   * `createSystemReport` — the auto-moderation engine's own path — stays
+   * unguarded so a room owner can never use this user-facing toggle to
+   * blind automated safety detection in their own room.
    */
   async report(
     reporter: RoomActor,
@@ -84,6 +94,15 @@ export class VideoRoomReportService {
     }
     const ref = await this.requireRoom(roomId);
     await this.assertActiveMember(ref.id, reporter.id);
+
+    const settings = await this.rooms.getSettings(ref.id);
+    if (settings && !settings.allowReporting) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+        'Reporting is disabled in this room.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
 
     const existing = await this.reportRepo.findOpen(
       ref.id,

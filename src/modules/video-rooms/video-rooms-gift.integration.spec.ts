@@ -4,7 +4,6 @@ import {
   GiftType,
   VideoRoomMemberRole,
   VideoRoomStatus,
-  WalletCurrency,
 } from '@prisma/client';
 import { GiftContextRegistry } from 'src/modules/gifts/services/gift-context.registry';
 import { GiftService } from 'src/modules/gifts/services/gift.service';
@@ -308,25 +307,26 @@ describe('VR-10 gift engine (integration)', () => {
     harness = build();
   });
 
-  it('single-receiver send: one debit, one credit, one ledger row, one job', async () => {
+  it('single-receiver send: one debit, NO synchronous credit (revenue owns host payout), one ledger row, one job', async () => {
     const view = await send(VideoRoomGiftTarget.SINGLE, { receiverId: 'u1' });
 
     expect(harness.walletMoves.filter((m) => m.kind === 'debit')).toHaveLength(1);
-    expect(harness.walletMoves.filter((m) => m.kind === 'credit')).toHaveLength(1);
+    // Video rooms are a host context: the receiver is paid once by the revenue
+    // split (RevenueEventService), NOT synchronously by the gift path.
+    expect(harness.walletMoves.filter((m) => m.kind === 'credit')).toHaveLength(0);
     expect(harness.ledger).toHaveLength(1);
     expect(harness.enqueued).toHaveLength(1);
     expect(view.transactions).toHaveLength(1);
   });
 
-  it('SEAT_ALL debits once for N, credits N, writes N rows sharing a batchId', async () => {
+  it('SEAT_ALL debits once for N, makes no synchronous credit, writes N rows sharing a batchId', async () => {
     const view = await send();
 
     const debits = harness.walletMoves.filter((m) => m.kind === 'debit');
     const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
     expect(debits).toHaveLength(1);
     expect(debits[0].amount).toBe(200); // 100 x 1 x 2 receivers
-    expect(credits).toHaveLength(2);
-    expect(credits.map((c) => c.amount)).toEqual([30, 30]); // 30% each, of THEIR gift
+    expect(credits).toHaveLength(0); // host payout is owned by the revenue split
 
     expect(harness.ledger).toHaveLength(2);
     const batchIds = harness.ledger.map((r) => (r.metadata as { batchId: string }).batchId);
@@ -334,22 +334,19 @@ describe('VR-10 gift engine (integration)', () => {
     expect(view.totalCoinValue).toBe(200);
   });
 
-  it('credits use PER-LEG idempotency keys so nobody is silently unpaid', async () => {
+  it('makes no synchronous receiver credit for video-room (host-context) gifts', async () => {
     await send();
-    const keys = harness.walletMoves
-      .filter((m) => m.kind === 'credit')
-      .map((m) => m.idempotencyKey);
-    expect(keys).toEqual(['gift-credit:idem-1:u1', 'gift-credit:idem-1:u2']);
-    expect(new Set(keys).size).toBe(2);
+    // The gift path credits 0 for host contexts; the receiver earns via the
+    // configurable revenue split instead (covered in revenue-engine.spec.ts).
+    const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
+    expect(credits).toHaveLength(0);
   });
 
-  it('the handler economics reach the ledger (30% creator earnings)', async () => {
+  it('the handler economics (0 for host contexts) reach the ledger — no creator earnings via the gift path', async () => {
     await send();
-    expect(harness.ledger[0].creatorEarnings).toBe(30n);
+    expect(harness.ledger[0].creatorEarnings).toBe(0n);
     expect(harness.ledger[0].totalCoinValue).toBe(100n);
-    expect(harness.walletMoves.find((m) => m.kind === 'credit')?.currency).toBe(
-      WalletCurrency.EARNINGS,
-    );
+    expect(harness.walletMoves.filter((m) => m.kind === 'credit')).toHaveLength(0);
   });
 
   it('rolls the whole batch back when one receiver fails validation', async () => {

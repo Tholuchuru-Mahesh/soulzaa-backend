@@ -8,7 +8,7 @@ import type {
   VideoRoomStatusView,
 } from '../entities/video-room-detail.view';
 
-function toSettingsView(settings: VideoRoomSettings | null): VideoRoomSettingsView | null {
+export function toSettingsView(settings: VideoRoomSettings | null): VideoRoomSettingsView | null {
   if (!settings) return null;
   return {
     allowChat: settings.allowChat,

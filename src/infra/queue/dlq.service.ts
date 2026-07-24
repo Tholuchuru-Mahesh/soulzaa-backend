@@ -1,5 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { REDIS_CLIENT, RedisClient } from '../redis/redis.constants';
+import { QueueName } from './queue.constants';
+import { QueueService } from './queue.service';
 
 export interface DLQJobRecord {
   id: string;
@@ -18,7 +20,10 @@ const DLQ_HASH_KEY = 'dlq:failed_jobs';
 export class DLQService {
   private readonly logger = new Logger(DLQService.name);
 
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: RedisClient) {}
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
+    private readonly queueService: QueueService,
+  ) {}
 
   async pushToDLQ(record: DLQJobRecord): Promise<void> {
     const payload = JSON.stringify(record);
@@ -39,18 +44,34 @@ export class DLQService {
     return raw ? (JSON.parse(raw) as DLQJobRecord) : null;
   }
 
-  async retryJob(id: string): Promise<boolean> {
+  /**
+   * Re-enqueue a dead-lettered job onto its original queue and drop the DLQ
+   * record. Returns false if the job id is unknown or its queue is unregistered.
+   */
+  private async requeue(id: string, verb: 'Retry' | 'Replay'): Promise<boolean> {
     const job = await this.getJobById(id);
     if (!job) return false;
-    this.logger.log(`Retrying DLQ job [${id}] for queue [${job.queueName}]`);
+
+    let queue;
+    try {
+      queue = this.queueService.getQueue(job.queueName as QueueName);
+    } catch {
+      this.logger.error(`${verb}: unknown queue [${job.queueName}] for DLQ job [${id}]`);
+      return false;
+    }
+
+    await queue.add(job.name, job.data);
+    await this.redis.hdel(DLQ_HASH_KEY, id);
+    this.logger.log(`${verb}ed DLQ job [${id}] onto queue [${job.queueName}]`);
     return true;
   }
 
+  async retryJob(id: string): Promise<boolean> {
+    return this.requeue(id, 'Retry');
+  }
+
   async replayJob(id: string): Promise<boolean> {
-    const job = await this.getJobById(id);
-    if (!job) return false;
-    this.logger.log(`Replaying DLQ job [${id}] for queue [${job.queueName}]`);
-    return true;
+    return this.requeue(id, 'Replay');
   }
 
   async deleteJob(id: string): Promise<boolean> {

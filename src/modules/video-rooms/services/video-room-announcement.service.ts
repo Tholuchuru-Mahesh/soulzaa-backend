@@ -47,6 +47,7 @@ export class VideoRoomAnnouncementService {
     audit?: ChatAuditContext,
   ): Promise<VideoRoomAnnouncement> {
     await this.authorize(actor, roomId);
+    await this.assertAnnouncementsAllowed(roomId);
     const content = dto.content.trim();
 
     const announcement = await this.announcements.createAnnouncement({
@@ -89,6 +90,7 @@ export class VideoRoomAnnouncementService {
     audit?: ChatAuditContext,
   ): Promise<VideoRoomAnnouncement> {
     await this.authorize(actor, roomId);
+    await this.assertAnnouncementsAllowed(roomId);
     await this.assertExists(roomId, announcementId);
 
     const content = dto.content?.trim();
@@ -170,6 +172,24 @@ export class VideoRoomAnnouncementService {
       );
     }
     await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_ANNOUNCEMENTS);
+  }
+
+  /**
+   * VR-17: room policy gate for `create`/`update` only. Deliberately NOT applied
+   * to `remove` — turning announcements off must not trap the announcements
+   * already posted; an owner still has to be able to clean them up. Also
+   * deliberately no owner/admin bypass: whoever can flip the flag can simply
+   * turn it back on.
+   */
+  private async assertAnnouncementsAllowed(roomId: string): Promise<void> {
+    const settings = await this.rooms.getSettings(roomId);
+    if (settings && !settings.allowAnnouncements) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+        'Announcements are disabled in this room.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
   }
 
   private async assertExists(roomId: string, announcementId: string): Promise<void> {

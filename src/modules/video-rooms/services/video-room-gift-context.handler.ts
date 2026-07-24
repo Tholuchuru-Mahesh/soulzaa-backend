@@ -146,16 +146,13 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
   }
 
   /**
-   * Video rooms pay creator earnings: the receiver is credited the configured
-   * rate of their own gift's value into EARNINGS. Returned in basis points so
-   * the pipeline never has to know about percentages.
+   * Video rooms are a host context: the receiver (host) is paid ONCE by the
+   * configurable Revenue split (RevenueEventService → RevenueDistributionService),
+   * exactly like AUDIO_ROOM. Returning 0 here prevents the double-pay where the
+   * gift path AND the revenue split both credited EARNINGS for the same gift.
    */
   economics(_req: GiftContextRequest): GiftEconomics {
-    const rate = Number(
-      this.config.get<{ creatorEarningRatePercent: number }>('gift')?.creatorEarningRatePercent ??
-        0,
-    );
-    return { receiverEarningsBps: Math.round(rate * 100) };
+    return { receiverEarningsBps: 0 };
   }
 
   /**

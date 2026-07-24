@@ -19,7 +19,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/common/guards/permission.guard';
+import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { AdminDashboardService } from '../services/admin-dashboard.service';
 import { DashboardWidgetService } from '../services/dashboard-widget.service';
@@ -40,7 +40,7 @@ import {
 
 @ApiTags('Business Admin Dashboard')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RbacPermissionsGuard)
 @Controller('admin-dashboard')
 export class DashboardController {
   constructor(

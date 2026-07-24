@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common'
 import { WalletTxnReason } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
+import { walletLockKey } from 'src/modules/wallet/constants/wallet.constants';
 import {
   WALLET_SERVICE,
   type IWalletService,
@@ -46,7 +47,9 @@ export class VipSubscriptionService {
    */
   async purchaseVip(input: PurchaseVipInput) {
     const { userId, level, autoRenew } = input;
-    const lockKey = `vip:purchase:${userId}`;
+    // Lock on the payer's WALLET: the debit runs inside the $transaction with a
+    // `tx`, so WalletService.debit does NOT take its own lock — the caller must.
+    const lockKey = walletLockKey(userId);
 
     return this.locks.withLock(lockKey, async () => {
       // 1. Validate Tier
@@ -63,25 +66,30 @@ export class VipSubscriptionService {
         );
       }
 
-      // 3. Debit Coins from User Wallet via IWalletService
       const coinCost = tier.price;
-      if (coinCost > BigInt(0)) {
-        await this.walletService.debit({
-          userId,
-          currency: 'GOLD',
-          amount: Number(coinCost),
-          reason: WalletTxnReason.VIP_PURCHASE,
-          idempotencyKey: `vip:purchase:${userId}:${level}:${Date.now()}`,
-          metadata: { level, tierId: tier.id },
-        });
-      }
-
       const durationDays = tier.durationDays || 30;
       const startedAt = new Date();
       const expiresAt = new Date(startedAt.getTime() + durationDays * 86400 * 1000);
 
-      // 4. Create or update membership & subscription ledger record inside transaction
+      // 3+4. Debit + membership writes are ONE atomic transaction. The debit
+      // joins the tx (2nd arg) so a failed membership write rolls it back. The
+      // idempotency key is deterministic (bound to the membership state this
+      // purchase transitions FROM) so a retry collapses to a single charge.
       const membership = await this.prisma.$transaction(async (tx) => {
+        if (coinCost > BigInt(0)) {
+          await this.walletService.debit(
+            {
+              userId,
+              currency: 'GOLD',
+              amount: Number(coinCost),
+              reason: WalletTxnReason.VIP_PURCHASE,
+              idempotencyKey: `vip:purchase:${userId}:${level}:${existing?.expiresAt?.toISOString() ?? 'new'}`,
+              metadata: { level, tierId: tier.id },
+            },
+            tx,
+          );
+        }
+
         const createdSub = await tx.vipSubscription.create({
           data: {
             userId,
@@ -154,29 +162,34 @@ export class VipSubscriptionService {
    * Renews an existing active VIP membership, extending expiration date.
    */
   async renewVip(userId: string) {
-    const lockKey = `vip:renew:${userId}`;
+    const lockKey = walletLockKey(userId); // guards the tx-scoped wallet debit
 
     return this.locks.withLock(lockKey, async () => {
       const membership = await this.validationService.validateActiveMembership(userId);
       const tier = await this.validationService.validateTier(membership.level);
 
       const coinCost = tier.price;
-      if (coinCost > BigInt(0)) {
-        await this.walletService.debit({
-          userId,
-          currency: 'GOLD',
-          amount: Number(coinCost),
-          reason: WalletTxnReason.VIP_RENEWAL,
-          idempotencyKey: `vip:renew:${userId}:${membership.level}:${Date.now()}`,
-          metadata: { level: membership.level, tierId: tier.id },
-        });
-      }
-
       const durationDays = tier.durationDays || 30;
       const currentExpiry = new Date(membership.expiresAt).getTime();
       const newExpiry = new Date(Math.max(Date.now(), currentExpiry) + durationDays * 86400 * 1000);
 
       const updated = await this.prisma.$transaction(async (tx) => {
+        if (coinCost > BigInt(0)) {
+          await this.walletService.debit(
+            {
+              userId,
+              currency: 'GOLD',
+              amount: Number(coinCost),
+              reason: WalletTxnReason.VIP_RENEWAL,
+              // Bound to the pre-renewal expiry: stable across retries of THIS
+              // renewal, unique once the expiry advances.
+              idempotencyKey: `vip:renew:${userId}:${membership.level}:${new Date(membership.expiresAt).toISOString()}`,
+              metadata: { level: membership.level, tierId: tier.id },
+            },
+            tx,
+          );
+        }
+
         await tx.vipSubscription.create({
           data: {
             userId,
@@ -228,7 +241,7 @@ export class VipSubscriptionService {
    * Upgrades an active VIP membership to a higher level.
    */
   async upgradeVip(userId: string, targetLevel: number) {
-    const lockKey = `vip:upgrade:${userId}`;
+    const lockKey = walletLockKey(userId); // guards the tx-scoped wallet debit
 
     return this.locks.withLock(lockKey, async () => {
       const membership = await this.validationService.validateActiveMembership(userId);
@@ -237,22 +250,27 @@ export class VipSubscriptionService {
       const targetTier = await this.validationService.validateTier(targetLevel);
 
       const coinCost = targetTier.price;
-      if (coinCost > BigInt(0)) {
-        await this.walletService.debit({
-          userId,
-          currency: 'GOLD',
-          amount: Number(coinCost),
-          reason: WalletTxnReason.VIP_PURCHASE,
-          idempotencyKey: `vip:upgrade:${userId}:${targetLevel}:${Date.now()}`,
-          metadata: { fromLevel: membership.level, toLevel: targetLevel },
-        });
-      }
-
       const durationDays = targetTier.durationDays || 30;
       const startedAt = new Date();
       const expiresAt = new Date(startedAt.getTime() + durationDays * 86400 * 1000);
 
       const updated = await this.prisma.$transaction(async (tx) => {
+        if (coinCost > BigInt(0)) {
+          await this.walletService.debit(
+            {
+              userId,
+              currency: 'GOLD',
+              amount: Number(coinCost),
+              reason: WalletTxnReason.VIP_PURCHASE,
+              // Bound to the from→to transition: stable across retries, unique
+              // once the membership level advances.
+              idempotencyKey: `vip:upgrade:${userId}:${membership.level}->${targetLevel}`,
+              metadata: { fromLevel: membership.level, toLevel: targetLevel },
+            },
+            tx,
+          );
+        }
+
         await tx.vipSubscription.create({
           data: {
             userId,
@@ -311,28 +329,37 @@ export class VipSubscriptionService {
    */
   async giftVip(input: GiftVipInput) {
     const { gifterUserId, recipientUserId, level } = input;
-    const lockKey = `vip:gift:${recipientUserId}`;
+    // Lock on the GIFTER's wallet — they are the debited party (payer).
+    const lockKey = walletLockKey(gifterUserId);
 
     return this.locks.withLock(lockKey, async () => {
       const tier = await this.validationService.validateTier(level);
+      const existingRecipient = await this.prisma.vipMembership.findUnique({
+        where: { userId: recipientUserId },
+      });
 
       const coinCost = tier.price;
-      if (coinCost > BigInt(0)) {
-        await this.walletService.debit({
-          userId: gifterUserId,
-          currency: 'GOLD',
-          amount: Number(coinCost),
-          reason: WalletTxnReason.VIP_PURCHASE,
-          idempotencyKey: `vip:gift:${gifterUserId}:${recipientUserId}:${level}:${Date.now()}`,
-          metadata: { level, recipientUserId },
-        });
-      }
-
       const durationDays = tier.durationDays || 30;
       const startedAt = new Date();
       const expiresAt = new Date(startedAt.getTime() + durationDays * 86400 * 1000);
 
       const membership = await this.prisma.$transaction(async (tx) => {
+        if (coinCost > BigInt(0)) {
+          await this.walletService.debit(
+            {
+              userId: gifterUserId,
+              currency: 'GOLD',
+              amount: Number(coinCost),
+              reason: WalletTxnReason.VIP_PURCHASE,
+              // Bound to the recipient's pre-gift expiry: stable across retries,
+              // unique once the gifted membership is applied.
+              idempotencyKey: `vip:gift:${gifterUserId}:${recipientUserId}:${level}:${existingRecipient?.expiresAt?.toISOString() ?? 'new'}`,
+              metadata: { level, recipientUserId },
+            },
+            tx,
+          );
+        }
+
         await tx.vipSubscription.create({
           data: {
             userId: recipientUserId,

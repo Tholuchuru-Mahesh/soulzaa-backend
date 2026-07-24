@@ -77,14 +77,15 @@ export class VideoRoomLifecycleService {
 
   async create(actor: RoomActor, dto: CreateVideoRoomDto): Promise<VideoRoomDetailView> {
     return this.locks.withLock(videoRoomCreateLockKey(actor.id), async () => {
-      const active = await this.repo.countActiveByOwner(actor.id);
-      if (active >= this.config.maxRoomsPerOwner) {
-        throw new BusinessException(
-          ERROR_CODES.VIDEO_ROOM_ALREADY_EXISTS,
-          `You may host at most ${this.config.maxRoomsPerOwner} room(s) at a time.`,
-          HttpStatus.CONFLICT,
-        );
-      }
+      // Allow host to create new rooms freely without 1-room cap constraint
+      // const active = await this.repo.countActiveByOwner(actor.id);
+      // if (active >= this.config.maxRoomsPerOwner) {
+      //   throw new BusinessException(
+      //     ERROR_CODES.VIDEO_ROOM_ALREADY_EXISTS,
+      //     `You may host at most ${this.config.maxRoomsPerOwner} room(s) at a time.`,
+      //     HttpStatus.CONFLICT,
+      //   );
+      // }
 
       const wantsPassword =
         dto.accessPolicy === VideoRoomAccessPolicy.PASSWORD || dto.password !== undefined;

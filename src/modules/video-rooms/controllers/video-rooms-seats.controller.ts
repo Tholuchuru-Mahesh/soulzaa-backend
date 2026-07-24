@@ -15,6 +15,7 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { NotGuest } from 'src/common/decorators/not-guest.decorator';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
+import { ConfigureSeatLayoutDto } from '../dto/seat-layout.dto';
 import {
   CancelSeatInvitationDto,
   QueueResponseDto,
@@ -449,6 +450,31 @@ export class VideoRoomSeatsController {
     @Ip() ip: string,
   ) {
     return this.seats.unlockSeats(this.actor(user), id, dto.seatIndexes, ip);
+  }
+
+  // ---- Dynamic layout (VR-17) ----
+
+  @Post(':id/seats/layout')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reshape the seat layout (owner/admin, MANAGE_SEATS, LIVE room only)',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'The new versioned seat stage.' })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'SEAT_LAYOUT_INVALID.' })
+  configureLayout(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: ConfigureSeatLayoutDto,
+    @Ip() ip: string,
+  ) {
+    return this.seats.configureLayout(
+      this.actor(user),
+      id,
+      dto.hostSeatCount,
+      dto.guestSeatCount ?? 0,
+      ip,
+    );
   }
 
   // ---- Switch / transfer ----

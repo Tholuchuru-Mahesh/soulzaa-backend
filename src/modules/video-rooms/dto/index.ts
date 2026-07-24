@@ -6,6 +6,7 @@ export * from './search-video-rooms.dto';
 export * from './update-video-room-settings.dto';
 export * from './grant-video-room-role.dto';
 export * from './seat.dto';
+export * from './seat-layout.dto';
 export * from './moderation.dto';
 export * from './announcement.dto';
 export * from './join-video-room.dto';

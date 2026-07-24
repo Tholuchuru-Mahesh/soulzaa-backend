@@ -12,6 +12,7 @@ import {
   type RoomDeletedEvent,
   type RoomLockedEvent,
   type RoomRestoredEvent,
+  type RoomSettingsUpdatedEvent,
   type RoomSynchronizedEvent,
   type RoomUpdatedEvent,
   type StreamStartedEvent,
@@ -49,11 +50,26 @@ export class VideoRoomSocketListener implements OnModuleInit {
     this.bus.subscribe<RoomCreatedEvent>(VIDEO_ROOM_EVENTS.CREATED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.CREATED, e.payload),
     );
-    this.bus.subscribe<RoomClosedEvent>(VIDEO_ROOM_EVENTS.CLOSED, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.CLOSED, e.payload),
-    );
+    this.bus.subscribe<RoomClosedEvent>(VIDEO_ROOM_EVENTS.CLOSED, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.CLOSED, e.payload);
+      this.sockets.emitToNamespaceRoom(
+        VIDEO_ROOM_NAMESPACE,
+        e.payload.roomId,
+        'room_ended',
+        e.payload,
+      );
+      this.sockets.emitToNamespaceRoom(
+        VIDEO_ROOM_NAMESPACE,
+        e.payload.roomId,
+        'room:closed',
+        e.payload,
+      );
+    });
     this.bus.subscribe<RoomUpdatedEvent>(VIDEO_ROOM_EVENTS.UPDATED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.UPDATED, e.payload),
+    );
+    this.bus.subscribe<RoomSettingsUpdatedEvent>(VIDEO_ROOM_EVENTS.SETTINGS_UPDATED, (e) =>
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.SETTINGS_UPDATED, e.payload),
     );
     this.bus.subscribe<RoomLockedEvent>(VIDEO_ROOM_EVENTS.LOCKED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.LOCKED, e.payload),

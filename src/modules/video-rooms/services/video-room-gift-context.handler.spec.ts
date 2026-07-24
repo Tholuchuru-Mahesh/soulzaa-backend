@@ -117,8 +117,8 @@ describe('VideoRoomGiftContextHandler', () => {
     expect(handler.maxReceivers).toBe(9);
   });
 
-  it('economics return the configured creator rate in basis points', () => {
-    expect(handler.economics(REQ as never)).toEqual({ receiverEarningsBps: 3000 });
+  it('economics return 0 — the host is paid once by the revenue split, not the gift path', () => {
+    expect(handler.economics(REQ as never)).toEqual({ receiverEarningsBps: 0 });
   });
 
   describe('validate', () => {

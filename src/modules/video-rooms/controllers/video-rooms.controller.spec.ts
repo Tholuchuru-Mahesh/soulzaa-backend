@@ -7,6 +7,7 @@ const expectedActor = { id: 'u1', roles: [] };
 describe('VideoRoomsController', () => {
   let lifecycle: any;
   let query: any;
+  let settings: any;
   let controller: VideoRoomsController;
 
   beforeEach(() => {
@@ -31,7 +32,10 @@ describe('VideoRoomsController', () => {
       getDetail: jest.fn().mockResolvedValue({ id: 'r1' }),
       verifyStatus: jest.fn().mockResolvedValue({ roomId: 'r1' }),
     };
-    controller = new VideoRoomsController(lifecycle, query);
+    settings = {
+      update: jest.fn().mockResolvedValue({ roomId: 'r1' }),
+    };
+    controller = new VideoRoomsController(lifecycle, query, settings);
   });
 
   it('create delegates with the mapped actor + dto', async () => {
@@ -100,5 +104,12 @@ describe('VideoRoomsController', () => {
   it('lock forwards actor + id + body', async () => {
     await controller.lock(user, 'r1', { password: 'pw' } as any);
     expect(lifecycle.lock).toHaveBeenCalledWith(expectedActor, 'r1', { password: 'pw' });
+  });
+
+  describe('VR-17 PATCH :id/settings', () => {
+    it('delegates to the settings service with the resolved actor', async () => {
+      await controller.updateSettings(user, 'r1', { allowGifts: false } as any);
+      expect(settings.update).toHaveBeenCalledWith(expectedActor, 'r1', { allowGifts: false });
+    });
   });
 });

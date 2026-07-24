@@ -173,6 +173,89 @@ describe('Phase 12: Enterprise VIP Membership Engine', () => {
           amount: 500,
           reason: 'VIP_PURCHASE',
         }),
+        expect.anything(), // debit now participates in the membership $transaction
+      );
+    });
+  });
+
+  describe('1b. VIP Purchase — atomicity & deterministic idempotency', () => {
+    const tier = {
+      id: 'tier-vip-1',
+      level: 1,
+      name: 'VIP 1',
+      price: BigInt(500),
+      durationDays: 30,
+      status: 'ACTIVE',
+    };
+
+    it('debits inside the membership transaction using a deterministic (no-timestamp) idempotency key', async () => {
+      mockPrismaService.vipTier.findUnique.mockResolvedValue(tier);
+      mockPrismaService.vipMembership.findUnique.mockResolvedValue(null);
+      mockPrismaService.vipSubscription.create.mockResolvedValue({ id: 'sub-1' });
+      mockPrismaService.vipMembership.upsert.mockResolvedValue({
+        id: 'mem-1',
+        userId: 'user-buyer',
+        tierId: 'tier-vip-1',
+        level: 1,
+        status: 'ACTIVE',
+        expGained: BigInt(0),
+        totalSpent: BigInt(0),
+      });
+
+      await subscriptionService.purchaseVip({ userId: 'user-buyer', level: 1 });
+
+      // debit participates in the SAME $transaction → the tx client is its 2nd arg
+      expect(mockWalletService.debit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'user-buyer',
+          currency: 'GOLD',
+          amount: 500,
+          idempotencyKey: 'vip:purchase:user-buyer:1:new',
+        }),
+        expect.anything(),
+      );
+      const key = mockWalletService.debit.mock.calls[0][0].idempotencyKey as string;
+      expect(key).not.toMatch(/:\d{13}$/); // no epoch-ms timestamp
+    });
+
+    it('rejects and keeps the debit inside the tx when the membership write fails (atomic rollback)', async () => {
+      mockPrismaService.vipTier.findUnique.mockResolvedValue(tier);
+      mockPrismaService.vipMembership.findUnique.mockResolvedValue(null);
+      mockPrismaService.vipSubscription.create.mockResolvedValue({ id: 'sub-1' });
+      mockPrismaService.vipMembership.upsert.mockRejectedValue(new Error('db write failed'));
+
+      await expect(
+        subscriptionService.purchaseVip({ userId: 'user-buyer', level: 1 }),
+      ).rejects.toThrow('db write failed');
+
+      expect(mockWalletService.debit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'user-buyer' }),
+        expect.anything(), // the tx client — a real DB rolls the debit back with the failed write
+      );
+    });
+
+    it("acquires the payer's wallet lock (wallet:lock:*) so the tx-scoped debit is concurrency-safe", async () => {
+      mockPrismaService.vipTier.findUnique.mockResolvedValue(tier);
+      mockPrismaService.vipMembership.findUnique.mockResolvedValue(null);
+      mockPrismaService.vipSubscription.create.mockResolvedValue({ id: 'sub-1' });
+      mockPrismaService.vipMembership.upsert.mockResolvedValue({
+        id: 'mem-1',
+        userId: 'user-buyer',
+        tierId: 'tier-vip-1',
+        level: 1,
+        status: 'ACTIVE',
+        expGained: BigInt(0),
+        totalSpent: BigInt(0),
+      });
+
+      await subscriptionService.purchaseVip({ userId: 'user-buyer', level: 1 });
+
+      // WalletService.debit skips its own lock when handed a tx, so the VIP method
+      // MUST hold walletLockKey(payer) itself — else concurrent same-payer wallet
+      // ops lost-update into a double-spend.
+      expect(mockLockService.withLock).toHaveBeenCalledWith(
+        'wallet:lock:user-buyer',
+        expect.any(Function),
       );
     });
   });
@@ -211,6 +294,7 @@ describe('Phase 12: Enterprise VIP Membership Engine', () => {
           userId: 'user-buyer',
           amount: 1500,
         }),
+        expect.anything(), // debit now participates in the membership $transaction
       );
     });
 

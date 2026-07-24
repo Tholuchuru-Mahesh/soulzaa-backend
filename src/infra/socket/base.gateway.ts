@@ -63,6 +63,7 @@ export abstract class BaseGateway
   }
 
   @SubscribeMessage('room:join')
+  @SubscribeMessage('join_room')
   async onRoomJoin(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { roomId: string },
@@ -72,12 +73,39 @@ export abstract class BaseGateway
   }
 
   @SubscribeMessage('room:leave')
+  @SubscribeMessage('leave_room')
   async onRoomLeave(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { roomId: string },
   ): Promise<{ ok: boolean; roomId: string }> {
     await this.manager.leaveRoom(client, body.roomId);
     return { ok: true, roomId: body.roomId };
+  }
+
+  @SubscribeMessage('send_chat')
+  @SubscribeMessage('chat_message')
+  @SubscribeMessage('send_message')
+  async onChatMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId: string; message?: string; text?: string },
+  ): Promise<{ ok: boolean }> {
+    const user = client.data.user as AuthenticatedUser | undefined;
+    const text = (body.message ?? body.text ?? '').trim();
+    if (!text || !body.roomId) return { ok: false };
+
+    const payload = {
+      roomId: body.roomId,
+      senderId: user?.id ?? 'user',
+      username: user?.username ?? user?.name ?? 'User',
+      avatarUrl: user?.avatarUrl,
+      text: text,
+      timestamp: new Date().toISOString(),
+    };
+
+    this.server.to(body.roomId).emit('chat:message', payload);
+    this.server.to(body.roomId).emit('video_room:chat_message', payload);
+    this.server.to(body.roomId).emit('video_room.chat_message_sent', payload);
+    return { ok: true };
   }
 
   /** Application-level liveness check (Socket.IO's own ping/pong is transport-level). */

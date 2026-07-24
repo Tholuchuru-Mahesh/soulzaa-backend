@@ -136,6 +136,16 @@ export class SocketManager {
     const user = client.data.user as AuthenticatedUser;
     await client.join(roomId);
     await this.presence.joinRoom(roomId, user.id);
+    const payload = {
+      roomId,
+      userId: user?.id,
+      username: user?.username ?? user?.name ?? 'User',
+      name: user?.name,
+      avatarUrl: user?.avatarUrl,
+      joinedAt: new Date().toISOString(),
+    };
+    client.to(roomId).emit('video_room:member_joined', payload);
+    client.to(roomId).emit('room:member_joined', payload);
   }
 
   /** Leave a room: keep the socket room and the Redis presence set in sync. */
@@ -143,6 +153,13 @@ export class SocketManager {
     const user = client.data.user as AuthenticatedUser;
     await client.leave(roomId);
     await this.presence.leaveRoom(roomId, user.id);
+    const payload = {
+      roomId,
+      userId: user?.id,
+      username: user?.username ?? user?.name ?? 'User',
+    };
+    client.to(roomId).emit('video_room:member_left', payload);
+    client.to(roomId).emit('room:member_left', payload);
   }
 
   /** Emit to all of a user's sockets across every instance (via the Redis adapter). */

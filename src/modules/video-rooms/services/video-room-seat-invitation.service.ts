@@ -60,6 +60,10 @@ export class VideoRoomSeatInvitationService {
     const room = await this.seatSvc.requireLiveRoom(roomId);
     await this.permissions.assertPermission(actor, room, VideoRoomPermission.INVITE_USERS);
 
+    // VR-17: room policy gate. Deliberately no owner/admin bypass — whoever can
+    // flip the flag can simply turn it back on.
+    await this.assertInvitesAllowed(roomId, 'Seat invitations are disabled in this room.');
+
     // VR-8 — the invitee must be an active member, unseated, and unblocked.
     const member = await this.rooms.getMember(roomId, inviteeUserId);
     if (!member?.isActive) {
@@ -440,6 +444,10 @@ export class VideoRoomSeatInvitationService {
     const room = await this.seatSvc.requireLiveRoom(roomId);
     await this.permissions.assertPermission(actor, room, VideoRoomPermission.INVITE_USERS);
 
+    // VR-17: room policy gate. Deliberately no owner/admin bypass — whoever can
+    // flip the flag can simply turn it back on.
+    await this.assertInvitesAllowed(roomId, 'Invitations are disabled in this room.');
+
     const member = await this.rooms.getMember(roomId, inviteeUserId);
     if (member?.isActive) {
       throw new BusinessException(
@@ -575,6 +583,13 @@ export class VideoRoomSeatInvitationService {
   }
 
   // ---- Internal ----
+
+  private async assertInvitesAllowed(roomId: string, message: string): Promise<void> {
+    const settings = await this.rooms.getSettings(roomId);
+    if (settings && !settings.allowInvite) {
+      throw new BusinessException(ERROR_CODES.VIDEO_ROOM_FORBIDDEN, message, HttpStatus.FORBIDDEN);
+    }
+  }
 
   private async requirePendingInvitation(
     roomId: string,

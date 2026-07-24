@@ -18,7 +18,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/common/guards/permission.guard';
+import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { NotificationCenterService } from '../services/notification-center.service';
 import { NotificationInboxService } from '../services/notification-inbox.service';
@@ -37,7 +37,7 @@ import {
 
 @ApiTags('Notification Center')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RbacPermissionsGuard)
 @Controller('notification-center')
 export class NotificationCenterController {
   constructor(

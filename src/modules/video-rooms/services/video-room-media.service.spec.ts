@@ -35,6 +35,9 @@ function build(over: Partial<Record<string, unknown>> = {}) {
     findById: jest.fn().mockResolvedValue(room),
     setZegoRoomId: jest.fn().mockResolvedValue({ ...room }),
     setStreamingStatus: jest.fn().mockResolvedValue({ ...room }),
+    // VR-17: default to the ENABLED policy so every pre-existing test keeps
+    // exercising the real (non-gated) path rather than passing for the wrong reason.
+    getSettings: jest.fn().mockResolvedValue({ allowBeauty: true, allowCameraSwitch: true }),
   };
   const permissions = {
     resolveEffectiveRole: jest.fn().mockResolvedValue('VIEWER'),
@@ -137,6 +140,19 @@ describe('VideoRoomMediaService — session', () => {
     );
     expect(tokens.issueForRoom).toHaveBeenCalledWith(
       expect.objectContaining({ canPublish: false }),
+    );
+  });
+
+  it('joinMedia grants the room OWNER a publish token even without a seat (host can go live)', async () => {
+    // 'owner' === room.ownerId and holds no seat; the owner is the host/broadcaster,
+    // so their token MUST grant publish or they cannot stream in production.
+    const { svc, mediaSessions, tokens } = build();
+    await svc.joinMedia({ id: 'owner', roles: [] } as never, 'r', {} as never);
+    expect(mediaSessions.start).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'PUBLISHER' }),
+    );
+    expect(tokens.issueForRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ canPublish: true, userId: 'owner' }),
     );
   });
 
@@ -775,5 +791,88 @@ describe('VideoRoomMediaService — heartbeat adaptive throttle', () => {
 
     expect(mediaSessions.recordQuality).toHaveBeenCalled();
     expect(bus.publish).not.toHaveBeenCalled();
+  });
+});
+
+describe('VideoRoomMediaService — VR-17 media policy gates', () => {
+  const seatedForCamera = {
+    roomId: 'r',
+    version: 1,
+    updatedAt: '',
+    mediaRoomId: 'z',
+    provider: 'ZEGO',
+    participants: [
+      {
+        userId: 'u1',
+        seatIndex: 2,
+        streamId: 'live',
+        streamState: 'LIVE',
+        subscriptions: [],
+        role: 'PUBLISHER',
+        camera: { on: true, facing: 'FRONT' },
+        mic: { on: true, selfMuted: false, adminMuted: false },
+      },
+    ],
+  };
+  const seatedForBeauty = {
+    ...seatedForCamera,
+    participants: [
+      {
+        ...seatedForCamera.participants[0],
+        beauty: {
+          enabled: false,
+          level: 0,
+          smoothSkin: 0,
+          brightness: 0,
+          sharpen: 0,
+          faceEnhance: 0,
+        },
+      },
+    ],
+  };
+
+  it('setBeauty rejects with VIDEO_ROOM_FORBIDDEN when allowBeauty is disabled, without mutating the stage', async () => {
+    const { svc, rooms, mediaState } = build();
+    rooms.getSettings.mockResolvedValue({ allowBeauty: false, allowCameraSwitch: true });
+    await expect(
+      svc.setBeauty({ id: 'u1', roles: [] } as never, 'r', { enabled: true, level: 50 }),
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN });
+    expect(mediaState.commit).not.toHaveBeenCalled();
+  });
+
+  it('setBeauty resolves when allowBeauty is enabled', async () => {
+    const { svc, rooms, mediaState } = build();
+    mediaState.getSnapshot.mockResolvedValue(seatedForBeauty);
+    rooms.getSettings.mockResolvedValue({ allowBeauty: true, allowCameraSwitch: true });
+    await expect(
+      svc.setBeauty({ id: 'u1', roles: [] } as never, 'r', { enabled: true, level: 50 }),
+    ).resolves.toBeDefined();
+  });
+
+  it('switchCamera rejects with VIDEO_ROOM_FORBIDDEN when allowCameraSwitch is disabled, without mutating the stage', async () => {
+    const { svc, rooms, mediaState } = build();
+    rooms.getSettings.mockResolvedValue({ allowBeauty: true, allowCameraSwitch: false });
+    await expect(
+      svc.switchCamera({ id: 'u1', roles: [] } as never, 'r', { facing: 'REAR' } as never),
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN });
+    expect(mediaState.commit).not.toHaveBeenCalled();
+  });
+
+  it('switchCamera resolves when allowCameraSwitch is enabled', async () => {
+    const { svc, rooms, mediaState } = build();
+    mediaState.getSnapshot.mockResolvedValue(seatedForCamera);
+    rooms.getSettings.mockResolvedValue({ allowBeauty: true, allowCameraSwitch: true });
+    await expect(
+      svc.switchCamera({ id: 'u1', roles: [] } as never, 'r', { facing: 'REAR' } as never),
+    ).resolves.toBeDefined();
+  });
+
+  it('switchCamera runs the seating check BEFORE the policy gate', async () => {
+    const { svc, seatState, rooms } = build();
+    seatState.getSnapshot.mockResolvedValue({ seats: [] }); // u1 holds no seat
+    await expect(
+      svc.switchCamera({ id: 'u1', roles: [] } as never, 'r', { facing: 'REAR' } as never),
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_MEDIA_SEAT_REQUIRED });
+    expect(rooms.getSettings).not.toHaveBeenCalled();
   });
 });

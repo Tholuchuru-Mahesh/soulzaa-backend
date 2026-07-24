@@ -19,7 +19,7 @@ import {
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/common/guards/permission.guard';
+import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { AuditLogInterceptor } from 'src/modules/authorization/interceptors/audit-log.interceptor';
 import {
   AdminGrantBadgeDto,
@@ -44,7 +44,7 @@ import { BadgeService } from '../services/badge.service';
 
 @ApiTags('Enterprise Badge & Achievement Engine')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RbacPermissionsGuard)
 @UseInterceptors(AuditLogInterceptor)
 @Controller('achievements')
 export class AchievementController {

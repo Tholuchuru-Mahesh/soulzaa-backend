@@ -71,6 +71,8 @@ spec:
     - ports:
         - protocol: TCP
           port: 443    # External HTTPS (Agora, S3, Firebase)
+        - protocol: UDP
+          port: 53     # DNS (UDP — primary resolver path)
         - protocol: TCP
-          port: 53     # DNS
+          port: 53     # DNS (TCP fallback for large responses)
       to: []

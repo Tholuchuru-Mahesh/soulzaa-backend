@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
-import { Wallet, WalletStatus } from '@prisma/client';
+import { Wallet, WalletCurrency, WalletStatus } from '@prisma/client';
 import { FeatureFlagService } from 'src/modules/platform-configuration/services/feature-flag.service';
 import { CoinEconomyService } from 'src/modules/treasury/services/coin-economy.service';
 
@@ -41,12 +41,31 @@ export class WalletValidationService {
   }
 
   /**
-   * Validates sufficient available balance
+   * Validates sufficient balance for a debit.
+   *
+   * `availableBalance` is an aggregate maintained in lockstep with the three
+   * sub-balances (gold/free/earnings). Validating the aggregate would let one
+   * currency's coins satisfy another currency's debit — and drive that
+   * sub-balance negative (PRD: FREE coins cannot buy gifts/VIP/treasure).
+   *
+   * When `currency` is supplied, the matching sub-balance is checked. When it
+   * is omitted, the aggregate `availableBalance` is checked — this preserves
+   * the behaviour of aggregate operations (reservation, transfer) that move
+   * `availableBalance` directly rather than a specific sub-balance.
    */
-  validateSufficientBalance(wallet: Wallet, requiredAmount: bigint) {
-    if (wallet.availableBalance < requiredAmount) {
+  validateSufficientBalance(wallet: Wallet, requiredAmount: bigint, currency?: WalletCurrency) {
+    const balance =
+      currency === WalletCurrency.GOLD
+        ? wallet.goldBalance
+        : currency === WalletCurrency.FREE
+          ? wallet.freeBalance
+          : currency === WalletCurrency.EARNINGS
+            ? wallet.earningsBalance
+            : wallet.availableBalance;
+    if (balance < requiredAmount) {
+      const label = currency ? `${currency} ` : 'available ';
       throw new BadRequestException(
-        `Insufficient available balance. Required: ${requiredAmount.toString()}, Available: ${wallet.availableBalance.toString()}`,
+        `Insufficient ${label}balance. Required: ${requiredAmount.toString()}, Available: ${balance.toString()}`,
       );
     }
   }

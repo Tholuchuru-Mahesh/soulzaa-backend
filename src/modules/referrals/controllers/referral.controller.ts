@@ -18,7 +18,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/common/guards/permission.guard';
+import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 
 import { ReferralService } from '../services/referral.service';
@@ -42,7 +42,7 @@ import {
 
 @ApiTags('Referrals')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RbacPermissionsGuard)
 @Controller('referrals')
 export class ReferralController {
   constructor(

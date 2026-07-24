@@ -1,6 +1,7 @@
 import { VideoRoomVisibility } from '@prisma/client';
 import { DomainEvent } from 'src/common/events';
 import type { VideoRoomPresenceState } from '../enums';
+import type { VideoRoomSettingsView } from '../entities/video-room-detail.view';
 
 /** Why a member's connection dropped (UserDisconnectedEvent). */
 export type VideoRoomDisconnectReason = 'duplicate_session' | 'connection_lost' | 'timeout';
@@ -19,6 +20,7 @@ export type VideoRoomDisconnectReason = 'duplicate_session' | 'connection_lost' 
 export const VIDEO_ROOM_EVENTS = {
   CREATED: 'video_room.created',
   UPDATED: 'video_room.updated',
+  SETTINGS_UPDATED: 'video_room.settings_updated',
   DELETED: 'video_room.deleted',
   LOCKED: 'video_room.locked',
   RESTORED: 'video_room.restored',
@@ -83,6 +85,22 @@ export class RoomUpdatedEvent extends DomainEvent<{
   changed: string[];
 }> {
   readonly name = VIDEO_ROOM_EVENTS.UPDATED;
+}
+
+/**
+ * VR-17 — a room's configurable settings changed. `settings` is the FULL
+ * post-write snapshot (not a delta) so clients replace wholesale, which makes
+ * reconciliation idempotent and removes ordering hazards between concurrent
+ * admin edits. `changed` lists the keys the patch actually touched, for audit
+ * and for clients that want to animate only what moved.
+ */
+export class RoomSettingsUpdatedEvent extends DomainEvent<{
+  roomId: string;
+  actorId: string;
+  changed: string[];
+  settings: VideoRoomSettingsView;
+}> {
+  readonly name = VIDEO_ROOM_EVENTS.SETTINGS_UPDATED;
 }
 
 /** A room was soft-deleted (VR-2). History retained; live viewers evicted. */

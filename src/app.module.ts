@@ -7,8 +7,8 @@ import { AppController } from './app.controller';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { EventBusModule } from './common/events/event-bus.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
-import { PermissionsGuard } from './common/guards/permission.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { RbacPermissionsGuard } from './modules/authorization/guards/rbac-permissions.guard';
 import { CustomThrottlerGuard } from './common/guards/rate-limiting.guard';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
@@ -45,7 +45,7 @@ import { DOMAIN_MODULES } from './modules';
     // Global JWT auth (routes opt out with @Public), then role + permission checks.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
-    { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_GUARD, useClass: RbacPermissionsGuard },
     // Global dynamic rate limiting guard
     { provide: APP_GUARD, useClass: CustomThrottlerGuard },
     // Metrics first (outermost), then success-envelope wrapping.

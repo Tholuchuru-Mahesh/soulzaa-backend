@@ -8,8 +8,8 @@ import {
 
 /**
  * Patch a room's configurable settings. Every field is optional (a partial
- * update). NOTE (VR-1): the endpoint returns 501 until the settings phase; this
- * DTO defines the full configurable surface (mirrors VideoRoomSettings).
+ * update). The endpoint is live as of VR-17 and is per-field permission gated;
+ * this DTO defines the full configurable surface (mirrors VideoRoomSettings).
  */
 export class UpdateVideoRoomSettingsDto {
   // ---- Chat ----
@@ -69,4 +69,12 @@ export class UpdateVideoRoomSettingsDto {
   @Min(0)
   @Max(VIDEO_ROOM_MAX_SEATS)
   guestSeatCount?: number;
+
+  /**
+   * VR-8 column, VR-17 wire-up: when true a freed seat waits for owner/admin
+   * approval; when false the front of the seat queue is auto-promoted. Declared
+   * here so the settings endpoint can actually receive it — the column existed
+   * from VR-8 but was never on the DTO.
+   */
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() seatApprovalRequired?: boolean;
 }

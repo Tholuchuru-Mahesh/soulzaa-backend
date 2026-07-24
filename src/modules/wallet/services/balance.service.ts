@@ -11,10 +11,13 @@ export interface WalletBalanceProjection {
   pendingBalance: string;
   lockedBalance: string;
   totalBalance: string;
+  gold: number;
+  free: number;
+  earnings: number;
   currencyBreakdown: {
-    gold: string;
-    free: string;
-    earnings: string;
+    gold: number;
+    free: number;
+    earnings: number;
   };
   version: number;
   updatedAt: Date;
@@ -33,8 +36,12 @@ export class BalanceService {
   async getBalanceProjection(walletId: string): Promise<WalletBalanceProjection> {
     const wallet = await this.walletService.getWalletById(walletId);
 
+    const goldNum = Number(wallet.goldBalance);
+    const freeNum = Number(wallet.freeBalance);
+    const earningsNum = Number(wallet.earningsBalance);
+    const available = wallet.goldBalance + wallet.freeBalance;
     const total =
-      wallet.availableBalance +
+      available +
       wallet.reservedBalance +
       wallet.pendingBalance +
       wallet.lockedBalance;
@@ -42,15 +49,18 @@ export class BalanceService {
     return {
       walletId: wallet.id,
       userId: wallet.userId,
-      availableBalance: wallet.availableBalance.toString(),
+      availableBalance: available.toString(),
       reservedBalance: wallet.reservedBalance.toString(),
       pendingBalance: wallet.pendingBalance.toString(),
       lockedBalance: wallet.lockedBalance.toString(),
       totalBalance: total.toString(),
+      gold: goldNum,
+      free: freeNum,
+      earnings: earningsNum,
       currencyBreakdown: {
-        gold: wallet.goldBalance.toString(),
-        free: wallet.freeBalance.toString(),
-        earnings: wallet.earningsBalance.toString(),
+        gold: goldNum,
+        free: freeNum,
+        earnings: earningsNum,
       },
       version: wallet.version,
       updatedAt: wallet.updatedAt,

@@ -1,38 +1,23 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Param,
-  Post,
-  Query,
-  UseGuards,
-  UseInterceptors,
-} from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import {
-  AuditLogAction,
   CurrentUser,
   RequirePermissions,
 } from 'src/modules/authorization/decorators/authorization.decorators';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
-import { AuditLogInterceptor } from 'src/modules/authorization/interceptors/audit-log.interceptor';
 import { GiftQueryDto } from '../dto/gift-catalog.dto';
-import { GiftHistoryQueryDto, SendGiftDto } from '../dto/send-gift.dto';
+import { GiftHistoryQueryDto } from '../dto/send-gift.dto';
 import { GiftCatalogService } from '../services/gift-catalog.service';
 import { GiftHistoryService } from '../services/gift-history.service';
 import { GiftInventoryService } from '../services/gift-inventory.service';
 import { GiftQueryService } from '../services/gift-query.service';
-import { GiftTransactionService } from '../services/gift-transaction.service';
 
 @ApiTags('Gifts & Enterprise Gift Engine')
 @Controller('gifts')
 export class GiftsController {
   constructor(
     private readonly catalogService: GiftCatalogService,
-    private readonly transactionService: GiftTransactionService,
     private readonly historyService: GiftHistoryService,
     private readonly inventoryService: GiftInventoryService,
     private readonly queryService: GiftQueryService,
@@ -73,19 +58,6 @@ export class GiftsController {
   // ---------------------------------------------------------
   // Authenticated Gifting Transactions APIs
   // ---------------------------------------------------------
-
-  @ApiOperation({ summary: 'Send a gift in Audio/Video Room, PK Battle, or Chat' })
-  @ApiResponse({ status: 200, description: 'Gift sent successfully' })
-  @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard, RbacPermissionsGuard)
-  @RequirePermissions('gift.send')
-  @UseInterceptors(AuditLogInterceptor)
-  @AuditLogAction('GIFT_SENT', 'gift_transaction')
-  @Post('send')
-  @HttpCode(HttpStatus.OK)
-  async sendGift(@CurrentUser('id') senderId: string, @Body() dto: SendGiftDto) {
-    return this.transactionService.sendGift(senderId, dto);
-  }
 
   @ApiOperation({ summary: 'Get user gift transaction history' })
   @ApiResponse({ status: 200, description: 'User gift history' })

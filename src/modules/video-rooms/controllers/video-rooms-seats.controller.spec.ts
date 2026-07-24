@@ -257,3 +257,49 @@ describe('VideoRoomSeatsController — VR-8 routes', () => {
     expect(deps.queue.list).not.toHaveBeenCalled();
   });
 });
+
+// VR-17 — seat layout reshaping. `configureLayout`'s own behaviour (occupant
+// preservation, displacement, event emission) is covered by
+// video-room-seat.service.spec.ts; this only asserts the route wiring.
+describe('VideoRoomSeatsController — VR-17 seats/layout', () => {
+  it('delegates to the existing configureLayout', async () => {
+    const seats = { configureLayout: jest.fn().mockResolvedValue({ version: 2 }) };
+    const ctrl = new VideoRoomSeatsController(
+      seats as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await ctrl.configureLayout(
+      user,
+      ROOM,
+      { hostSeatCount: 8, guestSeatCount: 0 } as never,
+      '10.0.0.1',
+    );
+
+    expect(seats.configureLayout).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'u' }),
+      ROOM,
+      8,
+      0,
+      '10.0.0.1',
+    );
+  });
+
+  it('defaults guestSeatCount to 0 when omitted', async () => {
+    const seats = { configureLayout: jest.fn().mockResolvedValue({ version: 2 }) };
+    const ctrl = new VideoRoomSeatsController(
+      seats as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await ctrl.configureLayout(user, ROOM, { hostSeatCount: 5 } as never, '10.0.0.1');
+
+    expect(seats.configureLayout).toHaveBeenCalledWith(expect.anything(), ROOM, 5, 0, '10.0.0.1');
+  });
+});

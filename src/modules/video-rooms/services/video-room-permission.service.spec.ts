@@ -55,8 +55,8 @@ describe('VideoRoomPermissionService', () => {
       expect(await service.resolveEffectiveRole(room, 'u2')).toBe(VideoRoomMemberRole.MODERATOR);
     });
 
-    it('resolves null for a stranger with no grant', async () => {
-      expect(await service.resolveEffectiveRole(room, 'stranger')).toBeNull();
+    it('resolves VIEWER for a stranger with no grant', async () => {
+      expect(await service.resolveEffectiveRole(room, 'stranger')).toBe(VideoRoomMemberRole.VIEWER);
     });
 
     it('resolves HOST when the user occupies a HOST seat (no grant)', async () => {

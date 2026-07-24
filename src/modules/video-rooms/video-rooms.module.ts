@@ -151,6 +151,7 @@ import { VideoRoomSeatReservationService } from './services/video-room-seat-rese
 import { VideoRoomSeatStateService } from './services/video-room-seat-state.service';
 import { VideoRoomSeatService } from './services/video-room-seat.service';
 import { VideoRoomSessionService } from './services/video-room-session.service';
+import { VideoRoomSettingsService } from './services/video-room-settings.service';
 import { VideoRoomStateService } from './services/video-room-state.service';
 import { VideoRoomSystemMessageService } from './services/video-room-system-message.service';
 import { VideoRoomTypingService } from './services/video-room-typing.service';
@@ -309,6 +310,9 @@ import { VideoRoomsAdminService } from './services/video-rooms-admin.service';
     VideoRoomSessionService,
     VideoRoomPresenceService,
     VideoRoomEventService,
+    // VR-17 settings (per-field permission-gated PATCH :id/settings; dual event
+    // publish to the room-settings and chat-policy surfaces — see the service).
+    VideoRoomSettingsService,
     // VR-3 participant lifecycle (join/leave/reconnect/heartbeat/presence/sync).
     VideoRoomMemberService,
     MediaTokenService,

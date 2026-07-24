@@ -8,7 +8,7 @@ const ANN = { id: 'a1', roomId: 'r1', authorId: 'u1', content: 'hello', isPinned
 
 describe('VideoRoomAnnouncementService', () => {
   let permissions: { assertPermission: jest.Mock };
-  let rooms: { findById: jest.Mock };
+  let rooms: { findById: jest.Mock; getSettings: jest.Mock };
   let events: Record<string, jest.Mock>;
   let chat: Record<string, jest.Mock>;
   let pins: { pin: jest.Mock; unpin: jest.Mock };
@@ -17,7 +17,12 @@ describe('VideoRoomAnnouncementService', () => {
 
   beforeEach(() => {
     permissions = { assertPermission: jest.fn() };
-    rooms = { findById: jest.fn().mockResolvedValue(ROOM) };
+    rooms = {
+      findById: jest.fn().mockResolvedValue(ROOM),
+      // Default-enabled so every pre-existing test keeps exercising the
+      // allowed path unless a test explicitly overrides this.
+      getSettings: jest.fn().mockResolvedValue({ allowAnnouncements: true }),
+    };
     events = {
       createAnnouncement: jest.fn().mockResolvedValue(ANN),
       listAnnouncements: jest.fn().mockResolvedValue([ANN]),
@@ -115,5 +120,50 @@ describe('VideoRoomAnnouncementService', () => {
     );
 
     await expect(service.remove(ACTOR as never, 'r1', 'a1')).resolves.toBeUndefined();
+  });
+
+  describe('allowAnnouncements policy gate (VR-17)', () => {
+    it('refuses creating an announcement when allowAnnouncements is disabled', async () => {
+      rooms.getSettings.mockResolvedValue({ allowAnnouncements: false });
+      await expect(
+        service.create(ACTOR as never, 'r1', { content: 'hello' }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN });
+      expect(events.createAnnouncement).not.toHaveBeenCalled();
+    });
+
+    it('allows creating an announcement when allowAnnouncements is enabled', async () => {
+      rooms.getSettings.mockResolvedValue({ allowAnnouncements: true });
+      await expect(
+        service.create(ACTOR as never, 'r1', { content: 'hello' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('refuses updating an announcement when allowAnnouncements is disabled', async () => {
+      rooms.getSettings.mockResolvedValue({ allowAnnouncements: false });
+      await expect(
+        service.update(ACTOR as never, 'r1', 'a1', { content: 'edited' }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN });
+      expect(events.updateAnnouncement).not.toHaveBeenCalled();
+    });
+
+    it('allows updating an announcement when allowAnnouncements is enabled', async () => {
+      rooms.getSettings.mockResolvedValue({ allowAnnouncements: true });
+      await expect(
+        service.update(ACTOR as never, 'r1', 'a1', { content: 'edited' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('checks permission before the policy gate', async () => {
+      permissions.assertPermission.mockRejectedValue(new Error('denied'));
+      await expect(service.create(ACTOR as never, 'r1', { content: 'x' })).rejects.toThrow(
+        'denied',
+      );
+      expect(rooms.getSettings).not.toHaveBeenCalled();
+    });
+
+    it('still allows removing an announcement when allowAnnouncements is disabled (cleanup must not be trapped)', async () => {
+      rooms.getSettings.mockResolvedValue({ allowAnnouncements: false });
+      await expect(service.remove(ACTOR as never, 'r1', 'a1')).resolves.toBeUndefined();
+    });
   });
 });

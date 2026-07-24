@@ -19,7 +19,6 @@ export * from './decorators/request-id.decorator';
 export * from './decorators/request-meta.decorator';
 export * from './guards/jwt-auth.guard';
 export * from './guards/roles.guard';
-export * from './guards/permission.guard';
 export * from './guards/jwt-refresh.guard';
 export * from './guards/ws-jwt.guard';
 export * from './filters/all-exceptions.filter';

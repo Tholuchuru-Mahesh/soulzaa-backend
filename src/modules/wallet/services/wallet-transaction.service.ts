@@ -138,7 +138,7 @@ export class WalletTransactionService {
 
     const wallet = await this.walletService.getOrCreateWallet(dto.userId);
     this.validationService.validateWalletActive(wallet);
-    this.validationService.validateSufficientBalance(wallet, amountBig);
+    this.validationService.validateSufficientBalance(wallet, amountBig, dto.currency);
 
     return this.prisma.$transaction(async (tx) => {
       // Row-level pessimistic locking
@@ -146,7 +146,7 @@ export class WalletTransactionService {
       const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
       if (!freshWallet) throw new NotFoundException(`Wallet not found`);
       this.validationService.validateWalletActive(freshWallet);
-      this.validationService.validateSufficientBalance(freshWallet, amountBig);
+      this.validationService.validateSufficientBalance(freshWallet, amountBig, dto.currency);
 
       const balanceBefore = freshWallet.availableBalance;
       const balanceAfter = balanceBefore - amountBig;

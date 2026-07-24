@@ -49,6 +49,10 @@ describe('VideoRoomReportService', () => {
     rooms = {
       findById: jest.fn().mockResolvedValue(ROOM),
       getMember: jest.fn().mockResolvedValue({ isActive: true }),
+      // DEFAULT enabled — pre-existing tests must keep exercising the real
+      // (allowed) path rather than passing because reporting was silently
+      // disabled underneath them.
+      getSettings: jest.fn().mockResolvedValue({ allowReporting: true }),
     };
     roles = {
       listActiveByRoom: jest.fn().mockResolvedValue([{ userId: 'admin-1' }, { userId: 'mod-2' }]),
@@ -223,6 +227,43 @@ describe('VideoRoomReportService', () => {
       expect(result.status).toBe(VideoRoomReportStatus.PENDING);
       expect(reportRepo.create).toHaveBeenCalled();
     });
+
+    // ---- allowReporting policy gate (Task 9) ----
+
+    it('refuses a report when allowReporting is disabled, and never persists it', async () => {
+      rooms.getSettings.mockResolvedValue({ allowReporting: false });
+      await expect(
+        subject.report(REPORTER, ROOM.id, {
+          targetUserId: TARGET,
+          reason: VideoRoomReportReason.SPAM,
+        }),
+      ).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+        status: HttpStatus.FORBIDDEN,
+      });
+      expect(reportRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('allows a report when allowReporting is enabled', async () => {
+      rooms.getSettings.mockResolvedValue({ allowReporting: true });
+      await expect(
+        subject.report(REPORTER, ROOM.id, {
+          targetUserId: TARGET,
+          reason: VideoRoomReportReason.SPAM,
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it('checks active membership before the allowReporting policy gate', async () => {
+      rooms.getMember.mockResolvedValue(null);
+      await expect(
+        subject.report(REPORTER, ROOM.id, {
+          targetUserId: TARGET,
+          reason: VideoRoomReportReason.SPAM,
+        }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_NOT_MEMBER });
+      expect(rooms.getSettings).not.toHaveBeenCalled();
+    });
   });
 
   // ======================= reviewReport =======================
@@ -326,6 +367,22 @@ describe('VideoRoomReportService', () => {
         }),
       );
     });
+
+    // Deliberately unguarded (Task 9): a moderator must still be able to
+    // triage reports that were filed before reporting was switched off.
+    // Guarding this would strand an existing moderation queue behind a
+    // toggle that no longer lets anyone clear it.
+    it('still reviews a pending report when allowReporting is disabled', async () => {
+      rooms.getSettings.mockResolvedValue({ allowReporting: false });
+      reportRepo.getById.mockResolvedValue(PENDING_REPORT);
+      await expect(
+        subject.reviewReport(MODERATOR, ROOM.id, 'report-1', {
+          status: VideoRoomReportStatus.ACTIONED,
+          resolutionAction: 'kicked',
+        }),
+      ).resolves.toBeUndefined();
+      expect(reportRepo.review).toHaveBeenCalled();
+    });
   });
 
   // ======================= listReports =======================
@@ -363,6 +420,17 @@ describe('VideoRoomReportService', () => {
         limit: 10,
         totalPages: 1,
       });
+    });
+
+    // Deliberately unguarded (Task 9): this is a read. Hiding the existing
+    // moderation queue just because new reports are disabled would be a
+    // moderation regression, not a safety improvement.
+    it('still lists reports when allowReporting is disabled', async () => {
+      rooms.getSettings.mockResolvedValue({ allowReporting: false });
+      reportRepo.list.mockResolvedValue([[{ id: 'r1' }], 1]);
+      await expect(subject.listReports(MODERATOR, ROOM.id, query())).resolves.toEqual(
+        expect.objectContaining({ items: [{ id: 'r1' }], total: 1 }),
+      );
     });
   });
 
@@ -408,6 +476,22 @@ describe('VideoRoomReportService', () => {
         expect.objectContaining({ type: expect.any(String), roomId: ROOM.id }),
       );
       expect(metrics.incReport).toHaveBeenCalledWith(VideoRoomReportReason.SPAM);
+    });
+
+    // Deliberately unguarded (Task 9) — and the important exclusion of the
+    // three: this is the path the automated moderation engine uses to file
+    // reports on itself. If a room owner's user-facing "Allow Reporting"
+    // switch could gate this too, flipping it off would silence the
+    // auto-moderation engine in their own room — a room owner (or anyone
+    // who can toggle a settings flag) using their own settings control to
+    // blind safety detection is exactly the abuse vector this must never
+    // allow. `createSystemReport` has no user-facing caller/actor at all;
+    // only the auto-moderation engine invokes it directly.
+    it('still files a system report when allowReporting is disabled', async () => {
+      rooms.getSettings.mockResolvedValue({ allowReporting: false });
+      const result = await subject.createSystemReport(ROOM.id, TARGET, VideoRoomReportReason.SPAM);
+      expect(result.reporterId).toBe(SYSTEM_MODERATOR_ID);
+      expect(reportRepo.create).toHaveBeenCalled();
     });
   });
 });

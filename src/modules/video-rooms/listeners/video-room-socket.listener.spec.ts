@@ -1,4 +1,4 @@
-import { VIDEO_ROOM_SOCKET_EVENTS } from '../constants/video-room.constants';
+import { VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS } from '../constants/video-room.constants';
 import { VIDEO_ROOM_EVENTS } from '../events/video-room.events';
 import { VideoRoomSocketListener } from './video-room-socket.listener';
 
@@ -207,6 +207,30 @@ describe('VideoRoomSocketListener', () => {
       '/video-room',
       'r1',
       VIDEO_ROOM_SOCKET_EVENTS.VIEWER_PRESENCE_CHANGED,
+      payload,
+    );
+  });
+
+  // ---- VR-17 settings relay ----
+
+  it('bridges RoomSettingsUpdatedEvent to video_room.settings_updated', () => {
+    const handlers = new Map<string, (e: unknown) => void>();
+    const bus = { subscribe: jest.fn((name: string, fn) => handlers.set(name, fn)) };
+    const sockets = { emitToNamespaceRoom: jest.fn() };
+    new VideoRoomSocketListener(bus as never, sockets as never).onModuleInit();
+
+    const payload = {
+      roomId: 'room-1',
+      actorId: 'user-1',
+      changed: ['allowGifts'],
+      settings: { allowGifts: false },
+    };
+    handlers.get(VIDEO_ROOM_EVENTS.SETTINGS_UPDATED)?.({ payload } as never);
+
+    expect(sockets.emitToNamespaceRoom).toHaveBeenCalledWith(
+      VIDEO_ROOM_NAMESPACE,
+      'room-1',
+      VIDEO_ROOM_SOCKET_EVENTS.SETTINGS_UPDATED,
       payload,
     );
   });

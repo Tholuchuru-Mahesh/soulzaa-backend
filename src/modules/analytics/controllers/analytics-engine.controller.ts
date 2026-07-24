@@ -18,7 +18,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
-import { PermissionsGuard } from 'src/common/guards/permission.guard';
+import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { ReportService } from '../services/report.service';
 import { DashboardService } from '../services/dashboard.service';
@@ -41,7 +41,7 @@ import {
 
 @ApiTags('Analytics Engine')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RbacPermissionsGuard)
 @Controller('analytics-engine')
 export class AnalyticsEngineController {
   constructor(

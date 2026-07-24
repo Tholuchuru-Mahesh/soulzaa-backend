@@ -19,10 +19,12 @@ import { CreateVideoRoomDto } from '../dto/create-video-room.dto';
 import { ListVideoRoomsDto } from '../dto/list-video-rooms.dto';
 import { LockVideoRoomDto } from '../dto/lock-video-room.dto';
 import { SearchVideoRoomsDto } from '../dto/search-video-rooms.dto';
+import { UpdateVideoRoomSettingsDto } from '../dto/update-video-room-settings.dto';
 import { UpdateVideoRoomDto } from '../dto/update-video-room.dto';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { VideoRoomLifecycleService } from '../services/video-room-lifecycle.service';
 import { VideoRoomQueryService } from '../services/video-room-query.service';
+import { VideoRoomSettingsService } from '../services/video-room-settings.service';
 
 /**
  * Video Room lifecycle REST surface (base `video-rooms`, VR-2). The global
@@ -40,6 +42,7 @@ export class VideoRoomsController {
   constructor(
     private readonly lifecycle: VideoRoomLifecycleService,
     private readonly query: VideoRoomQueryService,
+    private readonly settings: VideoRoomSettingsService,
   ) {}
 
   private actor(user: AuthenticatedUser): RoomActor {
@@ -119,6 +122,22 @@ export class VideoRoomsController {
     @Body() dto: UpdateVideoRoomDto,
   ) {
     return this.lifecycle.update(this.actor(user), id, dto);
+  }
+
+  @Patch(':id/settings')
+  @NotGuest()
+  @ApiOperation({
+    summary: "Patch a room's configurable settings (per-field permission gated)",
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'The updated settings row.' })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Field not writable here.' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Missing a required permission.' })
+  updateSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: UpdateVideoRoomSettingsDto,
+  ) {
+    return this.settings.update(this.actor(user), id, dto);
   }
 
   @Delete(':id')

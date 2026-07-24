@@ -27,6 +27,8 @@ export const VIDEO_ROOM_NAMESPACE: string = SOCKET_NAMESPACES.VIDEO_ROOM;
 export const VIDEO_ROOM_SOCKET_EVENTS = {
   CREATED: 'video_room.created',
   UPDATED: 'video_room.updated',
+  /** VR-17: room settings changed; payload carries the full post-write snapshot. */
+  SETTINGS_UPDATED: 'video_room.settings_updated',
   DELETED: 'video_room.deleted',
   CLOSED: 'video_room.closed',
   LOCKED: 'video_room.locked',

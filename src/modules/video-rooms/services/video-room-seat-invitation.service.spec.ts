@@ -46,7 +46,12 @@ describe('VideoRoomSeatInvitationService', () => {
       events: { appendEvent: jest.fn() },
       bus: { publish: jest.fn() },
       moderation: { isActivelyBlocked: jest.fn().mockResolvedValue(false) },
-      rooms: { getMember: jest.fn().mockResolvedValue({ isActive: true }) },
+      rooms: {
+        getMember: jest.fn().mockResolvedValue({ isActive: true }),
+        // VR-17 — default to the column's own DB default so every pre-existing
+        // test (which knows nothing about allowInvite) keeps passing.
+        getSettings: jest.fn().mockResolvedValue({ allowInvite: true }),
+      },
     };
     svc = new VideoRoomSeatInvitationService(
       deps.seatSvc,
@@ -162,6 +167,36 @@ describe('VideoRoomSeatInvitationService', () => {
     });
   });
 
+  describe('invite policy gate (VR-17 allowInvite)', () => {
+    it('refuses a seat invite when allowInvite is disabled', async () => {
+      deps.rooms.getSettings.mockResolvedValue({ allowInvite: false });
+      await expect(svc.invite(actor('owner'), 'r1', 'u2', 3)).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+      });
+      expect(deps.seats.createInvitation).not.toHaveBeenCalled();
+    });
+
+    it('allows a seat invite when allowInvite is enabled', async () => {
+      deps.rooms.getSettings.mockResolvedValue({ allowInvite: true });
+      await expect(svc.invite(actor('owner'), 'r1', 'u2', 3)).resolves.toBeDefined();
+    });
+
+    it('checks INVITE_USERS permission before the allowInvite policy gate', async () => {
+      deps.rooms.getSettings.mockResolvedValue({ allowInvite: false });
+      deps.permissions.assertPermission.mockRejectedValue(
+        new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+          'no permission',
+          HttpStatus.FORBIDDEN,
+        ),
+      );
+      await expect(svc.invite(actor('owner'), 'r1', 'u2', 3)).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+      });
+      expect(deps.rooms.getSettings).not.toHaveBeenCalled();
+    });
+  });
+
   describe('inviteToRoom (VR-15)', () => {
     beforeEach(() => {
       // The invitee is a NON-member for a room invitation — unlike seat invites.
@@ -213,6 +248,49 @@ describe('VideoRoomSeatInvitationService', () => {
         errorCode: ERROR_CODES.DUPLICATE_SEAT_INVITATION,
       });
       expect(deps.seats.createInvitation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('inviteToRoom policy gate (VR-17 allowInvite)', () => {
+    beforeEach(() => {
+      deps.rooms.getMember.mockResolvedValue({ isActive: false });
+      deps.seats.createInvitation.mockResolvedValue({
+        id: 'i1',
+        inviterId: 'owner',
+        inviteeUserId: 'u2',
+        type: 'ROOM',
+        seatIndex: null,
+        status: 'PENDING',
+        expiresAt: new Date(Date.now() + 120_000),
+      });
+    });
+
+    it('refuses a room invite when allowInvite is disabled', async () => {
+      deps.rooms.getSettings.mockResolvedValue({ allowInvite: false });
+      await expect(svc.inviteToRoom(actor('owner'), 'r1', 'u2')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+      });
+      expect(deps.seats.createInvitation).not.toHaveBeenCalled();
+    });
+
+    it('allows a room invite when allowInvite is enabled', async () => {
+      deps.rooms.getSettings.mockResolvedValue({ allowInvite: true });
+      await expect(svc.inviteToRoom(actor('owner'), 'r1', 'u2')).resolves.toBeDefined();
+    });
+
+    it('checks INVITE_USERS permission before the allowInvite policy gate', async () => {
+      deps.rooms.getSettings.mockResolvedValue({ allowInvite: false });
+      deps.permissions.assertPermission.mockRejectedValue(
+        new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+          'no permission',
+          HttpStatus.FORBIDDEN,
+        ),
+      );
+      await expect(svc.inviteToRoom(actor('owner'), 'r1', 'u2')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+      });
+      expect(deps.rooms.getSettings).not.toHaveBeenCalled();
     });
   });
 

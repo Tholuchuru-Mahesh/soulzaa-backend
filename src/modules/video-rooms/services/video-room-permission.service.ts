@@ -215,7 +215,7 @@ export class VideoRoomPermissionService {
           : VideoRoomMemberRole.HOST;
       return this.decision(role, false);
     }
-    return { role: null, permissions: [], temporary: false };
+    return this.decision(VideoRoomMemberRole.VIEWER, false);
   }
 
   private decision(role: VideoRoomMemberRole, temporary: boolean): PermissionDecision {
