@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: soulzaa-prod
+  labels:
+    app.kubernetes.io/name: soulzaa
+    environment: production

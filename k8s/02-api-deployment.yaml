@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soulzaa-api
+  namespace: soulzaa-prod
+  labels:
+    app: soulzaa-api
+    version: "1.0"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: soulzaa-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0          # Zero-downtime rolling deployment
+  template:
+    metadata:
+      labels:
+        app: soulzaa-api
+    spec:
+      terminationGracePeriodSeconds: 60  # Allow active requests to drain
+      containers:
+        - name: api
+          image: ghcr.io/soulzaaa/soulzaa-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: soulzaa-config
+            - secretRef:
+                name: soulzaa-secrets
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health/startup
+              port: 3000
+            failureThreshold: 15
+            periodSeconds: 5
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: "kubernetes.io/hostname"
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: soulzaa-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: soulzaa-api-service
+  namespace: soulzaa-prod
+spec:
+  selector:
+    app: soulzaa-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: ClusterIP
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: soulzaa-api-pdb
+  namespace: soulzaa-prod
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: soulzaa-api
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: soulzaa-api-hpa
+  namespace: soulzaa-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: soulzaa-api
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

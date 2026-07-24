@@ -189,6 +189,22 @@ import { VideoRoomNotificationMuteService } from './services/video-room-notifica
 import { VideoRoomNotificationService } from './services/video-room-notification.service';
 import { VideoRoomSystemNotificationService } from './services/video-room-system-notification.service';
 import { VideoRoomNotificationMetrics } from './metrics/video-room-notification.metrics';
+// ---- VR-17 analytics & insights engine ----
+import { VIDEO_ROOM_ANALYTICS_QUEUES } from './constants/video-room-analytics.constants';
+import { VideoRoomsAnalyticsController } from './controllers/video-rooms-analytics.controller';
+import { VideoRoomAnalyticsProjectionRepository } from './repositories/video-room-analytics-projection.repository';
+import { VideoRoomAnalyticsCacheService } from './services/video-room-analytics-cache.service';
+import { VideoRoomAnalyticsAuditService } from './services/video-room-analytics-audit.service';
+import { VideoRoomAnalyticsMetrics } from './metrics/video-room-analytics.metrics';
+import { VideoRoomAnalyticsAggregationService } from './services/video-room-analytics-aggregation.service';
+import { VideoRoomAnalyticsQueryService } from './services/video-room-analytics-query.service';
+import { VideoRoomAnalyticsListener } from './listeners/video-room-analytics.listener';
+import { VideoRoomAnalyticsSocketListener } from './listeners/video-room-analytics-socket.listener';
+import { VideoRoomAnalyticsAggregationProcessor } from './processors/video-room-analytics-aggregation.processor';
+// ---- VR-18 video room administration ----
+import { VideoRoomsAdminController } from './controllers/video-rooms-admin.controller';
+import { VideoRoomsAdminRepository } from './repositories/video-rooms-admin.repository';
+import { VideoRoomsAdminService } from './services/video-rooms-admin.service';
 
 /**
  * Video Rooms domain — VR-0: Enterprise Foundation.
@@ -219,6 +235,8 @@ import { VideoRoomNotificationMetrics } from './metrics/video-room-notification.
       { name: VIDEO_ROOM_MODERATION_QUEUES.REPORT },
       { name: VIDEO_ROOM_MODERATION_QUEUES.CLEANUP },
     ),
+    // ---- VR-17 analytics engine: dedicated aggregation queue ----
+    BullModule.registerQueue({ name: VIDEO_ROOM_ANALYTICS_QUEUES.AGGREGATION }),
   ],
   controllers: [
     VideoRoomsController,
@@ -234,6 +252,8 @@ import { VideoRoomNotificationMetrics } from './metrics/video-room-notification.
     VideoRoomsRankingsController,
     VideoRoomsNotificationController,
     VideoRoomsModerationController,
+    VideoRoomsAnalyticsController,
+    VideoRoomsAdminController,
   ],
   providers: [
     VideoRoomsRepository,
@@ -453,6 +473,19 @@ import { VideoRoomNotificationMetrics } from './metrics/video-room-notification.
     VideoRoomEngagementNotificationListener,
     VideoRoomChatNotificationListener,
     VideoRoomNotificationSocketListener,
+    // ---- VR-17 analytics & insights engine ----
+    VideoRoomAnalyticsProjectionRepository,
+    VideoRoomAnalyticsCacheService,
+    VideoRoomAnalyticsAuditService,
+    VideoRoomAnalyticsMetrics,
+    VideoRoomAnalyticsAggregationService,
+    VideoRoomAnalyticsQueryService,
+    VideoRoomAnalyticsListener,
+    VideoRoomAnalyticsSocketListener,
+    VideoRoomAnalyticsAggregationProcessor,
+    // ---- VR-18 video room administration ----
+    VideoRoomsAdminRepository,
+    VideoRoomsAdminService,
     // Task-18 seam (see video-room-pk.service.ts): VideoRoomPkService injects
     // settlement `@Optional()` via this token so `end()` can fail loudly with
     // NOT_IMPLEMENTED instead of silently doing nothing if it is ever missing.

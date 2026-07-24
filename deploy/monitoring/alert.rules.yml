@@ -1,0 +1,60 @@
+groups:
+  - name: soulzaa.api
+    rules:
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP 5xx error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      - alert: HighAPILatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 API latency exceeds 2s"
+          description: "P95 latency is {{ $value }}s."
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="soulzaa-api"} > 900 * 1024 * 1024
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API process memory exceeds 900MB"
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is unreachable"
+
+      - alert: PostgreSQLDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is unreachable"
+
+      - alert: BullMQQueueBacklog
+        expr: bullmq_waiting_jobs_total > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "BullMQ queue has more than 500 waiting jobs"
+
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total{job="soulzaa-api"}[5m]) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API CPU utilisation exceeds 85%"

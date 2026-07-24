@@ -285,7 +285,26 @@ export const VIDEO_ROOM_QUEUES = {
   MODERATION_PROCESSING: VIDEO_ROOM_MODERATION_QUEUES.PROCESSING,
   MODERATION_REPORT: VIDEO_ROOM_MODERATION_QUEUES.REPORT,
   MODERATION_CLEANUP: VIDEO_ROOM_MODERATION_QUEUES.CLEANUP,
+  // ---- Phase 17 analytics queue ----
+  ANALYTICS: 'video-room-analytics-aggregation',
 } as const;
+
+// ---- VR-17 analytics Redis keys (Cluster-safe single-key commands) ----
+export const VIDEO_ROOM_ANALYTICS_ACTIVE_ROOMS_KEY = 'vroom:analytics:active_rooms';
+export const VIDEO_ROOM_ANALYTICS_ACTIVE_HOSTS_KEY = 'vroom:analytics:active_hosts';
+export const VIDEO_ROOM_ANALYTICS_ACTIVE_PARTICIPANTS_KEY = 'vroom:analytics:active_participants';
+export const VIDEO_ROOM_ANALYTICS_ACTIVE_VIEWERS_KEY = 'vroom:analytics:active_viewers';
+export const VIDEO_ROOM_ANALYTICS_CONCURRENT_PK_KEY = 'vroom:analytics:concurrent_pk';
+export const VIDEO_ROOM_ANALYTICS_CONCURRENT_GIFTS_KEY = 'vroom:analytics:concurrent_gifts';
+export const VIDEO_ROOM_ANALYTICS_CONCURRENT_TREASURE_KEY = 'vroom:analytics:concurrent_treasure';
+
+export function videoRoomAnalyticsCacheKey(
+  targetId: string,
+  period: string,
+  dateKey?: string,
+): string {
+  return `vroom:analytics:cache:{${targetId}}:${period}:${dateKey || 'current'}`;
+}
 
 // ============================================================
 // VR-1 — domain defaults & bounds (seat layout, requests, moderation).

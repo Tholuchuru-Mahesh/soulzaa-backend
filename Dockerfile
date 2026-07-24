@@ -6,7 +6,7 @@ WORKDIR /app
 # ---------- Dependencies ----------
 FROM base AS deps
 COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile || pnpm install
+RUN pnpm install --frozen-lockfile
 
 # ---------- Build ----------
 FROM base AS build
@@ -14,19 +14,35 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm prisma generate
 RUN pnpm build
-# Drop dev dependencies for the runtime image.
+# Prune dev dependencies to minimise runtime image size
 RUN pnpm prune --prod
 
 # ---------- Runtime ----------
 FROM node:22-alpine AS runtime
-ENV NODE_ENV=production
+LABEL org.opencontainers.image.title="soulzaa-backend"
+LABEL org.opencontainers.image.description="Soulzaaa Backend API — Production Image"
+LABEL org.opencontainers.image.vendor="Soulzaaa"
+
+ENV NODE_ENV=production \
+    PORT=3000
+
 WORKDIR /app
+
+# Create a non-root OS user for security hardening
 RUN addgroup -S app && adduser -S app -G app
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
-COPY package.json ./
+
+# Copy only what the runtime needs (no dev tooling)
+COPY --from=build --chown=app:app /app/node_modules ./node_modules
+COPY --from=build --chown=app:app /app/dist ./dist
+COPY --from=build --chown=app:app /app/prisma ./prisma
+COPY --chown=app:app package.json ./
+
 USER app
 EXPOSE 3000
-# Run pending migrations, then start.
+
+# Kubernetes/Docker healthcheck using the /health/live liveness probe
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget -qO- http://localhost:3000/health/live || exit 1
+
+# Run Prisma migrations then start the API server
 CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node dist/main.js"]

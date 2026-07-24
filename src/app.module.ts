@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
@@ -11,6 +11,7 @@ import { PermissionsGuard } from './common/guards/permission.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { CustomThrottlerGuard } from './common/guards/rate-limiting.guard';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { configurations } from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { ContentModerationModule } from './infra/content-moderation';
@@ -54,4 +55,8 @@ import { DOMAIN_MODULES } from './modules';
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CorrelationIdMiddleware).forRoutes('*');
+  }
+}

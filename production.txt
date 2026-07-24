@@ -4012,3 +4012,6902 @@ The Top 3 Winners are displayed.
 Rewards are automatically credited to the winners' Backpacks.
 
 A room announcement congratulates the winners before the next Treasure Box begins.
+
+
+Soulzaaa Coin Economy & Wallet System
+
+Overview
+
+Soulzaaa uses three completely independent virtual currencies.
+
+Each currency has a unique purpose and cannot be mixed with the others.
+
+Gold Coins (Premium Currency)
+
+Diamonds (Creator Earnings)
+
+Game Coins (Free Currency)
+
+All economy values must be configurable by the Super Admin through the Admin Panel and should never be hardcoded.
+
+1. Gold Coins (Premium Currency)
+
+Gold Coins are the primary premium currency of Soulzaaa.
+
+Gold Coins are stored permanently in the user's Wallet.
+
+Gold Coins cannot be withdrawn as real money.
+
+Users can obtain Gold Coins through
+
+Google Play Billing
+
+Apple In-App Purchase
+
+Coin Seller
+
+Promotional Rewards (Optional)
+
+Platform Campaigns (Optional)
+
+Gold Coins can be used for
+
+Gifts
+
+Audio Rooms
+
+Live Streams
+
+Video Rooms
+
+Friends
+
+Premium Features
+
+VIP Membership
+
+Profile Frames
+
+Entry Effects
+
+Themes
+
+Premium Badges
+
+Name Colors
+
+Exclusive Decorations
+
+Audio Room Features
+
+Premium Seat Purchase
+
+Locked Rooms
+
+Premium Room Features
+
+Special Room Themes
+
+Games
+
+Gold Coins are used in premium games:
+
+Greedy Food
+
+Roulette
+
+Lucky Fruit
+
+Phoenix vs Wolf
+
+Flip
+
+Jackpot
+
+Events
+
+Festival Events
+
+Treasure Box
+
+Lucky Draw
+
+Auction Events (Future)
+
+Gold Coins cannot
+
+Be withdrawn
+
+Be exchanged into Diamonds
+
+Be transferred directly between users
+
+Be sold by normal users
+
+2. Diamonds (User/Creator Earnings)
+
+Diamonds represent Creator earnings.
+
+Users cannot purchase Diamonds.
+
+Creators earn Diamonds only when they receive Gifts.
+
+Workflow
+
+User
+
+↓
+
+Purchases Gold Coins
+
+↓
+
+Sends Gift
+
+↓
+
+User receives Diamonds
+
+↓
+
+User withdraws money
+
+Diamonds can only be used for
+
+User Withdrawals
+
+Diamonds cannot:
+
+Be gifted
+
+Be purchased
+
+Be transferred
+
+Be sold
+
+Gift Conversion System
+
+Example:
+
+User sends Gift worth 1000 Gold Coins
+
+↓
+
+User Analytics
+
++1000 Gift Coins
+
+↓
+
+Creator receives 100 Diamonds (Example Ratio)
+
+↓
+
+Creator also receives 100 Gold Coins Cashback (10% Default)
+
+↓
+
+Diamonds become eligible for withdrawal.
+
+Note: Gift-to-Diamond ratio and Cashback percentage must be configurable from the Super Admin Panel.
+
+Creator Gold Coin Cashback
+
+Whenever a Creator receives Gifts, the platform rewards additional Gold Coins.
+
+Default:
+
+10% Cashback
+
+Example:
+
+Gift Value = 1000 Gold Coins
+
+↓
+
+Creator receives:
+
+100 Diamonds
+
+100 Gold Coins Cashback
+
+Cashback Gold Coins can be used for:
+
+Sending Gifts
+
+Games
+
+VIP
+
+Premium Purchases
+
+Cashback Gold Coins cannot be withdrawn.
+
+3. Game Coins (Free Currency)
+
+Game Coins are completely separate from Gold Coins.
+
+Users obtain Game Coins through:
+
+Daily Login
+
+Lucky Spin
+
+Events
+
+Daily Tasks
+
+Achievement Rewards
+
+Promotional Campaigns
+
+Referral Rewards (Future)
+
+Game Coins are used only for
+
+Ludo
+
+UNO
+
+Carrom
+
+Dominoes
+
+Game Coins cannot be used for:
+
+Gifts
+
+VIP
+
+Premium Features
+
+Premium Games
+
+Withdrawals
+
+Coin Conversion
+
+Gold Coin Packages
+
+Example Packages
+
+Price
+
+Gold Coins
+
+₹79
+
+400
+
+₹159
+
+850
+
+₹399
+
+2200
+
+₹799
+
+4500
+
+₹1599
+
+9500
+
+₹3999
+
+25000
+
+₹7999
+
+52000
+
+All package prices must be configurable by Super Admin.
+
+Coin Seller Business Model
+
+Coin Sellers are authorized Agency accounts that have received Coin Seller approval.
+
+Coin Sellers cannot create Gold Coins.
+
+Every Gold Coin sold must first be purchased from the Soulzaaa Platform.
+
+Coin Seller Inventory Purchase Workflow
+
+Step 1
+
+Coin Seller opens the Coin Inventory module.
+
+↓
+
+Step 2
+
+Select Purchase Coin Inventory.
+
+↓
+
+Step 3
+
+Choose Package.
+
+Example:
+
+100,000 Coins
+
+250,000 Coins
+
+500,000 Coins
+
+1,000,000 Coins
+
+↓
+
+Step 4
+
+System generates an Order.
+
+↓
+
+Step 5
+
+Coin Seller completes payment using approved business payment methods (UPI, Bank Transfer, etc., as configured by the platform).
+
+↓
+
+Step 6
+
+Admin verifies payment or automatically if integrated with a payment gateway .
+
+↓
+
+Step 7
+
+Purchased Gold Coins are added to the Coin Seller Inventory Wallet.
+
+↓
+
+Coin Seller can now sell those coins to users.
+
+Coin Seller Inventory Dashboard
+
+Displays:
+
+Current Inventory
+
+Purchased Coins
+
+Sold Coins
+
+Available Coins
+
+Pending Purchase Orders
+
+Purchase History
+
+Monthly Sales
+
+Remaining Inventory
+
+Inventory automatically decreases after every successful coin sale.
+
+Coin Seller Selling Workflow
+
+User contacts Coin Seller
+
+↓
+
+User makes payment
+
+↓
+
+Payment Verified
+
+↓
+
+Coin Seller searches User ID
+
+↓
+
+System displays:
+
+Username
+
+Profile
+
+Country
+
+↓
+
+Enter Coin Amount
+
+↓
+
+Click Send Coins
+
+↓
+
+Coins credited instantly
+
+↓
+
+Inventory reduced automatically
+
+↓
+
+Transaction permanently recorded
+
+Country Restriction
+
+Coin Sellers can sell Gold Coins only to users registered in the same country.
+
+Examples:
+
+India → India Users Only
+
+USA → USA Users Only
+
+UAE → UAE Users Only
+
+Cross-country coin selling is automatically blocked.
+
+User Purchase Options
+
+Users can recharge Gold Coins using:
+
+Google Play Billing
+
+Apple In-App Purchase
+
+Authorized Coin Seller
+
+Every successful purchase is permanently recorded.
+
+Wallet Structure
+
+Every user wallet contains three separate balances.
+
+Gold Coins
+
+Used for:
+
+Gifts
+
+VIP
+
+Frames
+
+Entry Effects
+
+Themes
+
+Premium Games
+
+Diamonds
+
+Creator earnings.
+
+Used only for withdrawals.
+
+Game Coins
+
+Used only for free casual games.
+
+Super Admin Economy Configuration
+
+All economy values must be configurable from the Admin Panel.
+
+Examples:
+
+Gold Coin Package Pricing
+
+Coin Seller Inventory Packages
+
+Coin Seller Purchase Price
+
+Coin Seller Selling Limits
+
+Gift → Diamond Conversion Ratio
+
+Diamond → Cash Conversion Ratio
+
+Creator Cashback Percentage
+
+Minimum Withdrawal Amount
+
+Maximum Daily Withdrawal Limit
+
+Promotional Bonus Coins
+
+Festival Bonus Offers
+
+Country-wise Coin Pricing
+
+Tax & Service Charge Settings (if applicable)
+
+No economy value should be hardcoded.
+
+Note
+
+The Soulzaaa economy is built around three completely independent virtual currencies:
+
+Gold Coins – Premium spending currency used for gifts, premium features, VIP, rooms, and premium games.
+
+Diamonds – User earnings generated from gifts and used only for withdrawals.
+
+Game Coins – Free engagement currency used only in casual games.
+
+Coin Sellers are approved Agency accounts that purchase Gold Coin inventory directly from the Soulzaaa platform and then distribute those coins to users within their assigned country. They never create coins; all inventory originates from the platform, ensuring a secure and traceable economy.
+
+Every coin purchase, inventory allocation, user recharge, gift transaction, cashback reward, diamond conversion, withdrawal, and wallet activity must be permanently recorded, fully auditable, and protected through Role-Based Access Control (RBAC). This design provides a secure, scalable, and configurable economy for the platform while allowing future automation without changing the core architecture.
+
+Soulzaaa Role Management & Functional Requirements
+
+Admin
+
+Overview
+
+The Admin is the second-highest authority in the Soulzaaa platform after the Super Admin.
+
+The Admin is responsible for managing daily platform operations, business execution, content approvals, staff management, moderation oversight, platform monitoring, financial operations within assigned authority, and implementation of platform policies.
+
+The Admin operates under the supervision of the Super Admin.
+
+The Admin account must remain completely hidden from Users, Creators, Agencies, Coin Sellers, Business Developers (BD), Officials, and Moderators.
+
+Managers cannot directly identify or communicate privately with the Admin.
+
+Admin Account
+
+Created only by Super Admin.
+
+Cannot be self-registered.
+
+Cannot create another Admin.
+
+Cannot delete Super Admin.
+
+Cannot view Super Admin identity.
+
+Cannot be searched.
+
+Cannot be followed.
+
+Cannot receive gifts.
+
+Cannot receive friend requests.
+
+Cannot be tagged.
+
+Cannot appear in rankings.
+
+Cannot appear in audience lists.
+
+Cannot appear in room member lists.
+
+Cannot appear in live viewer lists.
+
+Cannot appear in profile search.
+
+Profile link cannot be shared.
+
+Hidden from Users, Creators, Agencies, Coin Sellers, BD, Officials and Moderators.
+
+Only Super Admin and other Admins can identify Admin accounts.
+
+Login
+
+Admin logs in using the dedicated Admin Portal.
+
+Authentication supports:
+
+Username / Email
+
+Password
+
+Two-Factor Authentication (2FA)
+
+Device Verification
+
+IP Verification
+
+OTP Verification (Optional)
+
+Every login stores:
+
+Login Time
+
+Logout Time
+
+Device Information
+
+Browser
+
+Operating System
+
+IP Address
+
+Country
+
+Login Status
+
+Dashboard
+
+After login, the Admin should see the Operational Dashboard.
+
+Dashboard displays:
+
+Platform Statistics
+
+Total Registered Users
+
+Online Users
+
+Daily Active Users
+
+Monthly Active Users
+
+New Registrations
+
+Staff Statistics
+
+Managers
+
+Officials
+
+Moderators
+
+Business Developers
+
+Agencies
+
+Coin Sellers
+
+Active Creators
+
+Live Activities
+
+Active Audio Rooms
+
+Active Video Rooms
+
+Active Live Streams
+
+Running Games
+
+Revenue
+
+Daily Revenue
+
+Weekly Revenue
+
+Monthly Revenue
+
+Coin Sales
+
+Gift Revenue
+
+Recharge Revenue
+
+Game Revenue
+
+Operations
+
+Pending Reports
+
+Pending Support Tickets
+
+Pending Agency Approvals
+
+Pending Coin Seller Approvals
+
+Pending Verification Requests
+
+Running Events
+
+Every dashboard card redirects to its respective management page.
+
+Sidebar Menu
+
+The Admin Panel should contain:
+
+Dashboard
+
+User Management
+
+Creator Management
+
+Manager Management
+
+Official Management
+
+Moderator Management
+
+Business Development (BD)
+
+Agency Management
+
+Coin Seller Management
+
+Audio Room Management
+
+Video Room Management
+
+Live Stream Management
+
+Games Management
+
+Wallet Management
+
+Revenue Management
+
+Payment Management
+
+Verification Management
+
+Content Management
+
+Event Management
+
+Task Management
+
+Reports & Moderation
+
+Analytics
+
+Notifications
+
+Platform Settings
+
+Audit Logs
+
+Logout
+
+User Management
+
+The Admin can manage every registered user.
+
+Search Filters
+
+User ID
+
+Custom ID
+
+Username
+
+Mobile Number
+
+Email
+
+Country
+
+Region
+
+Language
+
+VIP Level
+
+User Level
+
+Online / Offline
+
+Registration Date
+
+Last Login
+
+Account Status
+
+Clicking a user opens the complete profile.
+
+Available Information
+
+Basic Profile
+
+Gold Coin Wallet
+
+Creator Wallet
+
+Creator Analytics
+
+Coin History
+
+Recharge History
+
+Gift History
+
+Game History
+
+Audio Room History
+
+Video Room History
+
+Live Stream History
+
+Earnings
+
+Device History
+
+Login History
+
+Reports
+
+Warning History
+
+Family Details
+
+Agency Details
+
+Creator Details
+
+Available Actions
+
+Suspend Account
+
+Restore Account
+
+Freeze Wallet
+
+Unfreeze Wallet
+
+Force Logout
+
+Reset Device
+
+Reset Password
+
+View Audit History
+
+Every action must be permanently stored in Audit Logs.
+
+Creator Management
+
+The Admin manages all approved creators.
+
+Supported Categories
+
+Audio Creators
+
+Video Creators
+
+Artists
+
+Singers
+
+Gaming Streamers
+
+Influencers
+
+Verified Creators
+
+Available Features
+
+View Creator Profile
+
+View Creator Analytics
+
+View Performance
+
+View Streaming Hours
+
+View Revenue
+
+View Gifts
+
+View Followers
+
+View Violations
+
+Approve Verification
+
+Reject Verification
+
+Assign Agency
+
+Remove Agency
+
+Suspend Creator
+
+Restore Creator
+
+Manager Management
+
+The Admin manages every Manager.
+
+Available Actions
+
+Create Manager
+
+Edit Manager
+
+Approve Manager
+
+Suspend Manager
+
+Restore Manager
+
+Reset Password
+
+Reset Device
+
+Assign Region
+
+Assign Responsibilities
+
+View Performance
+
+View Activity Logs
+
+Official Management
+
+The Admin manages every Official.
+
+Available Actions
+
+Create Official
+
+Edit Official
+
+Approve Official
+
+Suspend Official
+
+Restore Official
+
+Assign Region
+
+Assign Responsibilities
+
+View Performance
+
+View Tasks
+
+View Activity Logs
+
+Moderator Management
+
+The Admin manages Moderators.
+
+Available Actions
+
+Create Moderator
+
+Approve Moderator
+
+Suspend Moderator
+
+Restore Moderator
+
+Reset Device
+
+Reset Password
+
+Assign Regions
+
+Configure Permissions
+
+View Performance
+
+View Warning History
+
+View Login Hours
+
+View Ban History
+
+Business Development (BD) Management
+
+The Admin manages Business Development staff.
+
+Available Actions
+
+Create BD
+
+Approve BD
+
+Suspend BD
+
+Restore BD
+
+Assign Region
+
+Assign Recruitment Targets
+
+Assign Performance Targets
+
+View Referrals
+
+View Performance
+
+View Activity Logs
+
+Agency Management
+
+The Admin manages Agencies.
+
+Available Actions
+
+Approve Agency
+
+Reject Agency
+
+Suspend Agency
+
+Restore Agency
+
+View Agency Performance
+
+View Agency Users
+
+View Revenue
+
+View Commission
+
+Assign Official
+
+View Complaints
+
+Coin Seller Management
+
+The Admin manages Coin Sellers.
+
+Available Actions
+
+Approve Coin Seller
+
+Suspend Coin Seller
+
+Restore Coin Seller
+
+Assign Country
+
+Configure Coin Limits
+
+View Sales
+
+View Complaints
+
+View Wallet
+
+View Transaction History
+
+Audio Room Management
+
+Displays:
+
+Room Name
+
+Room ID
+
+Owner
+
+Online Users
+
+Country
+
+Language
+
+Running Game
+
+Gift Coins
+
+Room Level
+
+Available Actions
+
+Join Invisibly
+
+Close Room
+
+Lock Room
+
+View Chat
+
+View Room Logs
+
+View Gift History
+
+View Reports
+
+Record Session
+
+Capture Screenshot
+
+Video Room & Live Stream Management
+
+The Admin manages every Video Room and Live Stream.
+
+Available Actions
+
+Join Invisibly
+
+End Stream
+
+View Revenue
+
+View Viewer Statistics
+
+View Chat
+
+View Reports
+
+Record Session
+
+Capture Screenshot
+
+Games Management
+
+Supported Games
+
+Greedy Food
+
+Roulette
+
+Lucky Fruit
+
+Phoenix vs Wolf
+
+Flip
+
+Jackpot
+
+UNO
+
+Ludo
+
+Carrom
+
+Dominoes
+
+Available Actions
+
+Enable
+
+Disable
+
+Maintenance Mode
+
+Configure Multipliers
+
+Configure Rewards
+
+View Revenue
+
+View Current Players
+
+View Betting History
+
+View Audit Logs
+
+Wallet & Revenue Management
+
+Displays
+
+Coin Purchases
+
+Coin Sales
+
+Recharge Revenue
+
+Gift Revenue
+
+Game Revenue
+
+Agency Revenue
+
+Coin Seller Revenue
+
+Creator Revenue
+
+Daily Revenue
+
+Weekly Revenue
+
+Monthly Revenue
+
+Available Actions
+
+Wallet Adjustment
+
+Freeze Wallet
+
+Unfreeze Wallet
+
+Refund Transaction
+
+View Transaction History
+
+Configure Creator Revenue Sharing (Within permissions granted by Super Admin)
+
+Configure Creator Reward Coin Percentage (If permitted)
+
+Review Withdrawal Requests
+
+Every financial operation must be stored in Audit Logs.
+
+Verification Management
+
+The Admin reviews platform verification requests.
+
+Supported Categories
+
+Artist
+
+Singer
+
+Gaming Streamer
+
+Influencer
+
+Public Figure
+
+Brand
+
+Verified Creator
+
+Available Actions
+
+Review Application
+
+View Submitted Links
+
+View Supporting Documents
+
+Approve
+
+Reject
+
+Remove Verification
+
+Content Management
+
+The Admin manages operational platform content.
+
+Gift Management
+
+Create Gifts
+
+Edit Gifts
+
+Disable Gifts
+
+Configure Gift Pricing
+
+Configure Combo Gifts
+
+Configure Lucky Gifts
+
+Configure Festival Gifts
+
+Upload Gift Animations
+
+VIP Management
+
+Create VIP Plans
+
+Configure VIP Pricing
+
+Configure VIP Benefits
+
+Configure VIP Frames
+
+Configure VIP Entry Effects
+
+Frame Management
+
+Create Frames
+
+Edit Frames
+
+Disable Frames
+
+Assign Frames to Events
+
+Entry Effect Management
+
+Upload Entry Effects
+
+Configure Duration
+
+Assign Entry Effects to VIP
+
+Assign Entry Effects to Events
+
+Badge Management
+
+Create Badges
+
+Edit Badges
+
+Assign Badges to Roles
+
+Assign Badges to Events
+
+Theme & Background Management
+
+Create Themes
+
+Upload Backgrounds
+
+Configure Premium Themes
+
+Configure Festival Themes
+
+Asset Management
+
+Manage:
+
+Gifts
+
+Stickers
+
+Emojis
+
+Frames
+
+Entry Effects
+
+Themes
+
+Backgrounds
+
+Splash Banners
+
+Event Banners
+
+PK Animations
+
+Event Management
+
+The Admin can:
+
+Create Events
+
+Schedule Events
+
+Configure Event Rewards
+
+Configure Treasure Box Rewards
+
+Configure Lucky Rewards
+
+Configure Leaderboards
+
+Configure Festival Campaigns
+
+Task Management
+
+The Admin assigns and monitors tasks for:
+
+Managers
+
+Officials
+
+Moderators
+
+Business Developers
+
+Agencies
+
+Coin Sellers
+
+Each task contains:
+
+Task Name
+
+Description
+
+Assigned Role
+
+Assigned User
+
+Priority
+
+Start Date
+
+End Date
+
+Target
+
+Progress
+
+Completion Status
+
+Remarks
+
+Dashboard displays:
+
+Pending Tasks
+
+Completed Tasks
+
+Overdue Tasks
+
+Performance Summary
+
+Reports & Moderation
+
+The Admin reviews every platform report.
+
+Supported Categories
+
+Abuse
+
+Spam
+
+Harassment
+
+Fake Profile
+
+Sexual Content
+
+Violence
+
+Fraud
+
+Copyright
+
+Others
+
+Available Actions
+
+Review Report
+
+View Evidence
+
+Suspend User
+
+Remove Ban
+
+Close Report
+
+Escalate Investigation
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+Support System Management
+
+The Admin manages the day-to-day support operations of the Soulzaaa platform.
+
+The Admin supervises Officials, reviews escalated support cases, and ensures that user issues are resolved according to platform policies.
+
+The Admin should not directly communicate with normal users except in exceptional cases.
+
+Support Ticket Categories
+
+Users can raise support tickets for:
+
+Payment Issues
+
+Recharge Issues
+
+Withdrawal Issues
+
+Coin Seller Complaints
+
+Agency Complaints
+
+User Reports
+
+Audio Room Issues
+
+Video Live Issues
+
+Technical Bugs
+
+Account Recovery
+
+Ban Appeals
+
+General Support
+
+Each ticket contains:
+
+Ticket ID
+
+User Details
+
+Region
+
+Category
+
+Priority
+
+Assigned Staff
+
+Current Status
+
+Resolution History
+
+Tickets cannot be deleted.
+
+Ticket Routing Workflow
+
+Normal User Support
+
+User
+
+↓
+
+Regional Official
+
+↓
+
+Manager
+
+↓
+
+Admin
+
+↓
+
+Super Admin (Only platform-level cases.)
+
+VIP Support
+
+Normal Users
+
+Standard Support Queue
+
+VIP 4 / Diamond & Above
+
+Unlocks:
+
+Priority Support
+
+Faster Response
+
+Live Chat with available Regional Official during working hours
+
+VIP 9 / VIP 10 / Titan
+
+Unlocks:
+
+Premium Support
+
+Highest Priority Queue
+
+Dedicated Premium Support
+
+Escalation:
+
+Official
+
+↓
+
+Manager
+
+↓
+
+Admin
+
+↓
+
+Super Admin (Only if required.)
+
+Anonymous Support
+
+Support replies should always appear as:
+
+Soulzaaa Support
+
+Priority Support
+
+Premium Support
+
+Users should never know which Admin, Manager or Official handled the ticket.
+
+Admin Responsibilities
+
+The Admin can:
+
+View all support tickets.
+
+Assign tickets to Managers.
+
+Reassign tickets.
+
+Change priority.
+
+Override decisions.
+
+Reopen tickets.
+
+Close tickets.
+
+Review staff response quality.
+
+Configure support workflow (within assigned permissions).
+
+Internal Communication
+
+The Admin communicates internally through secure channels.
+
+Internal Anonymous Operations Group
+
+Members:
+
+Super Admin
+
+Admin
+
+Managers
+
+Purpose:
+
+Platform Operations
+
+Emergency Issues
+
+Security Alerts
+
+Policy Discussions
+
+Platform Announcements
+
+Event Planning
+
+Escalated Cases
+
+Business Rules
+
+Only members can access.
+
+Private chat with Super Admin is not available.
+
+Files are encrypted.
+
+Group history cannot be deleted.
+
+Every activity is stored in Audit Logs.
+
+Analytics & Performance Dashboard
+
+Displays
+
+Platform
+
+Daily Active Users
+
+Weekly Active Users
+
+Monthly Active Users
+
+User Growth
+
+User Retention
+
+Revenue
+
+Coin Sales
+
+Recharge Revenue
+
+Gift Revenue
+
+Game Revenue
+
+Creator Revenue
+
+Agency Revenue
+
+Operations
+
+Audio Room Analytics
+
+Video Room Analytics
+
+Live Stream Analytics
+
+Event Analytics
+
+Staff Performance
+
+Manager Performance
+
+Official Performance
+
+Moderator Performance
+
+BD Performance
+
+Agency Performance
+
+Coin Seller Performance
+
+Creator Performance
+
+Rankings
+
+Top Creators
+
+Top Agencies
+
+Top Coin Sellers
+
+Top Families
+
+Top Audio Rooms
+
+Top Live Streams
+
+Notifications
+
+Admin receives notifications for:
+
+Agency Applications
+
+Coin Seller Applications
+
+Verification Requests
+
+Moderator Requests
+
+BD Requests
+
+Critical Reports
+
+Escalated Support Tickets
+
+Payment Failures
+
+Withdrawal Issues
+
+Security Alerts
+
+Server Warnings
+
+Platform Errors
+
+Platform Settings
+
+Admin can configure operational platform settings within permissions granted by the Super Admin.
+
+Includes:
+
+Financial
+
+Coin Packages
+
+Recharge Packages
+
+Creator Revenue Sharing (If permitted)
+
+Creator Reward Coin Percentage (If permitted)
+
+Withdrawal Limits
+
+VIP
+
+VIP Plans
+
+VIP Pricing
+
+VIP Benefits
+
+Games
+
+Game Availability
+
+Betting Limits
+
+Multipliers
+
+Rewards
+
+User
+
+Levels
+
+EXP Rules
+
+Ranking Rules
+
+Content
+
+Gifts
+
+Frames
+
+Entry Effects
+
+Themes
+
+Badges
+
+Treasure Boxes
+
+Lucky Boxes
+
+Localization
+
+Countries
+
+Regions
+
+Languages
+
+Notifications
+
+Push Notifications
+
+In-App Notifications
+
+Admin cannot modify platform security policies reserved for the Super Admin.
+
+Invisible Monitoring
+
+The Admin can silently monitor:
+
+Audio Rooms
+
+Video Rooms
+
+Live Streams
+
+Private Rooms
+
+Business Rules
+
+No join notification.
+
+No profile visibility.
+
+No audience visibility.
+
+No member list visibility.
+
+No viewer count increase.
+
+Invisible monitoring is used only for moderation and investigations.
+
+Automatic Investigation Recording
+
+Whenever the Admin joins a room or stream using Invisible Mode:
+
+The system automatically:
+
+Starts secure recording.
+
+Stops recording after exit.
+
+Encrypts recordings.
+
+Stores recordings securely.
+
+Every recording stores:
+
+Investigation ID
+
+Room / Live ID
+
+Start Time
+
+End Time
+
+Investigation Reason
+
+Admin ID
+
+Device Information
+
+IP Address
+
+Users are never notified.
+
+Investigation Tools
+
+The Admin can:
+
+View Chat History
+
+View Login History
+
+View Device History
+
+View Wallet History
+
+View Gift History
+
+View Reports
+
+Capture Screenshot
+
+Record Audio Room
+
+Record Video Room
+
+Record Live Stream
+
+Export Investigation Report
+
+Every investigation is permanently stored.
+
+Audit Logs
+
+Every Admin activity must be recorded.
+
+Stores:
+
+Timestamp
+
+Admin ID
+
+Action
+
+Module
+
+Target User
+
+Device Information
+
+Browser
+
+Operating System
+
+IP Address
+
+Previous Value
+
+Updated Value
+
+Audit Logs:
+
+Cannot be deleted.
+
+Cannot be modified.
+
+Visible to Super Admin.
+
+Security Features
+
+The Admin Portal supports:
+
+Two-Factor Authentication (2FA)
+
+Device Verification
+
+Device Binding
+
+IP Verification
+
+Login Alerts
+
+Session Timeout
+
+Automatic Logout
+
+Role-Based Access Control (RBAC)
+
+Secure Audit Logging
+
+Only one active login session is allowed.
+
+Restrictions
+
+The Admin cannot:
+
+Create or delete Super Admin accounts.
+
+View Super Admin identity.
+
+Contact Super Admin privately.
+
+Modify platform security policies reserved for Super Admin.
+
+Delete Audit Logs.
+
+Delete Financial Transactions.
+
+Edit completed settlement records.
+
+Edit historical wallet transactions.
+
+Delete platform activity history.
+
+Override restrictions imposed by the Super Admin.
+
+The Admin operates only within permissions granted by the Super Admin.
+
+Technical Requirements
+
+Dedicated Admin Portal
+
+Operational Dashboard
+
+WebSocket-based Live Monitoring
+
+Role-Based Access Control (RBAC)
+
+Secure Investigation Recording
+
+Real-Time Analytics
+
+Automatic Session Expiration
+
+Complete Activity Logging
+
+Scalable Architecture
+
+Note :
+
+The Admin is the second-highest operational authority in Soulzaaa and is responsible for managing the platform's daily operations. The Admin oversees Managers, Officials, Moderators, Business Developers, Agencies, Coin Sellers, Creators, platform content, support operations, events, and moderation while operating under the authority of the Super Admin.
+
+The Admin must remain anonymous to platform users and lower operational roles. All critical actions—including some financial operations, investigations, approvals, moderation, support decisions, and configuration changes—must be securely logged and auditable. The Admin has broad operational authority but cannot access or modify Super Admin–exclusive settings, identities, or security controls.
+
+ 
+
+ 
+
+Soulzaaa Authority Matrix
+
+This matrix defines the difference between Super Admin and Admin responsibilities. Although both roles have access to most platform modules, their level of authority is different.
+
+Super Admin is the highest authority and controls platform strategy, security, business rules, and global configuration.
+
+Admin is responsible for daily platform operations and executes business processes within the permissions granted by the Super Admin.
+
+Module
+
+Super Admin
+
+Admin
+
+Platform Security
+
+✅ Full Control
+
+❌ View Only
+
+Global Platform Settings
+
+✅ Full Control
+
+❌ Cannot Modify
+
+Revenue Sharing Configuration
+
+✅
+
+❌ Cannot Modify
+
+Creator Reward Coin Percentage
+
+✅
+
+❌ Cannot Modify
+
+Coin Pricing
+
+✅
+
+❌ Cannot Modify
+
+VIP Pricing & Benefits
+
+✅
+
+❌ Cannot Modify
+
+Payment Gateway Configuration
+
+✅
+
+❌ Cannot Modify
+
+Platform Policies
+
+✅
+
+❌ Cannot Modify
+
+System Configuration
+
+✅
+
+❌ Cannot Modify
+
+App Maintenance Mode
+
+✅
+
+❌ Cannot Modify
+
+Emergency Platform Shutdown
+
+✅
+
+❌ Cannot Perform
+
+Admin Management
+
+✅ Full Control
+
+❌ Cannot Create/Delete Admin
+
+Manager Management
+
+✅
+
+✅
+
+Official Management
+
+✅
+
+✅
+
+Moderator Management
+
+✅
+
+✅
+
+Business Development (BD) Management
+
+✅
+
+✅
+
+Agency Management
+
+✅
+
+✅
+
+Coin Seller Management
+
+✅
+
+✅
+
+User Management
+
+✅
+
+✅
+
+Creator Management
+
+✅
+
+✅
+
+Verification Management
+
+✅
+
+✅
+
+Content Management
+
+✅
+
+✅
+
+Event Management
+
+✅
+
+✅
+
+Task Management
+
+✅
+
+✅
+
+Reports & Moderation
+
+✅
+
+✅
+
+Support System
+
+Monitor & Final Escalation
+
+Daily Operations
+
+Analytics Dashboard
+
+Global Platform Analytics
+
+Operational Analytics
+
+Invisible Monitoring
+
+✅
+
+✅
+
+Investigation Tools
+
+Final Investigation Authority
+
+Operational Investigation
+
+Audit Logs
+
+View All Logs
+
+View Operational Logs
+
+Wallet Adjustment
+
+Unlimited (Audit Logged)
+
+Within Assigned Permission
+
+Refund Approval
+
+Final Authority
+
+Operational Approval
+
+Financial Reports
+
+Complete Platform
+
+Operational Reports
+
+Platform Announcements
+
+Global
+
+Operational
+
+Force Logout All Users
+
+✅
+
+❌
+
+Override Admin Decisions
+
+✅
+
+❌
+
+Override Manager Decisions
+
+✅
+
+✅
+
+Override Official Decisions
+
+✅
+
+✅
+
+Override Moderator Decisions
+
+✅
+
+✅
+
+Override Agency Decisions
+
+✅
+
+✅
+
+Override Coin Seller Decisions
+
+✅
+
+✅
+
+Role Summary
+
+👑 Super Admin (Platform Owner / CEO)
+
+The Super Admin is the highest authority of the Soulzaaa platform and is responsible for platform architecture, business strategy, security, financial policies, revenue models, system configuration, global settings, and final decision-making.
+
+The Super Admin manages Admins, defines platform rules, configures core business logic, approves platform-wide changes, and serves as the final escalation authority for all critical issues.
+
+The Super Admin works on the business, not in the daily operations.
+
+🛠️ Admin (Operations Head / COO)
+
+The Admin is responsible for executing and managing the day-to-day operations of the Soulzaaa platform.
+
+The Admin manages Managers, Officials, Moderators, Business Developers, Agencies, Coin Sellers, Creators, Users, platform events, content approvals, moderation, reports, support operations, and business execution.
+
+The Admin cannot modify platform security, revenue models, payment configurations, or global platform settings reserved for the Super Admin.
+
+The Admin works in the business, ensuring that daily platform operations run smoothly according to the policies defined by the Super Admin.
+
+Developer Note
+
+The Super Admin and Admin panels should have a very similar interface to simplify development and maintenance. However, access to sensitive actions must be controlled using Role-Based Access Control (RBAC).
+
+If an Admin attempts to access a Super Admin–only action (such as changing revenue sharing, coin pricing, platform security, or global settings), the system must block the action and display an authorization message or require Super Admin approval.
+
+This approach keeps the UI consistent while enforcing clear authority boundaries, making the platform secure, scalable, and easier to maintain.
+
+ Soulzaaa Role Management & Functional Requirements
+
+1. Super Admin
+
+Overview
+
+The Super Admin is the highest authority of the Soulzaaa platform and has complete control over every module, feature, business operation, user, financial transaction, platform configuration, security policy, and operational role.
+
+Only a limited number of Super Admin accounts should exist. These accounts are created manually by the Platform Owner and cannot be created through the application.
+
+The Super Admin is responsible for overall platform management, revenue management, moderation, analytics, content management, security, business operations, and system configuration.
+
+The Super Admin account must remain completely hidden from all Users, Creators, Agencies, Coin Sellers, Business Developers (BD), Moderators, Officials, and Managers.
+
+Super Admin Account
+
+Created manually by Platform Owner.
+
+Cannot be registered from the application.
+
+Cannot be deleted by Admin.
+
+Cannot be searched.
+
+Cannot be followed.
+
+Cannot receive follow requests.
+
+Cannot receive gifts.
+
+Cannot receive private messages.
+
+Cannot be tagged.
+
+Cannot appear in rankings.
+
+Cannot appear in audience list.
+
+Cannot appear in room member list.
+
+Cannot appear in live viewers list.
+
+Cannot appear in profile search.
+
+Profile link cannot be shared.
+
+Hidden from Users, Creators, Agencies, Coin Sellers, BD, Officials, Managers and Moderators.
+
+Only another Super Admin can identify or access a Super Admin account.
+
+Login
+
+The Super Admin logs in using a dedicated Admin Portal.
+
+Authentication supports:
+
+Username / Email
+
+Password
+
+Two-Factor Authentication (2FA)
+
+OTP Verification (Optional)
+
+Device Verification
+
+IP Verification
+
+Every login stores:
+
+Login Time
+
+Logout Time
+
+Device Information
+
+Browser
+
+Operating System
+
+IP Address
+
+Country
+
+Login Status
+
+Dashboard
+
+After login, the Super Admin should see the Global Dashboard.
+
+Dashboard displays:
+
+Platform Statistics
+
+Total Registered Users
+
+Online Users
+
+Daily Active Users
+
+Monthly Active Users
+
+New Registrations
+
+Platform Roles
+
+Total Creators
+
+Total Agencies
+
+Total Coin Sellers
+
+Total Business Development (BD)
+
+Total Managers
+
+Total Officials
+
+Total Moderators
+
+Live Activities
+
+Active Audio Rooms
+
+Active Video Rooms
+
+Active Live Streams
+
+Running Games
+
+Revenue
+
+Daily Revenue
+
+Weekly Revenue
+
+Monthly Revenue
+
+Coin Sales
+
+Gift Revenue
+
+Recharge Revenue
+
+Game Revenue
+
+Platform Operations
+
+Pending Reports
+
+Pending Support Tickets
+
+Pending Approvals
+
+Active Events
+
+Platform Health Status
+
+Every dashboard card should redirect to its respective management page.
+
+Sidebar Menu
+
+The Super Admin Panel should contain:
+
+Dashboard
+
+User Management
+
+Creator Management
+
+Admin Management
+
+Manager Management
+
+Official Management
+
+Moderator Management
+
+Business Development (BD)
+
+Agency Management
+
+Coin Seller Management
+
+Audio Room Management
+
+Video Room Management
+
+Live Stream Management
+
+Games Management
+
+Wallet Management
+
+Revenue Management
+
+Payment Management
+
+Verification Management
+
+Content Management
+
+Event Management
+
+Task Management
+
+Reports & Moderation
+
+Analytics
+
+Notifications
+
+Platform Settings
+
+Audit Logs
+
+Logout
+
+User Management
+
+The Super Admin can manage every registered user.
+
+Search Filters
+
+User ID
+
+Custom ID
+
+Username
+
+Mobile Number
+
+Email
+
+Country
+
+Region
+
+Language
+
+VIP Level
+
+User Level
+
+Online / Offline
+
+Registration Date
+
+Last Login
+
+Account Status
+
+Clicking a user opens the complete profile.
+
+Available Information
+
+Basic Profile
+
+Gold Coin Wallet
+
+Creator Wallet
+
+Creator Analytics
+
+Coin History
+
+Recharge History
+
+Gift History
+
+Game History
+
+Audio Room History
+
+Video Room History
+
+Live Stream History
+
+Earnings
+
+Device History
+
+Login History
+
+Reports
+
+Warning History
+
+Family Details
+
+Agency Details
+
+Creator Details
+
+Available Actions
+
+Suspend Account
+
+Restore Account
+
+Freeze Wallet
+
+Unfreeze Wallet
+
+Force Logout
+
+Reset Device
+
+Reset Password
+
+View Audit History
+
+Every action must be stored permanently in Audit Logs.
+
+Creator Management
+
+The Super Admin manages every Creator on the platform.
+
+Supported Categories:
+
+Audio Creators
+
+Video Creators
+
+Artists
+
+Singers
+
+Gaming Streamers
+
+Influencers
+
+Verified Creators
+
+Available Features
+
+View Creator Profile
+
+View Creator Analytics
+
+View Performance
+
+View Streaming Hours
+
+View Revenue
+
+View Gifts
+
+View Followers
+
+View Violations
+
+Assign to Agency
+
+Remove from Agency
+
+Suspend Creator
+
+Restore Creator
+
+Review Verification Requests
+
+Role Management
+
+The Super Admin has complete control over platform roles.
+
+Supported Roles:
+
+Admin
+
+Manager
+
+Official
+
+Moderator
+
+Business Development (BD)
+
+Agency
+
+Coin Seller
+
+Available Actions
+
+Create
+
+Edit
+
+Approve
+
+Reject
+
+Suspend
+
+Restore
+
+Reset Password
+
+Reset Device
+
+Change Permissions
+
+View Performance
+
+View Earnings
+
+View Activity Logs
+
+Audio Room Management
+
+The Super Admin can monitor and manage every Audio Room.
+
+Displays:
+
+Room Name
+
+Room ID
+
+Owner
+
+Online Users
+
+Country
+
+Language
+
+Running Game
+
+Gift Coins
+
+Room Level
+
+Available Actions
+
+Join Room Invisibly
+
+Close Room
+
+Lock Room
+
+View Chat
+
+View Room Logs
+
+View Gift History
+
+View Reports
+
+Record Session
+
+Capture Screenshot
+
+Video Room & Live Stream Management
+
+The Super Admin can monitor every Video Room and Live Stream.
+
+Available Actions
+
+Join Invisibly
+
+End Live Stream
+
+View Revenue
+
+View Viewer Statistics
+
+View Chat
+
+View Reports
+
+Record Session
+
+Capture Screenshot
+
+Games Management
+
+The Super Admin manages every game available on the platform.
+
+Supported Games:
+
+Greedy Food
+
+Roulette
+
+Lucky Fruit
+
+Phoenix vs Wolf
+
+Flip
+
+Jackpot
+
+UNO
+
+Ludo
+
+Carrom
+
+Dominoes
+
+Available Actions
+
+Enable
+
+Disable
+
+Maintenance Mode
+
+Configure Multipliers
+
+Configure Rewards
+
+View Revenue
+
+View Current Players
+
+View Current Round
+
+View Betting History
+
+View Audit Logs
+
+Wallet & Revenue Management
+
+Displays:
+
+Coin Purchases
+
+Coin Sales
+
+Recharge Revenue
+
+Gift Revenue
+
+Game Revenue
+
+Agency Revenue
+
+Coin Seller Revenue
+
+Creator Revenue
+
+Daily Revenue
+
+Weekly Revenue
+
+Monthly Revenue
+
+Available Actions
+
+Wallet Adjustment
+
+Freeze Wallet
+
+Unfreeze Wallet
+
+Refund Transaction
+
+View Transaction History
+
+Configure Creator Revenue Sharing
+
+Configure Creator Reward Coin Percentage
+
+Configure Coin Pricing
+
+Every financial operation must be permanently stored in Audit Logs.
+
+Verification Management
+
+The Super Admin reviews and manages all verification requests.
+
+Supported Categories:
+
+Artist
+
+Singer
+
+Gaming Streamer
+
+Influencer
+
+Public Figure
+
+Brand
+
+Verified Creator
+
+Available Actions
+
+Review Application
+
+View Submitted Links
+
+View Supporting Documents
+
+Approve
+
+Reject
+
+Remove Verification
+
+Content Management
+
+The Super Admin manages all platform content.
+
+Gift Management
+
+Create Gifts
+
+Edit Gifts
+
+Disable Gifts
+
+Configure Gift Pricing
+
+Configure Combo Gifts
+
+Configure Lucky Gifts
+
+Configure Festival Gifts
+
+Upload Gift Animations
+
+VIP Management
+
+Create VIP Plans
+
+Configure VIP Pricing
+
+Configure VIP Duration
+
+Configure VIP Benefits
+
+Configure VIP Badges
+
+Configure VIP Frames
+
+Configure VIP Entry Effects
+
+Frame Management
+
+Create Frames
+
+Edit Frames
+
+Disable Frames
+
+Assign Frames to Events
+
+Assign Frames to Treasure Boxes
+
+Entry Effect Management
+
+Upload Entry Effects
+
+Configure Duration
+
+Configure Priority
+
+Assign to VIP
+
+Assign to Events
+
+Assign to Treasure Boxes
+
+Badge Management
+
+Create Badges
+
+Edit Badges
+
+Disable Badges
+
+Assign Badges to Roles
+
+Assign Badges to Events
+
+Theme & Background Management
+
+Create Themes
+
+Upload Backgrounds
+
+Configure Premium Themes
+
+Configure Festival Themes
+
+Asset Management
+
+Manage:
+
+Gifts
+
+Stickers
+
+Emojis
+
+Frames
+
+Entry Effects
+
+Themes
+
+Backgrounds
+
+Splash Banners
+
+Event Banners
+
+PK Animations
+
+Event Management
+
+The Super Admin can:
+
+Create Events
+
+Schedule Events
+
+Configure Event Rewards
+
+Configure Treasure Box Rewards
+
+Configure Lucky Rewards
+
+Configure Leaderboards
+
+Configure Festival Campaigns
+
+Task Management
+
+The Super Admin can assign tasks to operational roles.
+
+Supported Roles:
+
+Manager
+
+Official
+
+Moderator
+
+Business Development
+
+Agency
+
+Coin Seller
+
+Every task contains:
+
+Task Name
+
+Description
+
+Assigned Role
+
+Assigned User
+
+Priority
+
+Start Date
+
+End Date
+
+Target
+
+Progress
+
+Completion Status
+
+Remarks
+
+Dashboard displays:
+
+Pending Tasks
+
+Completed Tasks
+
+Overdue Tasks
+
+Performance Summary
+
+Reports & Moderation
+
+The Super Admin reviews every report submitted on the platform.
+
+Supported Categories:
+
+Abuse
+
+Spam
+
+Harassment
+
+Fake Profile
+
+Sexual Content
+
+Violence
+
+Fraud
+
+Copyright
+
+Others
+
+Available Actions
+
+Review Report
+
+View Evidence
+
+Suspend User
+
+Remove Ban
+
+Close Report
+
+Escalate Investigation
+
+ 
+
+Support System Management
+
+The Super Admin manages and monitors the complete Soulzaaa Support System.
+
+The Super Admin never communicates directly with Users, Creators, Agencies, Coin Sellers, Business Developers (BD), Moderators, Officials, or Managers.
+
+The Super Admin becomes involved only when a support case reaches the highest escalation level.
+
+Support Ticket Categories
+
+Users can raise support tickets for:
+
+Payment Issues
+
+Recharge Issues
+
+Withdrawal Issues
+
+Coin Seller Complaints
+
+Agency Complaints
+
+User Reports
+
+Audio Room Issues
+
+Video Live Issues
+
+Technical Bugs
+
+Account Recovery
+
+Ban Appeals
+
+General Support
+
+Every ticket receives:
+
+Unique Ticket ID
+
+Created Date & Time
+
+Ticket Category
+
+Priority
+
+Assigned Staff
+
+Current Status
+
+Resolution History
+
+Tickets are permanently stored and cannot be deleted.
+
+Ticket Routing Workflow
+
+The system automatically routes tickets according to:
+
+User Region
+
+Ticket Category
+
+Priority
+
+Staff Availability
+
+Normal User Support Flow
+
+User
+
+↓
+
+Help & Support
+
+↓
+
+Regional Official
+
+↓
+
+Issue Resolved
+
+If unresolved
+
+↓
+
+Manager
+
+↓
+
+Admin
+
+↓
+
+Super Admin (Platform-Level Cases Only)
+
+VIP Support
+
+Normal Users
+
+Standard Support Queue
+
+VIP 4 / Diamond & Above
+
+Unlock:
+
+Priority Support
+
+Priority Ticket Queue
+
+Faster Response Time
+
+Live Chat with available Regional Support
+
+VIP 9 / VIP 10 / Titan
+
+Unlock:
+
+Premium Support
+
+Highest Priority Queue
+
+Dedicated Premium Support
+
+Fastest Response Time
+
+Escalation Flow
+
+Official
+
+↓
+
+Manager
+
+↓
+
+Admin
+
+↓
+
+Super Admin (Only if absolutely required.)
+
+Anonymous Support
+
+Users must never know which internal staff member handled the ticket.
+
+Support replies always appear as:
+
+Soulzaaa Support
+
+Priority Support
+
+Premium Support
+
+Internal identities including:
+
+Official
+
+Manager
+
+Admin
+
+Super Admin
+
+must never be exposed.
+
+Super Admin Support Responsibilities
+
+The Super Admin can:
+
+Configure Support Categories
+
+Configure Ticket Priorities
+
+Configure SLA (Response Time)
+
+Configure Automatic Ticket Routing
+
+Configure Escalation Rules
+
+View All Support Tickets
+
+Review Escalated Tickets
+
+Override Ticket Decisions
+
+Reopen Closed Tickets
+
+Close Tickets
+
+Monitor Support Performance
+
+Monitor Support Quality
+
+The Super Admin never directly replies to users.
+
+Internal Communication & Identity Protection
+
+The Super Admin identity must remain completely anonymous throughout the platform.
+
+Communication Restrictions
+
+The following roles cannot directly contact the Super Admin:
+
+Users
+
+Creators
+
+Agencies
+
+Coin Sellers
+
+Business Development (BD)
+
+Moderators
+
+Officials
+
+Managers
+
+There is no private one-to-one communication with the Super Admin.
+
+Internal Anonymous Operations Group
+
+The Super Admin communicates only through an internal anonymous group.
+
+Members:
+
+Super Admin
+
+Admin
+
+Managers
+
+Purpose:
+
+Platform Operations
+
+Emergency Announcements
+
+Security Alerts
+
+Internal Discussions
+
+Policy Decisions
+
+Event Planning
+
+Escalated Cases
+
+Business Rules
+
+Only these members can access the group.
+
+Group messages cannot be forwarded.
+
+Screenshots and screen recording should be blocked where supported.
+
+Files remain encrypted.
+
+Complete conversation history is permanently stored.
+
+Audit Logs record every activity.
+
+Group cannot be deleted.
+
+Analytics & Performance Dashboard
+
+Displays:
+
+Platform Analytics
+
+Daily Active Users
+
+Weekly Active Users
+
+Monthly Active Users
+
+User Retention
+
+User Growth
+
+Financial Analytics
+
+Coin Sales
+
+Recharge Revenue
+
+Gift Revenue
+
+Game Revenue
+
+Withdrawal Statistics
+
+Creator Revenue
+
+Agency Revenue
+
+Operational Analytics
+
+Audio Room Analytics
+
+Video Room Analytics
+
+Live Stream Analytics
+
+Family Analytics
+
+Event Analytics
+
+Performance Analytics
+
+Agency Performance
+
+Coin Seller Performance
+
+Moderator Performance
+
+Official Performance
+
+Manager Performance
+
+Business Development Performance
+
+Creator Performance
+
+Rankings
+
+Top Creators
+
+Top Agencies
+
+Top Coin Sellers
+
+Top Families
+
+Top Audio Rooms
+
+Top Live Streams
+
+Top Games
+
+Notifications
+
+The Super Admin receives notifications for:
+
+New Agency Applications
+
+Coin Seller Applications
+
+Moderator Requests
+
+Business Development Requests
+
+Verification Requests
+
+Critical Reports
+
+Critical Support Tickets
+
+Security Alerts
+
+Payment Failures
+
+Withdrawal Issues
+
+Server Alerts
+
+Platform Warnings
+
+Failed Background Jobs
+
+System Errors
+
+Platform Settings
+
+The Super Admin configures platform-wide settings.
+
+Includes:
+
+Financial
+
+Coin Packages
+
+Recharge Packages
+
+Revenue Sharing
+
+Creator Reward Coin Percentage
+
+Withdrawal Rules
+
+Minimum Withdrawal
+
+Maximum Withdrawal
+
+VIP
+
+VIP Plans
+
+VIP Pricing
+
+VIP Duration
+
+VIP Benefits
+
+Games
+
+Game Availability
+
+Multipliers
+
+Betting Limits
+
+Jackpot Configuration
+
+User System
+
+Levels
+
+EXP Rules
+
+Ranking Rules
+
+Registration Rules
+
+Referral Rules (Future)
+
+Content
+
+Gifts
+
+Frames
+
+Entry Effects
+
+Themes
+
+Badges
+
+Treasure Boxes
+
+Lucky Boxes
+
+Localization
+
+Countries
+
+Regions
+
+Languages
+
+Payments
+
+Payment Gateways
+
+Tax Rules
+
+Currency Settings
+
+Notifications
+
+Push Notifications
+
+In-App Notifications
+
+Email Templates
+
+SMS Templates
+
+Security
+
+Login Policies
+
+Password Policies
+
+Session Timeout
+
+Device Policies
+
+Invisible Monitoring
+
+The Super Admin can silently monitor:
+
+Audio Rooms
+
+Video Rooms
+
+Live Streams
+
+Private Rooms
+
+Family Chats
+
+Business Rules
+
+No Join Notification
+
+No Entry Animation
+
+No Audience Visibility
+
+No Member List Visibility
+
+No Viewer Count Increase
+
+No Public Presence
+
+Only Audit Logs record the session.
+
+Automatic Investigation Recording
+
+Whenever the Super Admin joins any activity using Invisible Mode:
+
+The system automatically:
+
+Starts secure recording
+
+Stores encrypted recording
+
+Stops recording after exit
+
+Creates Investigation Record
+
+No manual recording is required.
+
+Users are never notified.
+
+Every recording stores:
+
+Investigation ID
+
+Room / Live ID
+
+Start Time
+
+End Time
+
+Investigation Reason
+
+Super Admin ID
+
+Device Information
+
+IP Address
+
+Investigation Tools
+
+The Super Admin can:
+
+View Chat History
+
+View Login History
+
+View Device History
+
+View Wallet History
+
+View Gift History
+
+View Reports
+
+Capture Screenshot
+
+Record Room Session
+
+Record Live Stream
+
+Export Investigation Report
+
+Every investigation is permanently stored.
+
+Audit Logs
+
+Every Super Admin activity must be recorded.
+
+Stores:
+
+Timestamp
+
+Super Admin ID
+
+Action
+
+Module
+
+Target User
+
+Device Information
+
+Browser
+
+Operating System
+
+IP Address
+
+Previous Value
+
+Updated Value
+
+Audit Logs:
+
+Cannot be deleted.
+
+Cannot be modified.
+
+Cannot be exported without authorization.
+
+Security Features
+
+The Super Admin Portal must support:
+
+Two-Factor Authentication (2FA)
+
+Device Verification
+
+IP Verification
+
+Device Binding
+
+Login Alerts
+
+Session Timeout
+
+Automatic Logout
+
+Encrypted Sessions
+
+Role-Based Access Control (RBAC)
+
+Secure Audit Logging
+
+Only one active login session is allowed per Super Admin account.
+
+Restrictions
+
+Even though the Super Admin has complete platform control, the system must not allow:
+
+Deleting Audit Logs
+
+Editing completed Financial Transactions
+
+Editing completed Settlement Records
+
+Editing historical Wallet Transactions
+
+Deleting Platform Activity History
+
+Direct communication with platform users
+
+Identity exposure under any circumstance
+
+These restrictions ensure:
+
+Security
+
+Transparency
+
+Accountability
+
+Compliance
+
+Data Integrity
+
+Technical Requirements
+
+Dedicated Admin Portal
+
+Global Real-Time Dashboard
+
+WebSocket-based Live Monitoring
+
+Secure Role-Based Access Control (RBAC)
+
+Automatic Session Expiration
+
+Complete Activity Logging
+
+Real-Time Analytics
+
+High Availability Monitoring
+
+Secure Investigation Recording
+
+Scalable Architecture
+
+Note : 
+
+The Super Admin is the highest privileged role within the Soulzaaa ecosystem and serves as the master control center for the entire platform. Every module—including users, creators, staff, agencies, coin sellers, audio rooms, video live, games, wallets, revenue, verification, content, events, analytics, support, and platform settings—must ultimately be manageable from the Super Admin panel.
+
+The Super Admin must remain completely anonymous and cannot be contacted directly by any platform user or operational role. All communication must follow the defined hierarchy and occur only through the Internal Anonymous Operations Group where applicable.
+
+Every Super Admin activity—including monitoring, investigations, financial actions, approvals, configuration changes, and moderation—must be securely logged, encrypted where appropriate, fully auditable, and permanently stored. The Super Admin panel should be designed with maximum security, scalability, operational transparency, and future extensibility to support the long-term growth of the Soulzaaa platform.
+
+ 
+
+ Soulzaaa Role Management & Functional Requirements
+
+Official
+
+Overview
+
+The Official is responsible for managing all Soulzaaa operations within one or more assigned States or Regions under a specific Country.
+
+Officials are created only by the Manager and work under the assigned Country Manager.
+
+Officials are the regional representatives of Soulzaaa and act as the primary operational bridge between the platform and its regional community, including Users, Creators, Agencies, Coin Sellers, and Business Development (BD).
+
+Officials manage community growth, regional support, creators, agencies, coin sellers, reports, regional campaigns, festivals, community engagement programs, and operational performance.
+
+Officials are also responsible for planning regional festivals, agency competitions, family events, seasonal campaigns, and community engagement activities. Since Officials understand local culture, festivals, and user behavior, all regional event ideas originate from them.
+
+Officials cannot approve platform roles, platform assets, financial operations, or platform settings. Their responsibility is to monitor, organize, verify, recommend, coordinate, and distribute approved resources.
+
+Officials are operational representatives, not investigation officers.
+
+Official Account
+
+Created only by Manager.
+
+Cannot self-register.
+
+Assigned to one or multiple Regions/States.
+
+Reports only to the assigned Manager.
+
+Can only be suspended or removed by Manager or Admin.
+
+Receives Official Badge.
+
+Receives Official Profile Frame.
+
+Receives unique Custom ID.
+
+Cannot change assigned Region without Manager approval.
+
+Cannot identify Admin or Super Admin identities.
+
+Login
+
+Official logs in through the Staff Portal.
+
+Authentication supports:
+
+Username / Email
+
+Password
+
+Two-Factor Authentication (2FA)
+
+Device Verification
+
+IP Verification
+
+Every login records:
+
+Login Time
+
+Logout Time
+
+Device Information
+
+Browser
+
+Operating System
+
+IP Address
+
+Login Status
+
+Dashboard
+
+After login, the Official sees the Regional Operations Dashboard.
+
+Regional Statistics
+
+Total Users
+
+Online Users
+
+Active Creators
+
+Total Agencies
+
+Total Coin Sellers
+
+Active Families
+
+Active Audio Rooms
+
+Active Video Rooms
+
+Active Live Streams
+
+Operations
+
+Pending User Support Tickets
+
+Pending Agency Requests
+
+Pending Coin Seller Requests
+
+Pending Reports
+
+Pending Moderator Recommendations
+
+Pending BD Recommendations
+
+Pending Content Requests
+
+Assigned Tasks
+
+Running Regional Events
+
+Performance
+
+Regional Revenue
+
+Regional Performance
+
+Agency Performance
+
+Creator Performance
+
+Coin Seller Performance
+
+Every dashboard card redirects to its respective management page.
+
+Sidebar Menu
+
+Dashboard
+
+User Support
+
+Agency Management
+
+Coin Seller Management
+
+Creator Management
+
+Moderator Recommendations
+
+BD Recommendations
+
+Regional Events
+
+Content Requests
+
+Inventory
+
+Audio Room Monitoring
+
+Video Room Monitoring
+
+Live Stream Monitoring
+
+Reports
+
+Task Management
+
+Analytics
+
+Notifications
+
+Audit Logs
+
+Logout
+
+Regional Operations
+
+Officials are responsible for:
+
+User Support
+
+Creator Support
+
+Agency Support
+
+Coin Seller Support
+
+Community Growth
+
+Regional Campaigns
+
+Regional Performance
+
+Community Engagement
+
+Event Coordination
+
+Monitoring Regional Activities
+
+Forwarding Operational Requests
+
+Officials are the first operational contact for their assigned region.
+
+Agency Management
+
+Officials supervise Agencies within their assigned region.
+
+Available Features
+
+View Agency Profile
+
+View Performance
+
+View Revenue
+
+View Creator Count
+
+View Host Count
+
+View Coin Seller Status
+
+Review Complaints
+
+Assign Monthly Tasks
+
+Reward Eligible Agencies
+
+Recommend Suspension
+
+Agency Approval Workflow
+
+Agency applies
+
+↓
+
+Official verifies application and eligibility
+
+↓
+
+Manager reviews
+
+↓
+
+Admin approves or rejects
+
+Officials cannot approve or reject Agencies.
+
+Coin Seller Management
+
+Officials supervise Coin Sellers.
+
+Available Features
+
+View Coin Seller Profile
+
+View Sales
+
+View Performance
+
+Review Complaints
+
+Assign Operational Tasks
+
+Verify Coin Seller Eligibility
+
+Recommend Suspension
+
+Coin Seller Workflow
+
+Agency becomes eligible
+
+↓
+
+Official verifies eligibility
+
+↓
+
+Manager reviews
+
+↓
+
+Admin approves
+
+Officials cannot activate Coin Seller accounts.
+
+Creator Management
+
+Officials monitor Creators.
+
+Supported Categories:
+
+Hosts
+
+Artists
+
+Singers
+
+Gaming Streamers
+
+Influencers
+
+Verified Creators
+
+Available Features
+
+View Creator Profile
+
+View Performance
+
+View Streaming Hours
+
+View Revenue (Read Only)
+
+View Followers
+
+View Violations
+
+View Agency Assignment
+
+Review Complaints
+
+Assign Tasks
+
+Recommend Suspension
+
+Officials cannot suspend Creators directly or approve withdrawals.
+
+Moderator Recommendation
+
+Workflow
+
+Official identifies Moderator candidate
+
+↓
+
+Verifies candidate
+
+↓
+
+Submits recommendation to Manager
+
+↓
+
+Manager reviews
+
+↓
+
+Admin approves or rejects
+
+Officials can:
+
+Submit Recommendation
+
+View Recommendation Status
+
+Add Verification Notes
+
+Officials cannot approve Moderators.
+
+Business Development (BD) Recommendation
+
+Workflow
+
+Official identifies BD candidate
+
+↓
+
+Verifies candidate
+
+↓
+
+Submits recommendation
+
+↓
+
+Manager reviews
+
+↓
+
+Admin approves or rejects
+
+Officials can:
+
+Submit Recommendation
+
+Track Recommendation Status
+
+Add Verification Notes
+
+Officials cannot approve BD accounts.
+
+Regional Event Management
+
+Officials are responsible for planning and coordinating regional events.
+
+Examples:
+
+Sankranti
+
+Ugadi
+
+Vinayaka Chavithi
+
+Dasara
+
+Deepavali
+
+Ramzan
+
+Christmas
+
+Pongal
+
+Onam
+
+Kannada Rajyotsava
+
+State Anniversary Events
+
+Local Community Events
+
+Agency Events
+
+Family Events
+
+Every Event Proposal includes:
+
+Event Name
+
+Description
+
+Event Duration
+
+Region
+
+Expected Participants
+
+Rewards Required
+
+Festival Gifts Required
+
+Frames Required
+
+Entry Effects Required
+
+Themes Required
+
+Expected Revenue
+
+Workflow
+
+Official creates proposal
+
+↓
+
+Manager reviews
+
+↓
+
+Admin approves
+
+↓
+
+Design Team develops assets
+
+↓
+
+Admin uploads assets
+
+↓
+
+Manager Inventory
+
+↓
+
+Official Inventory
+
+↓
+
+Agency Inventory
+
+↓
+
+Users
+
+Content Requests
+
+Officials can request:
+
+Festival Gifts
+
+Festival Frames
+
+Festival Entry Effects
+
+Festival Themes
+
+Family Event Rewards
+
+Agency Event Rewards
+
+Event Badges
+
+Decorations
+
+Officials cannot create platform assets.
+
+Their responsibility is to identify requirements and submit requests through the approval workflow.
+
+Inventory Management
+
+Every Official has an Inventory.
+
+Inventory stores:
+
+Frames
+
+Entry Effects
+
+Themes
+
+Event Gifts
+
+Festival Gifts
+
+Family Rewards
+
+Agency Rewards
+
+Event Badges
+
+Officials cannot create inventory items.
+
+Officials only distribute assets assigned by Managers after Admin approval.
+
+Every inventory transaction must be permanently recorded in Audit Logs.
+
+Reward Distribution Rules
+
+1. Assigned Rewards
+
+Examples:
+
+Rewards distributed by Admin
+
+Rewards distributed by Manager
+
+Rewards distributed by Official
+
+Rewards distributed by Agency
+
+Business Rules
+
+When a user receives these rewards:
+
+Automatically activated.
+
+Cannot be gifted.
+
+Cannot be transferred.
+
+Cannot be traded.
+
+Cannot be sold.
+
+2. Owned Rewards
+
+Examples:
+
+Purchased from Store
+
+Treasure Box Rewards
+
+Lucky Box Rewards
+
+Event Rewards
+
+Platform Rewards
+
+Business Rules
+
+These rewards are stored inside the user's Backpack Inventory.
+
+Users can:
+
+Equip
+
+Unequip
+
+Gift to Friends
+
+Keep Multiple Quantities
+
+The available quantity determines how many copies the user can gift to others.
+
+User Support Management
+
+The Official is the first level of platform support within the assigned region.
+
+Officials provide operational support for:
+
+Users
+
+Creators
+
+Agencies
+
+Coin Sellers
+
+Officials are responsible for resolving general issues before they are escalated to higher management.
+
+Ticket Management
+
+Officials manage all Level-1 Support Tickets within their assigned regions.
+
+Every support request automatically generates a unique Ticket ID.
+
+Supported Ticket Categories
+
+Account Issues
+
+Login Problems
+
+Payment Issues
+
+Recharge Issues
+
+Withdrawal Issues
+
+Creator Support
+
+Agency Support
+
+Coin Seller Support
+
+Audio Room Issues
+
+Video Room Issues
+
+Live Stream Issues
+
+Event Issues
+
+Reward Distribution Issues
+
+Inventory Issues
+
+Bug Reports
+
+Community Complaints
+
+General Support
+
+Available Features
+
+Officials can:
+
+View Assigned Tickets
+
+Search Ticket ID
+
+Filter Tickets by Category
+
+Assign Ticket Priority
+
+Add Internal Notes
+
+Contact Users through Official Support Chat
+
+Request Additional Information
+
+Resolve Tickets
+
+Reopen Tickets
+
+Escalate Tickets to Manager
+
+View Complete Ticket History
+
+Officials cannot delete support tickets.
+
+Ticket Status
+
+Every support ticket follows the same lifecycle.
+
+New
+
+Assigned
+
+In Progress
+
+Waiting for User Response
+
+Waiting for Internal Review
+
+Escalated to Manager
+
+Escalated to Admin
+
+Resolved
+
+Closed
+
+Every status update automatically generates a notification for the user.
+
+Ticket SLA (Response Time)
+
+Normal Users
+
+First Response: Within 24 Hours
+
+Resolution Target: Within 72 Hours
+
+VIP 4 / Diamond & Above
+
+First Response: Within 6 Hours
+
+Resolution Target: Within 24 Hours
+
+VIP 9 / VIP 10 / Titan
+
+First Response: Within 1 Hour
+
+Highest Priority Queue
+
+Resolution Target: As quickly as possible
+
+Support Workflow
+
+Normal User
+
+User
+
+↓
+
+Official
+
+↓
+
+Manager
+
+↓
+
+Admin
+
+↓
+
+Super Admin (Platform-level issues only)
+
+VIP Support Workflow
+
+VIP User
+
+↓
+
+Priority Official Support
+
+↓
+
+Manager
+
+↓
+
+Admin
+
+↓
+
+Super Admin (Only when absolutely necessary)
+
+Audio Room Monitoring
+
+Officials supervise Audio Rooms within their assigned regions.
+
+Officials can:
+
+View Active Rooms
+
+View Room Information
+
+View Room Owner
+
+View Online Users
+
+View Room Logs
+
+View Gift Statistics
+
+View Reports
+
+View Running Events
+
+Escalate Serious Cases
+
+Officials cannot:
+
+Join Audio Rooms
+
+Join Invisibly
+
+Record Sessions
+
+Capture Screenshots
+
+Lock Rooms
+
+Close Rooms
+
+Monitoring is performed through the Official Dashboard only.
+
+Video Room Monitoring
+
+Officials can:
+
+View Active Video Rooms
+
+View Viewer Statistics
+
+View Reports
+
+View Stream Information
+
+View Gift Statistics
+
+Escalate Serious Violations
+
+Officials cannot:
+
+Join Video Rooms
+
+Join Invisibly
+
+Record Sessions
+
+Capture Screenshots
+
+End Streams
+
+Live Stream Monitoring
+
+Officials can:
+
+View Active Live Streams
+
+View Live Statistics
+
+View Reports
+
+View Stream Information
+
+Review Complaints
+
+Escalate Serious Cases
+
+Officials cannot:
+
+Join Live Streams
+
+Join Invisibly
+
+Record Sessions
+
+Capture Screenshots
+
+End Live Streams
+
+Reports Management
+
+Officials receive reports from:
+
+Users
+
+Creators
+
+Agencies
+
+Coin Sellers
+
+Officials can:
+
+Review Reports
+
+Verify Information
+
+Request Additional Information
+
+Return Incomplete Reports
+
+Recommend Action
+
+Forward Serious Cases to Manager
+
+Officials cannot:
+
+Permanently Ban Users
+
+Suspend Creators
+
+Suspend Agencies
+
+Suspend Coin Sellers
+
+Task Management
+
+Officials receive operational tasks from Managers.
+
+Officials can assign operational tasks to:
+
+Agencies
+
+Coin Sellers
+
+Examples:
+
+Conduct Regional Event
+
+Complete Monthly Agency Target
+
+Increase Creator Activity
+
+Improve Community Engagement
+
+Support Regional Campaign
+
+Increase Agency Performance
+
+Every task contains:
+
+Task Name
+
+Description
+
+Assigned User
+
+Priority
+
+Start Date
+
+Due Date
+
+Target
+
+Progress
+
+Completion Status
+
+Remarks
+
+Task assignments automatically generate:
+
+Push Notification
+
+In-App Notification
+
+Dashboard Notification
+
+Dashboard Displays:
+
+Pending Tasks
+
+Completed Tasks
+
+Overdue Tasks
+
+Agency Performance
+
+Regional Performance
+
+Task Completion Rate
+
+Support Dashboard
+
+Officials should have a dedicated Support Dashboard displaying:
+
+Assigned Tickets
+
+Open Tickets
+
+Resolved Tickets
+
+Escalated Tickets
+
+VIP Tickets
+
+High Priority Tickets
+
+Average Response Time
+
+SLA Performance
+
+Resolution Rate
+
+This dashboard helps Officials manage support operations efficiently.
+
+Analytics
+
+Officials can monitor complete regional analytics.
+
+Community Analytics
+
+Total Users
+
+Online Users
+
+Daily Active Users (DAU)
+
+Monthly Active Users (MAU)
+
+User Growth
+
+Community Engagement
+
+User Retention
+
+Creator Analytics
+
+Active Creators
+
+Creator Growth
+
+Streaming Hours
+
+Creator Performance
+
+Creator Engagement
+
+Creator Retention
+
+Agency Analytics
+
+Total Agencies
+
+Active Agencies
+
+Agency Growth
+
+Agency Performance
+
+Monthly Target Completion
+
+Agency Retention
+
+Coin Seller Analytics
+
+Active Coin Sellers
+
+Coin Sales
+
+Sales Performance
+
+Complaint Statistics
+
+Customer Satisfaction
+
+Event Analytics
+
+Running Events
+
+Completed Events
+
+Event Participation
+
+Event Revenue
+
+Reward Distribution
+
+Event Success Rate
+
+Platform Analytics
+
+Audio Room Statistics
+
+Video Room Statistics
+
+Live Stream Statistics
+
+Report Statistics
+
+Support Statistics
+
+Performance Dashboard (KPI)
+
+Officials should have a KPI Dashboard displaying:
+
+Regional User Growth
+
+Active Users
+
+Community Engagement Score
+
+Creator Growth
+
+Agency Growth
+
+Coin Seller Performance
+
+Event Success Rate
+
+Task Completion Rate
+
+Support Resolution Rate
+
+Ticket Resolution Rate
+
+Report Resolution Rate
+
+Recommendation Accuracy
+
+Reward Distribution Accuracy
+
+Managers use these KPIs to evaluate Official performance.
+
+Notifications
+
+Officials receive real-time notifications for:
+
+New Support Tickets
+
+VIP Support Tickets
+
+High Priority Tickets
+
+New Agency Applications
+
+Coin Seller Verification Requests
+
+Moderator Recommendation Status
+
+BD Recommendation Status
+
+Regional Reports
+
+Event Updates
+
+Content Approval Status
+
+Inventory Distribution
+
+Assigned Tasks
+
+Manager Announcements
+
+Emergency Alerts
+
+Platform Announcements
+
+Notification Types:
+
+Push Notifications
+
+In-App Notifications
+
+Dashboard Notifications
+
+Audit Logs
+
+Every Official action must be permanently recorded.
+
+Stores:
+
+Timestamp
+
+Official ID
+
+Action
+
+Target Module
+
+Target User
+
+Ticket ID (if applicable)
+
+Device Information
+
+Browser
+
+Operating System
+
+IP Address
+
+Previous Value
+
+Updated Value
+
+Audit Logs:
+
+Cannot be modified.
+
+Cannot be deleted.
+
+Visible only to Manager, Admin, and Super Admin.
+
+Security Features
+
+The Official Portal supports:
+
+Two-Factor Authentication (2FA)
+
+Device Verification
+
+IP Verification
+
+Session Timeout
+
+Automatic Logout
+
+Login Alerts
+
+Role-Based Access Control (RBAC)
+
+Secure Audit Logging
+
+Business Rules:
+
+Only one active login session is allowed.
+
+Every login/logout must be recorded.
+
+Unauthorized login attempts generate security alerts.
+
+All sensitive actions require permission validation.
+
+Restrictions
+
+Officials cannot:
+
+Approve Moderators.
+
+Approve Business Development (BD).
+
+Approve Agencies.
+
+Approve Coin Sellers.
+
+Join Audio Rooms.
+
+Join Video Rooms.
+
+Join Live Streams.
+
+Join rooms invisibly.
+
+Record sessions.
+
+Capture screenshots.
+
+Lock or close rooms.
+
+Create platform assets.
+
+Delete Gifts.
+
+Delete Frames.
+
+Delete Themes.
+
+Delete Entry Effects.
+
+Delete Badges.
+
+Modify Coin Economy.
+
+Modify platform settings.
+
+Access Financial Records.
+
+Modify Wallet Balances.
+
+Modify Creator Revenue.
+
+Modify Agency Revenue.
+
+Modify Coin Seller Revenue.
+
+Approve Withdrawals.
+
+Delete Audit Logs.
+
+Modify Ticket History.
+
+Delete Support Tickets.
+
+Access other regions' data.
+
+Change Manager, Admin, or Super Admin permissions.
+
+Officials operate strictly within their assigned regions and approved permissions.
+
+Technical Requirements
+
+Dedicated Official Portal
+
+Region-Specific Dashboard
+
+Support Dashboard
+
+Ticket Management System
+
+Regional Event Management Module
+
+Inventory Management Module
+
+Content Request Module
+
+WebSocket-Based Real-Time Updates
+
+Secure Role-Based Access Control (RBAC)
+
+Complete Activity Logging
+
+Automatic Session Expiration
+
+High-Security Authentication
+
+Scalable Architecture
+
+Note 
+
+The Official is the regional operations and community management representative of Soulzaaa. Officials serve as the primary operational contact for Users, Creators, Agencies, Coin Sellers, and Business Development teams within their assigned regions.
+
+Officials are responsible for regional community growth, first-level user support, ticket management, event planning, creator coordination, agency supervision, coin seller verification, inventory distribution, and regional engagement initiatives. They also identify local requirements for festivals, campaigns, and community events, submitting proposals through the Official → Manager → Admin approval workflow.
+
+Approved rewards and assets follow the secure distribution chain:
+
+Admin → Manager Inventory → Official Inventory → Agency Inventory → User
+
+The reward system follows two business models:
+
+Assigned Rewards
+
+Rewards distributed by Admin, Manager, Official, or Agency are automatically activated upon receipt and become non-transferable. They cannot be gifted, traded, sold, or transferred.
+
+Owned Rewards
+
+Rewards obtained through the Store, Treasure Box, Lucky Box, Platform Rewards, or Event Rewards are stored in the user's Backpack Inventory. Users may equip, unequip, keep multiple quantities, and gift these rewards to friends according to platform rules and available quantity.
+
+Officials are operational representatives and do not possess investigative or administrative authority. They cannot perform hidden monitoring, approve platform roles, modify financial systems, or change platform configurations. Any action requiring elevated permissions must follow the established Official → Manager → Admin hierarchy.
+
+Every Official activity—including support handling, ticket management, event coordination, inventory distribution, recommendations, and operational decisions—must be securely logged, permanently auditable, fully traceable, and compliant with Soulzaaa's governance, security, and operational policies.
+
+ Soulzaaa Role Management & Functional Requirements
+
+7. Agency & Coin Seller
+
+Overview
+
+An Agency is an authorized business partner of Soulzaaa responsible for building, managing, supporting, and growing its own community of Users on the platform.
+
+Agencies focus on increasing active users, organizing events, rewarding users, improving engagement, and achieving monthly business targets.
+
+Agencies do not recruit or manage Creators. Creator onboarding, verification, and withdrawal are handled directly by the Soulzaaa platform.
+
+Agencies operate under their assigned Official and Manager and are approved only by Admin.
+
+After consistently meeting platform requirements, an Agency becomes eligible to activate the Coin Seller Module.
+
+Coin Seller is not a separate account, but an additional permission inside the existing Agency account.
+
+Agency Registration
+
+Any registered Soulzaaa user can apply to become an Agency.
+
+Workflow
+
+Registered User
+
+↓
+
+Become an Agency
+
+↓
+
+Fill Application Form
+
+↓
+
+Upload Required Documents
+
+↓
+
+Submit Application
+
+↓
+
+Official Verification
+
+↓
+
+Manager Review
+
+↓
+
+Admin Approval / Rejection
+
+If Approved
+
+The existing user account is upgraded into an Agency account.
+
+No new account is created.
+
+The user keeps:
+
+Same User ID
+
+Same Profile
+
+Same Friends
+
+Same Followers
+
+Same Wallet
+
+Same Chat History
+
+Same Activity History
+
+Activated Features:
+
+Agency Badge
+
+Agency Profile Frame
+
+Agency Dashboard
+
+Agency Wallet
+
+Community Management
+
+Reward Inventory
+
+Agency permissions become active within 24–48 hours after approval.
+
+If Rejected
+
+Applicant can:
+
+View rejection reason
+
+Update documents
+
+Reapply
+
+Agency Removal / Exit Policy
+
+To maintain settlement accuracy and reporting consistency, an Agency cannot leave immediately after joining.
+
+Business Rules
+
+Agency resignation/removal requests are accepted only between the 1st and 2nd of each month.
+
+Before removal, all pending settlements, rewards, and operational reports must be completed.
+
+After approval, all Agency users are safely released from the Agency.
+
+Historical records remain available in Audit Logs.
+
+Mid-month removal is not allowed except by Admin for policy violations.
+
+This prevents reporting issues, settlement errors, and data inconsistency.
+
+Dashboard
+
+Displays:
+
+Community
+
+Total Users
+
+Daily Active Users
+
+Monthly Active Users
+
+Monthly Target
+
+Target Progress
+
+Rewards
+
+Reward Inventory
+
+Performance
+
+Performance Score
+
+Performance Grade (SS / S / A / B / C / D)
+
+Coin Seller
+
+Coin Seller Status
+
+Operations
+
+Assigned Tasks
+
+Notifications
+
+If Coin Seller is approved, additional Coin Seller modules automatically appear.
+
+Sidebar Menu
+
+Dashboard
+
+Community Management
+
+Reward Inventory
+
+Reward Distribution
+
+Tasks
+
+Performance
+
+Support Center
+
+Notifications
+
+Audit Logs
+
+Logout
+
+After Coin Seller activation:
+
+Additional Menu:
+
+Coin Inventory
+
+Send Coins
+
+Coin Transaction History
+
+Community Management
+
+Agency manages only users linked to its Agency.
+
+Agency can:
+
+View Agency Members
+
+View User Profiles
+
+View User Activity
+
+View User Performance
+
+View Daily Active Users
+
+View Monthly Active Users
+
+Conduct Agency Events
+
+Create Internal Agency Challenges
+
+Reward Agency Members
+
+View Leaderboards
+
+Agency cannot recruit Creators directly.
+
+Reward Inventory
+
+Agency Inventory stores:
+
+Frames
+
+Entry Effects
+
+Themes
+
+Festival Rewards
+
+Family Rewards
+
+Event Rewards
+
+Agency Rewards
+
+Officials distribute approved rewards to the Agency Inventory.
+
+Every inventory transaction must be permanently logged.
+
+Reward Distribution
+
+Agency selects:
+
+User
+
+Reward
+
+Quantity
+
+↓
+
+Reward Sent
+
+↓
+
+Transaction Recorded
+
+Assigned Rewards
+
+Examples:
+
+Official Rewards
+
+Manager Rewards
+
+Festival Rewards
+
+Agency Rewards
+
+Monthly Rewards
+
+When an Agency sends these rewards:
+
+Automatically activated.
+
+User can use them immediately.
+
+Cannot be gifted.
+
+Cannot be transferred.
+
+Cannot be traded.
+
+Cannot be sold.
+
+The reward becomes permanently linked to that user.
+
+Owned Rewards
+
+Rewards obtained through:
+
+Store
+
+Treasure Box
+
+Lucky Box
+
+Platform Rewards
+
+Event Rewards
+
+Business Rules:
+
+Stored inside the user's Backpack.
+
+Users can:
+
+Equip
+
+Unequip
+
+Gift to Friends
+
+Keep Multiple Quantities
+
+The available quantity determines how many copies the user can gift.
+
+Coin Seller Eligibility
+
+Coin Seller is an additional permission available only to eligible Agencies.
+
+Requirements:
+
+Minimum 50 Active Users
+
+Monthly Targets Achieved
+
+Good Performance Grade
+
+No Policy Violations
+
+Official Recommendation
+
+Manager Review
+
+Admin Approval
+
+After approval, the Coin Seller Module is activated inside the same Agency account.
+
+No separate Coin Seller account is created.
+
+Coin Inventory
+
+Once the Coin Seller module is activated, the Agency Dashboard automatically unlocks the Coin Inventory module.
+
+Displays:
+
+Available Coins
+
+Purchased Coins
+
+Sold Coins
+
+Remaining Coins
+
+Total Revenue
+
+Today's Sales
+
+Monthly Sales
+
+The Coin Inventory updates automatically after every transaction.
+
+Manual Coin Selling (V1)
+
+The first version follows a manual coin selling process.
+
+Workflow
+
+User contacts Coin Seller
+
+↓
+
+User makes payment using:
+
+UPI
+
+QR Code
+
+Bank Transfer
+
+↓
+
+User sends payment proof
+
+(WhatsApp or In-App Chat)
+
+↓
+
+Coin Seller verifies payment
+
+↓
+
+Search User ID
+
+↓
+
+System displays:
+
+User ID
+
+Username
+
+Profile Picture
+
+Country
+
+↓
+
+Enter number of Coins
+
+↓
+
+Click Send Coins
+
+↓
+
+Coins instantly credited
+
+↓
+
+Coin Seller balance reduced
+
+↓
+
+Transaction permanently recorded
+
+Country Restriction
+
+Coin Sellers can sell coins only within their assigned country.
+
+Examples:
+
+India → India Users Only
+
+USA → USA Users Only
+
+UAE → UAE Users Only
+
+The system automatically blocks cross-country coin transfers.
+
+Coin Transaction History
+
+Coin Seller Records
+
+Displays:
+
+Transaction ID
+
+Date & Time
+
+User ID
+
+Username
+
+Coins Sent
+
+Transaction Status
+
+Available Features:
+
+Search by User ID
+
+Filter by Date
+
+View Complete History
+
+Coin Sellers cannot modify or delete records.
+
+User Coin Records
+
+Every user can view:
+
+Coins Received
+
+Transaction ID
+
+Date & Time
+
+Coin Seller ID
+
+Coins Used
+
+Gifts Sent
+
+Games Played
+
+Premium Feature Usage
+
+Current Balance
+
+Total Coins Purchased
+
+Total Coins Used
+
+Available Balance
+
+Records are permanent.
+
+Neither users nor Coin Sellers can edit or delete transaction history.
+
+Gift & Coin Usage Rules
+
+Coin selling is country-specific.
+
+Coin usage is global.
+
+Users can:
+
+Gift users from any country.
+
+Join global Audio Rooms.
+
+Join global Live Streams.
+
+Join international Events.
+
+Send Gifts worldwide.
+
+Perform Self-Gifting (subject to platform rules).
+
+Use Coins in:
+
+Gifts
+
+Premium Features
+
+Games
+
+Audio Rooms
+
+Video Rooms
+
+Live Streams
+
+Country restrictions apply only to coin sales, not to coin usage.
+
+Tasks
+
+Officials assign operational targets.
+
+Examples:
+
+Maintain Minimum 50 Active Users
+
+Increase Monthly Active Users
+
+Conduct Agency Events
+
+Improve User Retention
+
+Increase Gift Revenue
+
+Increase Audio Room Activity
+
+Complete Monthly Targets
+
+If Coin Seller is enabled:
+
+Additional Targets:
+
+Monthly Coin Sales
+
+Customer Satisfaction
+
+Fast Coin Delivery
+
+Complaint Resolution
+
+Higher-performing Agencies receive higher targets.
+
+Performance Dashboard
+
+Performance Score is calculated automatically every month.
+
+Factors include:
+
+Active Users
+
+User Retention
+
+Monthly Target Completion
+
+Agency Activity
+
+Event Participation
+
+Gift Revenue
+
+Coin Seller Performance (If Enabled)
+
+Customer Satisfaction
+
+Policy Compliance
+
+Support Performance
+
+Performance Grades
+
+SS – Outstanding
+
+S – Excellent
+
+A – Very Good
+
+B – Good
+
+C – Average
+
+D – Needs Improvement
+
+Higher grades may unlock future platform benefits, increased limits, and exclusive programs.
+
+Support Center
+
+Agencies cannot directly search for or privately message Officials.
+
+Instead, they use the integrated Support Center.
+
+Support Categories:
+
+Event Requests
+
+Reward Requests
+
+Coin Seller Issues
+
+User Issues
+
+Inventory Issues
+
+Payment Issues
+
+Technical Support
+
+General Support
+
+Every request generates a unique Support Ticket ID.
+
+Ticket Workflow
+
+Agency
+
+↓
+
+Regional Official
+
+↓
+
+Manager
+
+↓
+
+Admin
+
+↓
+
+Super Admin (Platform-level issues only)
+
+Ticket Status:
+
+New
+
+Assigned
+
+In Progress
+
+Waiting for Agency
+
+Escalated
+
+Resolved
+
+Closed
+
+Every ticket update automatically notifies the Agency.
+
+Notifications
+
+Agencies receive notifications for:
+
+Official Announcements
+
+Task Assignments
+
+Reward Distribution
+
+Coin Seller Approval
+
+Coin Purchase Confirmation
+
+Support Ticket Updates
+
+Performance Alerts
+
+Monthly Reports
+
+Event Invitations
+
+Policy Updates
+
+Notification Types:
+
+Push Notifications
+
+In-App Notifications
+
+Dashboard Notifications
+
+Audit Logs
+
+Every Agency and Coin Seller activity must be permanently recorded.
+
+Stores:
+
+Timestamp
+
+Agency ID
+
+User ID
+
+Coin Transactions
+
+Reward Transactions
+
+Support Ticket ID
+
+Support Requests
+
+Device Information
+
+Browser
+
+Operating System
+
+IP Address
+
+Audit Logs:
+
+Cannot be modified.
+
+Cannot be deleted.
+
+Visible only to authorized platform staff.
+
+Security Features
+
+The Agency Portal supports:
+
+Two-Factor Authentication (2FA)
+
+Device Verification
+
+IP Verification
+
+Session Timeout
+
+Automatic Logout
+
+Login Alerts
+
+Secure Coin Transactions
+
+Role-Based Access Control (RBAC)
+
+Complete Audit Logging
+
+Business Rules:
+
+One active login session per account.
+
+All coin transactions require permission validation.
+
+Unauthorized login attempts trigger security alerts.
+
+Restrictions
+
+Agency / Coin Seller cannot:
+
+Approve platform roles.
+
+Recruit Creators directly.
+
+Ban, Mute, or Kick users.
+
+Configure platform settings.
+
+Create Gifts.
+
+Create Frames.
+
+Create Themes.
+
+Create Entry Effects.
+
+Modify Coin Economy.
+
+Modify Coin Prices.
+
+Modify Reward Inventory.
+
+Sell Coins outside the assigned country.
+
+View other Agencies' data.
+
+Access Creator earnings or withdrawals.
+
+Modify user wallets directly.
+
+Delete Support Tickets.
+
+Delete Audit Logs.
+
+Change Official, Manager, Admin, or Super Admin permissions.
+
+Technical Requirements
+
+Mobile Responsive Agency Portal
+
+Community Management Module
+
+Reward Inventory Module
+
+Reward Distribution System
+
+Coin Seller Module
+
+Coin Inventory Management
+
+Coin Transfer System
+
+Ticket Management System
+
+Support Center
+
+Performance Dashboard
+
+Secure Role-Based Access Control (RBAC)
+
+Complete Activity Logging
+
+High-Security Authentication
+
+Scalable Architecture
+
+Note :  
+
+The Agency is a business partner responsible for building and managing its own user community through engagement, events, rewards, and monthly operational targets. Agencies manage Users only and do not recruit or administer Creators. High-performing Agencies may unlock the Coin Seller Module, which operates as an additional permission within the same Agency account rather than a separate account.
+
+Coin selling follows a manual verification process in V1, where users complete payments externally, and Coin Sellers verify payment before transferring coins. Coin sales are restricted to users within the same country, while purchased coins can be used globally for gifting, games, premium features, and self-gifting (subject to platform rules).
+
+Reward distribution follows two models: Assigned Rewards, which activate immediately and are permanently linked to the recipient, and Owned Rewards, which are stored in the user's Backpack Inventory and may be gifted based on available quantity.
+
+All community management activities, reward distributions, coin transactions, support tickets, operational targets, and financial actions must be securely logged, fully auditable, permanently traceable, and protected through Role-Based Access Control (RBAC), ensuring a scalable, transparent, and secure ecosystem.
+
+ Soulzaaa Role Management & Functional Requirements
+
+5. Moderator
+
+Overview
+
+The Moderator is responsible for maintaining community safety, enforcing Soulzaaa Community Guidelines, reviewing reports, investigating violations, and taking moderation actions against users who violate platform policies.
+
+Moderators are recommended by Officials, reviewed by Managers, and approved only by Admins.
+
+Moderators work only within their assigned regions and during their assigned working shifts.
+
+Moderators are responsible for maintaining community safety by reviewing reports, enforcing community guidelines, collecting system-generated evidence, and performing operational moderation within their assigned region.
+
+Moderators are not responsible for platform operations, business decisions, financial approvals, or administrative management.
+
+The Moderator is an anonymous internal role. Their identity must never be exposed to users or operational staff.
+
+Moderator Account
+
+Recommended by Official.
+
+Reviewed by Manager.
+
+Approved only by Admin.
+
+Cannot self-register.
+
+Assigned to one or multiple Regions.
+
+Assigned Working Shift.
+
+Identity remains completely confidential.
+
+No Moderator Badge.
+
+No Moderator Profile Frame.
+
+No Public Custom ID.
+
+Cannot appear in search results.
+
+Cannot be followed.
+
+Cannot receive friend requests.
+
+Cannot appear in rankings.
+
+Cannot appear in audience lists.
+
+Cannot appear in room member lists.
+
+Cannot appear in live viewer lists.
+
+Cannot share profile links.
+
+Only Admin and Super Admin can identify Moderators through internal records.
+
+Login
+
+Moderator logs in through the Staff Portal.
+
+Authentication supports:
+
+Username / Email
+
+Password
+
+Two-Factor Authentication (2FA)
+
+Device Verification
+
+IP Verification
+
+Every login records:
+
+Login Time
+
+Logout Time
+
+Device Information
+
+Browser
+
+Operating System
+
+IP Address
+
+Login Status
+
+Device Binding
+
+Every Moderator account is permanently linked to one device.
+
+Business Rules
+
+Only one device can be active.
+
+Multiple device login is not allowed.
+
+Login from another device is automatically rejected.
+
+Device Change Workflow
+
+Moderator requests device replacement.
+
+↓
+
+Manager reviews.
+
+↓
+
+Admin approves.
+
+↓
+
+Old device access removed.
+
+↓
+
+New device registered.
+
+Working Shift
+
+Each Moderator has assigned working hours.
+
+Examples:
+
+9:00 AM – 3:00 PM
+
+3:00 PM – 9:00 PM
+
+9:00 PM – 3:00 AM
+
+Moderation permissions are available only during the assigned shift.
+
+Outside the shift:
+
+Dashboard access only.
+
+Cannot mute users.
+
+Cannot kick users.
+
+Cannot ban users.
+
+Dashboard
+
+Displays:
+
+Assigned Regions
+
+Assigned Country
+
+Assigned Regions
+
+Current Shift
+
+Shift Countdown
+
+Daily Activities
+
+Assigned Reports
+
+Pending Reports
+
+Assigned Investigation Queue
+
+Assigned Audio Rooms
+
+Assigned Video Rooms
+
+Assigned Live Streams
+
+Live Monitoring
+
+Active Audio Rooms
+
+Active Video Rooms
+
+Active Live Streams
+
+Statistics
+
+Rooms Visited Today
+
+Reports Reviewed
+
+Reports Resolved
+
+Reports Escalated
+
+Warning Count
+
+Performance Score
+
+Every dashboard card redirects to its respective page.
+
+Sidebar Menu
+
+Dashboard
+
+Assigned Reports
+
+Audio Room Moderation
+
+Video Room Moderation
+
+Live Stream Moderation
+
+User Violations
+
+Investigation History
+
+Tasks
+
+Performance Dashboard
+
+Notifications
+
+Audit Logs
+
+Logout
+
+Region Restrictions
+
+Moderators can operate only within assigned regions.
+
+Example
+
+Assigned:
+
+Andhra Pradesh
+
+Karnataka
+
+Cannot Moderate:
+
+Tamil Nadu
+
+Kerala
+
+Only assigned regional reports, rooms, live streams, and users are visible.
+
+Audio Room Moderation
+
+Moderators can:
+
+Join assigned Audio Rooms.
+
+Monitor conversations.
+
+Review reports.
+
+Review room information.
+
+View room chat logs.
+
+View user warning history.
+
+Review previous violations.
+
+Mute users.
+
+Kick users.
+
+Ban users (if permitted by platform policy).
+
+View room logs.
+
+Moderators cannot:
+
+Join invisibly.
+
+Lock rooms.
+
+Close rooms.
+
+Record screens manually.
+
+Capture screenshots.
+
+Video Room Moderation
+
+Moderators can:
+
+Join assigned Video Rooms.
+
+Monitor streams.
+
+Review reports.
+
+Review room information.
+
+Review chat logs.
+
+View previous violations.
+
+View warning history.
+
+Mute users.
+
+Kick users.
+
+Ban users (if permitted by platform policy).
+
+Escalate critical violations.
+
+Moderators cannot:
+
+Join invisibly.
+
+End streams.
+
+Record screens manually.
+
+Capture screenshots.
+
+Live Stream Moderation
+
+Moderators can:
+
+Join assigned Live Streams.
+
+Review reports.
+
+Monitor chat.
+
+Monitor user behavior.
+
+Review stream information.
+
+View previous violations.
+
+View warning history.
+
+Mute users.
+
+Kick users.
+
+Ban users (if permitted by platform policy).
+
+Moderators cannot:
+
+Join invisibly.
+
+End live streams.
+
+Record screens manually.
+
+Capture screenshots.
+
+Anonymous Moderation
+
+Moderator identity must always remain hidden.
+
+Users must never see:
+
+Moderator Username
+
+Moderator Profile
+
+Moderator Join Notification
+
+Moderator Audience Entry
+
+Moderator Viewer Presence
+
+Moderator Profile Link
+
+Whenever a moderation action occurs, users should only see system messages.
+
+Examples
+
+"A moderator muted this user for violating community guidelines."
+
+"A moderator removed this user from the room."
+
+"This account has been suspended for violating platform policies."
+
+Only Admin and Super Admin can identify which Moderator performed the action through internal Audit Logs.
+
+Moderation Workflow
+
+Report Received
+
+↓
+
+Moderator reviews report
+
+↓
+
+Joins assigned room (Normal Entry)
+
+↓
+
+Backend automatically starts secure investigation recording
+
+↓
+
+Moderator reviews violation
+
+↓
+
+Selects violation reason
+
+↓
+
+Action Taken
+
+Warning
+
+Mute
+
+Kick
+
+Temporary Ban (According to platform policy)
+
+↓
+
+Recording automatically stops after action completion
+
+↓
+
+Evidence automatically attached
+
+↓
+
+Audit Log created
+
+↓
+
+Official / Manager / Admin can review the complete moderation case anytime.
+
+No moderation action should exist without automatic system-generated evidence.
+
+Automatic Investigation Recording
+
+Moderators cannot:
+
+Record screens manually.
+
+Capture screenshots.
+
+Upload gallery videos as evidence.
+
+Edit investigation recordings.
+
+Delete investigation recordings.
+
+Whenever a Moderator performs any moderation action inside an assigned room, the backend automatically starts secure server-side recording.
+
+Supported Actions
+
+Warning
+
+Mute
+
+Kick
+
+Temporary Ban (According to platform policy)
+
+Every Recording Stores
+
+Internal Moderator ID
+
+User ID
+
+Room ID
+
+Live Stream ID (if applicable)
+
+Region
+
+Timestamp
+
+Violation Reason
+
+Action Taken
+
+Recording Duration
+
+Evidence ID
+
+The recording automatically stops when the moderation action is completed and is securely attached to the moderation case.
+
+Only Admin and Super Admin can access investigation recordings.
+
+Moderators cannot view, download, edit, or delete recordings.
+
+Warning System
+
+Every Moderator's performance is continuously monitored.
+
+If a Moderator performs incorrect moderation or repeatedly violates internal policies:
+
+Warning Level 1
+
+Training Reminder
+
+Performance Observation
+
+Warning Level 2
+
+Manager Review
+
+Performance Improvement Required
+
+Warning Level 3
+
+Moderator Permissions Automatically Suspended
+
+↓
+
+Admin reviews account
+
+↓
+
+Decision:
+
+Restore Moderator Access
+
+Permanently Remove Moderator Role
+
+Every warning is permanently stored.
+
+Reports Management
+
+Moderators investigate reports including:
+
+Abuse
+
+Spam
+
+Harassment
+
+Fake Profile
+
+Hate Speech
+
+Bullying
+
+Threats
+
+Sexual Content
+
+Inappropriate Content
+
+Room Violations
+
+Live Stream Violations
+
+Community Guideline Violations
+
+Moderators can:
+
+Review reports
+
+Verify evidence
+
+Add investigation notes
+
+Recommend Warning
+
+Recommend Mute
+
+Recommend Kick
+
+Recommend Temporary Ban
+
+Close False Reports
+
+Escalate Serious Cases
+
+Critical reports are escalated to Officials, Managers, or Admin depending on severity.
+
+Task Management
+
+Officials assign daily moderation tasks.
+
+Examples:
+
+Visit 60 Audio Rooms
+
+Review 100 Reports
+
+Monitor Festival Events
+
+Review Flagged Users
+
+Verify Community Violations
+
+Review Live Streams
+
+Dashboard Displays:
+
+Assigned Tasks
+
+Completed Tasks
+
+Pending Tasks
+
+Overdue Tasks
+
+Completion Percentage
+
+Performance Score
+
+Task assignments automatically generate:
+
+Push Notification
+
+In-App Notification
+
+Dashboard Notification
+
+Performance Dashboard (KPI)
+
+Displays:
+
+Moderation Activity
+
+Rooms Visited
+
+Reports Reviewed
+
+Reports Resolved
+
+Reports Escalated
+
+Moderation Actions
+
+Warnings Issued
+
+Mutes Issued
+
+Kicks Issued
+
+Temporary Bans Issued
+
+Investigation Quality
+
+Investigation Accuracy
+
+False Moderation Count
+
+Average Resolution Time
+
+Performance
+
+Warning Count
+
+Average Response Time
+
+Task Completion Rate
+
+Daily Target
+
+Weekly Target
+
+Monthly Target
+
+Managers use this dashboard to evaluate Moderator performance.
+
+Notifications
+
+Moderators receive:
+
+New Reports
+
+High Priority Report Alerts
+
+New Investigation Assignment
+
+Shift Start Reminder
+
+Shift End Reminder
+
+Task Assignments
+
+Official Messages
+
+Manager Instructions
+
+Policy Updates
+
+Emergency Moderation Requests
+
+System Announcements
+
+Notifications are available through:
+
+Push Notifications
+
+In-App Notifications
+
+Dashboard Notifications
+
+Audit Logs
+
+Every Moderator action must be permanently recorded.
+
+Stores:
+
+Timestamp
+
+Internal Moderator ID
+
+User ID
+
+Room ID
+
+Region
+
+Action
+
+Violation Reason
+
+Evidence ID
+
+Device Information
+
+Browser
+
+Operating System
+
+IP Address
+
+Audit Logs:
+
+Cannot be modified.
+
+Cannot be deleted.
+
+Visible only to Admin and Super Admin.
+
+Security Features
+
+The Moderator Portal supports:
+
+Two-Factor Authentication (2FA)
+
+Device Binding
+
+Device Verification
+
+IP Verification
+
+Session Timeout
+
+Automatic Logout
+
+Login Alerts
+
+Role-Based Access Control (RBAC)
+
+Automatic Server-side Investigation Recording
+
+Secure Audit Logging
+
+Only one active login session is allowed per Moderator account.
+
+Restrictions
+
+Moderators cannot:
+
+Approve any role.
+
+Modify platform settings.
+
+Configure Games.
+
+Configure VIP Plans.
+
+Configure Coin Economy.
+
+Configure Gifts.
+
+Configure Frames.
+
+Configure Themes.
+
+Configure Entry Effects.
+
+Configure Badges.
+
+Access Financial Data.
+
+View Wallet Information.
+
+View Creator Revenue.
+
+View Agency Revenue.
+
+View Coin Seller Revenue.
+
+View Payment History.
+
+View Withdrawal History.
+
+Join rooms invisibly.
+
+Record screens manually.
+
+Capture screenshots.
+
+Upload external evidence.
+
+Download investigation recordings.
+
+Modify investigation recordings.
+
+Delete investigation recordings.
+
+Access regions outside their assignment.
+
+Delete Audit Logs.
+
+Contact users privately.
+
+Access internal Admin or Manager communications.
+
+Change Manager, Admin, or Super Admin permissions.
+
+Technical Requirements
+
+Dedicated Moderator Portal
+
+Region-Based Dashboard
+
+Shift-Based Permission System
+
+One Device Login System
+
+Real-Time Report Queue
+
+Automatic Server-side Investigation Recording
+
+Automatic Evidence Attachment
+
+Region-Based Access Control
+
+Secure Role-Based Access Control (RBAC)
+
+Secure Audit Logging
+
+Complete Activity Logging
+
+Automatic Session Expiration
+
+High-Security Authentication
+
+Scalable Architecture
+
+Note
+
+The Moderator is an anonymous internal enforcement role responsible for maintaining community safety and enforcing Soulzaaa Community Guidelines. Moderators operate only within their assigned regions and working shifts, handling reports, investigating violations, and taking moderation actions according to platform policy.
+
+Moderator identities must remain completely hidden from users and operational staff. They do not have public badges, profile frames, or public identifiers. Every moderation action automatically generates secure server-side evidence and permanent audit logs, ensuring complete transparency and accountability.
+
+Moderators cannot perform administrative, financial, or platform management functions. They cannot use Invisible Mode, manually record sessions, or access investigation recordings. Their role is limited to moderation, documentation, recommendation, and enforcement within assigned permissions.
+
+This architecture ensures fairness, accountability, operational transparency, Moderator safety, and protection against misuse while maintaining a secure and trusted Soulzaaa community.
+
+ 
