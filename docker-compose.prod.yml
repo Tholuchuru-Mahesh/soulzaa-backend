@@ -79,6 +79,9 @@ services:
 
   # ── API (single replica; use HPA in Kubernetes for multi-instance) ──────────
   api:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: ${DOCKER_IMAGE:-soulzaa-backend}:${IMAGE_TAG:-latest}
     container_name: soulzaa-api
     restart: always
