@@ -1,23 +1,23 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { TreasureRewardKind, TreasureRewardStatus, WalletCurrency } from '@prisma/client';
+import { Injectable, Logger } from '@nestjs/common';
+import { BackpackItemSource, BackpackItemType, TreasureRewardKind, TreasureRewardStatus, WalletTxnReason } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
-import {
-  WALLET_SERVICE,
-  type IWalletService,
-} from 'src/modules/wallet/interfaces/wallet.service.interface';
+import { RewardDistributor } from './reward-distributor.service';
 import { TreasureConfigurationService } from './treasure-configuration.service';
-import { EligibleParticipant, TreasureEligibilityService } from './treasure-eligibility.service';
+import { TreasureRepository } from '../repositories/treasure.repository';
+
+export interface DistributedItemReward {
+  userId: string;
+  rank: number;
+  kind: 'BACKPACK_ITEM';
+  itemType: string | null;
+  itemName: string | null;
+  backpackItemId: string | null;
+}
 
 export interface DistributionResult {
   boxId: string;
-  totalRewardPool: bigint;
   winnersCount: number;
-  distributions: Array<{
-    userId: string;
-    rank: number;
-    coins: bigint;
-    walletTxnId: string;
-  }>;
+  distributions: DistributedItemReward[];
 }
 
 @Injectable()
@@ -26,158 +26,133 @@ export class TreasureDistributionService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly eligibilityService: TreasureEligibilityService,
+    private readonly repo: TreasureRepository,
     private readonly configService: TreasureConfigurationService,
-    @Inject(WALLET_SERVICE) private readonly walletService: IWalletService,
+    private readonly distributor: RewardDistributor,
   ) {}
 
   /**
-   * Performs weighted random selection to pick 5-7 winners and credits rewards using IWalletService.
+   * Calculates Top 3 Contributors for this specific box and rewards them with exclusive Backpack Inventory items.
+   * NO COINS ARE DISTRIBUTED. ZERO WALLET CREDIT TRANSACTIONS.
    */
   async distributeBoxRewards(
     sessionId: string,
     boxId: string,
     roomId: string,
     level: number,
-    totalRewardPool: bigint,
   ): Promise<DistributionResult> {
-    const eligible = await this.eligibilityService.getEligibleParticipants(boxId, roomId);
+    // 1. Calculate Top 3 Contributors ONLY for this specific box
+    const topContributors = await this.repo.topContributors(boxId, 3);
 
-    if (eligible.length === 0 || totalRewardPool <= BigInt(0)) {
-      this.logger.warn(`No eligible participants or 0 pool for box ${boxId}`);
-      return { boxId, totalRewardPool, winnersCount: 0, distributions: [] };
+    if (topContributors.length === 0) {
+      this.logger.warn(`No contributors found for box ${boxId}`);
+      return { boxId, winnersCount: 0, distributions: [] };
     }
 
-    const bounds = await this.configService.getEligibleWinnersCountRange();
-    const targetWinnersCount = Math.min(
-      eligible.length,
-      Math.max(bounds.min, Math.min(bounds.max, eligible.length)),
-    );
+    const recipients = topContributors.map((t, idx) => ({
+      rank: idx + 1,
+      userId: t.userId,
+    }));
 
-    // 1. Weighted random selection of targetWinnersCount distinct winners
-    const winners = this.weightedRandomSelect(eligible, targetWinnersCount);
+    // 2. Fetch configurable rewards for this level
+    let rewards = await this.configService.getLevelRewards(level);
 
-    // 2. Allocate reward pool shares among winners
-    // Highest weight receives rank 1 share down to rank N share
-    const shares = this.allocatePoolShares(totalRewardPool, winners.length);
+    if (!rewards || rewards.length === 0) {
+      const levelNames = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
+      const prefix = levelNames[Math.min(level - 1, 4)] || 'Exclusive';
+      rewards = [
+        {
+          rank: 1,
+          kind: 'BACKPACK_ITEM',
+          itemType: BackpackItemType.THEME,
+          itemName: `${prefix} Entry Theme`,
+        },
+        {
+          rank: 2,
+          kind: 'BACKPACK_ITEM',
+          itemType: BackpackItemType.FRAME,
+          itemName: `${prefix} Profile Frame`,
+        },
+        {
+          rank: 3,
+          kind: 'BACKPACK_ITEM',
+          itemType: BackpackItemType.BADGE,
+          itemName: `${prefix} Contributor Badge`,
+        },
+      ];
+    }
 
-    const distributions: DistributionResult['distributions'] = [];
+    // Filter out any legacy COINS entries, converting them to Backpack Item rewards
+    const inventoryRewards = rewards.map((r) => {
+      if (r.kind === 'COINS') {
+        const levelNames = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
+        const prefix = levelNames[Math.min(level - 1, 4)] || 'Exclusive';
+        return {
+          rank: r.rank,
+          kind: 'BACKPACK_ITEM' as const,
+          itemType:
+            r.rank === 1
+              ? BackpackItemType.THEME
+              : r.rank === 2
+                ? BackpackItemType.FRAME
+                : BackpackItemType.BADGE,
+          itemName:
+            r.rank === 1
+              ? `${prefix} Entry Theme`
+              : r.rank === 2
+                ? `${prefix} Profile Frame`
+                : `${prefix} Contributor Badge`,
+        };
+      }
+      return r;
+    });
 
-    for (let i = 0; i < winners.length; i++) {
-      const winner = winners[i];
-      const rank = i + 1;
-      const coinReward = shares[i];
+    // 3. Grant inventory items directly to recipient Backpacks (Idempotent per boxId)
+    const distributed = await this.distributor.distribute({
+      recipients,
+      rewards: inventoryRewards,
+      idempotencyPrefix: `tb-open:${boxId}`,
+      walletReason: WalletTxnReason.TREASURE_BOX,
+      backpackSource: BackpackItemSource.TREASURE_BOX,
+      referenceType: 'treasure_box',
+      referenceId: boxId,
+    });
 
-      if (coinReward <= BigInt(0)) continue;
-
-      // Credit wallet via IWalletService (WalletTransactionService double-entry ledger)
-      const creditRes = await this.walletService.credit({
-        userId: winner.userId,
-        currency: WalletCurrency.GOLD,
-        amount: Number(coinReward),
-        reason: 'TREASURE_BOX' as any,
-        idempotencyKey: `treasure-reward:${boxId}:${winner.userId}:${rank}`,
-        referenceType: 'treasure_box',
-        referenceId: boxId,
-        metadata: { roomId, level, rank },
-      });
-
-      const walletTxnId = creditRes?.transactionId ?? `tx-tr-${Date.now()}-${i}`;
-
-      // Insert immutable TreasureReward record
+    // 4. Store immutable TreasureReward entries for audit & UI
+    const distributions: DistributedItemReward[] = [];
+    for (const d of distributed) {
       await this.prisma.treasureReward.create({
         data: {
           sessionId,
           boxId,
           roomId,
           level,
-          userId: winner.userId,
-          rank,
-          kind: TreasureRewardKind.COINS,
-          coins: coinReward,
-          walletTxnId,
+          userId: d.userId,
+          rank: d.rank,
+          kind: TreasureRewardKind.BACKPACK_ITEM,
+          coins: null,
+          itemType: d.itemType,
+          itemName: d.itemName,
+          backpackItemId: d.backpackItemId,
           status: TreasureRewardStatus.DISTRIBUTED,
           distributedAt: new Date(),
         },
       });
 
       distributions.push({
-        userId: winner.userId,
-        rank,
-        coins: coinReward,
-        walletTxnId,
+        userId: d.userId,
+        rank: d.rank,
+        kind: 'BACKPACK_ITEM',
+        itemType: d.itemType,
+        itemName: d.itemName,
+        backpackItemId: d.backpackItemId,
       });
     }
 
     return {
       boxId,
-      totalRewardPool,
       winnersCount: distributions.length,
       distributions,
     };
-  }
-
-  /**
-   * Weighted random selection without replacement.
-   */
-  private weightedRandomSelect(pool: EligibleParticipant[], count: number): EligibleParticipant[] {
-    const selected: EligibleParticipant[] = [];
-    const remaining = [...pool];
-
-    while (selected.length < count && remaining.length > 0) {
-      let totalWeight = remaining.reduce((acc, p) => acc + p.weight, BigInt(0));
-      if (totalWeight <= BigInt(0)) {
-        // Fallback uniform random if weight zero
-        const index = Math.floor(Math.random() * remaining.length);
-        selected.push(remaining.splice(index, 1)[0]);
-        continue;
-      }
-
-      // Convert BigInt totalWeight to random pick point
-      const randVal = BigInt(Math.floor(Math.random() * 10000));
-      const pickPoint = (totalWeight * randVal) / BigInt(10000);
-
-      let currentSum = BigInt(0);
-      let chosenIndex = 0;
-
-      for (let i = 0; i < remaining.length; i++) {
-        currentSum += remaining[i].weight;
-        if (currentSum >= pickPoint) {
-          chosenIndex = i;
-          break;
-        }
-      }
-
-      selected.push(remaining.splice(chosenIndex, 1)[0]);
-    }
-
-    return selected;
-  }
-
-  /**
-   * Allocates totalPool into decreasing shares for rank 1..count.
-   * e.g., rank 1 gets 40%, rank 2 gets 25%, rank 3 gets 15%, rank 4-7 split remaining 20%.
-   */
-  private allocatePoolShares(totalPool: bigint, count: number): bigint[] {
-    if (count === 1) return [totalPool];
-
-    // Standard distribution ratios: 40%, 25%, 15%, 10%, 10% (for 5 winners)
-    const baseRatios = [40, 25, 15, 10, 10, 5, 5];
-    const ratios = baseRatios.slice(0, count);
-    const sumRatio = ratios.reduce((a, b) => a + b, 0);
-
-    const shares: bigint[] = [];
-    let allocatedSum = BigInt(0);
-
-    for (let i = 0; i < count - 1; i++) {
-      const share = (totalPool * BigInt(ratios[i])) / BigInt(sumRatio);
-      shares.push(share);
-      allocatedSum += share;
-    }
-
-    // Remainder to last winner
-    shares.push(totalPool - allocatedSum);
-
-    return shares;
   }
 }

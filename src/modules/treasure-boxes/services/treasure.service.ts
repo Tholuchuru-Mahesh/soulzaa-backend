@@ -165,6 +165,16 @@ export class TreasureService implements ITreasureBoxesService {
           threshold: firstThreshold,
         }),
       );
+      await this.bus.publish(
+        new TreasureProgressEvent({
+          roomId,
+          sessionId: newSession.id,
+          level: 1,
+          progress: 0,
+          threshold: firstThreshold,
+          topGifters: [],
+        }),
+      );
       return newSession;
     });
   }
@@ -309,126 +319,25 @@ export class TreasureService implements ITreasureBoxesService {
       };
     }
 
-    // Get all boxes for the session
-    const boxes = await tx.treasureBox.findMany({
-      where: { sessionId: session.id },
-      orderBy: { level: 'asc' },
-    });
+    // Increment overall contribution counters in DB using tx client
+    const roomTotal = await this.repo.incrementRoomContribution(roomId, bigAmount, tx);
+    const receiverTotal = await this.repo.incrementUserContribution(receiverId, bigAmount, tx);
 
-    const activeBox = boxes.find((b) => b.level === session.currentLevel);
-
-    const totalProgress = boxes.reduce((sum, b) => sum + b.progress, 0n);
-    const maxCapacity = 995000n;
-    const remainingCapacity = maxCapacity - totalProgress;
-
-    if (remainingCapacity <= 0n) {
-      // Completed, refund everything
-      return {
-        acceptedAmount: 0,
-        refundAmount: amount,
-        events,
-      };
-    }
-
-    const accepted = bigAmount < remainingCapacity ? bigAmount : remainingCapacity;
-    const refund = bigAmount - accepted;
-
-    const acceptedNum = Number(accepted);
-    const refundNum = Number(refund);
-
-    if (accepted > 0n) {
-      // Increment overall contribution counters in DB using tx client
-      const roomTotal = await this.repo.incrementRoomContribution(roomId, accepted, tx);
-      const receiverTotal = await this.repo.incrementUserContribution(receiverId, accepted, tx);
-
-      // Publish Contribution Counter update event (bridges to Socket.IO)
-      events.push(
-        new ContributionCounterUpdatedEvent({
-          roomId,
-          receiverId,
-          roomTotal: Number(roomTotal),
-          receiverTotal: Number(receiverTotal),
-        }),
-      );
-
-      // Process sequential progress overflow
-      let remainingToContribute = accepted;
-      let currentLevel = session.currentLevel;
-
-      while (remainingToContribute > 0n && currentLevel <= 5) {
-        const box = await tx.treasureBox.findFirst({
-          where: { sessionId: session.id, level: currentLevel },
-        });
-        if (!box || box.status === TreasureBoxStatus.OPENED) {
-          currentLevel++;
-          continue;
-        }
-
-        const needed = box.threshold - box.progress;
-        if (needed <= 0n) {
-          currentLevel++;
-          continue;
-        }
-
-        const added = remainingToContribute >= needed ? needed : remainingToContribute;
-
-        // Record contribution
-        await this.repo.addContribution(
-          {
-            boxId: box.id,
-            sessionId: session.id,
-            roomId,
-            userId: senderId,
-            amount: added,
-            giftTxnId,
-          },
-          tx,
-        );
-
-        // Update progress
-        const updatedBox = await tx.treasureBox.update({
-          where: { id: box.id },
-          data: { progress: box.progress + added },
-        });
-
-        remainingToContribute -= added;
-
-        // Fetch top contributors
-        const totals = await this.repo.topContributors(box.id, 3, tx);
-        const topGifters: RankedContributor[] = totals.map((t, i) => ({
-          rank: i + 1,
-          userId: t.userId,
-          amount: Number(t.amount),
-        }));
-
-        events.push(
-          new TreasureProgressEvent({
-            roomId,
-            sessionId: session.id,
-            level: box.level,
-            progress: Number(updatedBox.progress),
-            threshold: Number(updatedBox.threshold),
-            topGifters,
-          }),
-        );
-
-        if (updatedBox.progress >= updatedBox.threshold) {
-          const advanceRes = await this.openAndAdvanceInTx(tx, session, updatedBox, topGifters);
-          events.push(...advanceRes.events);
-          if (advanceRes.postCommit) {
-            postCommitCallback = advanceRes.postCommit;
-          }
-          currentLevel++;
-        }
-      }
-    }
+    // Publish Contribution Counter update event (bridges to Socket.IO)
+    events.push(
+      new ContributionCounterUpdatedEvent({
+        roomId,
+        receiverId,
+        roomTotal: Number(roomTotal),
+        receiverTotal: Number(receiverTotal),
+      }),
+    );
 
     return {
-      acceptedAmount: acceptedNum,
-      refundAmount: refundNum,
+      acceptedAmount: amount,
+      refundAmount: 0,
       events,
       postCommit: postCommitCallback,
-      boxId: activeBox?.id,
       level: session.currentLevel,
     };
   }
@@ -883,11 +792,11 @@ export class TreasureService implements ITreasureBoxesService {
     if (currentUserId) userIdsSet.add(currentUserId);
 
     for (const box of boxes) {
-      if (box.status === TreasureBoxStatus.OPENED && box.topGifters) {
+      if (box.status === TreasureBoxStatus.OPENED && box.topGifters && (box.topGifters as any[]).length > 0) {
         for (const g of box.topGifters as any[]) {
           if (g.userId) userIdsSet.add(g.userId);
         }
-      } else if (box.status === TreasureBoxStatus.ACTIVE) {
+      } else {
         const totals = await this.repo.topContributors(box.id, 3);
         for (const t of totals) userIdsSet.add(t.userId);
       }
@@ -904,7 +813,15 @@ export class TreasureService implements ITreasureBoxesService {
       let myPosition = null;
 
       if (box.status === TreasureBoxStatus.OPENED) {
-        const gifters = (box.topGifters as any[]) ?? [];
+        let gifters = (box.topGifters as any[]) ?? [];
+        if (gifters.length === 0) {
+          const totals = await this.repo.topContributors(box.id, 3);
+          gifters = totals.map((t, i) => ({
+            rank: i + 1,
+            userId: t.userId,
+            amount: Number(t.amount),
+          }));
+        }
         topGifters = gifters.map((g) => {
           const profile = profileMap.get(g.userId);
           const reward = rewardEntries.find((r) => r.rank === g.rank);
@@ -918,15 +835,15 @@ export class TreasureService implements ITreasureBoxesService {
             userId: g.userId,
             username: profile?.username ?? g.userId.substring(0, 6),
             avatarUrl: profile?.avatarUrl ?? null,
-            amount: g.amount,
+            amount: Number(g.amount ?? 0),
             rewardLabel,
           };
         });
         if (currentUserId) {
           const userPos = await this.repo.getUserPositionInBox(box.id, currentUserId);
-          if (userPos) myPosition = { rank: userPos.rank, amount: userPos.amount };
+          if (userPos) myPosition = { rank: userPos.rank, amount: Number(userPos.amount) };
         }
-      } else if (box.status === TreasureBoxStatus.ACTIVE) {
+      } else {
         const totals = await this.repo.topContributors(box.id, 3);
         topGifters = totals.map((t, i) => {
           const rank = i + 1;
@@ -948,7 +865,7 @@ export class TreasureService implements ITreasureBoxesService {
         });
         if (currentUserId) {
           const userPos = await this.repo.getUserPositionInBox(box.id, currentUserId);
-          if (userPos) myPosition = { rank: userPos.rank, amount: userPos.amount };
+          if (userPos) myPosition = { rank: userPos.rank, amount: Number(userPos.amount) };
         }
       }
 

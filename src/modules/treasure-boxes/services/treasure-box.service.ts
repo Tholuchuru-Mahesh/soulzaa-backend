@@ -8,10 +8,11 @@ export interface BoxStatusView {
   sessionId: string;
   roomId: string;
   level: number;
-  threshold: string;
-  progress: string;
+  threshold: number | string;
+  progress: number | string;
   status: TreasureBoxStatus | string;
-  openedAt?: Date | null;
+  topGifters?: any;
+  openedAt?: Date | string | null;
 }
 
 @Injectable()
@@ -25,13 +26,29 @@ export class TreasureBoxService {
 
   /**
    * Retrieves or creates an active session for a given room.
+   * Ensures only 1 session per day (if completed today, returns null).
    */
   async getOrCreateActiveSession(roomId: string, contextType: string = 'AUDIO_ROOM') {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
     let session = await this.prisma.treasureSession.findFirst({
       where: { roomId, status: TreasureSessionStatus.ACTIVE },
     });
 
     if (!session) {
+      // If completed today, do not auto-start another session today
+      const completedToday = await this.prisma.treasureSession.findFirst({
+        where: {
+          roomId,
+          status: TreasureSessionStatus.COMPLETED,
+          createdAt: { gte: todayStart },
+        },
+      });
+      if (completedToday) {
+        return null;
+      }
+
       session = await this.prisma.treasureSession.create({
         data: {
           roomId,
@@ -73,51 +90,139 @@ export class TreasureBoxService {
   }
 
   /**
-   * Returns current status of all boxes in a room's active session.
+   * Returns current treasure status for a room.
+   *
+   * Three possible states:
+   *  1. ACTIVE session today → active:true, completed:false
+   *  2. COMPLETED session today → active:false, completed:true (boxes still visible)
+   *  3. No session today → active:false, completed:false (next event not started)
+   *
+   * Automatically initializes today's daily session if not started or completed.
    */
   async getRoomStatus(roomId: string): Promise<{
+    active: boolean;
+    completed: boolean;
+    completedAt: string | null;
+    sessionId: string | null;
+    currentLevel: number;
     session: any;
     boxes: BoxStatusView[];
     activeBox: BoxStatusView | null;
+    message?: string;
   }> {
-    const session = await this.prisma.treasureSession.findFirst({
-      where: { roomId, status: TreasureSessionStatus.ACTIVE },
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    // 1. Get or auto-start today's active session if not completed today
+    let activeSession = await this.prisma.treasureSession.findFirst({
+      where: { roomId, status: 'ACTIVE' },
     });
 
-    if (!session) {
-      return { session: null, boxes: [], activeBox: null };
+    if (!activeSession) {
+      activeSession = await this.getOrCreateActiveSession(roomId);
     }
 
-    const boxes = await this.prisma.treasureBox.findMany({
-      where: { sessionId: session.id },
-      orderBy: { level: 'asc' },
+    if (activeSession) {
+      const boxes = await this.prisma.treasureBox.findMany({
+        where: { sessionId: activeSession.id },
+        orderBy: { level: 'asc' },
+      });
+
+      const formattedBoxes = boxes.map((b) => ({
+        id: b.id,
+        sessionId: b.sessionId,
+        roomId: b.roomId,
+        level: b.level,
+        threshold: Number(b.threshold),
+        progress: Number(b.progress),
+        status: b.status,
+        topGifters: (b.topGifters as any) ?? [],
+        openedAt: b.openedAt ? b.openedAt.toISOString() : null,
+      }));
+
+      const activeBox = formattedBoxes.find((b) => b.level === activeSession.currentLevel) ?? null;
+
+      return {
+        active: true,
+        completed: false,
+        completedAt: null,
+        sessionId: activeSession.id,
+        currentLevel: activeSession.currentLevel,
+        session: {
+          id: activeSession.id,
+          roomId: activeSession.roomId,
+          currentLevel: activeSession.currentLevel,
+          status: activeSession.status,
+          createdAt: activeSession.createdAt,
+          completedAt: null,
+        },
+        boxes: formattedBoxes,
+        activeBox,
+      };
+    }
+
+    // 2. Check for a COMPLETED session created today
+    const completedToday = await this.prisma.treasureSession.findFirst({
+      where: {
+        roomId,
+        status: 'COMPLETED',
+        createdAt: { gte: todayStart },
+      },
+      orderBy: { createdAt: 'desc' },
     });
 
-    const formattedBoxes: BoxStatusView[] = boxes.map((b) => ({
-      id: b.id,
-      sessionId: b.sessionId,
-      roomId: b.roomId,
-      level: b.level,
-      threshold: b.threshold.toString(),
-      progress: b.progress.toString(),
-      status: b.status,
-      openedAt: b.openedAt,
-    }));
+    if (completedToday) {
+      const boxes = await this.prisma.treasureBox.findMany({
+        where: { sessionId: completedToday.id },
+        orderBy: { level: 'asc' },
+      });
 
-    const activeBox = formattedBoxes.find((b) => b.level === session.currentLevel) ?? null;
+      const formattedBoxes = boxes.map((b) => ({
+        id: b.id,
+        sessionId: b.sessionId,
+        roomId: b.roomId,
+        level: b.level,
+        threshold: Number(b.threshold),
+        progress: Number(b.progress),
+        status: b.status,
+        topGifters: (b.topGifters as any) ?? [],
+        openedAt: b.openedAt ? b.openedAt.toISOString() : null,
+      }));
 
+      return {
+        active: false,
+        completed: true,
+        completedAt: completedToday.completedAt?.toISOString() ?? new Date().toISOString(),
+        sessionId: completedToday.id,
+        currentLevel: 5,
+        session: {
+          id: completedToday.id,
+          roomId: completedToday.roomId,
+          currentLevel: 5,
+          status: completedToday.status,
+          createdAt: completedToday.createdAt,
+          completedAt: completedToday.completedAt?.toISOString() ?? null,
+        },
+        boxes: formattedBoxes,
+        activeBox: null,
+        message: "🎁 Today's Treasure Event has been completed. The next Treasure Event will start tomorrow.",
+      };
+    }
+
+    // 3. No session today — event not started yet
     return {
-      session: {
-        id: session.id,
-        roomId: session.roomId,
-        currentLevel: session.currentLevel,
-        status: session.status,
-        createdAt: session.createdAt,
-      },
-      boxes: formattedBoxes,
-      activeBox,
+      active: false,
+      completed: false,
+      completedAt: null,
+      sessionId: null,
+      currentLevel: 0,
+      session: null,
+      boxes: [],
+      activeBox: null,
     };
   }
+
+
 
   /**
    * Updates box status (ACTIVE, UNLOCKING, OPENED, REWARD_DISTRIBUTED, RESET).

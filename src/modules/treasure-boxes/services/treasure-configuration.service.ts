@@ -28,6 +28,19 @@ export class TreasureConfigurationService {
   ) {}
 
   /**
+   * Retrieves the configured rewards JSON array for a specific level (1..5).
+   */
+  async getLevelRewards(level: number): Promise<any[]> {
+    const config = await this.prisma.treasureBoxConfig.findUnique({
+      where: { level },
+    });
+    if (config?.rewards && Array.isArray(config.rewards)) {
+      return config.rewards;
+    }
+    return [];
+  }
+
+  /**
    * Retrieves the configured box threshold for a specific level (1..5).
    */
   async getLevelThreshold(level: number): Promise<bigint> {

@@ -32,6 +32,7 @@ export function toSettingsView(settings: VideoRoomSettings | null): VideoRoomSet
     maxDurationMinutes: settings.maxDurationMinutes,
     hostSeatCount: settings.hostSeatCount,
     guestSeatCount: settings.guestSeatCount,
+    seatApprovalRequired: settings.seatApprovalRequired,
   };
 }
 

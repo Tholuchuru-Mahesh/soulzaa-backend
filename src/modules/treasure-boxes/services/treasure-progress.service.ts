@@ -10,6 +10,7 @@ export interface ProgressResult {
   sessionId: string;
   roomId: string;
   appliedAmount: bigint;
+  refundAmount: bigint;
   completedBoxes: Array<{
     boxId: string;
     level: number;
@@ -38,6 +39,7 @@ export class TreasureProgressService {
 
   /**
    * Applies gift progress to a room's active treasure box with multi-box overflow support.
+   * Returns a zero-contribution result if today's daily event is already COMPLETED.
    */
   async applyGiftProgress(
     roomId: string,
@@ -52,11 +54,52 @@ export class TreasureProgressService {
 
     const lockKey = treasureRoomLockKey(roomId);
     return this.locks.withLock(lockKey, async () => {
+      // Guard: if today's treasure event is already COMPLETED, do not accept
+      // any further gift contributions — return a no-op result immediately.
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+
+      const completedToday = await this.prisma.treasureSession.findFirst({
+        where: {
+          roomId,
+          status: 'COMPLETED',
+          createdAt: { gte: todayStart },
+        },
+      });
+
+      if (completedToday) {
+        this.logger.debug(
+          `Treasure: skipping gift progress for room ${roomId} — today's event already completed.`,
+        );
+        return {
+          sessionId: completedToday.id,
+          roomId,
+          appliedAmount: BigInt(0),
+          refundAmount: BigInt(0),
+          completedBoxes: [],
+          activeBox: null,
+          sessionCompleted: false,
+        };
+      }
+
       const session = await this.boxService.getOrCreateActiveSession(roomId, contextType);
+      if (!session) {
+        return {
+          sessionId: '',
+          roomId,
+          appliedAmount: BigInt(0),
+          refundAmount: BigInt(0),
+          completedBoxes: [],
+          activeBox: null,
+          sessionCompleted: false,
+        };
+      }
+
       let currentLevel = session.currentLevel;
       let remainingContribution = amount;
       const completedBoxes: ProgressResult['completedBoxes'] = [];
       let sessionCompleted = false;
+      let refundAmount = BigInt(0);
 
       while (remainingContribution > BigInt(0) && currentLevel <= 5) {
         let box = await this.prisma.treasureBox.findUnique({
@@ -120,9 +163,13 @@ export class TreasureProgressService {
           remainingContribution -= needed;
           currentLevel += 1;
 
-          // If reached after box 5, complete the entire session
+          // If reached after box 5, complete the entire session & refund excess coins
           if (currentLevel > 5) {
             sessionCompleted = true;
+            if (remainingContribution > BigInt(0)) {
+              refundAmount = remainingContribution;
+              remainingContribution = BigInt(0);
+            }
             await this.prisma.treasureSession.update({
               where: { id: session.id },
               data: {
@@ -202,7 +249,8 @@ export class TreasureProgressService {
       return {
         sessionId: session.id,
         roomId,
-        appliedAmount: amount,
+        appliedAmount: amount - refundAmount,
+        refundAmount,
         completedBoxes,
         activeBox: activeBoxState,
         sessionCompleted,

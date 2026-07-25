@@ -14,6 +14,7 @@ import {
   type ContributionCounterUpdatedEvent,
 } from 'src/modules/treasure-boxes/events/treasure.events';
 import { AUDIO_ROOM_NAMESPACE, ROOM_SOCKET_EVENTS } from '../constants/audio-room.constants';
+import { SOCKET_NAMESPACES } from 'src/common/constants/socket.constants';
 
 /**
  * Bridges AR-6 treasure box & rocket events to the audio-room sockets so every
@@ -22,6 +23,8 @@ import { AUDIO_ROOM_NAMESPACE, ROOM_SOCKET_EVENTS } from '../constants/audio-roo
  * treasure-boxes module only through its published events, keeping the
  * `/audio-room` namespace constant inside the audio-rooms module.
  */
+import { randomUUID } from 'crypto';
+
 @Injectable()
 export class TreasureSocketListener implements OnModuleInit {
   constructor(
@@ -30,9 +33,20 @@ export class TreasureSocketListener implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.bus.subscribe<TreasureSessionStartedEvent>(TREASURE_EVENTS.SESSION_STARTED, (e) =>
-      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.TREASURE_STARTED, e.payload),
-    );
+    this.bus.subscribe<TreasureSessionStartedEvent>(TREASURE_EVENTS.SESSION_STARTED, (e) => {
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.TREASURE_STARTED, e.payload);
+      this.room(e.payload.roomId, 'treasure:started', e.payload);
+      this.room(e.payload.roomId, 'treasure_box.started', e.payload);
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.CHAT_ANNOUNCEMENT, {
+        id: randomUUID(),
+        roomId: e.payload.roomId,
+        senderId: 'system',
+        senderName: 'System',
+        content: 'Treasure Box Event Has Started! Send gifts to unseal box rewards!',
+        type: 'SYSTEM',
+        createdAt: new Date().toISOString(),
+      });
+    });
     this.bus.subscribe<TreasureProgressEvent>(TREASURE_EVENTS.PROGRESS, (e) => {
       this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.TREASURE_PROGRESS, e.payload);
       // Emit the alternate name requested by user
@@ -55,9 +69,20 @@ export class TreasureSocketListener implements OnModuleInit {
         rewards: e.payload.rewards,
       });
     });
-    this.bus.subscribe<TreasureSessionCompletedEvent>(TREASURE_EVENTS.SESSION_COMPLETED, (e) =>
-      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.TREASURE_COMPLETED, e.payload),
-    );
+    this.bus.subscribe<TreasureSessionCompletedEvent>(TREASURE_EVENTS.SESSION_COMPLETED, (e) => {
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.TREASURE_COMPLETED, e.payload);
+      // Broadcast the daily completion announcement to all room participants
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.CHAT_ANNOUNCEMENT, {
+        id: randomUUID(),
+        roomId: e.payload.roomId,
+        senderId: 'system',
+        senderName: 'System',
+        content:
+          "🎁 Today's Treasure Event has been completed! All 5 Treasure Boxes have been opened. The next Treasure Event will start tomorrow. Thank you to all contributors! 🏆",
+        type: 'SYSTEM',
+        createdAt: new Date().toISOString(),
+      });
+    });
     this.bus.subscribe<TreasureReceiverRewardEvent>(TREASURE_EVENTS.RECEIVER_REWARD, (e) =>
       this.room(e.payload.roomId, 'treasure_receiver_reward', e.payload),
     );
@@ -78,5 +103,6 @@ export class TreasureSocketListener implements OnModuleInit {
 
   private room(roomId: string, event: string, payload: unknown): void {
     this.sockets.emitToNamespaceRoom(AUDIO_ROOM_NAMESPACE, roomId, event, payload);
+    this.sockets.emitToNamespaceRoom(SOCKET_NAMESPACES.VIDEO_ROOM, roomId, event, payload);
   }
 }

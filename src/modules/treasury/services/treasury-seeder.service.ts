@@ -104,19 +104,26 @@ export class TreasurySeederService implements OnModuleInit {
 
     // 2. Ensure FinancialPolicy rows exist
     for (const seed of DEFAULT_FINANCIAL_POLICIES) {
-      await this.prisma.financialPolicy.upsert({
+      const existing = await this.prisma.financialPolicy.findUnique({
         where: { key: seed.key },
-        update: {},
-        create: {
-          key: seed.key,
-          name: seed.name,
-          category: seed.category,
-          value: seed.value,
-          minLimit: seed.minLimit,
-          maxLimit: seed.maxLimit,
-          description: seed.description,
-        },
       });
+      if (!existing) {
+        try {
+          await this.prisma.financialPolicy.create({
+            data: {
+              key: seed.key,
+              name: seed.name,
+              category: seed.category,
+              value: seed.value,
+              minLimit: seed.minLimit,
+              maxLimit: seed.maxLimit,
+              description: seed.description,
+            },
+          });
+        } catch (e) {
+          // Ignore unique constraint error if concurrently created
+        }
+      }
     }
   }
 }

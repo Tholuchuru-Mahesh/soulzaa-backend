@@ -31,6 +31,14 @@ export interface VideoRoomSettingsView {
   maxDurationMinutes: number | null;
   hostSeatCount: number;
   guestSeatCount: number;
+  /**
+   * VR-17: writable via `PATCH :id/settings`, so it MUST be projected here.
+   * This view is the payload of the `video_room.settings_updated` broadcast;
+   * omitting a writable field means every client reconciling from that
+   * broadcast resets it to its client-side default, silently undoing the
+   * change the actor just made.
+   */
+  seatApprovalRequired: boolean;
 }
 
 /** Client-safe projection of the denormalised statistics row (BigInt → number). */

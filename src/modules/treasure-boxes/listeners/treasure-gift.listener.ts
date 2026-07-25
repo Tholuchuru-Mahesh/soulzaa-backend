@@ -23,7 +23,12 @@ export class TreasureGiftListener implements OnModuleInit {
 
   onModuleInit(): void {
     this.bus.subscribe<GiftSentEvent>(GIFT_EVENTS.SENT, (e) => {
-      if (e.payload.contextType !== GiftContextType.AUDIO_ROOM) return;
+      if (
+        e.payload.contextType !== GiftContextType.AUDIO_ROOM &&
+        e.payload.contextType !== GiftContextType.VIDEO_ROOM
+      ) {
+        return;
+      }
       void this.handle(e);
     });
   }

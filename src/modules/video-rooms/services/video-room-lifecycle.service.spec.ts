@@ -105,13 +105,16 @@ describe('VideoRoomLifecycleService', () => {
   });
 
   describe('create', () => {
-    it('rejects when the owner is at their room cap', async () => {
-      repo.countActiveByOwner.mockResolvedValue(1);
-      await expect(service.create(actor, { name: 'x' } as any)).rejects.toMatchObject({
-        errorCode: ERROR_CODES.VIDEO_ROOM_ALREADY_EXISTS,
-        status: 409,
-      });
-      expect(repo.createRoomTx).not.toHaveBeenCalled();
+    // The per-owner room cap was deliberately removed — a host may run several
+    // rooms at once. This pins that: if the cap is ever re-enabled, this test
+    // fails and forces the product decision to be made explicitly rather than
+    // silently reinstated. See the commented-out block in create().
+    it('does not cap how many rooms one owner may host', async () => {
+      repo.countActiveByOwner.mockResolvedValue(5);
+      const view = await service.create(actor, { name: 'x' } as any);
+      expect(view.id).toBe('r1');
+      expect(repo.createRoomTx).toHaveBeenCalled();
+      expect(repo.countActiveByOwner).not.toHaveBeenCalled();
     });
 
     it('creates a room, caches, bumps trending, emits, and counts the metric', async () => {

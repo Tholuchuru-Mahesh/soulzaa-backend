@@ -1,10 +1,21 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { GIFT_EVENTS, GiftSentEvent } from 'src/modules/gifts/events/gift.events';
+import {
+  TreasureBoxOpenedEvent,
+  TreasureProgressEvent,
+  TreasureSessionCompletedEvent,
+} from '../events/treasure.events';
+import { TreasureRepository } from '../repositories/treasure.repository';
+import { AUDIO_ROOM_EVENTS, RoomCreatedEvent } from 'src/modules/audio-rooms/events/audio-room.events';
 import { TreasureAuditService } from './treasure-audit.service';
 import { TreasureDistributionService } from './treasure-distribution.service';
 import { TreasureProgressService } from './treasure-progress.service';
 import { TreasureRewardService } from './treasure-reward.service';
+import { TreasureService } from './treasure.service';
+
+import { WalletCurrency, WalletTxnReason } from '@prisma/client';
+import { WALLET_SERVICE, type IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
 
 @Injectable()
 export class TreasureEventService implements OnModuleInit {
@@ -12,13 +23,30 @@ export class TreasureEventService implements OnModuleInit {
 
   constructor(
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    @Inject(WALLET_SERVICE) private readonly walletService: IWalletService,
     private readonly progressService: TreasureProgressService,
     private readonly rewardService: TreasureRewardService,
     private readonly distributionService: TreasureDistributionService,
     private readonly auditService: TreasureAuditService,
+    private readonly repo: TreasureRepository,
+    private readonly treasureService: TreasureService,
   ) {}
 
   onModuleInit() {
+    // Auto-initialize Treasure Box when host starts a Live Audio Room
+    this.bus.subscribe<RoomCreatedEvent>(AUDIO_ROOM_EVENTS.CREATED, async (event) => {
+      try {
+        await this.treasureService.autoStartTodaySession(
+          event.payload.roomId,
+          event.payload.ownerId,
+        );
+      } catch (err) {
+        this.logger.error(
+          `Error auto-initializing Treasure Session on RoomCreatedEvent: ${(err as Error).message}`,
+        );
+      }
+    });
+
     // Event-driven subscription to GiftSentEvent
     this.bus.subscribe<GiftSentEvent>(GIFT_EVENTS.SENT, async (event) => {
       try {
@@ -52,11 +80,53 @@ export class TreasureEventService implements OnModuleInit {
       contextType,
     );
 
+    // If Box 5 was completed and excess coins remained, refund immediately to sender's wallet
+    if (result.refundAmount > BigInt(0)) {
+      try {
+        await this.walletService.credit({
+          userId,
+          currency: WalletCurrency.GOLD,
+          amount: Number(result.refundAmount),
+          reason: WalletTxnReason.GIFT_REFUND,
+          idempotencyKey: `refund:treasure:box5:${result.sessionId}:${giftTxnId || Date.now()}`,
+          referenceType: 'TREASURE_BOX_5_REFUND',
+          referenceId: result.sessionId,
+        });
+        this.logger.log(
+          `Refunded ${result.refundAmount} excess coins to user ${userId} upon Box 5 completion.`,
+        );
+      } catch (refundErr) {
+        this.logger.error(
+          `Failed to process Box 5 refund for user ${userId}: ${(refundErr as Error).message}`,
+        );
+      }
+    }
+
     // Audit progress update
     await this.auditService.logAudit('TREASURE_PROGRESS_UPDATED', roomId, undefined, {
-      appliedAmount: totalCoins.toString(),
+      appliedAmount: result.appliedAmount.toString(),
+      refundAmount: result.refundAmount.toString(),
       completedCount: result.completedBoxes.length,
     });
+
+    // Publish live TreasureProgressEvent for room sockets
+    if (result.activeBox) {
+      const topGifters = await this.repo.topContributors(result.activeBox.boxId, 3);
+      await this.bus.publish(
+        new TreasureProgressEvent({
+          roomId,
+          sessionId: result.sessionId,
+          level: result.activeBox.level,
+          progress: Number(result.activeBox.progress),
+          threshold: Number(result.activeBox.threshold),
+          topGifters: topGifters.map((t, idx) => ({
+            rank: idx + 1,
+            userId: t.userId,
+            amount: Number(t.amount),
+          })),
+        }),
+      );
+    }
 
     // Handle any boxes completed by this gift
     for (const completed of result.completedBoxes) {
@@ -65,42 +135,60 @@ export class TreasureEventService implements OnModuleInit {
         threshold: completed.threshold.toString(),
       });
 
-      // Calculate reward pool dynamically from config
-      const pool = await this.rewardService.calculateRewardPool(
-        completed.level,
-        completed.threshold,
-      );
-
-      await this.auditService.logAudit('TREASURE_REWARD_GENERATED', roomId, completed.boxId, {
-        totalRewardPool: pool.totalRewardPool.toString(),
-        percentage: pool.rewardPoolPercentage,
-      });
-
-      // Distribute rewards to 5-7 eligible winners
+      // Distribute exclusive Backpack inventory rewards to Top 3 contributors
       const dist = await this.distributionService.distributeBoxRewards(
         result.sessionId,
         completed.boxId,
         roomId,
         completed.level,
-        pool.totalRewardPool,
       );
 
       await this.auditService.logAudit('TREASURE_REWARD_DISTRIBUTED', roomId, completed.boxId, {
         winnersCount: dist.winnersCount,
       });
 
+      // Fetch top gifters for opened box event
+      const topGifters = await this.repo.topContributors(completed.boxId, 3);
+
+      // Construct room system announcement text
+      const medals = ['🥇', '🥈', '🥉'];
+      const winnerLines = dist.distributions
+        .map((d, idx) => `${medals[idx] || '🎖️'} Rank ${d.rank} won ${d.itemName || 'Exclusive Reward'}`)
+        .join('  ');
+
+      const announcementContent = `🎁 Treasure Box Level ${completed.level} Opened! ${winnerLines}`;
+
       // Publish TreasureBoxOpenedEvent
-      await this.bus.publish({
-        name: 'treasure.box_opened',
-        payload: {
-          sessionId: result.sessionId,
+      await this.bus.publish(
+        new TreasureBoxOpenedEvent({
           roomId,
-          boxId: completed.boxId,
+          sessionId: result.sessionId,
           level: completed.level,
-          totalRewardPool: pool.totalRewardPool.toString(),
-          winners: dist.distributions,
-        },
-      } as any);
+          topGifters: topGifters.map((t, idx) => ({
+            rank: idx + 1,
+            userId: t.userId,
+            amount: Number(t.amount),
+          })),
+          rewards: dist.distributions.map((d) => ({
+            userId: d.userId,
+            rank: d.rank,
+            kind: 'BACKPACK_ITEM',
+            coins: null,
+            itemName: d.itemName,
+          })),
+          nextLevel: completed.level < 5 ? completed.level + 1 : null,
+        }),
+      );
+    }
+
+    if (result.sessionCompleted) {
+      await this.bus.publish(
+        new TreasureSessionCompletedEvent({
+          roomId,
+          sessionId: result.sessionId,
+        }),
+      );
     }
   }
 }
+
