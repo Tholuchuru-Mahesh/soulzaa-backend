@@ -21,8 +21,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
+        # version is read automatically from package.json#packageManager
 
       - uses: actions/setup-node@v4
         with:
@@ -49,8 +48,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
+        # version is read automatically from package.json#packageManager
 
       - uses: actions/setup-node@v4
         with:
