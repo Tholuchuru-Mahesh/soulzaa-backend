@@ -21,7 +21,12 @@ export class AchievementEventService {
     achievementCode: string,
     category: string,
   ) {
-    await this.publish('achievement.unlocked', { userId, achievementId, achievementCode, category });
+    await this.publish('achievement.unlocked', {
+      userId,
+      achievementId,
+      achievementCode,
+      category,
+    });
   }
 
   async publishAchievementProgress(

@@ -1,15 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsString,
-  IsNotEmpty,
-  IsOptional,
-  IsUUID,
-  IsInt,
-  IsDateString,
-  IsObject,
-  IsArray,
-  Min,
-} from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsUUID, IsDateString, IsObject } from 'class-validator';
 
 // ── Generate Report Dto ──────────────────────────────────────────────
 export class GenerateReportDto {

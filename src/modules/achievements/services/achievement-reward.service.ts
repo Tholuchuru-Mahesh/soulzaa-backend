@@ -89,6 +89,11 @@ export class AchievementRewardService {
       return { alreadyClaimed: true };
     }
 
-    return this.claimReward(userId, unlock.id, def.rewardDefinition as Record<string, any>, actorId);
+    return this.claimReward(
+      userId,
+      unlock.id,
+      def.rewardDefinition as Record<string, any>,
+      actorId,
+    );
   }
 }

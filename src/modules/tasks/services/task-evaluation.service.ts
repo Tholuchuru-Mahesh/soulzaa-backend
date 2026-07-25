@@ -57,7 +57,10 @@ export class TaskEvaluationService {
 
     for (const def of matching) {
       try {
-        const incrementBy = this.extractIncrement(def.progressRules as Record<string, any>, metadata);
+        const incrementBy = this.extractIncrement(
+          def.progressRules as Record<string, any>,
+          metadata,
+        );
 
         const result = await this.progressService.incrementProgress({
           userId,
@@ -128,7 +131,10 @@ export class TaskEvaluationService {
     }
   }
 
-  private extractIncrement(rules: Record<string, any> | null, metadata: Record<string, any>): number {
+  private extractIncrement(
+    rules: Record<string, any> | null,
+    metadata: Record<string, any>,
+  ): number {
     if (!rules) return 1;
     const incrementField = rules['incrementField'] as string | undefined;
     if (incrementField && metadata[incrementField]) {

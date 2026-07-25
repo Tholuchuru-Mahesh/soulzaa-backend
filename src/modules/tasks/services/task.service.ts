@@ -101,7 +101,9 @@ export class TaskService {
   }
 
   async getTaskDefinition(idOrCode: string) {
-    const byId = await this.prisma.taskDefinition.findUnique({ where: { id: idOrCode } }).catch(() => null);
+    const byId = await this.prisma.taskDefinition
+      .findUnique({ where: { id: idOrCode } })
+      .catch(() => null);
     return byId ?? this.prisma.taskDefinition.findUnique({ where: { code: idOrCode } });
   }
 }

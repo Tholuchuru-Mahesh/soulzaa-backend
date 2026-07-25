@@ -1,5 +1,3 @@
-import { PaymentProvider } from '@prisma/client';
-
 export interface VerificationResult {
   isVerified: boolean;
   providerTxnId: string;

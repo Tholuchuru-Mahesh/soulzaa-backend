@@ -42,7 +42,10 @@ export class DashboardWidgetService {
       where: { id },
     });
     if (widget) {
-      this.validation.assertRoleCanViewWidget(userRole, widget.visibleToRoles as string[] | undefined);
+      this.validation.assertRoleCanViewWidget(
+        userRole,
+        widget.visibleToRoles as string[] | undefined,
+      );
     }
     return widget;
   }

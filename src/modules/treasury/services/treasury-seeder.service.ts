@@ -120,7 +120,7 @@ export class TreasurySeederService implements OnModuleInit {
               description: seed.description,
             },
           });
-        } catch (e) {
+        } catch {
           // Ignore unique constraint error if concurrently created
         }
       }

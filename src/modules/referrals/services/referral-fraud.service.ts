@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 import { ReferralConfigurationService } from './referral-configuration.service';
 
@@ -53,9 +49,7 @@ export class ReferralFraudService {
       });
       const maxUses = await this.config.getMaxUses();
       if (campaignCount >= maxUses) {
-        reasons.push(
-          `Referrer has exceeded the maximum referrals (${maxUses}) for this campaign.`,
-        );
+        reasons.push(`Referrer has exceeded the maximum referrals (${maxUses}) for this campaign.`);
       }
     }
 

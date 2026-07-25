@@ -18,7 +18,12 @@ export class EventRewardService {
    * Records the reward definition in `event_rewards` and publishes `event.reward.dispatched`.
    * Does NOT touch Wallet or EXP directly (decoupled orchestration).
    */
-  async dispatchReward(eventId: string, userId: string, customReward?: Record<string, any>, actorId?: string) {
+  async dispatchReward(
+    eventId: string,
+    userId: string,
+    customReward?: Record<string, any>,
+    actorId?: string,
+  ) {
     const event = await this.prisma.eventDefinition.findUnique({ where: { id: eventId } });
     if (!event) throw new Error(`Event ${eventId} not found`);
 
@@ -61,7 +66,9 @@ export class EventRewardService {
         const reward = await this.dispatchReward(eventId, p.userId, undefined, actorId);
         results.push(reward);
       } catch (err) {
-        this.logger.error(`Failed to dispatch reward to user ${p.userId} in event ${eventId}: ${(err as Error).message}`);
+        this.logger.error(
+          `Failed to dispatch reward to user ${p.userId} in event ${eventId}: ${(err as Error).message}`,
+        );
       }
     }
 

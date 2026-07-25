@@ -1,4 +1,3 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { FeatureFlagService } from 'src/modules/platform-configuration/services/feature-flag.service';
@@ -16,7 +15,7 @@ describe('TreasuryModule Shared Services', () => {
   let policyService: FinancialPolicyService;
   let healthService: FinancialHealthService;
   let riskService: RiskManagementService;
-  let auditService: TreasuryAuditService;
+  let _auditService: TreasuryAuditService;
   let seederService: TreasurySeederService;
 
   const mockPrismaService = {
@@ -28,6 +27,7 @@ describe('TreasuryModule Shared Services', () => {
     financialPolicy: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      create: jest.fn(),
       update: jest.fn(),
       upsert: jest.fn(),
     },
@@ -64,7 +64,7 @@ describe('TreasuryModule Shared Services', () => {
     policyService = module.get<FinancialPolicyService>(FinancialPolicyService);
     healthService = module.get<FinancialHealthService>(FinancialHealthService);
     riskService = module.get<RiskManagementService>(RiskManagementService);
-    auditService = module.get<TreasuryAuditService>(TreasuryAuditService);
+    _auditService = module.get<TreasuryAuditService>(TreasuryAuditService);
     seederService = module.get<TreasurySeederService>(TreasurySeederService);
 
     jest.clearAllMocks();
@@ -168,11 +168,14 @@ describe('TreasuryModule Shared Services', () => {
     it('should seed default treasury reserve and policies', async () => {
       mockPrismaService.treasuryReserve.findFirst.mockResolvedValue(null);
       mockPrismaService.treasuryReserve.create.mockResolvedValue({});
-      mockPrismaService.financialPolicy.upsert.mockResolvedValue({});
+      // Policies are seeded find-then-create (not upsert) so a concurrent seeder
+      // losing the unique-constraint race can be swallowed.
+      mockPrismaService.financialPolicy.findUnique.mockResolvedValue(null);
+      mockPrismaService.financialPolicy.create.mockResolvedValue({});
 
       await seederService.seedDefaults();
       expect(mockPrismaService.treasuryReserve.create).toHaveBeenCalled();
-      expect(mockPrismaService.financialPolicy.upsert).toHaveBeenCalled();
+      expect(mockPrismaService.financialPolicy.create).toHaveBeenCalled();
     });
   });
 });

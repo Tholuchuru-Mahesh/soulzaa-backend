@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
-import { ANALYTICS_AUDIT_ACTIONS, AnalyticsAuditAction } from '../constants/analytics-engine.constants';
+import {
+  ANALYTICS_AUDIT_ACTIONS,
+  AnalyticsAuditAction,
+} from '../constants/analytics-engine.constants';
 
 export interface AuditEntry {
   action: AnalyticsAuditAction;
@@ -27,10 +30,7 @@ export class AnalyticsAuditService {
     this.logger.log(`Audit [${entry.action}] — report: ${entry.reportId ?? 'N/A'}`);
   }
 
-  async queryByAction(
-    action: AnalyticsAuditAction,
-    limit = 100,
-  ): Promise<unknown[]> {
+  async queryByAction(action: AnalyticsAuditAction, limit = 100): Promise<unknown[]> {
     return this.prisma.analyticsAudit.findMany({
       where: { action },
       orderBy: { createdAt: 'desc' },

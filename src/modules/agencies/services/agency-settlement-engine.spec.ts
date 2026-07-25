@@ -18,15 +18,15 @@ import { AgencyStatisticsService } from './agency-statistics.service';
 import { AgencyValidationService } from './agency-validation.service';
 
 describe('Phase 8: Enterprise Agency Settlement Engine', () => {
-  let configService: AgencyConfigurationService;
+  let _configService: AgencyConfigurationService;
   let commissionService: AgencyCommissionService;
-  let relationshipService: AgencyRelationshipService;
+  let _relationshipService: AgencyRelationshipService;
   let validationService: AgencyValidationService;
   let settlementService: AgencySettlementService;
-  let historyService: AgencyHistoryService;
-  let auditService: AgencyAuditService;
-  let statisticsService: AgencyStatisticsService;
-  let queryService: AgencyQueryService;
+  let _historyService: AgencyHistoryService;
+  let _auditService: AgencyAuditService;
+  let _statisticsService: AgencyStatisticsService;
+  let _queryService: AgencyQueryService;
   let eventService: AgencyEventService;
 
   const mockPrismaService: any = {
@@ -89,7 +89,7 @@ describe('Phase 8: Enterprise Agency Settlement Engine', () => {
   };
 
   const mockLockService = {
-    withLock: jest.fn().mockImplementation((_key: string, fn: Function) => fn()),
+    withLock: jest.fn().mockImplementation((_key: string, fn: () => unknown) => fn()),
   };
 
   beforeEach(async () => {
@@ -114,15 +114,15 @@ describe('Phase 8: Enterprise Agency Settlement Engine', () => {
       ],
     }).compile();
 
-    configService = module.get<AgencyConfigurationService>(AgencyConfigurationService);
+    _configService = module.get<AgencyConfigurationService>(AgencyConfigurationService);
     commissionService = module.get<AgencyCommissionService>(AgencyCommissionService);
-    relationshipService = module.get<AgencyRelationshipService>(AgencyRelationshipService);
+    _relationshipService = module.get<AgencyRelationshipService>(AgencyRelationshipService);
     validationService = module.get<AgencyValidationService>(AgencyValidationService);
     settlementService = module.get<AgencySettlementService>(AgencySettlementService);
-    historyService = module.get<AgencyHistoryService>(AgencyHistoryService);
-    auditService = module.get<AgencyAuditService>(AgencyAuditService);
-    statisticsService = module.get<AgencyStatisticsService>(AgencyStatisticsService);
-    queryService = module.get<AgencyQueryService>(AgencyQueryService);
+    _historyService = module.get<AgencyHistoryService>(AgencyHistoryService);
+    _auditService = module.get<AgencyAuditService>(AgencyAuditService);
+    _statisticsService = module.get<AgencyStatisticsService>(AgencyStatisticsService);
+    _queryService = module.get<AgencyQueryService>(AgencyQueryService);
     eventService = module.get<AgencyEventService>(AgencyEventService);
 
     jest.clearAllMocks();

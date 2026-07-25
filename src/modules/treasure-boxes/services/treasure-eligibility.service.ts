@@ -19,7 +19,7 @@ export class TreasureEligibilityService {
    * 2. Exclude banned or blocked users
    * 3. Exclude users with zero participation (0 contribution)
    */
-  async getEligibleParticipants(boxId: string, roomId: string): Promise<EligibleParticipant[]> {
+  async getEligibleParticipants(boxId: string, _roomId: string): Promise<EligibleParticipant[]> {
     // 1. Fetch contributors for this box
     const contributions = await this.prisma.treasureContribution.groupBy({
       by: ['userId'],

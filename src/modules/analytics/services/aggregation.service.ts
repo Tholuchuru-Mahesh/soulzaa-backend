@@ -23,20 +23,22 @@ export class AggregationService {
         break;
 
       case 'WALLET':
-      case 'FINANCIAL':
+      case 'FINANCIAL': {
         // Sum total balances in user wallets
         const walletSum = await this.prisma.wallet.aggregate({
           _sum: { availableBalance: true },
         });
         results['total_wallet_balance'] = Number(walletSum._sum.availableBalance ?? 0n);
         break;
+      }
 
-      case 'GIFT':
+      case 'GIFT': {
         const giftCount = await this.prisma.roomActivity.aggregate({
           _sum: { totalGifts: true },
         });
         results['total_gifts_sent'] = giftCount._sum.totalGifts ?? 0;
         break;
+      }
 
       case 'REFERRAL':
         results['total_referral_codes'] = await this.prisma.referralCode.count();

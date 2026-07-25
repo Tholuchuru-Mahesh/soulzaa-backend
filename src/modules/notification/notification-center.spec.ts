@@ -35,7 +35,9 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     },
     notificationTemplate: {
       findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       findMany: jest.fn().mockResolvedValue([]),
     },
     enterpriseNotificationPreference: {
@@ -45,7 +47,11 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     },
     enterpriseNotification: {
       findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), retryCount: 0, ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) =>
+          Promise.resolve({ id: makeUuid(), retryCount: 0, ...args.data }),
+        ),
       update: jest.fn().mockResolvedValue({}),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       count: jest.fn().mockResolvedValue(0),
@@ -55,7 +61,9 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     notificationInbox: {
       findUnique: jest.fn().mockResolvedValue(null),
       findFirst: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       update: jest.fn().mockResolvedValue({}),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       count: jest.fn().mockResolvedValue(0),
@@ -70,7 +78,9 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     notificationStatistics: {
       upsert: jest.fn().mockResolvedValue({}),
       findMany: jest.fn().mockResolvedValue([]),
-      aggregate: jest.fn().mockResolvedValue({ _sum: { sentCount: 0, readCount: 0, failedCount: 0 } }),
+      aggregate: jest
+        .fn()
+        .mockResolvedValue({ _sum: { sentCount: 0, readCount: 0, failedCount: 0 } }),
     },
     notificationAudit: {
       create: jest.fn().mockResolvedValue({}),
@@ -108,7 +118,10 @@ describe('NotificationConfigurationService', () => {
   });
 
   it('retrieves config values from DB when set', async () => {
-    prisma.notificationConfiguration.findUnique.mockResolvedValue({ key: 'notification.retry_count', value: 5 });
+    prisma.notificationConfiguration.findUnique.mockResolvedValue({
+      key: 'notification.retry_count',
+      value: 5,
+    });
     expect(await service.getRetryCount()).toBe(5);
   });
 
@@ -188,7 +201,10 @@ describe('NotificationTemplateService', () => {
     };
     prisma.notificationTemplate.findUnique.mockResolvedValue(input);
 
-    const rendered = await service.renderTemplate('WELCOME', { name: 'Alice', platform: 'Soulzaa' });
+    const rendered = await service.renderTemplate('WELCOME', {
+      name: 'Alice',
+      platform: 'Soulzaa',
+    });
     expect(rendered.title).toBe('Hi Alice');
     expect(rendered.body).toBe('Welcome to Soulzaa');
   });
@@ -293,7 +309,10 @@ describe('NotificationEventService', () => {
     expect(emitter.emit).toHaveBeenCalledWith('notification.created', { notificationId: '1' });
 
     service.emitNotificationSent({ notificationId: '1', channel: 'SMS' });
-    expect(emitter.emit).toHaveBeenCalledWith('notification.sent', { notificationId: '1', channel: 'SMS' });
+    expect(emitter.emit).toHaveBeenCalledWith('notification.sent', {
+      notificationId: '1',
+      channel: 'SMS',
+    });
   });
 });
 

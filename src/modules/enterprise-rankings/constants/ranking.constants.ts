@@ -38,13 +38,7 @@ export const RANKING_TIME_WINDOWS = [
 ] as const;
 export type RankingTimeWindow = (typeof RANKING_TIME_WINDOWS)[number];
 
-export const RANKING_ENTITY_TYPES = [
-  'USER',
-  'FAMILY',
-  'ROOM',
-  'AGENCY',
-  'TEAM',
-] as const;
+export const RANKING_ENTITY_TYPES = ['USER', 'FAMILY', 'ROOM', 'AGENCY', 'TEAM'] as const;
 export type RankingEntityType = (typeof RANKING_ENTITY_TYPES)[number];
 
 export const RANKING_VISIBILITIES = ['PUBLIC', 'PRIVATE', 'ADMIN_ONLY'] as const;

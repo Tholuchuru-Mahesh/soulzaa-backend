@@ -123,7 +123,12 @@ export class NotificationDispatchService {
         });
 
         // Simple mock of retry logic queue if failed
-        await this.retryQueue(input.notificationId, channel, result.errorMessage ?? 'Unknown', maxRetry);
+        await this.retryQueue(
+          input.notificationId,
+          channel,
+          result.errorMessage ?? 'Unknown',
+          maxRetry,
+        );
       }
     }
   }

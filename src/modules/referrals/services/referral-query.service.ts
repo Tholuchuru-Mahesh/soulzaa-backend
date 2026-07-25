@@ -6,18 +6,17 @@ export class ReferralQueryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getUserReferralSummary(userId: string): Promise<unknown> {
-    const [codesCreated, totalReferred, qualified, rewarded, myReferral] =
-      await Promise.all([
-        this.prisma.referralCode.count({ where: { referrerId: userId } }),
-        this.prisma.referralRelationship.count({ where: { referrerId: userId } }),
-        this.prisma.referralRelationship.count({
-          where: { referrerId: userId, status: { in: ['QUALIFIED', 'REWARDED'] } },
-        }),
-        this.prisma.referralRelationship.count({
-          where: { referrerId: userId, status: 'REWARDED' },
-        }),
-        this.prisma.referralRelationship.findUnique({ where: { refereeId: userId } }),
-      ]);
+    const [codesCreated, totalReferred, qualified, rewarded, myReferral] = await Promise.all([
+      this.prisma.referralCode.count({ where: { referrerId: userId } }),
+      this.prisma.referralRelationship.count({ where: { referrerId: userId } }),
+      this.prisma.referralRelationship.count({
+        where: { referrerId: userId, status: { in: ['QUALIFIED', 'REWARDED'] } },
+      }),
+      this.prisma.referralRelationship.count({
+        where: { referrerId: userId, status: 'REWARDED' },
+      }),
+      this.prisma.referralRelationship.findUnique({ where: { refereeId: userId } }),
+    ]);
     return { codesCreated, totalReferred, qualified, rewarded, myReferral };
   }
 
@@ -37,10 +36,7 @@ export class ReferralQueryService {
     });
   }
 
-  async getCampaignLeaderboard(
-    campaignId: string,
-    limit = 20,
-  ): Promise<unknown[]> {
+  async getCampaignLeaderboard(campaignId: string, limit = 20): Promise<unknown[]> {
     return this.prisma.referralRelationship.groupBy({
       by: ['referrerId'],
       where: {

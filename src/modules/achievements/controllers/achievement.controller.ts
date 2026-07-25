@@ -9,13 +9,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -79,10 +73,7 @@ export class AchievementController {
   @ApiOperation({ summary: 'List achievement definitions' })
   @ApiQuery({ name: 'category', required: false, description: 'Filter by category' })
   @ApiQuery({ name: 'status', required: false, example: 'ACTIVE' })
-  async getAchievements(
-    @Query('category') category?: string,
-    @Query('status') status?: string,
-  ) {
+  async getAchievements(@Query('category') category?: string, @Query('status') status?: string) {
     return this.achievementService.getAchievementDefinitions(category, status ?? 'ACTIVE');
   }
 
@@ -341,10 +332,7 @@ export class AchievementController {
   @Post('configuration')
   @RequirePermissions('achievement.configuration.manage')
   @ApiOperation({ summary: 'Set an achievement engine dynamic configuration parameter' })
-  async setConfiguration(
-    @Body() dto: UpdateAchievementConfigurationDto,
-    @CurrentUser() user: any,
-  ) {
+  async setConfiguration(@Body() dto: UpdateAchievementConfigurationDto, @CurrentUser() user: any) {
     return this.configService.setConfiguration(dto.key, dto.value, user?.id);
   }
 }

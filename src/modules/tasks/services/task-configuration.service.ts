@@ -19,14 +19,13 @@ export class TaskConfigurationService {
   ) {}
 
   async getParameters(): Promise<TaskConfigParameters> {
-    const [dailyReset, weeklyReset, maxProgress, rewardWindow, autoClaim] =
-      await Promise.all([
-        this.configEngine.get(TASK_CONFIG_KEYS.DAILY_RESET),
-        this.configEngine.get(TASK_CONFIG_KEYS.WEEKLY_RESET),
-        this.configEngine.get(TASK_CONFIG_KEYS.MAX_PROGRESS),
-        this.configEngine.get(TASK_CONFIG_KEYS.REWARD_CLAIM_WINDOW),
-        this.configEngine.get(TASK_CONFIG_KEYS.AUTO_CLAIM),
-      ]);
+    const [dailyReset, weeklyReset, maxProgress, rewardWindow, autoClaim] = await Promise.all([
+      this.configEngine.get(TASK_CONFIG_KEYS.DAILY_RESET),
+      this.configEngine.get(TASK_CONFIG_KEYS.WEEKLY_RESET),
+      this.configEngine.get(TASK_CONFIG_KEYS.MAX_PROGRESS),
+      this.configEngine.get(TASK_CONFIG_KEYS.REWARD_CLAIM_WINDOW),
+      this.configEngine.get(TASK_CONFIG_KEYS.AUTO_CLAIM),
+    ]);
 
     return {
       dailyResetTime: String(dailyReset ?? '00:00'),

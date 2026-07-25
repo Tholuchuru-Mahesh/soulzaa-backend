@@ -34,10 +34,7 @@ export class ReferralStatisticsService {
     });
   }
 
-  async getSummary(
-    period: string,
-    dateKey: string,
-  ): Promise<unknown[]> {
+  async getSummary(period: string, dateKey: string): Promise<unknown[]> {
     return this.prisma.referralStatistics.findMany({
       where: { period, dateKey },
     });

@@ -85,7 +85,7 @@ export class RankingCalculationService {
     const rankBefore = existing?.rank ?? null;
     const newScore = BigInt(Math.max(0, Number(scoreBefore) + adjustedDelta));
 
-    const entry = await this.prisma.rankingEntry.upsert({
+    const _entry = await this.prisma.rankingEntry.upsert({
       where: { rankingId_entityId_dateKey: { rankingId, entityId, dateKey } },
       update: { score: newScore, updatedAt: new Date() },
       create: {
@@ -137,7 +137,11 @@ export class RankingCalculationService {
     );
 
     // Audit
-    const auditAction = promoted ? 'RANKING_PROMOTED' : demoted ? 'RANKING_DEMOTED' : 'RANKING_UPDATED';
+    const auditAction = promoted
+      ? 'RANKING_PROMOTED'
+      : demoted
+        ? 'RANKING_DEMOTED'
+        : 'RANKING_UPDATED';
     await this.auditService.logAudit(auditAction, entityId, input.actorId, {
       rankingId,
       eventCode,
@@ -185,7 +189,15 @@ export class RankingCalculationService {
     await this.prisma.rankingEntry.upsert({
       where: { rankingId_entityId_dateKey: { rankingId, entityId, dateKey } },
       update: { score: newScore, updatedAt: new Date() },
-      create: { rankingId, entityId, entityType, score: newScore, rank: 0, period: definition.timeWindow, dateKey },
+      create: {
+        rankingId,
+        entityId,
+        entityType,
+        score: newScore,
+        rank: 0,
+        period: definition.timeWindow,
+        dateKey,
+      },
     });
 
     await this.rerank(rankingId, dateKey, entityId);
@@ -240,7 +252,11 @@ export class RankingCalculationService {
    * Re-ranks all entries for the given ranking+dateKey by descending score.
    * Returns the new rank of entityId.
    */
-  private async rerank(rankingId: string, dateKey: string, entityId: string): Promise<number | null> {
+  private async rerank(
+    rankingId: string,
+    dateKey: string,
+    entityId: string,
+  ): Promise<number | null> {
     // Fetch all entries sorted by score desc
     const allEntries = await this.prisma.rankingEntry.findMany({
       where: { rankingId, dateKey },
@@ -273,19 +289,26 @@ export class RankingCalculationService {
     const h = String(now.getUTCHours()).padStart(2, '0');
 
     switch (timeWindow) {
-      case 'HOURLY': return `${y}${m}${d}${h}`;
-      case 'DAILY': return `${y}${m}${d}`;
+      case 'HOURLY':
+        return `${y}${m}${d}${h}`;
+      case 'DAILY':
+        return `${y}${m}${d}`;
       case 'WEEKLY': {
         const w = this.isoWeek(now);
         return `${y}W${String(w).padStart(2, '0')}`;
       }
-      case 'MONTHLY': return `${y}${m}`;
-      case 'QUARTERLY': return `${y}Q${Math.ceil(parseInt(m) / 3)}`;
-      case 'YEARLY': return `${y}`;
-      case 'SEASON': return `season_${y}`;
+      case 'MONTHLY':
+        return `${y}${m}`;
+      case 'QUARTERLY':
+        return `${y}Q${Math.ceil(parseInt(m) / 3)}`;
+      case 'YEARLY':
+        return `${y}`;
+      case 'SEASON':
+        return `season_${y}`;
       case 'LIFETIME':
       case 'REALTIME':
-      default: return 'alltime';
+      default:
+        return 'alltime';
     }
   }
 

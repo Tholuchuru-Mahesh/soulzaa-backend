@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   Patch,
@@ -10,13 +9,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -387,10 +380,7 @@ export class EnterpriseEventController {
   @Post('configuration')
   @RequirePermissions('event.configuration.manage')
   @ApiOperation({ summary: 'Set dynamic event engine configuration parameter' })
-  async setConfiguration(
-    @Body() dto: UpdateEventConfigurationDto,
-    @CurrentUser() user: any,
-  ) {
+  async setConfiguration(@Body() dto: UpdateEventConfigurationDto, @CurrentUser() user: any) {
     return this.configService.setConfiguration(dto.key, dto.value, user?.id);
   }
 }

@@ -221,9 +221,9 @@ describe('Phase 14: Enterprise Badge & Achievement Engine', () => {
       mockPrismaService.achievementDefinition.findUnique.mockResolvedValue(achDef);
       mockPrismaService.userAchievement.findFirst.mockResolvedValue({ id: 'existing-unlock' });
 
-      await expect(
-        achievementService.unlockAchievement('user-1', 'ach-1'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(achievementService.unlockAchievement('user-1', 'ach-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -579,9 +579,9 @@ describe('Phase 14: Enterprise Badge & Achievement Engine', () => {
       mockPrismaService.achievementDefinition.findUnique.mockResolvedValue(achDef);
       mockPrismaService.userAchievement.findFirst.mockResolvedValue({ id: 'existing' });
 
-      await expect(
-        achievementService.unlockAchievement('user-1', 'ach-1'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(achievementService.unlockAchievement('user-1', 'ach-1')).rejects.toThrow(
+        BadRequestException,
+      );
 
       // Should NOT create duplicate unlock
       expect(mockPrismaService.userAchievement.create).not.toHaveBeenCalled();

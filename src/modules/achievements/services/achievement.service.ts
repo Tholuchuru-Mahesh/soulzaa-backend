@@ -111,14 +111,28 @@ export class AchievementService {
     }
 
     // Auto-claim reward if enabled
-    if (autoClaim && def.rewardDefinition && Object.keys(def.rewardDefinition as object).length > 0) {
-      await this.rewardService.claimReward(userId, unlock.id, def.rewardDefinition as Record<string, any>, actorId);
+    if (
+      autoClaim &&
+      def.rewardDefinition &&
+      Object.keys(def.rewardDefinition as object).length > 0
+    ) {
+      await this.rewardService.claimReward(
+        userId,
+        unlock.id,
+        def.rewardDefinition as Record<string, any>,
+        actorId,
+      );
     }
 
     return unlock;
   }
 
-  private async awardBadge(userId: string, badgeCode: string, sourceRefId: string, actorId?: string) {
+  private async awardBadge(
+    userId: string,
+    badgeCode: string,
+    sourceRefId: string,
+    actorId?: string,
+  ) {
     const badge = await this.prisma.badgeDefinition.findUnique({ where: { code: badgeCode } });
     if (!badge || badge.status !== 'ACTIVE') return;
 
@@ -168,7 +182,9 @@ export class AchievementService {
   async manualGrant(userId: string, achievementId: string, actorId: string) {
     await this.validationService.validateUserExists(userId);
     const unlock = await this.unlockAchievement(userId, achievementId, actorId, true);
-    await this.auditService.logAudit('ACHIEVEMENT_MANUAL_GRANT', userId, actorId, { achievementId });
+    await this.auditService.logAudit('ACHIEVEMENT_MANUAL_GRANT', userId, actorId, {
+      achievementId,
+    });
     return unlock;
   }
 }

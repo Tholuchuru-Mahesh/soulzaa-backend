@@ -9,13 +9,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -287,10 +281,7 @@ export class EnterpriseRankingController {
   @Post('configuration')
   @RequirePermissions('ranking.configuration.manage')
   @ApiOperation({ summary: 'Set a dynamic ranking engine configuration parameter' })
-  async setConfiguration(
-    @Body() dto: UpdateRankingConfigurationDto,
-    @CurrentUser() user: any,
-  ) {
+  async setConfiguration(@Body() dto: UpdateRankingConfigurationDto, @CurrentUser() user: any) {
     return this.configService.setConfiguration(dto.key, dto.value, user?.id);
   }
 }

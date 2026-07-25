@@ -55,16 +55,12 @@ export class ReferralService {
     });
 
     if (!fraudResult.passed) {
-      throw new BadRequestException(
-        `Referral rejected: ${fraudResult.reasons.join('; ')}`,
-      );
+      throw new BadRequestException(`Referral rejected: ${fraudResult.reasons.join('; ')}`);
     }
 
     // Determine expiry
     const qualificationTimeoutDays = await this.config.getQualificationTimeoutDays();
-    const expiresAt = new Date(
-      Date.now() + qualificationTimeoutDays * 24 * 60 * 60 * 1000,
-    );
+    const expiresAt = new Date(Date.now() + qualificationTimeoutDays * 24 * 60 * 60 * 1000);
 
     // Campaign qualification rules
     let campaignRules: Record<string, unknown> = {};
@@ -115,9 +111,7 @@ export class ReferralService {
       });
     }
 
-    this.logger.log(
-      `Referral registered: ${relationship.id} — referee: ${input.refereeId}`,
-    );
+    this.logger.log(`Referral registered: ${relationship.id} — referee: ${input.refereeId}`);
     return relationship;
   }
 

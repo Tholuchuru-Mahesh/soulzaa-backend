@@ -18,15 +18,15 @@ import { CoinSellerStatisticsService } from './coin-seller-statistics.service';
 import { CoinSellerValidationService } from './coin-seller-validation.service';
 
 describe('Phase 9: Enterprise Coin Seller Settlement Engine', () => {
-  let configService: CoinSellerConfigurationService;
+  let _configService: CoinSellerConfigurationService;
   let commissionService: CoinSellerCommissionService;
-  let relationshipService: CoinSellerRelationshipService;
+  let _relationshipService: CoinSellerRelationshipService;
   let validationService: CoinSellerValidationService;
   let settlementService: CoinSellerSettlementService;
-  let historyService: CoinSellerHistoryService;
-  let auditService: CoinSellerAuditService;
-  let statisticsService: CoinSellerStatisticsService;
-  let queryService: CoinSellerQueryService;
+  let _historyService: CoinSellerHistoryService;
+  let _auditService: CoinSellerAuditService;
+  let _statisticsService: CoinSellerStatisticsService;
+  let _queryService: CoinSellerQueryService;
   let eventService: CoinSellerEventService;
 
   const mockPrismaService: any = {
@@ -89,7 +89,7 @@ describe('Phase 9: Enterprise Coin Seller Settlement Engine', () => {
   };
 
   const mockLockService = {
-    withLock: jest.fn().mockImplementation((_key: string, fn: Function) => fn()),
+    withLock: jest.fn().mockImplementation((_key: string, fn: () => unknown) => fn()),
   };
 
   beforeEach(async () => {
@@ -114,15 +114,15 @@ describe('Phase 9: Enterprise Coin Seller Settlement Engine', () => {
       ],
     }).compile();
 
-    configService = module.get<CoinSellerConfigurationService>(CoinSellerConfigurationService);
+    _configService = module.get<CoinSellerConfigurationService>(CoinSellerConfigurationService);
     commissionService = module.get<CoinSellerCommissionService>(CoinSellerCommissionService);
-    relationshipService = module.get<CoinSellerRelationshipService>(CoinSellerRelationshipService);
+    _relationshipService = module.get<CoinSellerRelationshipService>(CoinSellerRelationshipService);
     validationService = module.get<CoinSellerValidationService>(CoinSellerValidationService);
     settlementService = module.get<CoinSellerSettlementService>(CoinSellerSettlementService);
-    historyService = module.get<CoinSellerHistoryService>(CoinSellerHistoryService);
-    auditService = module.get<CoinSellerAuditService>(CoinSellerAuditService);
-    statisticsService = module.get<CoinSellerStatisticsService>(CoinSellerStatisticsService);
-    queryService = module.get<CoinSellerQueryService>(CoinSellerQueryService);
+    _historyService = module.get<CoinSellerHistoryService>(CoinSellerHistoryService);
+    _auditService = module.get<CoinSellerAuditService>(CoinSellerAuditService);
+    _statisticsService = module.get<CoinSellerStatisticsService>(CoinSellerStatisticsService);
+    _queryService = module.get<CoinSellerQueryService>(CoinSellerQueryService);
     eventService = module.get<CoinSellerEventService>(CoinSellerEventService);
 
     jest.clearAllMocks();

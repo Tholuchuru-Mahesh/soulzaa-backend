@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
-import { NotificationEventService } from '../../notification/services/notification-event.service';
+
 import { AnalyticsEventService } from './analytics-event.service';
 import { AnalyticsAuditService } from './analytics-audit.service';
 

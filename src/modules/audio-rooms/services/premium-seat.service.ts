@@ -30,7 +30,7 @@ import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
 import { PremiumSeatRepository } from '../repositories/premium-seat.repository';
 import { RoomPermissionService } from './room-permission.service';
 
-const ELEVATED_ROLES: ReadonlySet<RoomMemberRole> = new Set([
+const _ELEVATED_ROLES: ReadonlySet<RoomMemberRole> = new Set([
   RoomMemberRole.OWNER,
   RoomMemberRole.ADMIN,
   RoomMemberRole.PREMIUM_ADMIN,

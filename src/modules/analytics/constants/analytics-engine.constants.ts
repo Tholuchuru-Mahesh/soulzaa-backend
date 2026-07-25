@@ -25,19 +25,10 @@ export const ANALYTICS_DOMAINS = [
 ] as const;
 export type AnalyticsDomain = (typeof ANALYTICS_DOMAINS)[number];
 
-export const EXPORT_FORMATS = [
-  'CSV',
-  'EXCEL',
-  'PDF',
-  'JSON',
-] as const;
+export const EXPORT_FORMATS = ['CSV', 'EXCEL', 'PDF', 'JSON'] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
-export const EXPORT_STATUSES = [
-  'PENDING',
-  'COMPLETED',
-  'FAILED',
-] as const;
+export const EXPORT_STATUSES = ['PENDING', 'COMPLETED', 'FAILED'] as const;
 export type ExportStatus = (typeof EXPORT_STATUSES)[number];
 
 export const ANALYTICS_AUDIT_ACTIONS = [

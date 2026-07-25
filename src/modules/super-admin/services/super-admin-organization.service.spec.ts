@@ -12,7 +12,7 @@ describe('Super Admin Organization Services', () => {
   let countryService: CountryService;
   let stateService: StateService;
   let regionService: RegionService;
-  let hierarchyService: OrganizationHierarchyService;
+  let _hierarchyService: OrganizationHierarchyService;
   let managerService: CountryManagerAssignmentService;
 
   const mockPrismaService = {
@@ -77,7 +77,7 @@ describe('Super Admin Organization Services', () => {
     countryService = module.get<CountryService>(CountryService);
     stateService = module.get<StateService>(StateService);
     regionService = module.get<RegionService>(RegionService);
-    hierarchyService = module.get<OrganizationHierarchyService>(OrganizationHierarchyService);
+    _hierarchyService = module.get<OrganizationHierarchyService>(OrganizationHierarchyService);
     managerService = module.get<CountryManagerAssignmentService>(CountryManagerAssignmentService);
 
     jest.clearAllMocks();

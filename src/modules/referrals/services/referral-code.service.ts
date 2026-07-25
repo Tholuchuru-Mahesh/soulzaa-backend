@@ -3,7 +3,6 @@ import { PrismaService } from '../../../infra/prisma/prisma.service';
 import { ReferralConfigurationService } from './referral-configuration.service';
 import { randomBytes } from 'crypto';
 
-
 export interface GenerateCodeInput {
   referrerId: string;
   campaignId?: string;
@@ -25,15 +24,13 @@ export class ReferralCodeService {
     return randomBytes(6).toString('base64url').toUpperCase().slice(0, 10);
   }
 
-
   /** Creates a new referral code for the referrer */
   async createCode(input: GenerateCodeInput): Promise<unknown> {
     const defaultExpiryDays = await this.config.getDefaultExpiryDays();
     const defaultMaxUses = await this.config.getMaxUses();
 
     const expiresAt =
-      input.expiresAt ??
-      new Date(Date.now() + defaultExpiryDays * 24 * 60 * 60 * 1000);
+      input.expiresAt ?? new Date(Date.now() + defaultExpiryDays * 24 * 60 * 60 * 1000);
 
     let code: string;
     let attempts = 0;
@@ -42,9 +39,7 @@ export class ReferralCodeService {
       attempts++;
       if (attempts > 10)
         throw new Error('Could not generate unique referral code after 10 attempts.');
-    } while (
-      await this.prisma.referralCode.findUnique({ where: { code } })
-    );
+    } while (await this.prisma.referralCode.findUnique({ where: { code } }));
 
     const inviteLink = `https://soulzaa.app/invite/${code}`;
     const qrCodeUrl = `https://soulzaa.app/qr/${code}`;

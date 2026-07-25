@@ -235,7 +235,7 @@ export class TreasureService implements ITreasureBoxesService {
     senderId: string,
     receiverId: string,
     amount: number,
-    giftTxnId: string,
+    _giftTxnId: string,
   ): Promise<{
     acceptedAmount: number;
     refundAmount: number;
@@ -792,7 +792,11 @@ export class TreasureService implements ITreasureBoxesService {
     if (currentUserId) userIdsSet.add(currentUserId);
 
     for (const box of boxes) {
-      if (box.status === TreasureBoxStatus.OPENED && box.topGifters && (box.topGifters as any[]).length > 0) {
+      if (
+        box.status === TreasureBoxStatus.OPENED &&
+        box.topGifters &&
+        (box.topGifters as any[]).length > 0
+      ) {
         for (const g of box.topGifters as any[]) {
           if (g.userId) userIdsSet.add(g.userId);
         }

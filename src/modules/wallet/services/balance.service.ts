@@ -40,11 +40,7 @@ export class BalanceService {
     const freeNum = Number(wallet.freeBalance);
     const earningsNum = Number(wallet.earningsBalance);
     const available = wallet.goldBalance + wallet.freeBalance;
-    const total =
-      available +
-      wallet.reservedBalance +
-      wallet.pendingBalance +
-      wallet.lockedBalance;
+    const total = available + wallet.reservedBalance + wallet.pendingBalance + wallet.lockedBalance;
 
     return {
       walletId: wallet.id,

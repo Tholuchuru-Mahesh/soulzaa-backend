@@ -1,9 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
-import {
-  REFERRAL_AUDIT_ACTIONS,
-  ReferralAuditAction,
-} from '../constants/referral.constants';
+import { REFERRAL_AUDIT_ACTIONS, ReferralAuditAction } from '../constants/referral.constants';
 
 export interface AuditEntry {
   action: ReferralAuditAction;
@@ -30,10 +27,7 @@ export class ReferralAuditService {
     this.logger.log(`Audit [${entry.action}] — relationship: ${entry.relationshipId ?? 'N/A'}`);
   }
 
-  async queryByAction(
-    action: ReferralAuditAction,
-    limit = 100,
-  ): Promise<unknown[]> {
+  async queryByAction(action: ReferralAuditAction, limit = 100): Promise<unknown[]> {
     return this.prisma.referralAudit.findMany({
       where: { action },
       orderBy: { createdAt: 'desc' },

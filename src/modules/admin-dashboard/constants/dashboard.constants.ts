@@ -1,29 +1,12 @@
 // Enterprise Business Admin Dashboard — Phase 21 Constants
 
-export const WIDGET_TYPES = [
-  'CHART',
-  'NUMBER',
-  'TABLE',
-  'LIST',
-  'STATE',
-] as const;
+export const WIDGET_TYPES = ['CHART', 'NUMBER', 'TABLE', 'LIST', 'STATE'] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
-export const ALERT_SEVERITIES = [
-  'INFO',
-  'WARNING',
-  'ERROR',
-  'CRITICAL',
-] as const;
+export const ALERT_SEVERITIES = ['INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const;
 export type AlertSeverity = (typeof ALERT_SEVERITIES)[number];
 
-export const ALERT_SOURCES = [
-  'DATABASE',
-  'REDIS',
-  'QUEUE',
-  'SOCKET',
-  'API',
-] as const;
+export const ALERT_SOURCES = ['DATABASE', 'REDIS', 'QUEUE', 'SOCKET', 'API'] as const;
 export type AlertSource = (typeof ALERT_SOURCES)[number];
 
 export const DASHBOARD_AUDIT_ACTIONS = [

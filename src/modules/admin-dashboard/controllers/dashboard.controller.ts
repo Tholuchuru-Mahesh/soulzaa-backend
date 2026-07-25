@@ -3,7 +3,6 @@ import {
   Post,
   Get,
   Patch,
-  Delete,
   Body,
   Param,
   Query,
@@ -11,13 +10,7 @@ import {
   ParseUUIDPipe,
   Req,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiQuery,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
@@ -177,10 +170,7 @@ export class DashboardController {
   @ApiOperation({ summary: 'Retrieve console operation stats counts' })
   @ApiQuery({ name: 'period', required: true })
   @ApiQuery({ name: 'dateKey', required: true })
-  async getStatsSummary(
-    @Query('period') period: string,
-    @Query('dateKey') dateKey: string,
-  ) {
+  async getStatsSummary(@Query('period') period: string, @Query('dateKey') dateKey: string) {
     return this.statisticsService.getSummary(period, dateKey);
   }
 
@@ -190,10 +180,7 @@ export class DashboardController {
   @ApiOperation({ summary: 'Retrieve administrative audit logs' })
   @ApiQuery({ name: 'skip', required: false })
   @ApiQuery({ name: 'take', required: false })
-  async listAudits(
-    @Query('skip') skip = '0',
-    @Query('take') take = '100',
-  ) {
+  async listAudits(@Query('skip') skip = '0', @Query('take') take = '100') {
     return this.auditService.findAll(parseInt(skip), parseInt(take));
   }
 

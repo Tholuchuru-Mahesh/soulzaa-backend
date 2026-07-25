@@ -164,7 +164,11 @@ describe('Phase 3: Enterprise Wallet & Double-Entry Ledger Infrastructure', () =
       ]);
 
       const projection = await balanceService.getBalanceProjection('w-1');
-      expect(projection.totalBalance).toBe('600');
+      // Spendable balance is derived per-currency (gold 600 + free 0), not from the
+      // cached availableBalance column; total then adds reserved 100 + pending +
+      // locked. reconcileBalanceWithLedger below is what checks the cached column.
+      expect(projection.availableBalance).toBe('600');
+      expect(projection.totalBalance).toBe('700');
 
       const reconciliation = await balanceService.reconcileBalanceWithLedger('w-1');
       expect(reconciliation.isReconciled).toBe(true);

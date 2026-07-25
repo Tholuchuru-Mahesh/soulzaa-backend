@@ -18,15 +18,15 @@ import { RevenueStatisticsService } from './revenue-statistics.service';
 import { RevenueValidationService } from './revenue-validation.service';
 
 describe('Phase 7: Enterprise Host Earnings & Revenue Distribution Engine', () => {
-  let configService: RevenueConfigurationService;
+  let _configService: RevenueConfigurationService;
   let calculationService: RevenueCalculationService;
-  let hostEarningsService: HostEarningsService;
+  let _hostEarningsService: HostEarningsService;
   let validationService: RevenueValidationService;
   let distributionService: RevenueDistributionService;
-  let historyService: RevenueHistoryService;
-  let auditService: RevenueAuditService;
-  let statisticsService: RevenueStatisticsService;
-  let queryService: RevenueQueryService;
+  let _historyService: RevenueHistoryService;
+  let _auditService: RevenueAuditService;
+  let _statisticsService: RevenueStatisticsService;
+  let _queryService: RevenueQueryService;
   let eventService: RevenueEventService;
 
   const mockPrismaService: any = {
@@ -88,7 +88,7 @@ describe('Phase 7: Enterprise Host Earnings & Revenue Distribution Engine', () =
   };
 
   const mockLockService = {
-    withLock: jest.fn().mockImplementation((_key: string, fn: Function) => fn()),
+    withLock: jest.fn().mockImplementation((_key: string, fn: () => unknown) => fn()),
   };
 
   beforeEach(async () => {
@@ -113,15 +113,15 @@ describe('Phase 7: Enterprise Host Earnings & Revenue Distribution Engine', () =
       ],
     }).compile();
 
-    configService = module.get<RevenueConfigurationService>(RevenueConfigurationService);
+    _configService = module.get<RevenueConfigurationService>(RevenueConfigurationService);
     calculationService = module.get<RevenueCalculationService>(RevenueCalculationService);
-    hostEarningsService = module.get<HostEarningsService>(HostEarningsService);
+    _hostEarningsService = module.get<HostEarningsService>(HostEarningsService);
     validationService = module.get<RevenueValidationService>(RevenueValidationService);
     distributionService = module.get<RevenueDistributionService>(RevenueDistributionService);
-    historyService = module.get<RevenueHistoryService>(RevenueHistoryService);
-    auditService = module.get<RevenueAuditService>(RevenueAuditService);
-    statisticsService = module.get<RevenueStatisticsService>(RevenueStatisticsService);
-    queryService = module.get<RevenueQueryService>(RevenueQueryService);
+    _historyService = module.get<RevenueHistoryService>(RevenueHistoryService);
+    _auditService = module.get<RevenueAuditService>(RevenueAuditService);
+    _statisticsService = module.get<RevenueStatisticsService>(RevenueStatisticsService);
+    _queryService = module.get<RevenueQueryService>(RevenueQueryService);
     eventService = module.get<RevenueEventService>(RevenueEventService);
 
     jest.clearAllMocks();

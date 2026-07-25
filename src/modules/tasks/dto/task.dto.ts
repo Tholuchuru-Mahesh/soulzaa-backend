@@ -177,7 +177,10 @@ export class EvaluateTaskEventDto {
   @IsNotEmpty()
   eventCode!: string;
 
-  @ApiPropertyOptional({ description: 'Event metadata for rule evaluation', example: { amount: 50 } })
+  @ApiPropertyOptional({
+    description: 'Event metadata for rule evaluation',
+    example: { amount: 50 },
+  })
   @IsOptional()
   @IsObject()
   metadata?: Record<string, any>;

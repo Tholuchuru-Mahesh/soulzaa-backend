@@ -9,13 +9,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -168,10 +162,7 @@ export class TaskController {
   @RequirePermissions('task.view')
   @ApiOperation({ summary: 'Get active tasks for user with progress overlay' })
   @ApiQuery({ name: 'category', required: false })
-  async getUserActiveTasks(
-    @Param('userId') userId: string,
-    @Query('category') category?: string,
-  ) {
+  async getUserActiveTasks(@Param('userId') userId: string, @Query('category') category?: string) {
     return this.queryService.getUserActiveTasks(userId, category);
   }
 
@@ -257,10 +248,7 @@ export class TaskController {
   @Post('configuration')
   @RequirePermissions('task.configuration.manage')
   @ApiOperation({ summary: 'Set dynamic task engine configuration parameter' })
-  async setConfiguration(
-    @Body() dto: UpdateTaskConfigurationDto,
-    @CurrentUser() user: any,
-  ) {
+  async setConfiguration(@Body() dto: UpdateTaskConfigurationDto, @CurrentUser() user: any) {
     return this.configService.setConfiguration(dto.key, dto.value, user?.id);
   }
 }

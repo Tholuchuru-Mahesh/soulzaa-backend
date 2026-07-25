@@ -3,10 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { CurrentUser } from 'src/modules/authorization/decorators/authorization.decorators';
 import { TransactionQueryFilterDto } from '../dto/wallet-query.dto';
-import {
-  WalletHistoryQueryDto,
-  WalletRewardsQueryDto,
-} from '../dto/wallet.dto';
+import { WalletHistoryQueryDto, WalletRewardsQueryDto } from '../dto/wallet.dto';
 import { BalanceService } from '../services/balance.service';
 import { TransactionQueryService } from '../services/transaction-query.service';
 import { WalletReadService } from '../services/wallet-read.service';

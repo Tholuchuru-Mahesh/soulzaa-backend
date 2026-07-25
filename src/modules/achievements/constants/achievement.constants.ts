@@ -1,7 +1,15 @@
 // Achievement Engine — Domain Constants
 // Badge tiers, types, achievement categories, event codes, config keys
 
-export const BADGE_TIERS = ['BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'DIAMOND', 'LEGEND', 'CUSTOM'] as const;
+export const BADGE_TIERS = [
+  'BRONZE',
+  'SILVER',
+  'GOLD',
+  'PLATINUM',
+  'DIAMOND',
+  'LEGEND',
+  'CUSTOM',
+] as const;
 export type BadgeTier = (typeof BADGE_TIERS)[number];
 
 export const BADGE_TYPES = ['STANDARD', 'ANIMATED', 'SEASONAL', 'LIMITED_EDITION'] as const;

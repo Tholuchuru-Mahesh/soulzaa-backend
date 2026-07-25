@@ -14,8 +14,8 @@ describe('PlatformConfigurationModule Shared Services', () => {
   let configEngine: ConfigurationEngineService;
   let featureFlagService: FeatureFlagService;
   let validationService: ConfigurationValidationService;
-  let historyService: ConfigurationHistoryService;
-  let queryService: SettingsQueryService;
+  let _historyService: ConfigurationHistoryService;
+  let _queryService: SettingsQueryService;
   let seederService: PlatformConfigurationSeederService;
 
   const mockPrismaService = {
@@ -57,8 +57,8 @@ describe('PlatformConfigurationModule Shared Services', () => {
     configEngine = module.get<ConfigurationEngineService>(ConfigurationEngineService);
     featureFlagService = module.get<FeatureFlagService>(FeatureFlagService);
     validationService = module.get<ConfigurationValidationService>(ConfigurationValidationService);
-    historyService = module.get<ConfigurationHistoryService>(ConfigurationHistoryService);
-    queryService = module.get<SettingsQueryService>(SettingsQueryService);
+    _historyService = module.get<ConfigurationHistoryService>(ConfigurationHistoryService);
+    _queryService = module.get<SettingsQueryService>(SettingsQueryService);
     seederService = module.get<PlatformConfigurationSeederService>(
       PlatformConfigurationSeederService,
     );

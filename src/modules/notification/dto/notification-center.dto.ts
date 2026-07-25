@@ -4,12 +4,10 @@ import {
   IsNotEmpty,
   IsOptional,
   IsUUID,
-  IsInt,
   IsDateString,
   IsObject,
   IsArray,
   IsBoolean,
-  Min,
 } from 'class-validator';
 
 // ── Send Notification ─────────────────────────────────────────────────

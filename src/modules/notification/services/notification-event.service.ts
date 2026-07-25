@@ -26,7 +26,9 @@ export class NotificationEventService {
 
   emitNotificationSent(payload: NotificationEventPayload): void {
     this.eventEmitter.emit('notification.sent', payload);
-    this.logger.log(`Event: notification.sent — id: ${payload.notificationId} via ${payload.channel}`);
+    this.logger.log(
+      `Event: notification.sent — id: ${payload.notificationId} via ${payload.channel}`,
+    );
   }
 
   emitNotificationRead(payload: NotificationEventPayload): void {
@@ -36,7 +38,9 @@ export class NotificationEventService {
 
   emitNotificationFailed(payload: NotificationEventPayload): void {
     this.eventEmitter.emit('notification.failed', payload);
-    this.logger.log(`Event: notification.failed — id: ${payload.notificationId} — err: ${payload.errorMessage}`);
+    this.logger.log(
+      `Event: notification.failed — id: ${payload.notificationId} — err: ${payload.errorMessage}`,
+    );
   }
 
   emitNotificationDeleted(payload: NotificationEventPayload): void {

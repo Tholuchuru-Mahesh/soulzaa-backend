@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { NotGuest } from 'src/common/decorators/not-guest.decorator';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
-import { GiftHistoryDto, LeaderboardQueryDto, ListGiftsDto, SendGiftDto } from '../dto/gift.dto';
+import { GiftHistoryDto, LeaderboardQueryDto, SendGiftDto } from '../dto/gift.dto';
 import { GiftQueryDto } from '../dto/gift-catalog.dto';
 import { GiftCatalogService } from '../services/gift-catalog.service';
 import { GiftLeaderboardService } from '../services/gift-leaderboard.service';

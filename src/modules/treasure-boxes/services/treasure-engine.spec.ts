@@ -1,10 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { TreasureBoxStatus, TreasureSessionStatus, WalletCurrency } from '@prisma/client';
+import { TreasureBoxStatus, TreasureSessionStatus } from '@prisma/client';
 import { EVENT_BUS } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import { ConfigurationEngineService } from 'src/modules/platform-configuration/services/configuration-engine.service';
 import { WALLET_SERVICE } from 'src/modules/wallet/interfaces/wallet.service.interface';
+import { TreasureRepository } from '../repositories/treasure.repository';
+import { RewardDistributor } from './reward-distributor.service';
+import { TreasureService } from './treasure.service';
 import { TreasureAuditService } from './treasure-audit.service';
 import { TreasureBoxService } from './treasure-box.service';
 import {
@@ -22,13 +25,13 @@ import { TreasureRewardService } from './treasure-reward.service';
 
 describe('Phase 6: Enterprise Treasure Box Engine', () => {
   let configService: TreasureConfigurationService;
-  let boxService: TreasureBoxService;
+  let _boxService: TreasureBoxService;
   let progressService: TreasureProgressService;
   let rewardService: TreasureRewardService;
   let eligibilityService: TreasureEligibilityService;
   let distributionService: TreasureDistributionService;
-  let historyService: TreasureHistoryService;
-  let auditService: TreasureAuditService;
+  let _historyService: TreasureHistoryService;
+  let _auditService: TreasureAuditService;
   let eventService: TreasureEventService;
   let resetService: TreasureResetService;
 
@@ -89,8 +92,21 @@ describe('Phase 6: Enterprise Treasure Box Engine', () => {
     publish: jest.fn(),
   };
 
+  const mockTreasureRepository = {
+    topContributors: jest.fn(),
+  };
+
+  // Rewards are exclusive Backpack inventory items — no coins, no wallet credit.
+  const mockRewardDistributor = {
+    distribute: jest.fn(),
+  };
+
+  const mockTreasureService = {
+    autoStartTodaySession: jest.fn(),
+  };
+
   const mockLockService = {
-    withLock: jest.fn().mockImplementation((_key: string, fn: Function) => fn()),
+    withLock: jest.fn().mockImplementation((_key: string, fn: () => unknown) => fn()),
   };
 
   beforeEach(async () => {
@@ -111,17 +127,20 @@ describe('Phase 6: Enterprise Treasure Box Engine', () => {
         { provide: WALLET_SERVICE, useValue: mockWalletService },
         { provide: EVENT_BUS, useValue: mockEventBus },
         { provide: LockService, useValue: mockLockService },
+        { provide: TreasureRepository, useValue: mockTreasureRepository },
+        { provide: RewardDistributor, useValue: mockRewardDistributor },
+        { provide: TreasureService, useValue: mockTreasureService },
       ],
     }).compile();
 
     configService = module.get<TreasureConfigurationService>(TreasureConfigurationService);
-    boxService = module.get<TreasureBoxService>(TreasureBoxService);
+    _boxService = module.get<TreasureBoxService>(TreasureBoxService);
     progressService = module.get<TreasureProgressService>(TreasureProgressService);
     rewardService = module.get<TreasureRewardService>(TreasureRewardService);
     eligibilityService = module.get<TreasureEligibilityService>(TreasureEligibilityService);
     distributionService = module.get<TreasureDistributionService>(TreasureDistributionService);
-    historyService = module.get<TreasureHistoryService>(TreasureHistoryService);
-    auditService = module.get<TreasureAuditService>(TreasureAuditService);
+    _historyService = module.get<TreasureHistoryService>(TreasureHistoryService);
+    _auditService = module.get<TreasureAuditService>(TreasureAuditService);
     eventService = module.get<TreasureEventService>(TreasureEventService);
     resetService = module.get<TreasureResetService>(TreasureResetService);
 
@@ -160,12 +179,15 @@ describe('Phase 6: Enterprise Treasure Box Engine', () => {
       const sessionId = 'session-101';
       const roomId = 'room-202';
 
-      mockPrismaService.treasureSession.findFirst.mockResolvedValue({
-        id: sessionId,
-        roomId,
-        currentLevel: 1,
-        status: TreasureSessionStatus.ACTIVE,
-      });
+      // applyGiftProgress first probes for a session already COMPLETED today (the
+      // daily-limit guard) before loading the ACTIVE one — answer each separately.
+      mockPrismaService.treasureSession.findFirst.mockImplementation(({ where }: any) =>
+        Promise.resolve(
+          where?.status === TreasureSessionStatus.COMPLETED
+            ? null
+            : { id: sessionId, roomId, currentLevel: 1, status: TreasureSessionStatus.ACTIVE },
+        ),
+      );
 
       // Box 1 threshold 15,000, current progress 10,000 (needs 5,000)
       mockPrismaService.treasureBox.findUnique.mockImplementation(({ where }: any) => {
@@ -208,12 +230,14 @@ describe('Phase 6: Enterprise Treasure Box Engine', () => {
       const sessionId = 'session-mega';
       const roomId = 'room-303';
 
-      mockPrismaService.treasureSession.findFirst.mockResolvedValue({
-        id: sessionId,
-        roomId,
-        currentLevel: 1,
-        status: TreasureSessionStatus.ACTIVE,
-      });
+      // Daily-limit guard probes for a COMPLETED session first — see above.
+      mockPrismaService.treasureSession.findFirst.mockImplementation(({ where }: any) =>
+        Promise.resolve(
+          where?.status === TreasureSessionStatus.COMPLETED
+            ? null
+            : { id: sessionId, roomId, currentLevel: 1, status: TreasureSessionStatus.ACTIVE },
+        ),
+      );
 
       mockPrismaService.treasureBox.findUnique.mockImplementation(({ where }: any) => {
         const lvl = where.sessionId_level.level;
@@ -280,43 +304,73 @@ describe('Phase 6: Enterprise Treasure Box Engine', () => {
       expect(eligible.map((e) => e.userId)).toEqual(['u1', 'u2']);
     });
 
-    it('should distribute rewards using WalletTransactionService with double-entry ledger entries', async () => {
-      mockPrismaService.treasureContribution.groupBy.mockResolvedValue([
-        { userId: 'u1', _sum: { amount: BigInt(5000) } },
-        { userId: 'u2', _sum: { amount: BigInt(3000) } },
-        { userId: 'u3', _sum: { amount: BigInt(2000) } },
-        { userId: 'u4', _sum: { amount: BigInt(1000) } },
-        { userId: 'u5', _sum: { amount: BigInt(500) } },
+    it('should reward the top 3 contributors with exclusive Backpack items and credit no wallets', async () => {
+      mockPrismaService.treasureBoxConfig.findUnique.mockResolvedValue(null);
+
+      mockTreasureRepository.topContributors.mockResolvedValue([
+        { userId: 'u1', total: BigInt(5000) },
+        { userId: 'u2', total: BigInt(3000) },
+        { userId: 'u3', total: BigInt(2000) },
       ]);
 
-      mockPrismaService.user.findMany.mockResolvedValue([
-        { id: 'u1', status: 'ACTIVE' },
-        { id: 'u2', status: 'ACTIVE' },
-        { id: 'u3', status: 'ACTIVE' },
-        { id: 'u4', status: 'ACTIVE' },
-        { id: 'u5', status: 'ACTIVE' },
+      mockRewardDistributor.distribute.mockResolvedValue([
+        {
+          userId: 'u1',
+          rank: 1,
+          itemType: 'THEME',
+          itemName: 'Bronze Entry Theme',
+          backpackItemId: 'bp-1',
+        },
+        {
+          userId: 'u2',
+          rank: 2,
+          itemType: 'FRAME',
+          itemName: 'Bronze Profile Frame',
+          backpackItemId: 'bp-2',
+        },
+        {
+          userId: 'u3',
+          rank: 3,
+          itemType: 'BADGE',
+          itemName: 'Bronze Contributor Badge',
+          backpackItemId: 'bp-3',
+        },
       ]);
 
       mockPrismaService.treasureReward.create.mockResolvedValue({ id: 'rew-1' });
 
-      const dist = await distributionService.distributeBoxRewards(
-        'sess-1',
-        'box-1',
-        'room-1',
-        1,
-        BigInt(7_500),
-      );
+      const dist = await distributionService.distributeBoxRewards('sess-1', 'box-1', 'room-1', 1);
 
-      expect(dist.winnersCount).toBe(5);
-      expect(mockWalletService.credit).toHaveBeenCalledTimes(5);
-      expect(mockWalletService.credit).toHaveBeenCalledWith(
+      expect(mockTreasureRepository.topContributors).toHaveBeenCalledWith('box-1', 3);
+      expect(dist.winnersCount).toBe(3);
+      expect(dist.distributions.every((d) => d.kind === 'BACKPACK_ITEM')).toBe(true);
+
+      // Every winner gets an immutable audit row carrying no coin value.
+      expect(mockPrismaService.treasureReward.create).toHaveBeenCalledTimes(3);
+      expect(mockPrismaService.treasureReward.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          userId: expect.any(String),
-          amount: expect.any(Number),
-          currency: WalletCurrency.GOLD,
-          reason: 'TREASURE_BOX',
+          data: expect.objectContaining({ kind: 'BACKPACK_ITEM', coins: null }),
         }),
       );
+
+      // Contract of TreasureDistributionService: zero wallet credit transactions.
+      expect(mockWalletService.credit).not.toHaveBeenCalled();
+    });
+
+    it('should return zero winners when the box has no contributors', async () => {
+      mockTreasureRepository.topContributors.mockResolvedValue([]);
+
+      const dist = await distributionService.distributeBoxRewards(
+        'sess-1',
+        'box-empty',
+        'room-1',
+        1,
+      );
+
+      expect(dist.winnersCount).toBe(0);
+      expect(dist.distributions).toEqual([]);
+      expect(mockRewardDistributor.distribute).not.toHaveBeenCalled();
+      expect(mockWalletService.credit).not.toHaveBeenCalled();
     });
   });
 

@@ -19,9 +19,7 @@ export class RankingAuditService {
         data: { entityId, actorId, action, details: details ?? {} },
       });
     } catch (err) {
-      this.logger.error(
-        `Failed to write ranking audit ${action}: ${(err as Error).message}`,
-      );
+      this.logger.error(`Failed to write ranking audit ${action}: ${(err as Error).message}`);
     }
   }
 

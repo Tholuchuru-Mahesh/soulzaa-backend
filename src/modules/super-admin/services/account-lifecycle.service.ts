@@ -140,7 +140,7 @@ export class AccountLifecycleService {
   /**
    * Force logout user sessions and invalidates active session tokens in Redis.
    */
-  async forceLogout(userId: string, actorId?: string) {
+  async forceLogout(userId: string, _actorId?: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException(`User with ID '${userId}' not found`);

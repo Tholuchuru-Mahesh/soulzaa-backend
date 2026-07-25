@@ -20,7 +20,9 @@ export class AnalyticsEventService {
 
   emitSnapshotCreated(payload: AnalyticsEventPayload): void {
     this.eventEmitter.emit('analytics.snapshot.created', payload);
-    this.logger.log(`Event: analytics.snapshot.created — domain: ${payload.domain} — key: ${payload.metricKey}`);
+    this.logger.log(
+      `Event: analytics.snapshot.created — domain: ${payload.domain} — key: ${payload.metricKey}`,
+    );
   }
 
   emitReportGenerated(payload: AnalyticsEventPayload): void {
@@ -30,7 +32,9 @@ export class AnalyticsEventService {
 
   emitReportExported(payload: AnalyticsEventPayload): void {
     this.eventEmitter.emit('report.exported', payload);
-    this.logger.log(`Event: report.exported — id: ${payload.exportId} — format: ${payload.metadata?.format}`);
+    this.logger.log(
+      `Event: report.exported — id: ${payload.exportId} — format: ${payload.metadata?.format}`,
+    );
   }
 
   emitDashboardRefreshed(payload: AnalyticsEventPayload): void {

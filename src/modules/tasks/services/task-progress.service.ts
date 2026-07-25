@@ -74,7 +74,7 @@ export class TaskProgressService {
     const isCompleted = progressAfter >= requiredProgress;
     const completionCount = (existing?.completionCount ?? 0) + (justCompleted ? 1 : 0);
 
-    const record = await this.prisma.taskProgress.upsert({
+    const _record = await this.prisma.taskProgress.upsert({
       where: { taskId_userId_periodKey: { taskId, userId, periodKey } },
       update: {
         currentProgress: progressAfter,

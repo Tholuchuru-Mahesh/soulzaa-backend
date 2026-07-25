@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 
 @Injectable()
@@ -16,7 +21,9 @@ export class DashboardValidationService {
 
   assertLayoutIntegrity(gridConfig: Record<string, unknown>): void {
     if (!gridConfig || typeof gridConfig !== 'object') {
-      throw new BadRequestException('Invalid grid layout configuration. Layout must be a valid JSON object.');
+      throw new BadRequestException(
+        'Invalid grid layout configuration. Layout must be a valid JSON object.',
+      );
     }
   }
 

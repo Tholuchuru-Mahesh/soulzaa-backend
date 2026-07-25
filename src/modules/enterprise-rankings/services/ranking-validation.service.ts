@@ -22,8 +22,7 @@ export class RankingValidationService {
   async validateRankingByCode(code: string) {
     const def = await this.prisma.rankingDefinition.findUnique({ where: { code } });
     if (!def) throw new NotFoundException(`Ranking with code '${code}' not found`);
-    if (def.status !== 'ACTIVE')
-      throw new BadRequestException(`Ranking '${code}' is not active`);
+    if (def.status !== 'ACTIVE') throw new BadRequestException(`Ranking '${code}' is not active`);
     return def;
   }
 

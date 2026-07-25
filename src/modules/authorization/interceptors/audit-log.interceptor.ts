@@ -30,9 +30,9 @@ export class AuditLogInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap({
-        next: (data) => {
+        next: () => {
           if (user?.id) {
-            this.auditLogService.logAction({
+            void this.auditLogService.logAction({
               actorId: user.id,
               actorRole: user.roles?.[0] || 'USER',
               action: meta.action,
@@ -51,7 +51,7 @@ export class AuditLogInterceptor implements NestInterceptor {
         },
         error: (err) => {
           if (user?.id) {
-            this.auditLogService.logAction({
+            void this.auditLogService.logAction({
               actorId: user.id,
               actorRole: user.roles?.[0] || 'USER',
               action: meta.action,

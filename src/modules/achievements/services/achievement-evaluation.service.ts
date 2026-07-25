@@ -141,7 +141,10 @@ export class AchievementEvaluationService {
   }
 
   /** Extract increment amount from rule or default to 1 */
-  private extractIncrement(rule: Record<string, any> | null, metadata: Record<string, any>): number {
+  private extractIncrement(
+    rule: Record<string, any> | null,
+    metadata: Record<string, any>,
+  ): number {
     if (!rule) return 1;
     const incrementField = rule['incrementField'] as string | undefined;
     if (incrementField && metadata[incrementField]) {

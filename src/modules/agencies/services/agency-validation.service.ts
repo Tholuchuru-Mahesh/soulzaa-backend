@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CoinEconomyService } from 'src/modules/treasury/services/coin-economy.service';
 import { AgencyRelationshipService } from './agency-relationship.service';

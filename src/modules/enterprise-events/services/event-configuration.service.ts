@@ -19,14 +19,15 @@ export class EventConfigurationService {
   ) {}
 
   async getParameters(): Promise<EventConfigParameters> {
-    const [maxParticipants, regDuration, defaultVis, rewardWindow, autoArchive] =
-      await Promise.all([
+    const [maxParticipants, regDuration, defaultVis, rewardWindow, autoArchive] = await Promise.all(
+      [
         this.configEngine.get(EVENT_CONFIG_KEYS.MAX_PARTICIPANTS),
         this.configEngine.get(EVENT_CONFIG_KEYS.REGISTRATION_DURATION),
         this.configEngine.get(EVENT_CONFIG_KEYS.DEFAULT_VISIBILITY),
         this.configEngine.get(EVENT_CONFIG_KEYS.REWARD_CLAIM_WINDOW),
         this.configEngine.get(EVENT_CONFIG_KEYS.AUTO_ARCHIVE_DAYS),
-      ]);
+      ],
+    );
 
     return {
       maxParticipants: Number(maxParticipants ?? 1000),

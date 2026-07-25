@@ -39,7 +39,12 @@ export class EventValidationService {
     }
   }
 
-  validateTimeWindows(startTime: Date, endTime: Date, regStartTime?: Date, regEndTime?: Date): void {
+  validateTimeWindows(
+    startTime: Date,
+    endTime: Date,
+    regStartTime?: Date,
+    regEndTime?: Date,
+  ): void {
     if (endTime <= startTime) {
       throw new BadRequestException('End time must be after start time');
     }
@@ -71,8 +76,14 @@ export class EventValidationService {
 
   async validateRegistrationWindow(def: any): Promise<void> {
     const now = new Date();
-    if (def.status !== 'REGISTRATION_OPEN' && def.status !== 'SCHEDULED' && def.status !== 'ACTIVE') {
-      throw new BadRequestException(`Event ${def.id} is not accepting registrations (Status: ${def.status})`);
+    if (
+      def.status !== 'REGISTRATION_OPEN' &&
+      def.status !== 'SCHEDULED' &&
+      def.status !== 'ACTIVE'
+    ) {
+      throw new BadRequestException(
+        `Event ${def.id} is not accepting registrations (Status: ${def.status})`,
+      );
     }
     if (def.regStartTime && now < new Date(def.regStartTime)) {
       throw new BadRequestException(`Registration window for event ${def.id} has not opened yet`);

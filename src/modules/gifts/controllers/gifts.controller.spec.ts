@@ -8,7 +8,9 @@ import { GiftsController } from './gifts.controller';
  */
 describe('GiftsController', () => {
   it('does not expose a sendGift handler (single POST /gifts/send lives on GiftController)', () => {
-    expect((GiftsController.prototype as unknown as { sendGift?: unknown }).sendGift).toBeUndefined();
+    expect(
+      (GiftsController.prototype as unknown as { sendGift?: unknown }).sendGift,
+    ).toBeUndefined();
   });
 
   it('still exposes its unique read routes', () => {

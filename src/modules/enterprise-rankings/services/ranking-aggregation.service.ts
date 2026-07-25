@@ -45,7 +45,7 @@ export class RankingAggregationService {
 
     if (rankingIds.length === 0) return [];
 
-    const params = await this.configService.getParameters();
+    const _params = await this.configService.getParameters();
     const results = await Promise.allSettled(
       rankingIds.map((rankingId) =>
         this.calculationService.applyScore({

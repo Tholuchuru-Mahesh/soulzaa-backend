@@ -24,10 +24,10 @@ describe('Phase 17: Enterprise Tasks & Missions Engine', () => {
   let evaluationService: TaskEvaluationService;
   let rewardService: TaskRewardService;
   let validationService: TaskValidationService;
-  let configService: TaskConfigurationService;
+  let _configService: TaskConfigurationService;
   let statisticsService: TaskStatisticsService;
   let auditService: TaskAuditService;
-  let queryService: TaskQueryService;
+  let _queryService: TaskQueryService;
 
   const mockPrismaService: any = {
     user: {
@@ -129,10 +129,10 @@ describe('Phase 17: Enterprise Tasks & Missions Engine', () => {
     evaluationService = module.get<TaskEvaluationService>(TaskEvaluationService);
     rewardService = module.get<TaskRewardService>(TaskRewardService);
     validationService = module.get<TaskValidationService>(TaskValidationService);
-    configService = module.get<TaskConfigurationService>(TaskConfigurationService);
+    _configService = module.get<TaskConfigurationService>(TaskConfigurationService);
     statisticsService = module.get<TaskStatisticsService>(TaskStatisticsService);
     auditService = module.get<TaskAuditService>(TaskAuditService);
-    queryService = module.get<TaskQueryService>(TaskQueryService);
+    _queryService = module.get<TaskQueryService>(TaskQueryService);
 
     jest.clearAllMocks();
   });

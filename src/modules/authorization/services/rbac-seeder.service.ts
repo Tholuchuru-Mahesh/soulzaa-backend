@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { ScopeType } from '@prisma/client';
+
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import {
   DEFAULT_PERMISSIONS,

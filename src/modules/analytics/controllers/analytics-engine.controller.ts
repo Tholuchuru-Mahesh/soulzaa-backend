@@ -3,20 +3,13 @@ import {
   Post,
   Get,
   Patch,
-  Delete,
   Body,
   Param,
   Query,
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiQuery,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
@@ -131,10 +124,7 @@ export class AnalyticsEngineController {
   @Patch('dashboards/:id/layout')
   @RequirePermissions('analytics.manage')
   @ApiOperation({ summary: 'Update dashboard grid layout' })
-  async updateLayout(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateLayoutDto,
-  ) {
+  async updateLayout(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateLayoutDto) {
     await this.validation.assertDashboardExists(id);
     await this.dashboardService.updateLayout(id, dto.layout);
     return { message: 'Dashboard layout updated.' };
@@ -161,10 +151,7 @@ export class AnalyticsEngineController {
   @ApiOperation({ summary: 'Get aggregation statistical period metrics' })
   @ApiQuery({ name: 'period', required: true })
   @ApiQuery({ name: 'dateKey', required: true })
-  async getStatsSummary(
-    @Query('period') period: string,
-    @Query('dateKey') dateKey: string,
-  ) {
+  async getStatsSummary(@Query('period') period: string, @Query('dateKey') dateKey: string) {
     return this.statisticsService.getSummary(period, dateKey);
   }
 
@@ -183,10 +170,7 @@ export class AnalyticsEngineController {
   @ApiOperation({ summary: 'Retrieve operational analytics audit trail logs' })
   @ApiQuery({ name: 'skip', required: false })
   @ApiQuery({ name: 'take', required: false })
-  async listAudits(
-    @Query('skip') skip = '0',
-    @Query('take') take = '100',
-  ) {
+  async listAudits(@Query('skip') skip = '0', @Query('take') take = '100') {
     return this.auditService.findAll(parseInt(skip), parseInt(take));
   }
 

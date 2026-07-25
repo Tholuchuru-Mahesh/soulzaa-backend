@@ -1,5 +1,5 @@
 import { Global, Module } from '@nestjs/common';
-import { EventEmitterModule } from '@nestjs/event-emitter';
+
 import { PrismaModule } from '../../infra/prisma/prisma.module';
 import { ReferralController } from './controllers/referral.controller';
 import { ReferralService } from './services/referral.service';

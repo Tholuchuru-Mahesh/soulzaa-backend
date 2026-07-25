@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PaymentProvider, PurchaseOrderStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
@@ -23,7 +23,7 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
   let packageService: CoinPackageService;
   let orderService: PurchaseOrderService;
   let verificationService: ReceiptVerificationService;
-  let queryService: PurchaseQueryService;
+  let _queryService: PurchaseQueryService;
 
   const mockPrismaService: any = {
     coinPackage: {
@@ -91,7 +91,7 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
     packageService = module.get<CoinPackageService>(CoinPackageService);
     orderService = module.get<PurchaseOrderService>(PurchaseOrderService);
     verificationService = module.get<ReceiptVerificationService>(ReceiptVerificationService);
-    queryService = module.get<PurchaseQueryService>(PurchaseQueryService);
+    _queryService = module.get<PurchaseQueryService>(PurchaseQueryService);
 
     jest.clearAllMocks();
   });

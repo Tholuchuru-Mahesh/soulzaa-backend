@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TreasureBoxStatus, TreasureSessionStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { TreasureConfigurationService } from './treasure-configuration.service';
@@ -205,7 +205,8 @@ export class TreasureBoxService {
         },
         boxes: formattedBoxes,
         activeBox: null,
-        message: "🎁 Today's Treasure Event has been completed. The next Treasure Event will start tomorrow.",
+        message:
+          "🎁 Today's Treasure Event has been completed. The next Treasure Event will start tomorrow.",
       };
     }
 
@@ -221,8 +222,6 @@ export class TreasureBoxService {
       activeBox: null,
     };
   }
-
-
 
   /**
    * Updates box status (ACTIVE, UNLOCKING, OPENED, REWARD_DISTRIBUTED, RESET).

@@ -17,8 +17,8 @@ import { LevelValidationService } from './level-validation.service';
 
 describe('Phase 13: Enterprise Level & Experience Engine', () => {
   let experienceService: ExperienceService;
-  let levelService: LevelService;
-  let calculationService: LevelCalculationService;
+  let _levelService: LevelService;
+  let _calculationService: LevelCalculationService;
 
   const mockPrismaService: any = {
     user: {
@@ -96,7 +96,7 @@ describe('Phase 13: Enterprise Level & Experience Engine', () => {
   };
 
   const mockLockService = {
-    withLock: jest.fn().mockImplementation((_key: string, fn: Function) => fn()),
+    withLock: jest.fn().mockImplementation((_key: string, fn: () => unknown) => fn()),
   };
 
   beforeEach(async () => {
@@ -121,8 +121,8 @@ describe('Phase 13: Enterprise Level & Experience Engine', () => {
     }).compile();
 
     experienceService = module.get<ExperienceService>(ExperienceService);
-    levelService = module.get<LevelService>(LevelService);
-    calculationService = module.get<LevelCalculationService>(LevelCalculationService);
+    _levelService = module.get<LevelService>(LevelService);
+    _calculationService = module.get<LevelCalculationService>(LevelCalculationService);
 
     jest.clearAllMocks();
   });

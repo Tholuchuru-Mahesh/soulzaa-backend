@@ -24,10 +24,10 @@ describe('Phase 16: Enterprise Events Engine', () => {
   let rewardService: EventRewardService;
   let schedulerService: EventSchedulerService;
   let validationService: EventValidationService;
-  let configService: EventConfigurationService;
+  let _configService: EventConfigurationService;
   let statisticsService: EventStatisticsService;
   let auditService: EventAuditService;
-  let queryService: EventQueryService;
+  let _queryService: EventQueryService;
 
   const mockPrismaService: any = {
     user: {
@@ -126,10 +126,10 @@ describe('Phase 16: Enterprise Events Engine', () => {
     rewardService = module.get<EventRewardService>(EventRewardService);
     schedulerService = module.get<EventSchedulerService>(EventSchedulerService);
     validationService = module.get<EventValidationService>(EventValidationService);
-    configService = module.get<EventConfigurationService>(EventConfigurationService);
+    _configService = module.get<EventConfigurationService>(EventConfigurationService);
     statisticsService = module.get<EventStatisticsService>(EventStatisticsService);
     auditService = module.get<EventAuditService>(EventAuditService);
-    queryService = module.get<EventQueryService>(EventQueryService);
+    _queryService = module.get<EventQueryService>(EventQueryService);
 
     jest.clearAllMocks();
   });

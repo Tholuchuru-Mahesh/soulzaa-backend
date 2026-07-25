@@ -1,6 +1,9 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
-import { NOTIFICATION_CENTER_TYPES, NOTIFICATION_CHANNELS } from '../constants/notification-center.constants';
+import {
+  NOTIFICATION_CENTER_TYPES,
+  NOTIFICATION_CHANNELS,
+} from '../constants/notification-center.constants';
 
 @Injectable()
 export class NotificationValidationService {

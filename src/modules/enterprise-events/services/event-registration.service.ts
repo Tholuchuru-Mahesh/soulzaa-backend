@@ -59,7 +59,9 @@ export class EventRegistrationService {
     });
 
     if (!reg || reg.status !== 'REGISTERED') {
-      throw new BadRequestException(`User ${userId} is not actively registered for event ${eventId}`);
+      throw new BadRequestException(
+        `User ${userId} is not actively registered for event ${eventId}`,
+      );
     }
 
     const updated = await this.prisma.eventRegistration.update({

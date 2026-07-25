@@ -3,20 +3,13 @@ import {
   Post,
   Get,
   Patch,
-  Delete,
   Body,
   Param,
   Query,
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiQuery,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
@@ -199,10 +192,7 @@ export class ReferralController {
   @Patch('campaigns/:id/status')
   @RequirePermissions('referral.manage')
   @ApiOperation({ summary: 'Update campaign status (ACTIVE | PAUSED | CANCELLED | ARCHIVED)' })
-  async setCampaignStatus(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Query('status') status: string,
-  ) {
+  async setCampaignStatus(@Param('id', ParseUUIDPipe) id: string, @Query('status') status: string) {
     return this.campaignService.setStatus(id, status);
   }
 
@@ -230,10 +220,7 @@ export class ReferralController {
   @ApiOperation({ summary: 'Get referral statistics for a period' })
   @ApiQuery({ name: 'period', required: true })
   @ApiQuery({ name: 'dateKey', required: true })
-  async getStatistics(
-    @Query('period') period: string,
-    @Query('dateKey') dateKey: string,
-  ) {
+  async getStatistics(@Query('period') period: string, @Query('dateKey') dateKey: string) {
     return this.statisticsService.getSummary(period, dateKey);
   }
 
@@ -265,10 +252,7 @@ export class ReferralController {
   @ApiOperation({ summary: 'List all referral audit events' })
   @ApiQuery({ name: 'skip', required: false })
   @ApiQuery({ name: 'take', required: false })
-  async getAudit(
-    @Query('skip') skip = '0',
-    @Query('take') take = '100',
-  ) {
+  async getAudit(@Query('skip') skip = '0', @Query('take') take = '100') {
     return this.auditService.findAll(parseInt(skip), parseInt(take));
   }
 

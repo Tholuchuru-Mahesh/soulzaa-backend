@@ -5,7 +5,6 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  Post,
   Put,
   Query,
   UseGuards,

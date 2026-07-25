@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { TreasureBoxStatus, TreasureSessionStatus } from '@prisma/client';
+import { TreasureSessionStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { TreasureAuditService } from './treasure-audit.service';
 import { TreasureBoxService } from './treasure-box.service';
@@ -43,13 +43,16 @@ export class TreasureResetService implements OnApplicationBootstrap {
         this.logger.error(`Daily stale-session archive error: ${(err as Error).message}`);
       }
       // Re-schedule for the next day
-      this._dailyTimer = setInterval(async () => {
-        try {
-          await this.archiveStaleActiveSessions();
-        } catch (err) {
-          this.logger.error(`Daily stale-session archive error: ${(err as Error).message}`);
-        }
-      }, 24 * 60 * 60 * 1000);
+      this._dailyTimer = setInterval(
+        async () => {
+          try {
+            await this.archiveStaleActiveSessions();
+          } catch (err) {
+            this.logger.error(`Daily stale-session archive error: ${(err as Error).message}`);
+          }
+        },
+        24 * 60 * 60 * 1000,
+      );
     }, msUntilMidnight);
   }
 

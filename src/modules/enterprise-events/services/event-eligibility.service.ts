@@ -38,7 +38,9 @@ export class EventEligibilityService {
     if (rules.minVipLevel !== undefined) {
       const userVipLevel = userStats?.vipLevel ?? 0;
       if (userVipLevel < Number(rules.minVipLevel)) {
-        reasons.push(`Minimum VIP level required is ${rules.minVipLevel} (Current: ${userVipLevel})`);
+        reasons.push(
+          `Minimum VIP level required is ${rules.minVipLevel} (Current: ${userVipLevel})`,
+        );
       }
     }
 
@@ -55,7 +57,9 @@ export class EventEligibilityService {
     if (rules.minGiftsSent !== undefined) {
       const totalGiftsSent = Number(userStats?.giftsSent ?? 0);
       if (totalGiftsSent < Number(rules.minGiftsSent)) {
-        reasons.push(`Minimum gifts sent required is ${rules.minGiftsSent} (Current: ${totalGiftsSent})`);
+        reasons.push(
+          `Minimum gifts sent required is ${rules.minGiftsSent} (Current: ${totalGiftsSent})`,
+        );
       }
     }
 

@@ -67,7 +67,7 @@ export class FamilyInvitationService {
       throw new BadRequestException('Invitation is expired or no longer active');
     }
 
-    const family = await this.validationService.validateJoinFamily(invitation.familyId, userId);
+    const _family = await this.validationService.validateJoinFamily(invitation.familyId, userId);
 
     await this.prisma.$transaction([
       this.prisma.familyInvitation.update({

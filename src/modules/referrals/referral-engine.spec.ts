@@ -36,7 +36,9 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     },
     referralCode: {
       findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -44,14 +46,18 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     },
     referralCampaign: {
       findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     referralRelationship: {
       findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       update: jest.fn().mockResolvedValue({}),
       findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
@@ -64,7 +70,9 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     },
     referralReward: {
       findFirst: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       update: jest.fn().mockResolvedValue({ id: makeUuid() }),
       findMany: jest.fn().mockResolvedValue([]),
     },
@@ -171,29 +179,46 @@ describe('ReferralValidationService', () => {
   });
 
   it('passes assertCodeExists when code exists', async () => {
-    prisma.referralCode.findUnique.mockResolvedValue({ id: makeUuid(), code: 'ABC', status: 'ACTIVE' });
+    prisma.referralCode.findUnique.mockResolvedValue({
+      id: makeUuid(),
+      code: 'ABC',
+      status: 'ACTIVE',
+    });
     await expect(service.assertCodeExists('ABC')).resolves.not.toThrow();
   });
 
   it('throws when code is inactive', async () => {
     prisma.referralCode.findUnique.mockResolvedValue({
-      id: makeUuid(), code: 'ABC', status: 'INACTIVE', expiresAt: null, usesCount: 0, maxUses: 100,
+      id: makeUuid(),
+      code: 'ABC',
+      status: 'INACTIVE',
+      expiresAt: null,
+      usesCount: 0,
+      maxUses: 100,
     });
     await expect(service.assertCodeActive('ABC')).rejects.toThrow('not active');
   });
 
   it('throws when code is expired', async () => {
     prisma.referralCode.findUnique.mockResolvedValue({
-      id: makeUuid(), code: 'ABC', status: 'ACTIVE',
-      expiresAt: new Date('2000-01-01'), usesCount: 0, maxUses: 100,
+      id: makeUuid(),
+      code: 'ABC',
+      status: 'ACTIVE',
+      expiresAt: new Date('2000-01-01'),
+      usesCount: 0,
+      maxUses: 100,
     });
     await expect(service.assertCodeActive('ABC')).rejects.toThrow('expired');
   });
 
   it('throws when code is at max uses', async () => {
     prisma.referralCode.findUnique.mockResolvedValue({
-      id: makeUuid(), code: 'ABC', status: 'ACTIVE',
-      expiresAt: null, usesCount: 100, maxUses: 100,
+      id: makeUuid(),
+      code: 'ABC',
+      status: 'ACTIVE',
+      expiresAt: null,
+      usesCount: 100,
+      maxUses: 100,
     });
     await expect(service.assertCodeActive('ABC')).rejects.toThrow('maximum uses');
   });
@@ -355,9 +380,7 @@ describe('ReferralCampaignService', () => {
   });
 
   it('throws on invalid category', async () => {
-    await expect(
-      service.create({ code: 'X', name: 'Y', category: 'INVALID' }),
-    ).rejects.toThrow();
+    await expect(service.create({ code: 'X', name: 'Y', category: 'INVALID' })).rejects.toThrow();
   });
 
   it('updates campaign status', async () => {
@@ -655,7 +678,10 @@ describe('ReferralQueryService', () => {
 
   it('getUserReferralSummary aggregates all counts', async () => {
     prisma.referralCode.count.mockResolvedValue(3);
-    prisma.referralRelationship.count.mockResolvedValueOnce(10).mockResolvedValueOnce(7).mockResolvedValueOnce(5);
+    prisma.referralRelationship.count
+      .mockResolvedValueOnce(10)
+      .mockResolvedValueOnce(7)
+      .mockResolvedValueOnce(5);
     prisma.referralRelationship.findUnique.mockResolvedValue(null);
 
     const summary: any = await service.getUserReferralSummary(makeUuid());
@@ -771,20 +797,22 @@ describe('ReferralService — Lifecycle', () => {
     prisma.referralCode.findUnique.mockResolvedValue({ ...mockCode, referrerId: refereeId });
     prisma.referralRelationship.findUnique.mockResolvedValue(null);
 
-    await expect(
-      service.register({ referralCode: 'VALIDCODE1', refereeId }),
-    ).rejects.toThrow('Self-referral');
+    await expect(service.register({ referralCode: 'VALIDCODE1', refereeId })).rejects.toThrow(
+      'Self-referral',
+    );
   });
 
   it('rejects duplicate referee registration', async () => {
     prisma.referralCode.findUnique.mockResolvedValue(mockCode);
     prisma.referralRelationship.findUnique.mockResolvedValue({
-      id: makeUuid(), refereeId, status: 'REGISTERED',
+      id: makeUuid(),
+      refereeId,
+      status: 'REGISTERED',
     });
 
-    await expect(
-      service.register({ referralCode: 'VALIDCODE1', refereeId }),
-    ).rejects.toThrow('already been referred');
+    await expect(service.register({ referralCode: 'VALIDCODE1', refereeId })).rejects.toThrow(
+      'already been referred',
+    );
   });
 
   it('qualifies a referral relationship', async () => {
@@ -902,7 +930,10 @@ describe('Platform Configuration Integration', () => {
   });
 
   it('overrides config from database', async () => {
-    prisma.referralConfiguration.findUnique.mockResolvedValue({ key: 'referral.max_uses', value: 500 });
+    prisma.referralConfiguration.findUnique.mockResolvedValue({
+      key: 'referral.max_uses',
+      value: 500,
+    });
     const result = await config.getMaxUses();
     expect(result).toBe(500);
   });

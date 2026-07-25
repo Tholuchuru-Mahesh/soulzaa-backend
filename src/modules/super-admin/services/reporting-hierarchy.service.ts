@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ScopeType } from '@prisma/client';
+
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 export interface ModeratorNode {

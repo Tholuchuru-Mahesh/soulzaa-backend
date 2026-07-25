@@ -1,28 +1,12 @@
 // Enterprise Notification Center — Phase 19 Constants
 
-export const NOTIFICATION_CHANNELS = [
-  'IN_APP',
-  'PUSH',
-  'WEBSOCKET',
-  'EMAIL',
-  'SMS',
-] as const;
+export const NOTIFICATION_CHANNELS = ['IN_APP', 'PUSH', 'WEBSOCKET', 'EMAIL', 'SMS'] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
-export const NOTIFICATION_PRIORITIES = [
-  'LOW',
-  'NORMAL',
-  'HIGH',
-  'CRITICAL',
-] as const;
+export const NOTIFICATION_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'CRITICAL'] as const;
 export type NotificationPriority = (typeof NOTIFICATION_PRIORITIES)[number];
 
-export const NOTIFICATION_STATUSES = [
-  'PENDING',
-  'DISPATCHED',
-  'FAILED',
-  'CANCELLED',
-] as const;
+export const NOTIFICATION_STATUSES = ['PENDING', 'DISPATCHED', 'FAILED', 'CANCELLED'] as const;
 export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
 
 export const NOTIFICATION_CENTER_TYPES = [

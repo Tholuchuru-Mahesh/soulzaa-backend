@@ -10,13 +10,7 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import {
-  ApiTags,
-  ApiOperation,
-  ApiResponse,
-  ApiBearerAuth,
-  ApiQuery,
-} from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
@@ -140,10 +134,7 @@ export class NotificationCenterController {
   @ApiOperation({ summary: 'Get list of templates' })
   @ApiQuery({ name: 'skip', required: false })
   @ApiQuery({ name: 'take', required: false })
-  async getTemplates(
-    @Query('skip') skip = '0',
-    @Query('take') take = '50',
-  ) {
+  async getTemplates(@Query('skip') skip = '0', @Query('take') take = '50') {
     return this.queryService.getTemplates(parseInt(skip), parseInt(take));
   }
 
@@ -187,10 +178,7 @@ export class NotificationCenterController {
   @ApiOperation({ summary: 'Get statistics summary for period' })
   @ApiQuery({ name: 'period', required: true })
   @ApiQuery({ name: 'dateKey', required: true })
-  async getStatsSummary(
-    @Query('period') period: string,
-    @Query('dateKey') dateKey: string,
-  ) {
+  async getStatsSummary(@Query('period') period: string, @Query('dateKey') dateKey: string) {
     return this.statisticsService.getSummary(period, dateKey);
   }
 
@@ -219,10 +207,7 @@ export class NotificationCenterController {
   @Get('audit/all')
   @RequirePermissions('notification.audit.view')
   @ApiOperation({ summary: 'List all operational audit logs' })
-  async getAudit(
-    @Query('skip') skip = '0',
-    @Query('take') take = '100',
-  ) {
+  async getAudit(@Query('skip') skip = '0', @Query('take') take = '100') {
     return this.auditService.findAll(parseInt(skip), parseInt(take));
   }
 

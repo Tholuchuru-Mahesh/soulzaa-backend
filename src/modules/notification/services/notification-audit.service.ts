@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
-import { NOTIFICATION_AUDIT_ACTIONS, NotificationAuditAction } from '../constants/notification-center.constants';
+import {
+  NOTIFICATION_AUDIT_ACTIONS,
+  NotificationAuditAction,
+} from '../constants/notification-center.constants';
 
 export interface AuditEntry {
   action: NotificationAuditAction;
@@ -27,10 +30,7 @@ export class NotificationAuditService {
     this.logger.log(`Audit [${entry.action}] — notification: ${entry.notificationId ?? 'N/A'}`);
   }
 
-  async queryByAction(
-    action: NotificationAuditAction,
-    limit = 100,
-  ): Promise<unknown[]> {
+  async queryByAction(action: NotificationAuditAction, limit = 100): Promise<unknown[]> {
     return this.prisma.notificationAudit.findMany({
       where: { action },
       orderBy: { createdAt: 'desc' },

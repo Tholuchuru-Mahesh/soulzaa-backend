@@ -23,10 +23,10 @@ describe('Phase 15: Enterprise Ranking Engine', () => {
   let snapshotService: RankingSnapshotService;
   let leaderboardService: LeaderboardService;
   let validationService: RankingValidationService;
-  let configService: RankingConfigurationService;
+  let _configService: RankingConfigurationService;
   let statisticsService: RankingStatisticsService;
   let auditService: RankingAuditService;
-  let queryService: RankingQueryService;
+  let _queryService: RankingQueryService;
 
   const mockPrismaService: any = {
     user: {
@@ -122,10 +122,10 @@ describe('Phase 15: Enterprise Ranking Engine', () => {
     snapshotService = module.get<RankingSnapshotService>(RankingSnapshotService);
     leaderboardService = module.get<LeaderboardService>(LeaderboardService);
     validationService = module.get<RankingValidationService>(RankingValidationService);
-    configService = module.get<RankingConfigurationService>(RankingConfigurationService);
+    _configService = module.get<RankingConfigurationService>(RankingConfigurationService);
     statisticsService = module.get<RankingStatisticsService>(RankingStatisticsService);
     auditService = module.get<RankingAuditService>(RankingAuditService);
-    queryService = module.get<RankingQueryService>(RankingQueryService);
+    _queryService = module.get<RankingQueryService>(RankingQueryService);
 
     jest.clearAllMocks();
   });

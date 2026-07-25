@@ -136,11 +136,16 @@ export class LeaderboardService {
     const d = String(now.getUTCDate()).padStart(2, '0');
 
     switch (timeWindow) {
-      case 'HOURLY': return `${y}${m}${d}${String(now.getUTCHours()).padStart(2, '0')}`;
-      case 'DAILY': return `${y}${m}${d}`;
-      case 'MONTHLY': return `${y}${m}`;
-      case 'YEARLY': return `${y}`;
-      default: return 'alltime';
+      case 'HOURLY':
+        return `${y}${m}${d}${String(now.getUTCHours()).padStart(2, '0')}`;
+      case 'DAILY':
+        return `${y}${m}${d}`;
+      case 'MONTHLY':
+        return `${y}${m}`;
+      case 'YEARLY':
+        return `${y}`;
+      default:
+        return 'alltime';
     }
   }
 }

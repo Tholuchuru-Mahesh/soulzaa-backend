@@ -7,7 +7,10 @@ import {
   TreasureSessionCompletedEvent,
 } from '../events/treasure.events';
 import { TreasureRepository } from '../repositories/treasure.repository';
-import { AUDIO_ROOM_EVENTS, RoomCreatedEvent } from 'src/modules/audio-rooms/events/audio-room.events';
+import {
+  AUDIO_ROOM_EVENTS,
+  RoomCreatedEvent,
+} from 'src/modules/audio-rooms/events/audio-room.events';
 import { TreasureAuditService } from './treasure-audit.service';
 import { TreasureDistributionService } from './treasure-distribution.service';
 import { TreasureProgressService } from './treasure-progress.service';
@@ -15,7 +18,10 @@ import { TreasureRewardService } from './treasure-reward.service';
 import { TreasureService } from './treasure.service';
 
 import { WalletCurrency, WalletTxnReason } from '@prisma/client';
-import { WALLET_SERVICE, type IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
+import {
+  WALLET_SERVICE,
+  type IWalletService,
+} from 'src/modules/wallet/interfaces/wallet.service.interface';
 
 @Injectable()
 export class TreasureEventService implements OnModuleInit {
@@ -153,10 +159,13 @@ export class TreasureEventService implements OnModuleInit {
       // Construct room system announcement text
       const medals = ['🥇', '🥈', '🥉'];
       const winnerLines = dist.distributions
-        .map((d, idx) => `${medals[idx] || '🎖️'} Rank ${d.rank} won ${d.itemName || 'Exclusive Reward'}`)
+        .map(
+          (d, idx) =>
+            `${medals[idx] || '🎖️'} Rank ${d.rank} won ${d.itemName || 'Exclusive Reward'}`,
+        )
         .join('  ');
 
-      const announcementContent = `🎁 Treasure Box Level ${completed.level} Opened! ${winnerLines}`;
+      const _announcementContent = `🎁 Treasure Box Level ${completed.level} Opened! ${winnerLines}`;
 
       // Publish TreasureBoxOpenedEvent
       await this.bus.publish(
@@ -191,4 +200,3 @@ export class TreasureEventService implements OnModuleInit {
     }
   }
 }
-

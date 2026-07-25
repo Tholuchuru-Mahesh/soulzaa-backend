@@ -18,16 +18,16 @@ import { WithdrawalValidationService } from './withdrawal-validation.service';
 import { WithdrawalService } from './withdrawal.service';
 
 describe('Phase 10: Enterprise Withdrawal Engine', () => {
-  let configService: WithdrawalConfigurationService;
+  let _configService: WithdrawalConfigurationService;
   let validationService: WithdrawalValidationService;
   let withdrawalService: WithdrawalService;
   let approvalService: WithdrawalApprovalService;
   let executionService: WithdrawalExecutionService;
-  let historyService: WithdrawalHistoryService;
-  let auditService: WithdrawalAuditService;
-  let statisticsService: WithdrawalStatisticsService;
-  let queryService: WithdrawalQueryService;
-  let eventService: WithdrawalEventService;
+  let _historyService: WithdrawalHistoryService;
+  let _auditService: WithdrawalAuditService;
+  let _statisticsService: WithdrawalStatisticsService;
+  let _queryService: WithdrawalQueryService;
+  let _eventService: WithdrawalEventService;
 
   const mockPrismaService: any = {
     withdrawalRequest: {
@@ -94,7 +94,7 @@ describe('Phase 10: Enterprise Withdrawal Engine', () => {
   };
 
   const mockLockService = {
-    withLock: jest.fn().mockImplementation((_key: string, fn: Function) => fn()),
+    withLock: jest.fn().mockImplementation((_key: string, fn: () => unknown) => fn()),
   };
 
   beforeEach(async () => {
@@ -119,16 +119,16 @@ describe('Phase 10: Enterprise Withdrawal Engine', () => {
       ],
     }).compile();
 
-    configService = module.get<WithdrawalConfigurationService>(WithdrawalConfigurationService);
+    _configService = module.get<WithdrawalConfigurationService>(WithdrawalConfigurationService);
     validationService = module.get<WithdrawalValidationService>(WithdrawalValidationService);
     withdrawalService = module.get<WithdrawalService>(WithdrawalService);
     approvalService = module.get<WithdrawalApprovalService>(WithdrawalApprovalService);
     executionService = module.get<WithdrawalExecutionService>(WithdrawalExecutionService);
-    historyService = module.get<WithdrawalHistoryService>(WithdrawalHistoryService);
-    auditService = module.get<WithdrawalAuditService>(WithdrawalAuditService);
-    statisticsService = module.get<WithdrawalStatisticsService>(WithdrawalStatisticsService);
-    queryService = module.get<WithdrawalQueryService>(WithdrawalQueryService);
-    eventService = module.get<WithdrawalEventService>(WithdrawalEventService);
+    _historyService = module.get<WithdrawalHistoryService>(WithdrawalHistoryService);
+    _auditService = module.get<WithdrawalAuditService>(WithdrawalAuditService);
+    _statisticsService = module.get<WithdrawalStatisticsService>(WithdrawalStatisticsService);
+    _queryService = module.get<WithdrawalQueryService>(WithdrawalQueryService);
+    _eventService = module.get<WithdrawalEventService>(WithdrawalEventService);
 
     jest.clearAllMocks();
   });

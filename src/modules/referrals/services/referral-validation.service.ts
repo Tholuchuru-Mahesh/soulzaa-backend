@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  BadRequestException,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../infra/prisma/prisma.service';
 
 @Injectable()
@@ -68,8 +64,18 @@ export class ReferralValidationService {
 
   assertValidCategory(category: string): void {
     const valid = [
-      'USER', 'VIP', 'CREATOR', 'AGENCY', 'SELLER', 'CAMPAIGN',
-      'EVENT', 'FAMILY', 'PROMOTIONAL', 'INVITE_LINK', 'QR_CODE', 'CUSTOM',
+      'USER',
+      'VIP',
+      'CREATOR',
+      'AGENCY',
+      'SELLER',
+      'CAMPAIGN',
+      'EVENT',
+      'FAMILY',
+      'PROMOTIONAL',
+      'INVITE_LINK',
+      'QR_CODE',
+      'CUSTOM',
     ];
     if (!valid.includes(category)) {
       throw new BadRequestException(`Invalid referral category: "${category}".`);

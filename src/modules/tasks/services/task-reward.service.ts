@@ -32,7 +32,9 @@ export class TaskRewardService {
         const task = await this.prisma.taskDefinition.findUnique({ where: { id: taskId } });
         rewardDef = (task?.rewardDefinition as Record<string, any>) ?? {};
       } else if (missionId) {
-        const mission = await this.prisma.missionDefinition.findUnique({ where: { id: missionId } });
+        const mission = await this.prisma.missionDefinition.findUnique({
+          where: { id: missionId },
+        });
         rewardDef = (mission?.rewardDefinition as Record<string, any>) ?? {};
       }
     }

@@ -111,16 +111,20 @@ export class RankingSnapshotService {
         });
         results.push({ rankingId: def.id, ...result });
       } catch (err) {
-        this.logger.error(
-          `Failed to snapshot ranking ${def.id}: ${(err as Error).message}`,
-        );
+        this.logger.error(`Failed to snapshot ranking ${def.id}: ${(err as Error).message}`);
       }
     }
 
     return results;
   }
 
-  async getSnapshots(rankingId: string, period?: string, dateKey?: string, limit = 100, offset = 0) {
+  async getSnapshots(
+    rankingId: string,
+    period?: string,
+    dateKey?: string,
+    limit = 100,
+    offset = 0,
+  ) {
     const where: any = { rankingId };
     if (period) where.period = period;
     if (dateKey) where.dateKey = dateKey;

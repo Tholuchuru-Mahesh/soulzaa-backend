@@ -183,7 +183,9 @@ export class EventService {
   }
 
   async getEventDefinition(idOrCode: string) {
-    const byId = await this.prisma.eventDefinition.findUnique({ where: { id: idOrCode } }).catch(() => null);
+    const byId = await this.prisma.eventDefinition
+      .findUnique({ where: { id: idOrCode } })
+      .catch(() => null);
     return byId ?? this.prisma.eventDefinition.findUnique({ where: { code: idOrCode } });
   }
 }

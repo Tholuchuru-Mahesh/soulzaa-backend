@@ -30,18 +30,26 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     },
     dashboardWidget: {
       findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
     },
     dashboardLayout: {
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       updateMany: jest.fn().mockResolvedValue({}),
       findUnique: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
     },
     dashboardAlert: {
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), resolved: false, ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) =>
+          Promise.resolve({ id: makeUuid(), resolved: false, ...args.data }),
+        ),
       findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
     },
@@ -108,7 +116,10 @@ describe('DashboardConfigurationService', () => {
   });
 
   it('overrides parameters using DB configs', async () => {
-    prisma.dashboardConfiguration.findUnique.mockResolvedValue({ key: 'dashboard.refresh_interval', value: 15 });
+    prisma.dashboardConfiguration.findUnique.mockResolvedValue({
+      key: 'dashboard.refresh_interval',
+      value: 15,
+    });
     expect(await service.getRefreshInterval()).toBe(15);
   });
 
@@ -192,7 +203,10 @@ describe('DashboardEventService', () => {
 
   it('emits dashboard socket events', () => {
     service.emitLayoutUpdated({ userId: '1', layoutId: 'layout-id' });
-    expect(emitter.emit).toHaveBeenCalledWith('dashboard.layout.updated', { userId: '1', layoutId: 'layout-id' });
+    expect(emitter.emit).toHaveBeenCalledWith('dashboard.layout.updated', {
+      userId: '1',
+      layoutId: 'layout-id',
+    });
   });
 });
 
@@ -345,8 +359,12 @@ describe('DashboardQueryService', () => {
   });
 
   it('returns global cross-module query search records matching keywords', async () => {
-    prisma.user.findMany.mockResolvedValue([{ id: makeUuid(), username: 'alice', email: 'alice@soulzaa.app' }]);
-    prisma.referralCampaign.findMany.mockResolvedValue([{ id: makeUuid(), name: 'Summer Campaign', code: 'SUMMER' }]);
+    prisma.user.findMany.mockResolvedValue([
+      { id: makeUuid(), username: 'alice', email: 'alice@soulzaa.app' },
+    ]);
+    prisma.referralCampaign.findMany.mockResolvedValue([
+      { id: makeUuid(), name: 'Summer Campaign', code: 'SUMMER' },
+    ]);
 
     const searchResults: any = await service.searchGlobal('alice');
     expect(searchResults.length).toBe(2);
@@ -372,13 +390,7 @@ describe('AdminDashboardService', () => {
     const audit = new DashboardAuditService(prisma as any);
     const statistics = new DashboardStatisticsService(prisma as any);
 
-    service = new AdminDashboardService(
-      prisma as any,
-      validation,
-      events,
-      audit,
-      statistics,
-    );
+    service = new AdminDashboardService(prisma as any, validation, events, audit, statistics);
   });
 
   it('saves custom layouts and toggles default views', async () => {

@@ -59,7 +59,10 @@ export class WalletRepository {
   ): Promise<[LedgerEntry[], number]> {
     const wallet = await this.getWallet(userId);
     if (!wallet) return [[], 0];
-    const where: Prisma.LedgerEntryWhereInput = { walletId: wallet.id, ...(currency ? { currency } : {}) };
+    const where: Prisma.LedgerEntryWhereInput = {
+      walletId: wallet.id,
+      ...(currency ? { currency } : {}),
+    };
     return this.prisma.$transaction([
       this.prisma.ledgerEntry.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
       this.prisma.ledgerEntry.count({ where }),
@@ -90,7 +93,12 @@ export class WalletRepository {
     if (!wallet) return [];
     const rows = await this.prisma.ledgerEntry.groupBy({
       by: ['reason'],
-      where: { walletId: wallet.id, currency, type: WalletEntryType.CREDIT, reason: { in: reasons } },
+      where: {
+        walletId: wallet.id,
+        currency,
+        type: WalletEntryType.CREDIT,
+        reason: { in: reasons },
+      },
       _sum: { amount: true },
     });
     return rows.map((r) => ({ reason: r.reason, total: r._sum?.amount ?? 0n }));

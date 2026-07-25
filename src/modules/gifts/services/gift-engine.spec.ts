@@ -20,7 +20,7 @@ describe('Phase 5: Enterprise Gift Engine', () => {
   let catalogService: GiftCatalogService;
   let validationService: GiftValidationService;
   let transactionService: GiftTransactionService;
-  let historyService: GiftHistoryService;
+  let _historyService: GiftHistoryService;
 
   const mockPrismaService: any = {
     giftCategoryEntity: {
@@ -104,7 +104,7 @@ describe('Phase 5: Enterprise Gift Engine', () => {
     catalogService = module.get<GiftCatalogService>(GiftCatalogService);
     validationService = module.get<GiftValidationService>(GiftValidationService);
     transactionService = module.get<GiftTransactionService>(GiftTransactionService);
-    historyService = module.get<GiftHistoryService>(GiftHistoryService);
+    _historyService = module.get<GiftHistoryService>(GiftHistoryService);
 
     // Clear call history AFTER compile (preserves implementations)
     jest.clearAllMocks();

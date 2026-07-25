@@ -83,7 +83,7 @@ export class NotificationCenterService {
     if (!input.scheduledAt) {
       const defaultChannel = await this.config.getDefaultChannel();
       const channels = input.channels ?? [defaultChannel];
-      
+
       await this.dispatchService.dispatch({
         notificationId: notification.id,
         recipientId: input.recipientId,
@@ -100,7 +100,10 @@ export class NotificationCenterService {
   /**
    * Broadcasts a global announcement to all users.
    */
-  async broadcastAnnouncement(templateCode: string, variables: Record<string, string>): Promise<unknown> {
+  async broadcastAnnouncement(
+    templateCode: string,
+    variables: Record<string, string>,
+  ): Promise<unknown> {
     const announcement = await this.send({
       type: 'ANNOUNCEMENT',
       templateCode,

@@ -32,12 +32,16 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     },
     analyticsReport: {
       findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       findMany: jest.fn().mockResolvedValue([]),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     analyticsSnapshot: {
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       findMany: jest.fn().mockResolvedValue([]),
       aggregate: jest.fn().mockResolvedValue({ _avg: { metricValue: 0 } }),
@@ -47,7 +51,9 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     },
     analyticsDashboard: {
       findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
     },
@@ -60,7 +66,9 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
       findMany: jest.fn().mockResolvedValue([]),
     },
     reportExport: {
-      create: jest.fn().mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
+      create: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       update: jest.fn().mockResolvedValue({}),
       findUnique: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
@@ -116,7 +124,10 @@ describe('AnalyticsConfigurationService', () => {
   });
 
   it('reads configuration fields from database overrides', async () => {
-    prisma.analyticsConfiguration.findUnique.mockResolvedValue({ key: 'analytics.retention_days', value: 180 });
+    prisma.analyticsConfiguration.findUnique.mockResolvedValue({
+      key: 'analytics.retention_days',
+      value: 180,
+    });
     expect(await service.getRetentionDays()).toBe(180);
   });
 

@@ -83,7 +83,9 @@ export class RankingService {
   }
 
   async getRankingDefinition(idOrCode: string) {
-    const byId = await this.prisma.rankingDefinition.findUnique({ where: { id: idOrCode } }).catch(() => null);
+    const byId = await this.prisma.rankingDefinition
+      .findUnique({ where: { id: idOrCode } })
+      .catch(() => null);
     return byId ?? this.prisma.rankingDefinition.findUnique({ where: { code: idOrCode } });
   }
 
@@ -112,11 +114,16 @@ export class RankingService {
     const d = String(now.getUTCDate()).padStart(2, '0');
 
     switch (timeWindow) {
-      case 'HOURLY': return `${y}${m}${d}${String(now.getUTCHours()).padStart(2, '0')}`;
-      case 'DAILY': return `${y}${m}${d}`;
-      case 'MONTHLY': return `${y}${m}`;
-      case 'YEARLY': return `${y}`;
-      default: return 'alltime';
+      case 'HOURLY':
+        return `${y}${m}${d}${String(now.getUTCHours()).padStart(2, '0')}`;
+      case 'DAILY':
+        return `${y}${m}${d}`;
+      case 'MONTHLY':
+        return `${y}${m}`;
+      case 'YEARLY':
+        return `${y}`;
+      default:
+        return 'alltime';
     }
   }
 }

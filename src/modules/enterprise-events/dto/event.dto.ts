@@ -11,11 +11,7 @@ import {
   IsUUID,
   Min,
 } from 'class-validator';
-import {
-  EVENT_CATEGORIES,
-  EVENT_STATUSES,
-  EVENT_VISIBILITIES,
-} from '../constants/event.constants';
+import { EVENT_CATEGORIES, EVENT_STATUSES, EVENT_VISIBILITIES } from '../constants/event.constants';
 
 // ─── Event Definition DTOs ────────────────────────────────────────────
 

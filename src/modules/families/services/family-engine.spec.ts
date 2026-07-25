@@ -18,19 +18,19 @@ import { FamilyValidationService } from './family-validation.service';
 import { FamilyService } from './family.service';
 
 describe('Phase 11: Enterprise Family System', () => {
-  let configService: FamilyConfigurationService;
-  let validationService: FamilyValidationService;
-  let permissionService: FamilyPermissionService;
+  let _configService: FamilyConfigurationService;
+  let _validationService: FamilyValidationService;
+  let _permissionService: FamilyPermissionService;
   let roleService: FamilyRoleService;
   let memberService: FamilyMemberService;
-  let invitationService: FamilyInvitationService;
-  let requestService: FamilyRequestService;
+  let _invitationService: FamilyInvitationService;
+  let _requestService: FamilyRequestService;
   let familyService: FamilyService;
-  let historyService: FamilyHistoryService;
-  let auditService: FamilyAuditService;
-  let statisticsService: FamilyStatisticsService;
-  let queryService: FamilyQueryService;
-  let eventService: FamilyEventService;
+  let _historyService: FamilyHistoryService;
+  let _auditService: FamilyAuditService;
+  let _statisticsService: FamilyStatisticsService;
+  let _queryService: FamilyQueryService;
+  let _eventService: FamilyEventService;
 
   const mockPrismaService: any = {
     family: {
@@ -110,7 +110,7 @@ describe('Phase 11: Enterprise Family System', () => {
   };
 
   const mockLockService = {
-    withLock: jest.fn().mockImplementation((_key: string, fn: Function) => fn()),
+    withLock: jest.fn().mockImplementation((_key: string, fn: () => unknown) => fn()),
   };
 
   beforeEach(async () => {
@@ -136,19 +136,19 @@ describe('Phase 11: Enterprise Family System', () => {
       ],
     }).compile();
 
-    configService = module.get<FamilyConfigurationService>(FamilyConfigurationService);
-    validationService = module.get<FamilyValidationService>(FamilyValidationService);
-    permissionService = module.get<FamilyPermissionService>(FamilyPermissionService);
+    _configService = module.get<FamilyConfigurationService>(FamilyConfigurationService);
+    _validationService = module.get<FamilyValidationService>(FamilyValidationService);
+    _permissionService = module.get<FamilyPermissionService>(FamilyPermissionService);
     roleService = module.get<FamilyRoleService>(FamilyRoleService);
     memberService = module.get<FamilyMemberService>(FamilyMemberService);
-    invitationService = module.get<FamilyInvitationService>(FamilyInvitationService);
-    requestService = module.get<FamilyRequestService>(FamilyRequestService);
+    _invitationService = module.get<FamilyInvitationService>(FamilyInvitationService);
+    _requestService = module.get<FamilyRequestService>(FamilyRequestService);
     familyService = module.get<FamilyService>(FamilyService);
-    historyService = module.get<FamilyHistoryService>(FamilyHistoryService);
-    auditService = module.get<FamilyAuditService>(FamilyAuditService);
-    statisticsService = module.get<FamilyStatisticsService>(FamilyStatisticsService);
-    queryService = module.get<FamilyQueryService>(FamilyQueryService);
-    eventService = module.get<FamilyEventService>(FamilyEventService);
+    _historyService = module.get<FamilyHistoryService>(FamilyHistoryService);
+    _auditService = module.get<FamilyAuditService>(FamilyAuditService);
+    _statisticsService = module.get<FamilyStatisticsService>(FamilyStatisticsService);
+    _queryService = module.get<FamilyQueryService>(FamilyQueryService);
+    _eventService = module.get<FamilyEventService>(FamilyEventService);
 
     jest.clearAllMocks();
   });

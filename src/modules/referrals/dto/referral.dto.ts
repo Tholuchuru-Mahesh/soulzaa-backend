@@ -88,8 +88,18 @@ export class CreateCampaignDto {
 
   @ApiProperty({
     enum: [
-      'USER', 'VIP', 'CREATOR', 'AGENCY', 'SELLER', 'CAMPAIGN',
-      'EVENT', 'FAMILY', 'PROMOTIONAL', 'INVITE_LINK', 'QR_CODE', 'CUSTOM',
+      'USER',
+      'VIP',
+      'CREATOR',
+      'AGENCY',
+      'SELLER',
+      'CAMPAIGN',
+      'EVENT',
+      'FAMILY',
+      'PROMOTIONAL',
+      'INVITE_LINK',
+      'QR_CODE',
+      'CUSTOM',
     ],
   })
   @IsString()

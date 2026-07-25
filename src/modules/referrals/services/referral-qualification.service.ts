@@ -50,17 +50,11 @@ export class ReferralQualificationService {
     }
 
     const qualified = failedRules.length === 0;
-    this.logger.log(
-      `Qualification for ${ctx.relationshipId}: ${qualified ? 'PASSED' : 'FAILED'}`,
-    );
+    this.logger.log(`Qualification for ${ctx.relationshipId}: ${qualified ? 'PASSED' : 'FAILED'}`);
     return { qualified, passedRules, failedRules };
   }
 
-  async markRuleFailed(
-    relationshipId: string,
-    ruleName: string,
-    reasons: string[],
-  ): Promise<void> {
+  async markRuleFailed(relationshipId: string, ruleName: string, reasons: string[]): Promise<void> {
     await this.prisma.referralQualification.create({
       data: {
         relationshipId,

@@ -76,7 +76,7 @@ export class WithdrawalApprovalService {
       }
 
       // Update WithdrawalRequest status
-      const updated = await this.prisma.withdrawalRequest.update({
+      const _updated = await this.prisma.withdrawalRequest.update({
         where: { id: requestId },
         data: { status: newStatus },
       });

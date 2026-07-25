@@ -12,14 +12,7 @@ export class DashboardQueryService {
    */
   async getOverviewStats(): Promise<Record<string, number>> {
     this.logger.log('Performing cross-module analytics counts read...');
-    const [
-      users,
-      countries,
-      wallets,
-      referrals,
-      notifications,
-      reports,
-    ] = await Promise.all([
+    const [users, countries, wallets, referrals, notifications, reports] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.country.count(),
       this.prisma.wallet.count(),

@@ -18,18 +18,18 @@ import { VipTierService } from './vip-tier.service';
 import { VipValidationService } from './vip-validation.service';
 
 describe('Phase 12: Enterprise VIP Membership Engine', () => {
-  let configService: VipConfigurationService;
-  let validationService: VipValidationService;
-  let tierService: VipTierService;
-  let benefitService: VipBenefitService;
+  let _configService: VipConfigurationService;
+  let _validationService: VipValidationService;
+  let _tierService: VipTierService;
+  let _benefitService: VipBenefitService;
   let rewardService: VipRewardService;
   let subscriptionService: VipSubscriptionService;
-  let membershipService: VipMembershipService;
-  let historyService: VipHistoryService;
-  let auditService: VipAuditService;
-  let statisticsService: VipStatisticsService;
-  let queryService: VipQueryService;
-  let eventService: VipEventService;
+  let _membershipService: VipMembershipService;
+  let _historyService: VipHistoryService;
+  let _auditService: VipAuditService;
+  let _statisticsService: VipStatisticsService;
+  let _queryService: VipQueryService;
+  let _eventService: VipEventService;
 
   const mockPrismaService: any = {
     vipTier: {
@@ -96,7 +96,7 @@ describe('Phase 12: Enterprise VIP Membership Engine', () => {
   };
 
   const mockLockService = {
-    withLock: jest.fn().mockImplementation((_key: string, fn: Function) => fn()),
+    withLock: jest.fn().mockImplementation((_key: string, fn: () => unknown) => fn()),
   };
 
   beforeEach(async () => {
@@ -122,18 +122,18 @@ describe('Phase 12: Enterprise VIP Membership Engine', () => {
       ],
     }).compile();
 
-    configService = module.get<VipConfigurationService>(VipConfigurationService);
-    validationService = module.get<VipValidationService>(VipValidationService);
-    tierService = module.get<VipTierService>(VipTierService);
-    benefitService = module.get<VipBenefitService>(VipBenefitService);
+    _configService = module.get<VipConfigurationService>(VipConfigurationService);
+    _validationService = module.get<VipValidationService>(VipValidationService);
+    _tierService = module.get<VipTierService>(VipTierService);
+    _benefitService = module.get<VipBenefitService>(VipBenefitService);
     rewardService = module.get<VipRewardService>(VipRewardService);
     subscriptionService = module.get<VipSubscriptionService>(VipSubscriptionService);
-    membershipService = module.get<VipMembershipService>(VipMembershipService);
-    historyService = module.get<VipHistoryService>(VipHistoryService);
-    auditService = module.get<VipAuditService>(VipAuditService);
-    statisticsService = module.get<VipStatisticsService>(VipStatisticsService);
-    queryService = module.get<VipQueryService>(VipQueryService);
-    eventService = module.get<VipEventService>(VipEventService);
+    _membershipService = module.get<VipMembershipService>(VipMembershipService);
+    _historyService = module.get<VipHistoryService>(VipHistoryService);
+    _auditService = module.get<VipAuditService>(VipAuditService);
+    _statisticsService = module.get<VipStatisticsService>(VipStatisticsService);
+    _queryService = module.get<VipQueryService>(VipQueryService);
+    _eventService = module.get<VipEventService>(VipEventService);
 
     jest.clearAllMocks();
   });

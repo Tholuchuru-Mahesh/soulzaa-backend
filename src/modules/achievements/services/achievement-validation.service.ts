@@ -47,7 +47,11 @@ export class AchievementValidationService {
     return badge;
   }
 
-  async validateNotAlreadyUnlocked(userId: string, achievementId: string, repeatable: boolean): Promise<void> {
+  async validateNotAlreadyUnlocked(
+    userId: string,
+    achievementId: string,
+    repeatable: boolean,
+  ): Promise<void> {
     if (repeatable) return; // Repeatable achievements can be awarded multiple times
     const existing = await this.prisma.userAchievement.findFirst({
       where: { userId, achievementId },

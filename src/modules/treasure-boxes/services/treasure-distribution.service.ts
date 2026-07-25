@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BackpackItemSource, BackpackItemType, TreasureRewardKind, TreasureRewardStatus, WalletTxnReason } from '@prisma/client';
+import {
+  BackpackItemSource,
+  BackpackItemType,
+  TreasureRewardKind,
+  TreasureRewardStatus,
+  WalletTxnReason,
+} from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { RewardDistributor } from './reward-distributor.service';
 import { TreasureConfigurationService } from './treasure-configuration.service';

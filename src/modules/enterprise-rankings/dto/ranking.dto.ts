@@ -21,7 +21,10 @@ import {
 // ─── Ranking Definition DTOs ────────────────────────────────────────────
 
 export class CreateRankingDefinitionDto {
-  @ApiProperty({ description: 'Unique code for the ranking definition', example: 'DAILY_GIFTERS_GLOBAL' })
+  @ApiProperty({
+    description: 'Unique code for the ranking definition',
+    example: 'DAILY_GIFTERS_GLOBAL',
+  })
   @IsString()
   @IsNotEmpty()
   code!: string;

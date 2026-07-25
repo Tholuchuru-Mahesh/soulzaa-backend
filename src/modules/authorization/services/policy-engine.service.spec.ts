@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AuthorizationCacheService } from './authorization-cache.service';
+
 import { PolicyEngineService, RoleRankPolicyRule } from './policy-engine.service';
 import {
   ResourceOwnershipService,
@@ -8,9 +8,9 @@ import {
 
 describe('Policy Engine & Resource Ownership Services', () => {
   let policyEngine: PolicyEngineService;
-  let roleRankRule: RoleRankPolicyRule;
+  let _roleRankRule: RoleRankPolicyRule;
   let ownershipService: ResourceOwnershipService;
-  let userProfileProvider: UserProfileOwnershipProvider;
+  let _userProfileProvider: UserProfileOwnershipProvider;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -23,9 +23,9 @@ describe('Policy Engine & Resource Ownership Services', () => {
     }).compile();
 
     policyEngine = module.get<PolicyEngineService>(PolicyEngineService);
-    roleRankRule = module.get<RoleRankPolicyRule>(RoleRankPolicyRule);
+    _roleRankRule = module.get<RoleRankPolicyRule>(RoleRankPolicyRule);
     ownershipService = module.get<ResourceOwnershipService>(ResourceOwnershipService);
-    userProfileProvider = module.get<UserProfileOwnershipProvider>(UserProfileOwnershipProvider);
+    _userProfileProvider = module.get<UserProfileOwnershipProvider>(UserProfileOwnershipProvider);
 
     // Trigger onModuleInit lifecycle
     ownershipService.onModuleInit();

@@ -45,7 +45,7 @@ export class AdminDashboardService {
     });
 
     this.events.emitLayoutUpdated({ userId: input.userId, layoutId: layout.id });
-    
+
     await this.audit.log({
       action: 'DASHBOARD_LAYOUT_UPDATED',
       userId: input.userId,
