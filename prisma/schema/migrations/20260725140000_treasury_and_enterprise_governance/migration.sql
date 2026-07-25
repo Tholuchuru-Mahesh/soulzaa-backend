@@ -26,17 +26,6 @@ CREATE TYPE "TransactionStatus" AS ENUM ('PENDING', 'COMPLETED', 'FAILED', 'CANC
 CREATE TYPE "TransactionType" AS ENUM ('PURCHASE', 'GIFT', 'REWARD', 'BONUS', 'TREASURE', 'WITHDRAWAL', 'DEPOSIT', 'REFUND', 'SETTLEMENT', 'PENALTY', 'ADJUSTMENT', 'TRANSFER', 'GAME_ENTRY', 'GAME_REWARD');
 
 -- AlterEnum
--- This migration adds more than one value to an enum.
--- With PostgreSQL versions 11 and earlier, this is not possible
--- in a single migration. This can be worked around by creating
--- multiple migrations, each migration adding only one value to
--- the enum.
-
-
-ALTER TYPE "AccountStatus" ADD VALUE 'INACTIVE';
-ALTER TYPE "AccountStatus" ADD VALUE 'LOCKED';
-
--- AlterEnum
 BEGIN;
 CREATE TYPE "GiftCategory_new" AS ENUM ('CLASSIC', 'LUXURY', 'FESTIVAL', 'VIP', 'PREMIUM', 'SPECIAL_EVENT', 'ANIMATED', 'LIMITED_EDITION');
 ALTER TABLE "gifts" ALTER COLUMN "category" TYPE "GiftCategory_new" USING ("category"::text::"GiftCategory_new");
@@ -44,25 +33,6 @@ ALTER TYPE "GiftCategory" RENAME TO "GiftCategory_old";
 ALTER TYPE "GiftCategory_new" RENAME TO "GiftCategory";
 DROP TYPE "public"."GiftCategory_old";
 COMMIT;
-
--- AlterEnum
--- This migration adds more than one value to an enum.
--- With PostgreSQL versions 11 and earlier, this is not possible
--- in a single migration. This can be worked around by creating
--- multiple migrations, each migration adding only one value to
--- the enum.
-
-
-ALTER TYPE "GiftContextType" ADD VALUE 'PK_BATTLE';
-ALTER TYPE "GiftContextType" ADD VALUE 'MULTI_HOST_BATTLE';
-ALTER TYPE "GiftContextType" ADD VALUE 'EVENT';
-ALTER TYPE "GiftContextType" ADD VALUE 'GAME';
-
--- AlterEnum
-ALTER TYPE "GiftTxnStatus" ADD VALUE 'FAILED';
-
--- AlterEnum
-ALTER TYPE "GiftType" ADD VALUE 'LIMITED_EDITION';
 
 -- AlterEnum
 BEGIN;
@@ -74,49 +44,6 @@ ALTER TYPE "PlatformRole_new" RENAME TO "PlatformRole";
 DROP TYPE "public"."PlatformRole_old";
 ALTER TABLE "users" ALTER COLUMN "roles" SET DEFAULT ARRAY['USER']::"PlatformRole"[];
 COMMIT;
-
--- AlterEnum
-ALTER TYPE "RoomStatus" ADD VALUE 'OFFLINE';
-
--- AlterEnum
--- This migration adds more than one value to an enum.
--- With PostgreSQL versions 11 and earlier, this is not possible
--- in a single migration. This can be worked around by creating
--- multiple migrations, each migration adding only one value to
--- the enum.
-
-
-ALTER TYPE "VideoRoomInvitationStatus" ADD VALUE 'DELIVERED';
-ALTER TYPE "VideoRoomInvitationStatus" ADD VALUE 'FAILED';
-
--- AlterEnum
--- This migration adds more than one value to an enum.
--- With PostgreSQL versions 11 and earlier, this is not possible
--- in a single migration. This can be worked around by creating
--- multiple migrations, each migration adding only one value to
--- the enum.
-
-
-ALTER TYPE "VideoRoomSeatRequestStatus" ADD VALUE 'PROMOTED';
-ALTER TYPE "VideoRoomSeatRequestStatus" ADD VALUE 'FAILED';
-
--- AlterEnum
--- This migration adds more than one value to an enum.
--- With PostgreSQL versions 11 and earlier, this is not possible
--- in a single migration. This can be worked around by creating
--- multiple migrations, each migration adding only one value to
--- the enum.
-
-
-ALTER TYPE "WalletTxnReason" ADD VALUE 'HOST_EARNING';
-ALTER TYPE "WalletTxnReason" ADD VALUE 'AGENCY_COMMISSION';
-ALTER TYPE "WalletTxnReason" ADD VALUE 'COIN_SELLER_COMMISSION';
-ALTER TYPE "WalletTxnReason" ADD VALUE 'WITHDRAWAL';
-ALTER TYPE "WalletTxnReason" ADD VALUE 'VIP_RENEWAL';
-ALTER TYPE "WalletTxnReason" ADD VALUE 'SYSTEM_TRANSFER';
-ALTER TYPE "WalletTxnReason" ADD VALUE 'RESERVATION_HOLD';
-ALTER TYPE "WalletTxnReason" ADD VALUE 'RESERVATION_RELEASE';
-ALTER TYPE "WalletTxnReason" ADD VALUE 'RESERVATION_CONSUME';
 
 -- DropIndex
 DROP INDEX "audio_rooms_ownerId_idx";
