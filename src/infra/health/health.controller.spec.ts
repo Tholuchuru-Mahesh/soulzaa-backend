@@ -8,8 +8,8 @@ import { QueueHealthIndicator } from './queue.health';
 import { StorageHealthIndicator } from './storage.health';
 import { SocketHealthIndicator } from './socket.health';
 import { EventLoopHealthIndicator } from './event-loop.health';
-import { AgoraHealthIndicator } from './agora.health';
 import { SystemHealthIndicator } from './system.health';
+import { ZegoHealthIndicator } from './zego.health';
 
 describe('HealthController', () => {
   let controller: HealthController;
@@ -53,8 +53,8 @@ describe('HealthController', () => {
           useValue: { isHealthy: jest.fn().mockResolvedValue({ event_loop: { status: 'up' } }) },
         },
         {
-          provide: AgoraHealthIndicator,
-          useValue: { isHealthy: jest.fn().mockResolvedValue({ agora: { status: 'up' } }) },
+          provide: ZegoHealthIndicator,
+          useValue: { isHealthy: jest.fn().mockResolvedValue({ zego: { status: 'up' } }) },
         },
         {
           provide: SystemHealthIndicator,

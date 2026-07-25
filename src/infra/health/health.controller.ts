@@ -2,7 +2,6 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { HealthCheck, HealthCheckService, MemoryHealthIndicator } from '@nestjs/terminus';
 import { Public } from '../../common/decorators/public.decorator';
-import { AgoraHealthIndicator } from './agora.health';
 import { EventLoopHealthIndicator } from './event-loop.health';
 import { PrismaHealthIndicator } from './prisma.health';
 import { QueueHealthIndicator } from './queue.health';
@@ -10,6 +9,7 @@ import { RedisHealthIndicator } from './redis.health';
 import { SocketHealthIndicator } from './socket.health';
 import { StorageHealthIndicator } from './storage.health';
 import { SystemHealthIndicator } from './system.health';
+import { ZegoHealthIndicator } from './zego.health';
 
 /** ~1.5GB RSS ceiling for the liveness memory check. */
 const MAX_RSS_BYTES = 1_536 * 1024 * 1024;
@@ -26,7 +26,7 @@ export class HealthController {
     private readonly socket: SocketHealthIndicator,
     private readonly memory: MemoryHealthIndicator,
     private readonly eventLoop: EventLoopHealthIndicator,
-    private readonly agora: AgoraHealthIndicator,
+    private readonly zego: ZegoHealthIndicator,
     private readonly system: SystemHealthIndicator,
   ) {}
 
@@ -96,7 +96,7 @@ export class HealthController {
       () => this.socket.isHealthy('socket'),
       () => this.memory.checkRSS('memory_rss', MAX_RSS_BYTES),
       () => this.eventLoop.isHealthy('event_loop'),
-      () => this.agora.isHealthy('agora'),
+      () => this.zego.isHealthy('zego'),
       () => this.system.isHealthy('system'),
     ]);
   }

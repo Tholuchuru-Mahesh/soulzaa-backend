@@ -16,7 +16,17 @@ export class StorageHealthIndicator {
       await this.s3.headBucket();
       return indicator.up();
     } catch (err) {
-      return indicator.down({ message: (err as Error).message });
+      // S3 answers HeadBucket with an empty body, so the SDK often has no error
+      // code to report and `message` degrades to a bare "UnknownError". The name
+      // and status code are what actually identify the fault: 301 = wrong region
+      // (see x-amz-bucket-region), 403 = missing s3:ListBucket, 404 = no bucket,
+      // CredentialsProviderError = the credential chain resolved nothing.
+      const e = err as Error & { $metadata?: { httpStatusCode?: number } };
+      return indicator.down({
+        message: e.message,
+        errorName: e.name,
+        httpStatusCode: e.$metadata?.httpStatusCode,
+      });
     }
   }
 }

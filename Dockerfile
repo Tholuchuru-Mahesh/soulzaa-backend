@@ -45,7 +45,9 @@ EXPOSE 3000
 
 # Kubernetes/Docker healthcheck using the /health/live liveness probe
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -qO- http://localhost:3000/health/live || exit 1
+  # 127.0.0.1, not localhost: the app binds 0.0.0.0 (IPv4) and localhost
+  # resolves to ::1 first inside the container, so the probe gets ECONNREFUSED.
+  CMD wget -qO- http://127.0.0.1:3000/health/live || exit 1
 
 # Run Prisma migrations then start the API server
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
