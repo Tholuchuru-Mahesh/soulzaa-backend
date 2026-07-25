@@ -99,6 +99,12 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB}?schema=public&pgbouncer=true
       DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       REDIS_URL: redis://redis:6379
+    volumes:
+      # firebase.service.ts reads this from process.cwd() (/app), but the runtime
+      # image deliberately copies only dist/node_modules/prisma — so mount it in.
+      # Without it Firebase Admin never initializes and every phone-auth login
+      # (POST /api/auth/login/firebase-mobile) fails to verify its ID token.
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
     ports:
       - '3000:3000'
     depends_on:
