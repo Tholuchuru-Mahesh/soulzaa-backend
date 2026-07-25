@@ -5,11 +5,10 @@ WORKDIR /app
 
 # ---------- Dependencies ----------
 FROM base AS deps
-COPY package.json pnpm-lock.yaml* ./
-# pnpm 11+ blocks postinstall scripts by default (ERR_PNPM_IGNORED_BUILDS).
-# unsafe-perm=true allows @prisma/engines, sharp, protobufjs etc. to run their
-# required postinstall / native build scripts inside Docker.
-RUN echo 'unsafe-perm=true' >> .npmrc
+# pnpm-workspace.yaml carries onlyBuiltDependencies — without it pnpm 11 blocks
+# every postinstall script (ERR_PNPM_IGNORED_BUILDS) and @prisma/engines never
+# downloads its query engine.
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # ---------- Build ----------
