@@ -130,7 +130,12 @@ services:
       - '443:443'
     volumes:
       - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+      # All of /etc/letsencrypt, not just live/ — the live/ certs are symlinks
+      # into archive/, so mounting live/ alone gives nginx dangling links.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Webroot for the ACME HTTP-01 challenge, shared with host certbot so
+      # renewals need only an nginx reload (no downtime, no cert copying).
+      - ./deploy/nginx/acme:/var/www/certbot:ro
     depends_on:
       - api
     networks:
