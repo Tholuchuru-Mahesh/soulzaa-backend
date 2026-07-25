@@ -33,7 +33,10 @@ services:
 
   # ── PgBouncer (connection pooler) ────────────────────────────────────────────
   pgbouncer:
-    image: bitnami/pgbouncer:1
+    # Bitnami retired its public Docker Hub catalog (2025); the images live on
+    # under bitnamilegacy/ and are frozen. Migrate to edoburu/pgbouncer when
+    # convenient — it needs different env var names and listens on 5432.
+    image: bitnamilegacy/pgbouncer:1.24.1-debian-12-r10
     container_name: soulzaa-pgbouncer
     restart: always
     logging: *default-logging
