@@ -1,4 +1,7 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  // prisma/ and scripts/ hold standalone .ts utilities. Compiling them widens
+  // TypeScript's common source root to the repo root, which emits dist/src/main.js
+  // instead of dist/main.js — the path both the Dockerfile CMD and start:prod use.
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts", "prisma", "scripts"]
 }
