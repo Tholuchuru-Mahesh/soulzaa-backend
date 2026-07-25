@@ -12,6 +12,7 @@ export const AUDIO_ROOM_EVENTS = {
   CREATED: 'audio_room.created',
   UPDATED: 'audio_room.updated',
   DELETED: 'audio_room.deleted',
+  STARTED: 'audio_room.started',
   ENDED: 'audio_room.ended',
   JOINED: 'audio_room.joined',
   LEFT: 'audio_room.left',
@@ -44,6 +45,38 @@ export class RoomDeletedEvent extends DomainEvent<{
   ownerId: string;
 }> {
   readonly name = AUDIO_ROOM_EVENTS.DELETED;
+}
+
+/**
+ * A room went LIVE — a permanent room's new *session*, not a new row (rooms are
+ * one-per-owner and never deleted, so "start another live" reactivates the same
+ * id). Emitted on both a first go-live and a restart after ENDED/OFFLINE.
+ *
+ * Unlike the other lifecycle events this payload carries the discovery fields
+ * verbatim, because its socket fan-out is namespace-wide: a client that dropped
+ * this room when it closed is no longer subscribed to the room's channel and has
+ * no cached copy left to patch, so it must be able to render the card straight
+ * from the event without a follow-up fetch.
+ */
+export class RoomStartedEvent extends DomainEvent<{
+  roomId: string;
+  ownerId: string;
+  actorId: string;
+  name: string;
+  imageKey: string | null;
+  categoryId: string | null;
+  language: string | null;
+  visibility: RoomVisibility;
+  isDiscoverable: boolean;
+  isLocked: boolean;
+  isPasswordProtected: boolean;
+  maxParticipants: number;
+  participantCount: number;
+  status: string;
+  /** True when this restarted a previously ended room (vs. a first go-live). */
+  restarted: boolean;
+}> {
+  readonly name = AUDIO_ROOM_EVENTS.STARTED;
 }
 
 export class RoomEndedEvent extends DomainEvent<{

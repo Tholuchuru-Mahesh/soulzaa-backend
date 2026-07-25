@@ -16,6 +16,12 @@ export const ROOM_SOCKET_EVENTS = {
   JOINED: 'room.joined',
   LEFT: 'room.left',
   CLOSED: 'room.closed',
+  /**
+   * A room opened a new LIVE session. Broadcast namespace-wide (not just to the
+   * room's channel) — every client that dropped this room when it closed has
+   * already left that channel, so a room-scoped emit would reach nobody.
+   */
+  LIVE: 'room.live',
   LOCKED: 'room.locked',
   OWNERSHIP_TRANSFERRED: 'room.ownership_transferred',
   // ---- Seats (AR-1) ----

@@ -6,9 +6,13 @@ import {
   WalletStatus,
   WalletType,
 } from '@prisma/client';
+import { EVENT_BUS } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { LockService } from 'src/infra/redis/lock.service';
 import { FeatureFlagService } from 'src/modules/platform-configuration/services/feature-flag.service';
 import { CoinEconomyService } from 'src/modules/treasury/services/coin-economy.service';
+import { WalletMetrics } from '../metrics/wallet.metrics';
+import { WalletRepository } from '../repositories/wallet.repository';
 import { BalanceService } from './balance.service';
 import { LedgerService } from './ledger.service';
 import { ReservationService } from './reservation.service';
@@ -67,6 +71,28 @@ describe('Phase 3: Enterprise Wallet & Double-Entry Ledger Infrastructure', () =
     isEnabled: jest.fn().mockResolvedValue(true),
   };
 
+  // WalletService's movement path (debit/credit) collaborators. The suites here
+  // exercise wallet lifecycle, balances, reservations and transactions, none of
+  // which reach these — they are provided so the container can resolve the graph.
+  const mockWalletRepository = {
+    ensureWallet: jest.fn().mockResolvedValue(undefined),
+    getWallet: jest.fn().mockResolvedValue(null),
+    applyMovement: jest.fn(),
+    findByIdempotencyKey: jest.fn().mockResolvedValue(null),
+    listTransactions: jest.fn().mockResolvedValue([[], 0]),
+  };
+
+  const mockLockService = {
+    withLock: jest.fn(<T>(_key: string, fn: () => Promise<T>) => fn()),
+  };
+
+  const mockEventBus = {
+    publish: jest.fn().mockResolvedValue(undefined),
+    subscribe: jest.fn(),
+  };
+
+  const mockWalletMetrics = { recordMovement: jest.fn(), recordFailure: jest.fn() };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -81,6 +107,10 @@ describe('Phase 3: Enterprise Wallet & Double-Entry Ledger Infrastructure', () =
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: CoinEconomyService, useValue: mockCoinEconomyService },
         { provide: FeatureFlagService, useValue: mockFeatureFlagService },
+        { provide: WalletRepository, useValue: mockWalletRepository },
+        { provide: LockService, useValue: mockLockService },
+        { provide: EVENT_BUS, useValue: mockEventBus },
+        { provide: WalletMetrics, useValue: mockWalletMetrics },
       ],
     }).compile();
 

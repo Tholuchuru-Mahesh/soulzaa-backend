@@ -35,6 +35,7 @@ import {
   RoomLeftEvent,
   RoomLockedEvent,
   RoomOwnershipTransferredEvent,
+  RoomStartedEvent,
   RoomUpdatedEvent,
 } from '../events/audio-room.events';
 import type { IAudioRoomsService, RoomView } from '../interfaces/audio-rooms.service.interface';
@@ -128,9 +129,15 @@ export class AudioRoomsService implements IAudioRoomsService {
 
   async create(actor: RoomActor, dto: CreateRoomDto): Promise<RoomView> {
     return this.locks.withLock(`audio-room:create:{${actor.id}}`, async () => {
+      // Rooms are permanent and one-per-owner, so "create" on an owner who
+      // already has one means "open a new session on it". Handing the row back
+      // untouched used to leave a previously ended room OFFLINE: the owner walked
+      // straight into it (owners skip the join gate) while every audience join
+      // failed getLiveRoomOrThrow with ROOM_ENDED. Reactivating here makes the
+      // room LIVE regardless of which entry path the owner took.
       const existing = await this.repo.findOwnedRoom(actor.id);
       if (existing) {
-        return this.toView(existing);
+        return existing.status === 'LIVE' ? this.toView(existing) : this.goLive(existing, actor);
       }
 
       if (dto.categoryId) await this.assertCategory(dto.categoryId);
@@ -285,10 +292,61 @@ export class AudioRoomsService implements IAudioRoomsService {
 
   async start(actor: RoomActor, roomId: string): Promise<RoomView> {
     const room = await this.getManageableRoom(roomId, actor);
-    const updated = await this.repo.updateRoom(roomId, { status: 'LIVE', endedAt: null }, actor.id);
-    await this.seatsService.onRoomOpened(roomId, room.ownerId);
+    return this.goLive(room, actor);
+  }
+
+  /**
+   * Opens a new LIVE session on an existing (permanent) room. Rooms are one per
+   * owner and are never deleted, so "start another live" reactivates this row —
+   * but it must be a genuinely fresh session, never a resumption of the ended
+   * one: any presence/trending/snapshot state the previous session left behind is
+   * discarded first.
+   *
+   * Idempotent. Calling it on a room that is already LIVE is a no-op restart: the
+   * runtime reset is skipped so a redundant `POST /:id/start` (the client calls
+   * start-then-join on every owner entry) can never evict the live audience.
+   */
+  private async goLive(room: AudioRoom, actor: RoomActor): Promise<RoomView> {
+    const roomId = room.id;
+    const restarted = room.status !== 'LIVE';
+
+    if (restarted) {
+      await this.clearRoomRuntime(roomId);
+    }
+
+    const updated = restarted
+      ? await this.repo.updateRoom(roomId, { status: 'LIVE', endedAt: null }, actor.id)
+      : room;
+    await this.seatsService.onRoomOpened(roomId, updated.ownerId);
+
     const view = await this.toView(updated);
     await this.repo.setCachedSnapshot(view, this.cacheTtl);
+    await this.repo.trendingBump(roomId, 0);
+
+    if (restarted) {
+      await this.repo.appendLog(roomId, actor.id, RoomLogAction.UPDATED, { changed: ['status'] });
+    }
+
+    await this.bus.publish(
+      new RoomStartedEvent({
+        roomId,
+        ownerId: updated.ownerId,
+        actorId: actor.id,
+        name: updated.name,
+        imageKey: updated.imageKey,
+        categoryId: updated.categoryId,
+        language: updated.language,
+        visibility: updated.visibility,
+        isDiscoverable: updated.isDiscoverable,
+        isLocked: updated.isLocked,
+        isPasswordProtected: updated.passwordHash !== null,
+        maxParticipants: updated.maxParticipants,
+        participantCount: view.participantCount,
+        status: view.status,
+        restarted,
+      }),
+    );
+    // Kept for clients already inside the room, which reconcile on `room.updated`.
     await this.bus.publish(
       new RoomUpdatedEvent({
         roomId,

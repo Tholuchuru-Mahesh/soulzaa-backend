@@ -236,6 +236,28 @@ export class SocketManager {
   }
 
   /**
+   * Broadcast an event to every socket connected to a namespace, cross-instance
+   * via the Redis adapter. The namespace-wide counterpart to
+   * `emitToNamespaceRoom`, for lobby-level facts that must reach clients which
+   * are not (or are no longer) subscribed to any particular room's channel — a
+   * room going live again being the motivating case, since everyone who was
+   * ejected when it closed has already left that room's channel.
+   *
+   * Use sparingly: every connected socket on the namespace receives the payload.
+   * Anything addressed at a specific room or user belongs in
+   * `emitToNamespaceRoom` / `emitToUser`. A no-op if the namespace has not
+   * initialised yet.
+   */
+  emitToNamespace(namespace: string, event: string, payload: unknown): void {
+    const server = this.serverForNamespace(namespace);
+    if (!server) {
+      this.logger.warn(`emitToNamespace: no server for namespace "${namespace}"`);
+      return;
+    }
+    server.emit(event, payload);
+  }
+
+  /**
    * Resolve a registered namespace server by its path (e.g. `/audio-room`).
    * Gateways register their namespace-scoped server (a Socket.IO Namespace,
    * whose `.name` is the path) via `registerServer`.

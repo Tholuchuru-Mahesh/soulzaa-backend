@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WalletStatus, WalletType } from '@prisma/client';
+import { EVENT_BUS } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { LockService } from 'src/infra/redis/lock.service';
+import { WalletMetrics } from '../metrics/wallet.metrics';
+import { WalletRepository } from '../repositories/wallet.repository';
 import { WalletAuditService } from './wallet-audit.service';
 import { WalletService } from './wallet.service';
 
@@ -19,11 +23,31 @@ describe('WalletService', () => {
     logAudit: jest.fn().mockResolvedValue({}),
   };
 
+  // Wallet lifecycle (create/read/status) runs entirely on prisma + audit; the
+  // remaining constructor dependencies belong to the movement path (debit/credit)
+  // and are stubbed only so the container can resolve the service.
+  const mockRepo = {
+    ensureWallet: jest.fn().mockResolvedValue(undefined),
+    getWallet: jest.fn().mockResolvedValue(null),
+    applyMovement: jest.fn(),
+    findByIdempotencyKey: jest.fn().mockResolvedValue(null),
+    listTransactions: jest.fn().mockResolvedValue([[], 0]),
+  };
+  const mockLocks = {
+    withLock: jest.fn(<T>(_key: string, fn: () => Promise<T>) => fn()),
+  };
+  const mockBus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
+  const mockMetrics = { recordMovement: jest.fn(), recordFailure: jest.fn() };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WalletService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: WalletRepository, useValue: mockRepo },
+        { provide: LockService, useValue: mockLocks },
+        { provide: EVENT_BUS, useValue: mockBus },
+        { provide: WalletMetrics, useValue: mockMetrics },
         { provide: WalletAuditService, useValue: mockAuditService },
       ],
     }).compile();

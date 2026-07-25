@@ -370,7 +370,14 @@ export class AudioRoomSeatsRepository {
     await this.prisma.seatQueueEntry.deleteMany({ where: { roomId } });
   }
 
-  /** Vacate every seat and clear the queue (on room end/delete). */
+  async clearPendingRequests(roomId: string): Promise<void> {
+    await this.prisma.seatRequest.updateMany({
+      where: { roomId, status: SeatRequestStatus.PENDING },
+      data: { status: SeatRequestStatus.CANCELLED, resolvedAt: new Date() },
+    });
+  }
+
+  /** Vacate every seat, cancel pending requests, and clear the queue (on room end/delete). */
   async clearStageTx(roomId: string): Promise<void> {
     await this.prisma.$transaction([
       this.prisma.roomSeat.updateMany({
@@ -378,6 +385,10 @@ export class AudioRoomSeatsRepository {
         data: { occupantUserId: null },
       }),
       this.prisma.seatQueueEntry.deleteMany({ where: { roomId } }),
+      this.prisma.seatRequest.updateMany({
+        where: { roomId, status: SeatRequestStatus.PENDING },
+        data: { status: SeatRequestStatus.CANCELLED, resolvedAt: new Date() },
+      }),
     ]);
   }
 

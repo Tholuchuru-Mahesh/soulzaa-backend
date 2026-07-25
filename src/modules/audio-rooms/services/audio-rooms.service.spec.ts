@@ -349,6 +349,108 @@ describe('AudioRoomsService', () => {
     });
   });
 
+  describe('start (go live again)', () => {
+    /** A room the owner previously ended — the state a "start another live" begins from. */
+    const endedRoom = () => roomRow({ status: 'OFFLINE', endedAt: new Date() });
+
+    it('flips an ended room back to LIVE and publishes room.started', async () => {
+      repo.findRoomRow.mockResolvedValue(endedRoom());
+      repo.updateRoom.mockResolvedValue(roomRow({ status: 'LIVE' }));
+
+      const view = await service.start(OWNER, 'room-1');
+
+      expect(repo.updateRoom).toHaveBeenCalledWith(
+        'room-1',
+        { status: 'LIVE', endedAt: null },
+        OWNER.id,
+      );
+      expect(view.status).toBe('LIVE');
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'audio_room.started' }),
+      );
+    });
+
+    it('carries the fields a lobby client needs to render the room without a refetch', async () => {
+      repo.findRoomRow.mockResolvedValue(endedRoom());
+      repo.updateRoom.mockResolvedValue(roomRow({ status: 'LIVE' }));
+
+      await service.start(OWNER, 'room-1');
+
+      const started = bus.publish.mock.calls
+        .map(([event]) => event)
+        .find((event) => (event as { name: string }).name === 'audio_room.started');
+      expect((started as { payload: Record<string, unknown> }).payload).toEqual(
+        expect.objectContaining({
+          roomId: 'room-1',
+          ownerId: OWNER.id,
+          name: 'My Room',
+          status: 'LIVE',
+          visibility: RoomVisibility.PUBLIC,
+          isDiscoverable: true,
+        }),
+      );
+    });
+
+    it('discards runtime state left over from the previous session', async () => {
+      repo.findRoomRow.mockResolvedValue(endedRoom());
+      presence.roomMembers.mockResolvedValue(['ghost-1', 'ghost-2']);
+
+      await service.start(OWNER, 'room-1');
+
+      expect(presence.leaveRoom).toHaveBeenCalledWith('room-1', 'ghost-1');
+      expect(presence.leaveRoom).toHaveBeenCalledWith('room-1', 'ghost-2');
+    });
+
+    it('is idempotent on an already-LIVE room: never evicts the current audience', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow({ status: 'LIVE' }));
+      presence.roomMembers.mockResolvedValue(['listener-1']);
+
+      await service.start(OWNER, 'room-1');
+
+      expect(presence.leaveRoom).not.toHaveBeenCalled();
+    });
+
+    it('refreshes the cached snapshot so reads never serve the ended room', async () => {
+      repo.findRoomRow.mockResolvedValue(endedRoom());
+      repo.updateRoom.mockResolvedValue(roomRow({ status: 'LIVE' }));
+
+      await service.start(OWNER, 'room-1');
+
+      expect(repo.setCachedSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'room-1', status: 'LIVE' }),
+        expect.any(Number),
+      );
+    });
+  });
+
+  describe('create on an existing owned room', () => {
+    it('reactivates an ended room instead of handing back the stale one', async () => {
+      repo.findOwnedRoom.mockResolvedValue(roomRow({ status: 'OFFLINE', endedAt: new Date() }));
+      repo.findRoomRow.mockResolvedValue(roomRow({ status: 'OFFLINE', endedAt: new Date() }));
+      repo.updateRoom.mockResolvedValue(roomRow({ status: 'LIVE' }));
+
+      const view = await service.create(OWNER, { name: 'Another' });
+
+      expect(repo.createRoomTx).not.toHaveBeenCalled();
+      expect(view.status).toBe('LIVE');
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'audio_room.started' }),
+      );
+    });
+
+    it('leaves an already-LIVE owned room untouched (no redundant restart)', async () => {
+      repo.findOwnedRoom.mockResolvedValue(roomRow({ status: 'LIVE' }));
+
+      const view = await service.create(OWNER, { name: 'Another' });
+
+      expect(view.status).toBe('LIVE');
+      expect(repo.updateRoom).not.toHaveBeenCalled();
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'audio_room.started' }),
+      );
+    });
+  });
+
   describe('removeOwner (admin)', () => {
     const member = (userId: string, role: RoomMemberRole, ageMs = 0) =>
       ({ userId, role, joinedAt: new Date(Date.now() - ageMs), isActive: true }) as never;

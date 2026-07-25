@@ -815,8 +815,9 @@ export class AudioRoomSeatsService {
     await this.rebuildStage(roomId);
   }
 
-  /** The room went live: occupy Seat 0 automatically for the owner. */
+  /** The room went live: clear any stale pending requests and occupy Seat 0 automatically for the owner. */
   async onRoomOpened(roomId: string, ownerId: string): Promise<void> {
+    await this.seats.clearPendingRequests(roomId);
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
       // Ensure Seat 0 is occupied by ownerId
       await this.seats.setOccupant(roomId, OWNER_SEAT_INDEX, ownerId, ownerId);

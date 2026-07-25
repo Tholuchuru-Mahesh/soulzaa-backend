@@ -11,6 +11,7 @@ import {
   type RoomLeftEvent,
   type RoomLockedEvent,
   type RoomOwnershipTransferredEvent,
+  type RoomStartedEvent,
   type RoomUpdatedEvent,
 } from '../events/audio-room.events';
 import {
@@ -62,6 +63,14 @@ export class AudioRoomSocketListener implements OnModuleInit {
     this.bus.subscribe<RoomEndedEvent>(AUDIO_ROOM_EVENTS.ENDED, (e) =>
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.CLOSED, e.payload),
     );
+    // A room going live is the one lifecycle fact that cannot be delivered
+    // room-scoped: the clients that need it most are exactly the ones this room
+    // ejected when it closed, and they left the room's channel on the way out.
+    // Emitted to both so anyone still inside also sees the transition.
+    this.bus.subscribe<RoomStartedEvent>(AUDIO_ROOM_EVENTS.STARTED, (e) => {
+      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.LIVE, e.payload);
+      this.sockets.emitToNamespace(AUDIO_ROOM_NAMESPACE, ROOM_SOCKET_EVENTS.LIVE, e.payload);
+    });
     this.bus.subscribe<RoomJoinedEvent>(AUDIO_ROOM_EVENTS.JOINED, async (e) => {
       const payload = await this.getAudiencePreviewPayload(
         e.payload.roomId,
