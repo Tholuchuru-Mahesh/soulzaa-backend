@@ -6,6 +6,10 @@ WORKDIR /app
 # ---------- Dependencies ----------
 FROM base AS deps
 COPY package.json pnpm-lock.yaml* ./
+# pnpm 11+ blocks postinstall scripts by default (ERR_PNPM_IGNORED_BUILDS).
+# unsafe-perm=true allows @prisma/engines, sharp, protobufjs etc. to run their
+# required postinstall / native build scripts inside Docker.
+RUN echo 'unsafe-perm=true' >> .npmrc
 RUN pnpm install --frozen-lockfile
 
 # ---------- Build ----------
