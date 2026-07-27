@@ -29,8 +29,19 @@ export class GoogleVerifier {
       );
     }
     try {
-      const ticket = await this.client.verifyIdToken({ idToken, audience: this.audiences });
-      const payload = ticket.getPayload();
+      let payload;
+      try {
+        const ticket = await this.client.verifyIdToken({ idToken, audience: this.audiences });
+        payload = ticket.getPayload();
+      } catch {
+        const ticket = await this.client.verifyIdToken({ idToken });
+        payload = ticket.getPayload();
+        const audMatch = payload?.aud && this.audiences.includes(payload.aud);
+        const azpMatch = payload?.azp && this.audiences.includes(payload.azp);
+        if (!audMatch && !azpMatch) {
+          throw new Error(`Token audience (${payload?.aud}) / azp (${payload?.azp}) does not match allowed client IDs`);
+        }
+      }
       if (!payload?.sub) throw new Error('Missing subject');
       return {
         provider: AuthProviderType.GOOGLE,
@@ -43,7 +54,7 @@ export class GoogleVerifier {
       this.logger.warn(`Google token verification failed: ${(err as Error).message}`);
       throw new BusinessException(
         ERROR_CODES.INVALID_SOCIAL_TOKEN,
-        'Invalid Google token',
+        `Invalid Google token: ${(err as Error).message}`,
         HttpStatus.UNAUTHORIZED,
       );
     }
