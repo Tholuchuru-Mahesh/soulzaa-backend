@@ -130,12 +130,20 @@ export class GamesRepository {
       isBot: boolean;
       botName: string | null;
       isReady: boolean;
+      joinedAt: Date;
     }[]
   > {
     return this.prisma.gameLobbyMember.findMany({
       where: { lobbyId },
       orderBy: { joinedAt: 'asc' },
-      select: { userId: true, team: true, isBot: true, botName: true, isReady: true },
+      select: { userId: true, team: true, isBot: true, botName: true, isReady: true, joinedAt: true },
+    });
+  }
+
+  updateLobbyHost(lobbyId: string, hostId: string): Promise<GameLobby> {
+    return this.prisma.gameLobby.update({
+      where: { id: lobbyId },
+      data: { hostId, updatedBy: hostId },
     });
   }
 
@@ -336,14 +344,17 @@ export class GamesRepository {
    * already STARTED but `sessionId` may not be set yet.
    */
   async findActiveLobbyForParticipant(userId: string): Promise<string | null> {
-    const membership = await this.prisma.gameLobbyMember.findFirst({
+    const memberships = await this.prisma.gameLobbyMember.findMany({
       where: { userId, isBot: false },
+      orderBy: { joinedAt: 'desc' },
       select: { lobbyId: true },
+      take: 10,
     });
-    if (!membership) return null;
+    if (!memberships.length) return null;
+    const lobbyIds = memberships.map((m) => m.lobbyId);
     const lobby = await this.prisma.gameLobby.findFirst({
       where: {
-        id: membership.lobbyId,
+        id: { in: lobbyIds },
         status: GameLobbyStatus.OPEN,
       },
       select: { code: true },

@@ -87,6 +87,7 @@ import {
   GameLobbyMemberKickedEvent,
   GameLobbyTeamChangedEvent,
   GameLobbyMemberReadyEvent,
+  GameLobbySettingsUpdatedEvent,
   GameMatchCancelledEvent,
   GameMatchFoundEvent,
   GameMatchReadyProgressEvent,
@@ -215,6 +216,12 @@ export class GamesService {
     const mode = dto.mode ?? GameMode.CLASSIC;
     if (mode === GameMode.TEAM_2V2) this.assert2v2Supported(dto.gameCode);
 
+    const carrom = this.enforceCarromSettings(
+      mode,
+      dto.carromMode ?? (mode === GameMode.TEAM_2V2 ? 'classic' : undefined),
+      dto.teamCoinAssignment ?? (mode === GameMode.TEAM_2V2 ? 'team_a_white' : undefined),
+    );
+
     const code = await this.generateJoinCode();
     const lobby = await this.repo.createLobby({
       definitionId: def.id,
@@ -226,6 +233,8 @@ export class GamesService {
       stake: BigInt(dto.stake),
       maxPlayers: effectiveMaxPlayers(def.code, mode, def.maxPlayers),
       mode,
+      carromMode: carrom.carromMode,
+      teamCoinAssignment: carrom.teamCoinAssignment,
       isPrivate: dto.isPrivate ?? false,
       passwordHash: dto.password ? sha256(dto.password) : null,
       status: GameLobbyStatus.OPEN,
@@ -323,6 +332,56 @@ export class GamesService {
     });
   }
 
+  /**
+   * Automatically transfers host ownership of an OPEN lobby to the next oldest
+   * human member when the original host has been offline for 60 seconds.
+   */
+  async transferLobbyHost(lobbyId: string, expectedOldHostId: string): Promise<void> {
+    await this.locks.withLock(gameLobbyLockKey(lobbyId), async () => {
+      const fresh = await this.repo.getLobbyById(lobbyId);
+      if (!fresh || fresh.status !== GameLobbyStatus.OPEN || fresh.hostId !== expectedOldHostId) {
+        return;
+      }
+
+      const rows = await this.repo.listMembersWithTeams(fresh.id);
+      const candidates = rows
+        .filter((m) => !m.isBot && m.userId !== expectedOldHostId)
+        .sort((a, b) => a.joinedAt.getTime() - b.joinedAt.getTime());
+
+      if (candidates.length === 0) {
+        // No remaining human players — close/disband the lobby
+        await this.repo.markLobbyClosed(fresh.id, GameLobbyStatus.CANCELLED, expectedOldHostId);
+        await this.repo.logEvent({
+          lobbyId: fresh.id,
+          userId: expectedOldHostId,
+          action: 'lobby.disbanded_timeout',
+        });
+        await this.bus.publish(
+          new GameLobbyCancelledEvent({
+            lobbyId: fresh.id,
+            code: fresh.code,
+            reason: 'host_offline_timeout',
+          }),
+        );
+        return;
+      }
+
+      const newHostId = candidates[0].userId;
+      await this.repo.updateLobbyHost(fresh.id, newHostId);
+      await this.repo.logEvent({
+        lobbyId: fresh.id,
+        userId: newHostId,
+        action: 'lobby.host_transferred',
+        detail: { oldHostId: expectedOldHostId, newHostId },
+      });
+
+      const updatedLobby = { ...fresh, hostId: newHostId };
+      const gameCode = await this.gameCodeOf(fresh.definitionId);
+      const view = await this.lobbyView(updatedLobby, gameCode);
+      await this.bus.publish(new GameLobbyJoinedEvent({ ...view, userId: newHostId }));
+    });
+  }
+
   /** Host removes a member from an OPEN lobby (to leave yourself, use close/leave). */
   async kickMember(actor: GameActor, code: string, targetUserId: string): Promise<unknown> {
     const lobby = await this.requireLobby(code);
@@ -380,11 +439,74 @@ export class GamesService {
     });
   }
 
-  /** Host edits OPEN-lobby settings (stake / maxPlayers / password). */
+  /**
+   * Validates carromMode and teamCoinAssignment values.
+   * Throws a 400 BadRequest if either is unknown. Call before persisting settings
+   * or starting a session to guard against malformed API payloads.
+   */
+  private validateCarromSettings(carromMode?: string, teamCoinAssignment?: string): void {
+    const validModes = ['classic', 'open_score'];
+    const validAssignments = ['team_a_white', 'team_a_black'];
+    if (carromMode !== undefined && !validModes.includes(carromMode)) {
+      throw new BusinessException(
+        ERROR_CODES.VALIDATION_ERROR,
+        `Invalid carromMode '${carromMode}'. Allowed: ${validModes.join(', ')}.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (teamCoinAssignment !== undefined && !validAssignments.includes(teamCoinAssignment)) {
+      throw new BusinessException(
+        ERROR_CODES.VALIDATION_ERROR,
+        `Invalid teamCoinAssignment '${teamCoinAssignment}'. Allowed: ${validAssignments.join(', ')}.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  /**
+   * Mode-aware Carrom settings guard. Solo (CLASSIC) matches always use
+   * individual scoring and can never have team coin assignments — any
+   * client-provided value for these fields is ignored and overridden.
+   * Team (TEAM_2V2) matches must specify a valid, mutually consistent pair;
+   * invalid or missing values are rejected outright rather than defaulted,
+   * since silently guessing a team's coin colour would be a gameplay bug.
+   * Returns the enforced values to persist — never the raw client input.
+   */
+  private enforceCarromSettings(
+    mode: GameMode,
+    carromMode?: string | null,
+    teamCoinAssignment?: string | null,
+  ): { carromMode: string; teamCoinAssignment: string | null } {
+    if (mode === GameMode.CLASSIC) {
+      return { carromMode: 'open_score', teamCoinAssignment: null };
+    }
+    const resolvedCarromMode = carromMode ?? undefined;
+    const resolvedAssignment = teamCoinAssignment ?? undefined;
+    this.validateCarromSettings(resolvedCarromMode, resolvedAssignment);
+    const validModes = ['classic', 'open_score'];
+    const validAssignments = ['team_a_white', 'team_a_black'];
+    if (!resolvedCarromMode || !validModes.includes(resolvedCarromMode)) {
+      throw new BusinessException(
+        ERROR_CODES.VALIDATION_ERROR,
+        `Team matches require a carromMode of ${validModes.join(' or ')}.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (!resolvedAssignment || !validAssignments.includes(resolvedAssignment)) {
+      throw new BusinessException(
+        ERROR_CODES.VALIDATION_ERROR,
+        `Team matches require a teamCoinAssignment of ${validAssignments.join(' or ')}.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return { carromMode: resolvedCarromMode, teamCoinAssignment: resolvedAssignment };
+  }
+
+  /** Host edits OPEN-lobby settings (stake / maxPlayers / password / carromMode / teamCoinAssignment). */
   async updateLobbySettings(
     actor: GameActor,
     code: string,
-    dto: { stake?: number; maxPlayers?: number; password?: string },
+    dto: { stake?: number; maxPlayers?: number; password?: string; carromMode?: string; teamCoinAssignment?: string },
   ): Promise<unknown> {
     const lobby = await this.requireLobby(code);
     this.assertHost(lobby.hostId, actor.id, 'Only the host can edit lobby settings.');
@@ -413,6 +535,19 @@ export class GamesService {
       if (dto.password !== undefined) {
         data.passwordHash = dto.password ? sha256(dto.password) : null;
       }
+      // Validate carrom-specific settings before persisting.
+      this.validateCarromSettings(dto.carromMode, dto.teamCoinAssignment);
+      if (fresh.mode === GameMode.CLASSIC) {
+        data.carromMode = 'open_score';
+        data.teamCoinAssignment = null;
+      } else {
+        if (dto.carromMode !== undefined) {
+          data.carromMode = dto.carromMode;
+        }
+        if (dto.teamCoinAssignment !== undefined) {
+          data.teamCoinAssignment = dto.teamCoinAssignment;
+        }
+      }
       const updated = await this.repo.updateLobby(fresh.id, data);
       await this.repo.logEvent({
         lobbyId: fresh.id,
@@ -422,9 +557,13 @@ export class GamesService {
           stake: dto.stake,
           maxPlayers: dto.maxPlayers,
           password: dto.password !== undefined,
+          carromMode: dto.carromMode,
+          teamCoinAssignment: dto.teamCoinAssignment,
         },
       });
-      return this.lobbyView(updated, await this.gameCodeOf(updated.definitionId));
+      const view = await this.lobbyView(updated, await this.gameCodeOf(updated.definitionId));
+      await this.bus.publish(new GameLobbySettingsUpdatedEvent(view));
+      return view;
     });
   }
 
@@ -518,6 +657,17 @@ export class GamesService {
       if (members.length > fresh.maxPlayers) {
         throw this.conflict(ERROR_CODES.GAME_LOBBY_FULL, 'This lobby exceeds the player limit.');
       }
+      // Final Carrom settings guard, run unconditionally right before the
+      // session is created — catches anything that slipped through an earlier
+      // path (direct DB edit, a race on an old lobby row, etc). Solo lobbies
+      // are forced to open_score/null regardless of what's stored; team
+      // lobbies must already hold a valid, complete pair or session creation
+      // is aborted rather than started with inconsistent game state.
+      const carrom = this.enforceCarromSettings(
+        fresh.mode ?? GameMode.CLASSIC,
+        fresh.carromMode ?? undefined,
+        fresh.teamCoinAssignment ?? undefined,
+      );
 
       // Bots fill seats but hold no wallet: they stake 0, are skipped at escrow,
       // and the pot is the sum of HUMAN stakes only.
@@ -541,6 +691,8 @@ export class GamesService {
         currency: def.currency,
         stake: fresh.stake,
         mode: fresh.mode,
+        carromMode: carrom.carromMode,
+        teamCoinAssignment: carrom.teamCoinAssignment,
         playerCount: members.length,
         status: GameSessionStatus.ACTIVE,
         createdBy: actorId,
@@ -629,6 +781,8 @@ export class GamesService {
           stake: Number(session.stake),
           potAmount: Number(potAmount),
           participants: members,
+          carromMode: carrom.carromMode,
+          teamCoinAssignment: carrom.teamCoinAssignment,
         }),
       );
       await this.queue.enqueue(QUEUE_NAMES.ANALYTICS_PROCESSING, 'game.started', {
@@ -1359,6 +1513,11 @@ export class GamesService {
    */
   private async finalizeMatch(state: ReadyCheckState): Promise<unknown> {
     const def = await this.requireEnabledDefinition(state.gameCode);
+    const carrom = this.enforceCarromSettings(
+      state.mode,
+      state.mode === GameMode.TEAM_2V2 ? 'classic' : undefined,
+      state.mode === GameMode.TEAM_2V2 ? 'team_a_white' : undefined,
+    );
     const code = await this.generateJoinCode();
     const lobby = await this.repo.createLobby({
       definitionId: def.id,
@@ -1370,6 +1529,8 @@ export class GamesService {
       stake: BigInt(state.stake),
       maxPlayers: effectiveMaxPlayers(def.code, state.mode, def.maxPlayers),
       mode: state.mode,
+      carromMode: carrom.carromMode,
+      teamCoinAssignment: carrom.teamCoinAssignment,
       isMatchmade: true,
       status: GameLobbyStatus.OPEN,
       expiresAt: new Date(Date.now() + GAME_LOBBY_TTL_MS),
@@ -2275,6 +2436,8 @@ export class GamesService {
       stake: Number(lobby.stake),
       maxPlayers: lobby.maxPlayers,
       mode: lobby.mode,
+      carromMode: lobby.carromMode,
+      teamCoinAssignment: lobby.teamCoinAssignment,
       isPrivate: lobby.isPrivate,
       hasPassword: lobby.passwordHash != null,
       members: rows.map((m) => m.userId),
@@ -2308,6 +2471,8 @@ export class GamesService {
       stake: Number(session.stake),
       potAmount: Number(session.potAmount),
       mode: session.mode,
+      carromMode: session.carromMode,
+      teamCoinAssignment: session.teamCoinAssignment,
       status: session.status,
       startedAt: session.startedAt,
       settledAt: session.settledAt,

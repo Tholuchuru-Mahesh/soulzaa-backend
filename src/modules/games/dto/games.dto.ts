@@ -58,6 +58,16 @@ export class CreateLobbyDto {
   @IsString()
   @MaxLength(64)
   password?: string;
+
+  @ApiPropertyOptional({ description: 'Carrom mode: "classic" or "open_score".' })
+  @IsOptional()
+  @IsString()
+  carromMode?: string;
+
+  @ApiPropertyOptional({ description: 'Carrom team coin assignment: "team_a_white" or "team_a_black".' })
+  @IsOptional()
+  @IsString()
+  teamCoinAssignment?: string;
 }
 
 /** Optional password when joining a gated lobby. */
@@ -98,6 +108,16 @@ export class UpdateLobbySettingsDto {
   @IsString()
   @MaxLength(64)
   password?: string;
+
+  @ApiPropertyOptional({ description: 'Carrom mode: "classic" or "open_score".' })
+  @IsOptional()
+  @IsString()
+  carromMode?: string;
+
+  @ApiPropertyOptional({ description: 'Carrom team coin assignment: "team_a_white" or "team_a_black".' })
+  @IsOptional()
+  @IsString()
+  teamCoinAssignment?: string;
 }
 
 /** Join the matchmaking queue for a game at a stake, as a DUEL (2) or TEAM_2V2 (4). */

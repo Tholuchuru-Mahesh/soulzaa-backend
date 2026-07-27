@@ -39,6 +39,6 @@ import { GamesService } from './services/games.service';
     PresenceForfeitListener,
     { provide: GAMES_SERVICE, useExisting: GamesService },
   ],
-  exports: [GAMES_SERVICE],
+  exports: [GAMES_SERVICE, GamesService, GamesRepository],
 })
 export class GamesModule {}

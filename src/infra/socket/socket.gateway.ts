@@ -7,6 +7,9 @@ import {
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
+import { GameLobbyStatus } from '@prisma/client';
+import { GamesRepository } from '../../modules/games/repositories/games.repository';
+import { GamesService } from '../../modules/games/services/games.service';
 import { BaseGateway } from './base.gateway';
 import { SocketManager } from './socket.manager';
 
@@ -78,8 +81,55 @@ export class GiftsGateway extends BaseGateway {
 @WebSocketGateway({ namespace: '/games' })
 export class GamesGateway extends BaseGateway {
   @WebSocketServer() protected readonly server!: Server;
-  constructor(manager: SocketManager) {
+  private readonly hostDisconnectTimers = new Map<string, NodeJS.Timeout>();
+
+  constructor(
+    manager: SocketManager,
+    private readonly gamesService: GamesService,
+    private readonly gamesRepo: GamesRepository,
+  ) {
     super(manager);
+  }
+
+  override async handleConnection(client: Socket): Promise<void> {
+    await super.handleConnection(client);
+    const user = client.data.user as AuthenticatedUser | undefined;
+    if (user?.id) {
+      for (const [key, timer] of this.hostDisconnectTimers.entries()) {
+        if (key.endsWith(`:${user.id}`)) {
+          clearTimeout(timer);
+          this.hostDisconnectTimers.delete(key);
+        }
+      }
+    }
+  }
+
+  override async handleDisconnect(client: Socket): Promise<void> {
+    await super.handleDisconnect(client);
+    const user = client.data.user as AuthenticatedUser | undefined;
+    if (!user?.id) return;
+
+    try {
+      const code = await this.gamesRepo.findActiveLobbyForParticipant(user.id);
+      if (!code) return;
+
+      const lobby = await this.gamesRepo.getLobbyByCode(code);
+      if (!lobby || lobby.status !== GameLobbyStatus.OPEN) return;
+
+      if (lobby.hostId === user.id) {
+        const timerKey = `${lobby.id}:${user.id}`;
+        if (this.hostDisconnectTimers.has(timerKey)) {
+          clearTimeout(this.hostDisconnectTimers.get(timerKey));
+        }
+        const timeout = setTimeout(() => {
+          this.hostDisconnectTimers.delete(timerKey);
+          void this.gamesService.transferLobbyHost(lobby.id, user.id);
+        }, 60000);
+        this.hostDisconnectTimers.set(timerKey, timeout);
+      }
+    } catch {
+      // Ignore disconnect errors defensively
+    }
   }
 
   /**

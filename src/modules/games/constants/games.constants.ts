@@ -28,6 +28,8 @@ export const GAME_SOCKET_EVENTS = {
   LOBBY_MEMBER_KICKED: 'game.lobby_member_kicked',
   /** A member toggled their ready state (lobby-room fan-out). */
   LOBBY_MEMBER_READY: 'game.lobby_member_ready',
+  /** Host updated open-lobby settings (stake, maxPlayers, carromMode, teamCoinAssignment). */
+  LOBBY_SETTINGS_UPDATED: 'game.lobby_settings_updated',
   /**
    * The turn watchdog suspects the current turn is stalled and is giving the
    * room one last chance to prove otherwise before it force-advances — clients

@@ -11,6 +11,7 @@ import {
   GameLobbyLeftEvent,
   GameLobbyMemberKickedEvent,
   GameLobbyMemberReadyEvent,
+  GameLobbySettingsUpdatedEvent,
   GameLobbyTeamChangedEvent,
   GameForfeitEvent,
   GameMatchCancelledEvent,
@@ -156,6 +157,10 @@ export class GameSocketListener implements OnModuleInit {
     // Ready state toggle: fan out to the entire lobby room so all members see the update.
     this.bus.subscribe<GameLobbyMemberReadyEvent>(GAME_EVENTS.LOBBY_MEMBER_READY, (e) =>
       this.toLobby(e.payload.code, GAME_SOCKET_EVENTS.LOBBY_MEMBER_READY, e.payload),
+    );
+    // Host updated open-lobby settings: fan out to the entire lobby room.
+    this.bus.subscribe<GameLobbySettingsUpdatedEvent>(GAME_EVENTS.LOBBY_SETTINGS_UPDATED, (e) =>
+      this.toLobby(e.payload.code, GAME_SOCKET_EVENTS.LOBBY_SETTINGS_UPDATED, e.payload),
     );
     // Turn watchdog: give the room a last chance to resync before a force-advance.
     this.bus.subscribe<GameTurnResyncRequestedEvent>(GAME_EVENTS.TURN_RESYNC_REQUESTED, (e) => {

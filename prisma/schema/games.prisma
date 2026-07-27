@@ -124,6 +124,8 @@ model GameLobby {
   stake        BigInt
   maxPlayers   Int
   mode         GameMode        @default(CLASSIC)
+  carromMode   String?         @default("classic")
+  teamCoinAssignment String?   @default("team_a_white")
   /// True for a lobby auto-formed by matchmaking — hidden from the public
   /// browse and started near-atomically once every matched player is ready.
   isMatchmade  Boolean         @default(false)
@@ -183,6 +185,8 @@ model GameSession {
   stake        BigInt
   playerCount  Int
   mode         GameMode          @default(CLASSIC)
+  carromMode   String?           @default("classic")
+  teamCoinAssignment String?     @default("team_a_white")
   potAmount    BigInt            @default(0)
   status       GameSessionStatus @default(ACTIVE)
   startedAt    DateTime          @default(now())

@@ -32,6 +32,7 @@ export const GAME_EVENTS = {
   LOBBY_TEAM_CHANGED: 'game.lobby_team_changed',
   LOBBY_MEMBER_KICKED: 'game.lobby_member_kicked',
   LOBBY_MEMBER_READY: 'game.lobby_member_ready',
+  LOBBY_SETTINGS_UPDATED: 'game.lobby_settings_updated',
   TURN_RESYNC_REQUESTED: 'game.turn_resync_requested',
   TURN_FORCE_ADVANCED: 'game.turn_force_advanced',
 } as const;
@@ -46,6 +47,8 @@ export interface GameLobbyView {
   stake: number;
   maxPlayers: number;
   mode: GameMode;
+  carromMode?: string | null;
+  teamCoinAssignment?: string | null;
   isPrivate: boolean;
   hasPassword: boolean;
   members: string[];
@@ -54,6 +57,10 @@ export interface GameLobbyView {
 
 export class GameLobbyCreatedEvent extends DomainEvent<GameLobbyView> {
   readonly name = GAME_EVENTS.LOBBY_CREATED;
+}
+
+export class GameLobbySettingsUpdatedEvent extends DomainEvent<GameLobbyView> {
+  readonly name = GAME_EVENTS.LOBBY_SETTINGS_UPDATED;
 }
 
 export class GameLobbyJoinedEvent extends DomainEvent<GameLobbyView & { userId: string }> {
@@ -87,6 +94,8 @@ export class GameStartedEvent extends DomainEvent<{
   stake: number;
   potAmount: number;
   participants: string[];
+  carromMode?: string | null;
+  teamCoinAssignment?: string | null;
 }> {
   readonly name = GAME_EVENTS.STARTED;
 }
