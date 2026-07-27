@@ -13,8 +13,8 @@ export class SeatRequestDto {
   seatIndex?: number;
 
   @ApiPropertyOptional({
-    description: 'Request type: BECOME_SPEAKER or REQUEST_TO_SPEAK',
-    default: 'BECOME_SPEAKER',
+    description: 'Request type: REQUEST_TO_SEAT',
+    default: 'REQUEST_TO_SEAT',
   })
   @IsOptional()
   type?: string;

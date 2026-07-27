@@ -14,6 +14,7 @@ import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
 import { LockService } from 'src/infra/redis/lock.service';
 import { PresenceService } from 'src/infra/redis/presence.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import {
   USERS_SERVICE,
   type IUsersService,
@@ -35,6 +36,7 @@ import {
   RoomLeftEvent,
   RoomLockedEvent,
   RoomOwnershipTransferredEvent,
+  RoomProfileUpdatedEvent,
   RoomStartedEvent,
   RoomUpdatedEvent,
 } from '../events/audio-room.events';
@@ -106,6 +108,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     private readonly permissions: RoomPermissionService,
     private readonly seatsService: AudioRoomSeatsService,
     private readonly moderation: ModerationRepository,
+    private readonly media: MediaUrlResolver,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
     @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
@@ -137,7 +140,15 @@ export class AudioRoomsService implements IAudioRoomsService {
       // room LIVE regardless of which entry path the owner took.
       const existing = await this.repo.findOwnedRoom(actor.id);
       if (existing) {
-        return existing.status === 'LIVE' ? this.toView(existing) : this.goLive(existing, actor);
+        // The create form uploads a fresh display picture every time, so handing
+        // the existing row back untouched threw that upload away and the owner
+        // walked into a room still wearing the old (or no) DP. The image is the
+        // one create field that must survive re-opening a permanent room.
+        const reopened =
+          dto.imageKey !== undefined && dto.imageKey !== existing.imageKey
+            ? await this.applyImageKey(actor, existing.id, dto.imageKey)
+            : existing;
+        return reopened.status === 'LIVE' ? this.toView(reopened) : this.goLive(reopened, actor);
       }
 
       if (dto.categoryId) await this.assertCategory(dto.categoryId);
@@ -257,7 +268,49 @@ export class AudioRoomsService implements IAudioRoomsService {
 
     const view = await this.refreshCache(updated);
     await this.bus.publish(new RoomUpdatedEvent({ roomId, actorId: actor.id, changed }));
+    if (dto.imageKey !== undefined) {
+      await this.publishProfileUpdated(roomId, actor.id, view);
+    }
     return view;
+  }
+
+  /**
+   * Writes a new display picture onto an existing room and announces it. The
+   * narrow counterpart to [update] for the create path, where the caller is
+   * re-opening a room they already own and only the image may carry over.
+   */
+  private async applyImageKey(
+    actor: RoomActor,
+    roomId: string,
+    imageKey: string | null,
+  ): Promise<AudioRoom> {
+    const updated = await this.repo.updateRoom(roomId, { imageKey }, actor.id);
+    await this.repo.appendLog(roomId, actor.id, RoomLogAction.IMAGE_UPDATED);
+    const view = await this.refreshCache(updated);
+    await this.publishProfileUpdated(roomId, actor.id, view);
+    return updated;
+  }
+
+  /**
+   * Announces a display-picture change on its own event, carrying the resolved
+   * URL. `room.updated` names the changed fields but not their values, so every
+   * client had to re-fetch the whole room to redraw one avatar — and discovery
+   * screens, which subscribe to no room channel, never heard about it at all.
+   * This payload is self-sufficient and fans out namespace-wide for that reason.
+   */
+  private async publishProfileUpdated(
+    roomId: string,
+    actorId: string,
+    view: RoomView,
+  ): Promise<void> {
+    await this.bus.publish(
+      new RoomProfileUpdatedEvent({
+        roomId,
+        actorId,
+        imageKey: view.imageKey,
+        imageUrl: view.imageUrl,
+      }),
+    );
   }
 
   async setLock(actor: RoomActor, roomId: string, isLocked: boolean): Promise<RoomView> {
@@ -334,6 +387,7 @@ export class AudioRoomsService implements IAudioRoomsService {
         actorId: actor.id,
         name: updated.name,
         imageKey: updated.imageKey,
+        imageUrl: view.imageUrl,
         categoryId: updated.categoryId,
         language: updated.language,
         visibility: updated.visibility,
@@ -616,7 +670,16 @@ export class AudioRoomsService implements IAudioRoomsService {
 
   async getRoom(roomId: string): Promise<RoomView | null> {
     const cached = await this.repo.getCachedSnapshot(roomId);
-    if (cached) return { ...cached, participantCount: await this.participantCount(roomId) };
+    if (cached) {
+      return {
+        ...cached,
+        // `imageUrl` is derived and may be a short-lived presigned GET, so it can
+        // outlive its signature inside a longer-lived snapshot. `imageKey` is the
+        // durable fact — re-resolve from it rather than serve an expired URL.
+        imageUrl: await this.media.resolve(cached.imageKey),
+        participantCount: await this.participantCount(roomId),
+      };
+    }
     const room = await this.repo.findRoomRow(roomId);
     if (!room) return null;
     const view = await this.toView(room);
@@ -797,6 +860,7 @@ export class AudioRoomsService implements IAudioRoomsService {
       name: room.name,
       description: room.description,
       imageKey: room.imageKey,
+      imageUrl: await this.media.resolve(room.imageKey),
       categoryId: room.categoryId,
       language: room.language,
       visibility: room.visibility,

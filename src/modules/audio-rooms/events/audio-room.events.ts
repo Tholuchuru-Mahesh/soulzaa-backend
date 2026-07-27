@@ -11,6 +11,7 @@ import { DomainEvent } from 'src/common/events';
 export const AUDIO_ROOM_EVENTS = {
   CREATED: 'audio_room.created',
   UPDATED: 'audio_room.updated',
+  PROFILE_UPDATED: 'audio_room.profile_updated',
   DELETED: 'audio_room.deleted',
   STARTED: 'audio_room.started',
   ENDED: 'audio_room.ended',
@@ -39,6 +40,24 @@ export class RoomUpdatedEvent extends DomainEvent<{
   readonly name = AUDIO_ROOM_EVENTS.UPDATED;
 }
 
+/**
+ * A room's display picture changed. Split out from [RoomUpdatedEvent], which
+ * carries only the names of the changed fields: an avatar swap is the one room
+ * edit that must reach *every* screen showing the room — the live header, the
+ * home and explore cards — and those discovery clients hold no room channel to
+ * receive a room-scoped event on, nor a reason to re-fetch the whole room. So
+ * this one carries the value and fans out namespace-wide, like `room.live`.
+ */
+export class RoomProfileUpdatedEvent extends DomainEvent<{
+  roomId: string;
+  actorId: string;
+  imageKey: string | null;
+  /** Resolved, directly renderable — clients never touch the raw key. */
+  imageUrl: string | null;
+}> {
+  readonly name = AUDIO_ROOM_EVENTS.PROFILE_UPDATED;
+}
+
 export class RoomDeletedEvent extends DomainEvent<{
   roomId: string;
   actorId: string;
@@ -64,6 +83,7 @@ export class RoomStartedEvent extends DomainEvent<{
   actorId: string;
   name: string;
   imageKey: string | null;
+  imageUrl: string | null;
   categoryId: string | null;
   language: string | null;
   visibility: RoomVisibility;

@@ -165,7 +165,6 @@ model RoomMember {
   roomId           String         @db.Uuid
   userId           String         @db.Uuid
   role             RoomMemberRole @default(LISTENER)
-  tempSpeakAllowed Boolean        @default(false)
   joinedAt         DateTime       @default(now())
   leftAt           DateTime?
   isActive         Boolean        @default(true)
@@ -316,7 +315,7 @@ model SeatRequest {
   roomId     String            @db.Uuid
   userId     String            @db.Uuid
   seatIndex  Int?
-  type       String            @default("BECOME_SPEAKER")
+  type       String            @default("REQUEST_TO_SEAT")
   status     SeatRequestStatus @default(PENDING)
   resolvedBy String?           @db.Uuid
   resolvedAt DateTime?

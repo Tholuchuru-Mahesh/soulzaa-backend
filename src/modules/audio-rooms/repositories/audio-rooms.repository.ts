@@ -329,7 +329,6 @@ export class AudioRoomsRepository {
         isActive: true,
         leftAt: null,
         joinedAt: new Date(),
-        tempSpeakAllowed: false,
         ...auditUpdate(actorId),
       },
     });
@@ -340,21 +339,9 @@ export class AudioRoomsRepository {
       where: { roomId, userId, isActive: true },
       data: {
         isActive: false,
-        tempSpeakAllowed: false,
         leftAt: new Date(),
         ...auditUpdate(actorId),
       },
-    });
-  }
-
-  async setTempSpeakAllowed(
-    roomId: string,
-    userId: string,
-    tempSpeakAllowed: boolean,
-  ): Promise<void> {
-    await this.prisma.roomMember.update({
-      where: { roomId_userId: { roomId, userId } },
-      data: { tempSpeakAllowed },
     });
   }
 

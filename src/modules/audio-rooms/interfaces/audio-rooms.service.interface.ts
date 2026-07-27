@@ -18,6 +18,13 @@ export interface RoomView {
   name: string;
   description: string | null;
   imageKey: string | null;
+  /**
+   * The room display picture, resolved from [imageKey] to a servable URL (CDN
+   * when MEDIA_PUBLIC_BASE_URL is set, otherwise a presigned GET). Derived, not
+   * stored — `imageKey` stays the single source of truth. Clients render this
+   * directly so they never have to know how media is hosted.
+   */
+  imageUrl: string | null;
   categoryId: string | null;
   language: string | null;
   visibility: RoomVisibility;

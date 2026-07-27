@@ -17,12 +17,7 @@ export class GiftValidationService {
    * Validates all pre-conditions before executing a gift transaction
    */
   async validateGiftSend(senderId: string, receiverId: string, giftId: string, quantity: number) {
-    // 1. Prevent self-gifting
-    if (senderId === receiverId) {
-      throw new BadRequestException('Sending gifts to yourself is not allowed');
-    }
-
-    // 2. Check Treasury Economy Freeze
+    // 1. Check Treasury Economy Freeze
     const isFrozen = await this.coinEconomyService.isEconomyFrozen();
     if (isFrozen) {
       throw new ForbiddenException(

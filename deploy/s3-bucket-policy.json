@@ -1,0 +1,32 @@
+{
+  "Version": "2012-10-17",
+  "Id": "soulzaaa-media-prod-public-assets",
+  "Statement": [
+    {
+      "Sid": "PublicReadAssetPrefixesOnly",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::soulzaaa-media-prod/profile-images/*",
+        "arn:aws:s3:::soulzaaa-media-prod/room-backgrounds/*",
+        "arn:aws:s3:::soulzaaa-media-prod/gift-assets/*"
+      ]
+    },
+    {
+      "Sid": "DenyPlaintextHttp",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::soulzaaa-media-prod",
+        "arn:aws:s3:::soulzaaa-media-prod/*"
+      ],
+      "Condition": {
+        "Bool": {
+          "aws:SecureTransport": "false"
+        }
+      }
+    }
+  ]
+}

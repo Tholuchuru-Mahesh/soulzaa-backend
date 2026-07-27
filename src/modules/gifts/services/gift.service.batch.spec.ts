@@ -188,11 +188,9 @@ describe('GiftService.sendGiftBatch (multi-receiver)', () => {
     expect(wallet.debit).not.toHaveBeenCalled();
   });
 
-  it('rejects a batch containing the sender', async () => {
-    await expect(service.sendGiftBatch(SENDER, batchDto(['r1', SENDER.id]))).rejects.toMatchObject({
-      errorCode: 'CANNOT_GIFT_SELF',
-    });
-    expect(wallet.debit).not.toHaveBeenCalled();
+  it('allows a batch containing the sender', async () => {
+    const res = await service.sendGiftBatch(SENDER, batchDto(['r1', SENDER.id]));
+    expect(res).toHaveLength(2);
   });
 
   it('rate-limits ONCE per API call, not once per receiver', async () => {

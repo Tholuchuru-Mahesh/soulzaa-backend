@@ -200,6 +200,105 @@ describe('AudioRoomSeatsService', () => {
       permissions.hasPermission.mockResolvedValue(false);
       await expect(service.takeSeat(LISTENER, 'r', 1)).rejects.toBeInstanceOf(BusinessException);
     });
+
+    /**
+     * The owner is auto-seated on seat 0 when they join, so every seat move they
+     * make starts from a seat they already hold. Treating that as a conflict is
+     * what stranded owners off their own seat with no way back.
+     */
+    describe('owner seat freedom', () => {
+      const ownerSeat = () => seat({ seatIndex: 0, seatType: SeatType.OWNER });
+
+      beforeEach(() => {
+        permissions.hasPermission.mockResolvedValue(true);
+      });
+
+      it('lets a seated owner return to the owner seat', async () => {
+        seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3 }));
+        seats.getSeatByIndex.mockResolvedValue(ownerSeat());
+
+        await service.takeSeat(OWNER, 'r', 0);
+
+        expect(seats.setOccupant).toHaveBeenCalledWith('r', 3, null, OWNER.id);
+        expect(seats.setOccupant).toHaveBeenCalledWith('r', 0, OWNER.id, OWNER.id);
+      });
+
+      it('lets a seated owner move out to a speaker seat', async () => {
+        seats.getSeatByOccupant.mockResolvedValue(ownerSeat());
+        seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 4 }));
+
+        await service.takeSeat(OWNER, 'r', 4);
+
+        expect(seats.setOccupant).toHaveBeenCalledWith('r', 0, null, OWNER.id);
+        expect(seats.setOccupant).toHaveBeenCalledWith('r', 4, OWNER.id, OWNER.id);
+      });
+
+      it('moves the owner back and forth repeatedly', async () => {
+        for (const [from, to] of [
+          [0, 2],
+          [2, 0],
+          [0, 5],
+          [5, 0],
+        ]) {
+          seats.setOccupant.mockClear();
+          seats.getSeatByOccupant.mockResolvedValue(
+            from === 0 ? ownerSeat() : seat({ seatIndex: from }),
+          );
+          seats.getSeatByIndex.mockResolvedValue(to === 0 ? ownerSeat() : seat({ seatIndex: to }));
+
+          await service.takeSeat(OWNER, 'r', to);
+
+          expect(seats.setOccupant).toHaveBeenCalledWith('r', from, null, OWNER.id);
+          expect(seats.setOccupant).toHaveBeenCalledWith('r', to, OWNER.id, OWNER.id);
+        }
+      });
+
+      it('announces a move as one `moved` update, not a leave/join pair', async () => {
+        seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3 }));
+        seats.getSeatByIndex.mockResolvedValue(ownerSeat());
+
+        await service.takeSeat(OWNER, 'r', 0);
+
+        const names = bus.publish.mock.calls.map(([e]) => (e as { name: string }).name);
+        expect(names).toContain('audio_room.seat_updated');
+        expect(names).not.toContain('audio_room.seat_left');
+        expect(names).not.toContain('audio_room.seat_joined');
+      });
+
+      it('tapping the seat you already hold is a no-op, not a conflict', async () => {
+        seats.getSeatByOccupant.mockResolvedValue(ownerSeat());
+        seats.getSeatByIndex.mockResolvedValue(ownerSeat());
+
+        await expect(service.takeSeat(OWNER, 'r', 0)).resolves.toBeDefined();
+        expect(seats.setOccupant).not.toHaveBeenCalled();
+      });
+
+      it('leaves the owner where they are when the destination is occupied', async () => {
+        seats.getSeatByOccupant.mockResolvedValue(ownerSeat());
+        seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 2, occupantUserId: 'someone' }));
+
+        await expect(service.takeSeat(OWNER, 'r', 2)).rejects.toBeInstanceOf(BusinessException);
+        // Critically: the owner seat was NOT vacated on the way to failing.
+        expect(seats.setOccupant).not.toHaveBeenCalled();
+      });
+
+      // The relaxation is the owner's alone — it must not become a general
+      // "hop between seats" for speakers, who still leave before taking.
+      it('still blocks a seated non-owner from taking another seat', async () => {
+        seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3 }));
+        seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 4 }));
+
+        await expect(service.takeSeat(LISTENER, 'r', 4)).rejects.toBeInstanceOf(BusinessException);
+        expect(seats.setOccupant).not.toHaveBeenCalled();
+      });
+
+      it('still keeps a non-owner off the owner seat, seated or not', async () => {
+        seats.getSeatByOccupant.mockResolvedValue(null);
+        seats.getSeatByIndex.mockResolvedValue(ownerSeat());
+
+        await expect(service.takeSeat(LISTENER, 'r', 0)).rejects.toBeInstanceOf(BusinessException);
+      });
+    });
   });
 
   describe('leaveSeat', () => {

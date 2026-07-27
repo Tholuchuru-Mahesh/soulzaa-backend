@@ -192,15 +192,13 @@ export class AudioRoomSeatsService {
     await this.assertActiveMember(roomId, actor.id);
 
     return this.locks.withLock(roomSeatLockKey(roomId), async () => {
-      const requestType = dto.type || 'BECOME_SPEAKER';
-      if (requestType === 'BECOME_SPEAKER') {
-        if (await this.seats.getSeatByOccupant(roomId, actor.id)) {
-          throw this.err(
-            ERROR_CODES.ALREADY_ON_SEAT,
-            'You are already on a seat.',
-            HttpStatus.CONFLICT,
-          );
-        }
+      const requestType = dto.type || 'REQUEST_TO_SEAT';
+      if (await this.seats.getSeatByOccupant(roomId, actor.id)) {
+        throw this.err(
+          ERROR_CODES.ALREADY_ON_SEAT,
+          'You are already on a seat.',
+          HttpStatus.CONFLICT,
+        );
       }
       if (await this.seats.findPendingRequestByUser(roomId, actor.id, requestType)) {
         throw this.err(
@@ -225,8 +223,8 @@ export class AudioRoomSeatsService {
         seatIndex: dto.seatIndex ?? null,
       });
 
-      // Auto-accept when approval is off, a suitable seat is free, and the type is BECOME_SPEAKER.
-      if (requestType === 'BECOME_SPEAKER' && !settings.requireApprovalForSeat) {
+      // Auto-accept when approval is off and a suitable seat is free.
+      if (!settings.requireApprovalForSeat) {
         const seat = await this.findOpenSeatFor(roomId, actor.id, dto.seatIndex ?? null);
         if (seat) {
           await this.occupy(roomId, seat, actor.id, actor.id);
@@ -321,33 +319,6 @@ export class AudioRoomSeatsService {
     }
 
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
-      const requestType = request.type || 'BECOME_SPEAKER';
-      if (requestType === 'REQUEST_TO_SPEAK') {
-        // REQUEST_TO_SPEAK flow: grant temporary speaking permission
-        await this.rooms.setTempSpeakAllowed(roomId, request.userId, true);
-        await this.seats.resolveRequest(requestId, SeatRequestStatus.ACCEPTED, actor.id);
-        await this.seats.dequeue(roomId, request.userId);
-        await this.seats.appendSeatHistory({
-          roomId,
-          actorId: actor.id,
-          subjectUserId: request.userId,
-          action: SeatHistoryAction.REQUEST_ACCEPTED,
-          metadata: { type: 'REQUEST_TO_SPEAK' },
-        });
-        await this.bus.publish(
-          new SeatAcceptedEvent({
-            roomId,
-            userId: request.userId,
-            requestId,
-            actorId: actor.id,
-            seatIndex: null,
-          }),
-        );
-        await this.publishUpdate(roomId, actor.id, 'temp_speak_granted', null, request.userId);
-        return;
-      }
-
-      // BECOME_SPEAKER flow: occupy first available speaker seat
       const seat = await this.findOpenSeatFor(roomId, request.userId, request.seatIndex);
       if (!seat) {
         throw this.err(
@@ -508,14 +479,29 @@ export class AudioRoomSeatsService {
       );
     }
 
+    let movedFrom: number | null = null;
+
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
-      if (await this.seats.getSeatByOccupant(roomId, actor.id)) {
+      const current = await this.seats.getSeatByOccupant(roomId, actor.id);
+      // Asking for the seat you already hold is a no-op, not a conflict. The
+      // owner seat is auto-taken on join, so tapping it is a normal thing to do.
+      if (current?.seatIndex === seatIndex) return;
+
+      // The owner moves between seats directly rather than having to vacate
+      // first. Making them leave before taking is not merely clumsy — it drops
+      // them off the stage in between, where a queued listener can be promoted
+      // into the seat they were heading for, and where the owner seat sits
+      // conspicuously empty. Everyone else still has to leave a seat before
+      // taking another; this is the owner's seat freedom, not a general relaxation.
+      const isOwner = (await this.rooms.getOwnerId(roomId)) === actor.id;
+      if (current && !isOwner) {
         throw this.err(
           ERROR_CODES.ALREADY_ON_SEAT,
           'You are already on a seat.',
           HttpStatus.CONFLICT,
         );
       }
+
       const seat = await this.requireSeat(roomId, seatIndex);
       if (seat.occupantUserId) {
         throw this.err(ERROR_CODES.SEAT_TAKEN, 'That seat is occupied.', HttpStatus.CONFLICT);
@@ -523,10 +509,31 @@ export class AudioRoomSeatsService {
       if (seat.isLocked) {
         throw this.err(ERROR_CODES.SEAT_LOCKED, 'That seat is locked.', HttpStatus.CONFLICT);
       }
+      // Still enforced for the owner — it is what reserves the owner seat FOR
+      // them, and what keeps everyone else off it.
       await this.assertSeatTypeAllowed(roomId, actor.id, seat);
+
+      // Destination validated: only now give up the seat we hold, so a rejected
+      // move leaves the owner exactly where they were.
+      if (current) {
+        movedFrom = current.seatIndex;
+        await this.vacate(roomId, current, actor.id, actor.id, SeatHistoryAction.SEAT_MOVED);
+      }
       await this.occupy(roomId, seat, actor.id, actor.id);
-      await this.bus.publish(new SeatJoinedEvent({ roomId, userId: actor.id, seatIndex }));
+
+      // A move is one `moved` update, not a leave/join pair — matching
+      // moveSpeaker. The pair would read as the owner dropping off the stage and
+      // coming back, which flickers their badge and churns their voice role
+      // mid-sentence. Both events reach VoiceSeatSyncListener, so the publish
+      // privilege is re-evaluated either way.
+      if (movedFrom === null) {
+        await this.bus.publish(new SeatJoinedEvent({ roomId, userId: actor.id, seatIndex }));
+      }
     });
+
+    if (movedFrom !== null) {
+      await this.publishUpdate(roomId, actor.id, 'moved', seatIndex, actor.id);
+    }
     return this.rebuildStage(roomId);
   }
 
@@ -591,19 +598,6 @@ export class AudioRoomSeatsService {
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
       const seat = await this.seats.getSeatByOccupant(roomId, userId);
       if (!seat) {
-        const member = await this.rooms.getMember(roomId, userId);
-        if (member?.tempSpeakAllowed) {
-          await this.rooms.setTempSpeakAllowed(roomId, userId, false);
-          await this.seats.appendSeatHistory({
-            roomId,
-            actorId: actor.id,
-            subjectUserId: userId,
-            action: SeatHistoryAction.SPEAKER_REMOVED,
-            metadata: { type: 'REQUEST_TO_SPEAK' },
-          });
-          await this.publishUpdate(roomId, actor.id, 'temp_speak_revoked', null, userId);
-          return;
-        }
         throw this.err(ERROR_CODES.NOT_ON_SEAT, 'That user is not on a seat.', HttpStatus.CONFLICT);
       }
       if (seat.seatType === SeatType.OWNER) {

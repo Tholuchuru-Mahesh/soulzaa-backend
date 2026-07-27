@@ -226,9 +226,7 @@ export class WalletTransactionService {
     const amountBig = BigInt(dto.amount);
     this.validationService.validatePositiveAmount(amountBig);
 
-    if (dto.senderUserId === dto.recipientUserId) {
-      throw new BadRequestException('Sender and recipient user cannot be identical');
-    }
+    const isSelfTransfer = dto.senderUserId === dto.recipientUserId;
 
     // Check idempotency key
     const existingTx = await this.prisma.walletTransaction.findUnique({
@@ -239,34 +237,46 @@ export class WalletTransactionService {
     }
 
     const senderWallet = await this.walletService.getOrCreateWallet(dto.senderUserId);
-    const recipientWallet = await this.walletService.getOrCreateWallet(dto.recipientUserId);
+    const recipientWallet = isSelfTransfer
+        ? senderWallet
+        : await this.walletService.getOrCreateWallet(dto.recipientUserId);
 
     this.validationService.validateWalletActive(senderWallet);
-    this.validationService.validateWalletActive(recipientWallet);
+    if (!isSelfTransfer) {
+      this.validationService.validateWalletActive(recipientWallet);
+    }
     this.validationService.validateSufficientBalance(senderWallet, amountBig);
 
     return this.prisma.$transaction(async (tx) => {
-      // Prevent deadlocks by sorting the IDs lexicographically before acquiring row locks
-      const [firstId, secondId] = [senderWallet.id, recipientWallet.id].sort();
-      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${firstId}::uuid FOR UPDATE`;
-      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${secondId}::uuid FOR UPDATE`;
+      if (isSelfTransfer) {
+        await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${senderWallet.id}::uuid FOR UPDATE`;
+      } else {
+        // Prevent deadlocks by sorting the IDs lexicographically before acquiring row locks
+        const [firstId, secondId] = [senderWallet.id, recipientWallet.id].sort();
+        await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${firstId}::uuid FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${secondId}::uuid FOR UPDATE`;
+      }
 
       const freshSender = await tx.wallet.findUnique({ where: { id: senderWallet.id } });
-      const freshRecipient = await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
+      const freshRecipient = isSelfTransfer
+          ? freshSender
+          : await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
 
       if (!freshSender || !freshRecipient) {
         throw new NotFoundException('One or both transfer wallets not found');
       }
 
       this.validationService.validateWalletActive(freshSender);
-      this.validationService.validateWalletActive(freshRecipient);
+      if (!isSelfTransfer) {
+        this.validationService.validateWalletActive(freshRecipient);
+      }
       this.validationService.validateSufficientBalance(freshSender, amountBig);
 
       const senderBefore = freshSender.availableBalance;
       const senderAfter = senderBefore - amountBig;
 
       const recipientBefore = freshRecipient.availableBalance;
-      const recipientAfter = recipientBefore + amountBig;
+      const recipientAfter = isSelfTransfer ? senderAfter : recipientBefore + amountBig;
 
       // 1. Transaction header
       const transaction = await tx.walletTransaction.create({
@@ -294,13 +304,15 @@ export class WalletTransactionService {
         },
       });
 
-      const updatedRecipient = await tx.wallet.update({
-        where: { id: recipientWallet.id },
-        data: {
-          availableBalance: { increment: amountBig },
-          version: { increment: 1 },
-        },
-      });
+      const updatedRecipient = isSelfTransfer
+          ? updatedSender
+          : await tx.wallet.update({
+              where: { id: recipientWallet.id },
+              data: {
+                availableBalance: { increment: amountBig },
+                version: { increment: 1 },
+              },
+            });
 
       // 3. Paired Double-Entry Ledger Records
       // DEBIT on sender

@@ -99,9 +99,7 @@ export type SeatUpdateReason =
   | 'speaker_removed'
   | 'invited'
   | 'request_cancelled'
-  | 'queue_advanced'
-  | 'temp_speak_granted'
-  | 'temp_speak_revoked';
+  | 'queue_advanced';
 
 /** Catch-all seat/stage change: mute, move, layout, role grant/revoke, room-mute. */
 export class SeatUpdatedEvent extends DomainEvent<{

@@ -1,6 +1,15 @@
 packages:
   - '.'
 
+allowBuilds:
+  '@firebase/util': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@scarf/scarf': true
+  msgpackr-extract: true
+  prisma: true
+  protobufjs: true
+
 onlyBuiltDependencies:
   - '@firebase/util'
   - '@prisma/client'

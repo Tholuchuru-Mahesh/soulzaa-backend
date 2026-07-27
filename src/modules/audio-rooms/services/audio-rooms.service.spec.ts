@@ -4,6 +4,7 @@ import { IEventBus } from 'src/common/events';
 import { BusinessException } from 'src/common/exceptions';
 import { LockService } from 'src/infra/redis/lock.service';
 import { PresenceService } from 'src/infra/redis/presence.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import type { IUsersService } from 'src/modules/users/interfaces/users.service.interface';
 import type { IProfileService } from 'src/modules/users/interfaces/profile.interface';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
@@ -48,6 +49,7 @@ describe('AudioRoomsService', () => {
   let permissions: Record<string, jest.Mock>;
   let seatsService: Record<string, jest.Mock>;
   let moderation: Record<string, jest.Mock>;
+  let media: Record<string, jest.Mock>;
   let bus: jest.Mocked<IEventBus>;
   let users: Record<string, jest.Mock>;
   let profiles: Partial<IProfileService>;
@@ -118,6 +120,12 @@ describe('AudioRoomsService', () => {
       findActiveBan: jest.fn().mockResolvedValue(null),
       addBanCache: jest.fn().mockResolvedValue(undefined),
     };
+    // Mirrors the CDN-configured resolver: a stable `${base}/${key}` URL.
+    media = {
+      resolve: jest
+        .fn()
+        .mockImplementation(async (key: string | null) => (key ? `https://cdn.test/${key}` : null)),
+    };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     users = { findById: jest.fn().mockResolvedValue({ username: 'bob' }) };
     profiles = {
@@ -142,6 +150,7 @@ describe('AudioRoomsService', () => {
       permissions as unknown as RoomPermissionService,
       seatsService as unknown as AudioRoomSeatsService,
       moderation as unknown as ModerationRepository,
+      media as unknown as MediaUrlResolver,
       bus,
       users as unknown as IUsersService,
       profiles as unknown as IProfileService,
@@ -448,6 +457,84 @@ describe('AudioRoomsService', () => {
       expect(bus.publish).not.toHaveBeenCalledWith(
         expect.objectContaining({ name: 'audio_room.started' }),
       );
+    });
+
+    it('keeps the display picture the create form just uploaded', async () => {
+      repo.findOwnedRoom.mockResolvedValue(roomRow({ status: 'LIVE', imageKey: 'old.jpg' }));
+      repo.updateRoom.mockResolvedValue(roomRow({ status: 'LIVE', imageKey: 'new.jpg' }));
+
+      const view = await service.create(OWNER, { name: 'Another', imageKey: 'new.jpg' });
+
+      expect(repo.updateRoom).toHaveBeenCalledWith('room-1', { imageKey: 'new.jpg' }, OWNER.id);
+      expect(view.imageKey).toBe('new.jpg');
+      expect(view.imageUrl).toBe('https://cdn.test/new.jpg');
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'audio_room.profile_updated' }),
+      );
+    });
+
+    it('does not rewrite the room when the display picture is unchanged', async () => {
+      repo.findOwnedRoom.mockResolvedValue(roomRow({ status: 'LIVE', imageKey: 'same.jpg' }));
+
+      await service.create(OWNER, { name: 'Another', imageKey: 'same.jpg' });
+
+      expect(repo.updateRoom).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('room display picture', () => {
+    it('resolves imageKey to a renderable URL on every room view', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow({ imageKey: 'room-backgrounds/u1/dp.jpg' }));
+
+      const detail = await service.getRoomDetail('room-1');
+
+      expect(detail.imageKey).toBe('room-backgrounds/u1/dp.jpg');
+      expect(detail.imageUrl).toBe('https://cdn.test/room-backgrounds/u1/dp.jpg');
+    });
+
+    it('leaves imageUrl null when the room has no display picture', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow({ imageKey: null }));
+
+      const detail = await service.getRoomDetail('room-1');
+
+      expect(detail.imageUrl).toBeNull();
+    });
+
+    it('announces a change with the resolved URL, so clients repaint without refetching', async () => {
+      repo.updateRoom.mockResolvedValue(roomRow({ imageKey: 'fresh.jpg' }));
+
+      await service.update(OWNER, 'room-1', { imageKey: 'fresh.jpg' });
+
+      const event = bus.publish.mock.calls
+        .map(([e]) => e as { name: string; payload: Record<string, unknown> })
+        .find((e) => e.name === 'audio_room.profile_updated');
+      expect(event?.payload).toEqual(
+        expect.objectContaining({
+          roomId: 'room-1',
+          imageKey: 'fresh.jpg',
+          imageUrl: 'https://cdn.test/fresh.jpg',
+        }),
+      );
+    });
+
+    it('stays quiet on edits that do not touch the display picture', async () => {
+      await service.update(OWNER, 'room-1', { name: 'Renamed' });
+
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'audio_room.profile_updated' }),
+      );
+    });
+
+    it('re-resolves from the cached snapshot rather than serving an expired URL', async () => {
+      repo.getCachedSnapshot.mockResolvedValue({
+        id: 'room-1',
+        imageKey: 'dp.jpg',
+        imageUrl: 'https://cdn.test/stale-signature',
+      });
+
+      const view = await service.getRoom('room-1');
+
+      expect(view?.imageUrl).toBe('https://cdn.test/dp.jpg');
     });
   });
 

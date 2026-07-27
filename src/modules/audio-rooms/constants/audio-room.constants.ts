@@ -12,6 +12,13 @@ export const AUDIO_ROOM_NAMESPACE = '/audio-room';
 export const ROOM_SOCKET_EVENTS = {
   CREATED: 'room.created',
   UPDATED: 'room.updated',
+  /**
+   * The room's display picture changed. Carries `{roomId, imageKey, imageUrl}`
+   * so a client can repaint the avatar without re-fetching the room, and — like
+   * LIVE — is broadcast namespace-wide as well as into the room, because the
+   * home/explore cards showing this room subscribe to no room channel.
+   */
+  PROFILE_UPDATED: 'room.profile_updated',
   DELETED: 'room.deleted',
   JOINED: 'room.joined',
   LEFT: 'room.left',

@@ -191,10 +191,9 @@ describe('GiftService', () => {
       expect(res.id).toBe('gtxn-1');
     });
 
-    it('rejects gifting yourself', async () => {
-      await expect(service.sendGift(SENDER, dto({ receiverId: SENDER.id }))).rejects.toMatchObject({
-        errorCode: 'CANNOT_GIFT_SELF',
-      });
+    it('allows gifting yourself', async () => {
+      const res = await service.sendGift(SENDER, dto({ receiverId: SENDER.id }));
+      expect(res.id).toBe('gtxn-1');
     });
 
     it('rejects a missing gift', async () => {

@@ -102,19 +102,12 @@ export class GiftService {
     const senderId = actor.id;
 
     // De-duplicate first: a client sending ["u1","u1"] means one gift to u1, not
-    // a double charge. Dedup before the self-check so both see the same set.
+    // a double charge.
     const receiverIds = [...new Set(dto.receiverIds)];
     if (receiverIds.length === 0) {
       throw new BusinessException(
         ERROR_CODES.GIFT_RECEIVER_INVALID,
         'A gift needs at least one recipient.',
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    if (receiverIds.includes(senderId)) {
-      throw new BusinessException(
-        ERROR_CODES.CANNOT_GIFT_SELF,
-        'You cannot send a gift to yourself.',
         HttpStatus.BAD_REQUEST,
       );
     }

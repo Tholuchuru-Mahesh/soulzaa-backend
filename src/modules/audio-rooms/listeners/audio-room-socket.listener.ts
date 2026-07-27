@@ -11,6 +11,7 @@ import {
   type RoomLeftEvent,
   type RoomLockedEvent,
   type RoomOwnershipTransferredEvent,
+  type RoomProfileUpdatedEvent,
   type RoomStartedEvent,
   type RoomUpdatedEvent,
 } from '../events/audio-room.events';
@@ -56,6 +57,19 @@ export class AudioRoomSocketListener implements OnModuleInit {
     );
     this.bus.subscribe<RoomUpdatedEvent>(AUDIO_ROOM_EVENTS.UPDATED, (e) =>
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.UPDATED, e.payload),
+    );
+    // A display-picture change has to reach two audiences at once: everyone
+    // inside the room (repaint the header) and everyone browsing home or explore
+    // (repaint the card). The second group holds no room channel, so a
+    // room-scoped emit would never reach them — hence namespace-wide, which
+    // covers the people inside the room too. The payload is self-sufficient, so
+    // nobody re-fetches a room to redraw one avatar.
+    this.bus.subscribe<RoomProfileUpdatedEvent>(AUDIO_ROOM_EVENTS.PROFILE_UPDATED, (e) =>
+      this.sockets.emitToNamespace(
+        AUDIO_ROOM_NAMESPACE,
+        ROOM_SOCKET_EVENTS.PROFILE_UPDATED,
+        e.payload,
+      ),
     );
     this.bus.subscribe<RoomDeletedEvent>(AUDIO_ROOM_EVENTS.DELETED, (e) =>
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.DELETED, e.payload),
