@@ -182,26 +182,32 @@ export class GiftService {
       : 1;
     const lucky = this.rollLucky(gift);
 
-    // Economics. Each receiver gets a whole gift, so `perReceiver` is the unit
-    // of value and the sender pays it N times. The split is the handler's call,
-    // expressed in basis points.
+    // Universal Soulzaa Gift Settlement Workflow:
+    // 1. Sender pays 100% of the gift value (totalNum) from Available Balance (GOLD).
+    // 2. Receiver EARNINGS increases by 100% of the gift value (always, no conditions).
+    // 3. Receiver Available Balance (GOLD) increases by 10% ONLY IF giftValue > 1000 (otherwise 0).
     const unit = gift.coinValue;
     const perReceiver = BigInt(unit) * BigInt(dto.quantity) * BigInt(lucky.multiplier);
-    const earningsBps = BigInt(Math.round(handler.economics(req).receiverEarningsBps));
-    const creatorEarnings = (perReceiver * earningsBps) / 10_000n;
     const perReceiverNum = Number(perReceiver);
     const totalNum = perReceiverNum * receiverIds.length;
-    const earningsNum = Number(creatorEarnings);
+
+    // Rule 1: Every received gift increases Earnings by 100% of gift value.
+    const creatorEarnings = perReceiver;
+    const earningsNum = perReceiverNum;
+
+    // Rule 2 & Rule 3: Available Balance receives 10% ONLY IF giftValue > 1000.
+    const availableBalanceCredited = perReceiverNum > 1000 ? Math.floor(perReceiverNum * 0.10) : 0;
+
     const senderExp = Math.floor(perReceiverNum * cfg.senderExpPerCoin);
     const receiverExp = Math.floor(perReceiverNum * cfg.receiverExpPerCoin);
 
-    // Every lock the send needs, sorted before acquisition. With N receivers,
-    // unsorted acquisition across concurrent sends deadlocks; sorting gives the
-    // whole system one global lock order.
+    // Every lock the send needs. `withLocks` owns de-duplication and ordering —
+    // a self-gift puts the sender's wallet key in here twice, and overlapping
+    // sender/receiver sets are legal generally, so this list is deliberately raw.
     const locksToAcquire = [
       ...[senderId, ...receiverIds].map(walletLockKey),
       ...(handler.contextLockKeys?.(req) ?? []),
-    ].sort();
+    ];
 
     const txnId = randomUUID();
     const batchId = dto.batchId ?? txnId;
@@ -218,7 +224,7 @@ export class GiftService {
         );
         if (existingPrior) return [existingPrior];
 
-        // 1. Debit the sender for the full amount.
+        // 1. Debit the sender for the full amount (100% of gift value).
         const debit = await this.wallet.debit(
           {
             userId: senderId,
@@ -238,9 +244,8 @@ export class GiftService {
           tx,
         );
 
-        // 2. Context-specific coin routing (audio rooms: treasure box + host
-        //    reward + overflow refund). Postgres-only; its events and postCommit
-        //    are drained after the transaction commits.
+        // 2. Context-specific coin routing (audio/video rooms: treasure box + host
+        //    reward + overflow refund, PK scoring, etc.).
         const effects = handler.onSend
           ? await handler.onSend(tx, {
               ...req,
@@ -253,13 +258,11 @@ export class GiftService {
         eventsToPublish.push(...effects.events);
         postCommitFn = effects.postCommit;
 
-        // 3. One credit + one ledger row per receiver. The wallet idempotency key
-        //    MUST carry the receiver id: sharing one key across the batch would
-        //    make the wallet treat legs 2..N as replays of leg 1 and pay nobody
-        //    but the first receiver, while the sender is debited for all N.
+        // 3. Settle receiver wallet accounts & create immutable gift transaction rows.
         const rows: GiftTransaction[] = [];
         for (const receiverId of receiverIds) {
           let creditTxnId: string | null = null;
+          // Step 3a: Receiver Earnings += 100% of gift value (Rule 1)
           if (earningsNum > 0) {
             const creditResult = await this.wallet.credit(
               {
@@ -267,14 +270,37 @@ export class GiftService {
                 currency: WalletCurrency.EARNINGS,
                 amount: earningsNum,
                 reason: WalletTxnReason.GIFT_RECEIVE,
-                idempotencyKey: `gift-credit:${idempotencyKey}:${receiverId}`,
+                idempotencyKey: `gift-credit-earnings:${idempotencyKey}:${receiverId}`,
                 referenceType: GIFT_WALLET_REFERENCE_TYPE,
-                metadata: { giftId: gift.id, senderId, batchId },
+                metadata: { giftId: gift.id, senderId, batchId, giftValue: perReceiverNum },
                 actorId: senderId,
               },
               tx,
             );
             creditTxnId = creditResult.transactionId;
+          }
+
+          // Step 3b: Receiver Available Balance += 10% ONLY IF giftValue > 1000 (Rule 2 & Rule 3)
+          if (availableBalanceCredited > 0) {
+            await this.wallet.credit(
+              {
+                userId: receiverId,
+                currency: WalletCurrency.GOLD,
+                amount: availableBalanceCredited,
+                reason: WalletTxnReason.GIFT_RECEIVE,
+                idempotencyKey: `gift-credit-available:${idempotencyKey}:${receiverId}`,
+                referenceType: GIFT_WALLET_REFERENCE_TYPE,
+                metadata: {
+                  giftId: gift.id,
+                  senderId,
+                  batchId,
+                  giftValue: perReceiverNum,
+                  availableBalanceCredited,
+                },
+                actorId: senderId,
+              },
+              tx,
+            );
           }
 
           rows.push(
@@ -303,6 +329,7 @@ export class GiftService {
                   batchId,
                   acceptedAmount: effects.acceptedAmount,
                   refundAmount: effects.refundAmount,
+                  availableBalanceCredited,
                 } as Prisma.InputJsonValue,
               },
               tx,
@@ -353,15 +380,22 @@ export class GiftService {
   }
 
   /**
-   * Acquire every lock in order, innermost callback last. Folding avoids the
-   * hand-nested `withLock` pyramid and, more importantly, works for any number
-   * of locks — which multi-receiver sends need.
+   * Acquire every DISTINCT lock, in a globally consistent order, innermost
+   * callback last. Folding avoids the hand-nested `withLock` pyramid and works
+   * for any number of locks — which multi-receiver sends need.
+   *
+   * De-duplication is not a tidy-up, it is load-bearing. `LockService.withLock`
+   * is a Redis SET-NX lock and therefore NOT reentrant, so a key appearing twice
+   * would be nested inside itself: the inner acquire can never succeed while the
+   * outer holds it, and the send dies ~2.1s later on the retry budget. A
+   * self-gift does exactly that — sender and receiver are one wallet, so the
+   * same key arrives twice. Sorting stays for the other half of the contract:
+   * one global acquisition order, so concurrent sends cannot deadlock each other.
    */
   private withLocks<T>(keys: string[], fn: () => Promise<T>): Promise<T> {
-    return keys.reduceRight<() => Promise<T>>(
-      (next, key) => () => this.locks.withLock(key, next),
-      fn,
-    )();
+    return [...new Set(keys)]
+      .sort()
+      .reduceRight<() => Promise<T>>((next, key) => () => this.locks.withLock(key, next), fn)();
   }
 
   /** Roll a lucky multiplier for LUCKY gifts (fair, crypto-random). */

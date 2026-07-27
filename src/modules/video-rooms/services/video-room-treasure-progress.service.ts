@@ -63,6 +63,13 @@ export class VideoRoomTreasureProgressService {
     @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
   ) {}
 
+  /**
+   * `countsTowardRanking` (default true) separates filling the ladder from
+   * ranking for it. Progress always advances — coins are coins — but the
+   * contribution rows are the ledger the winner draws read, so a gift that must
+   * not buy its sender a place in that draw passes `false`. Self-gifts use this:
+   * they fill the ladder without handing a solo host an uncontested podium.
+   */
   async apply(
     tx: Prisma.TransactionClient,
     input: {
@@ -71,6 +78,7 @@ export class VideoRoomTreasureProgressService {
       amount: number;
       giftTxnId: string;
       batchId?: string;
+      countsTowardRanking?: boolean;
     },
   ): Promise<TreasureContributionResult> {
     const correlationId = randomUUID();
@@ -122,17 +130,19 @@ export class VideoRoomTreasureProgressService {
       applied += delta;
       mirror = { level: updated.level, progress: Number(updated.progress) };
 
-      await this.repo.addContribution(
-        {
-          boxId: box.id,
-          sessionId: session.id,
-          roomId: input.roomId,
-          userId: input.senderId,
-          amount: delta,
-          giftTxnId: input.giftTxnId,
-        },
-        tx,
-      );
+      if (input.countsTowardRanking !== false) {
+        await this.repo.addContribution(
+          {
+            boxId: box.id,
+            sessionId: session.id,
+            roomId: input.roomId,
+            userId: input.senderId,
+            amount: delta,
+            giftTxnId: input.giftTxnId,
+          },
+          tx,
+        );
+      }
 
       events.push(
         new TreasureProgressUpdatedEvent({

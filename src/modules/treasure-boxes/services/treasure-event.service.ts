@@ -77,6 +77,11 @@ export class TreasureEventService implements OnModuleInit {
 
     if (!roomId || totalCoins <= BigInt(0)) return;
 
+    // A self-gift fills the box but must not rank for it. Otherwise a host alone
+    // in their own room could hand themselves the top-gifter podium unopposed,
+    // which is the one competitive mechanic the box exists to run.
+    const isSelfGift = payload.receiverId === userId;
+
     // Apply gift progress with multi-box overflow support
     const result = await this.progressService.applyGiftProgress(
       roomId,
@@ -84,6 +89,7 @@ export class TreasureEventService implements OnModuleInit {
       totalCoins,
       giftTxnId,
       contextType,
+      !isSelfGift,
     );
 
     // If Box 5 was completed and excess coins remained, refund immediately to sender's wallet

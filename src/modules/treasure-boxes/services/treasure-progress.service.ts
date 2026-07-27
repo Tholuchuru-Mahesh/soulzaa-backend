@@ -40,6 +40,13 @@ export class TreasureProgressService {
   /**
    * Applies gift progress to a room's active treasure box with multi-box overflow support.
    * Returns a zero-contribution result if today's daily event is already COMPLETED.
+   *
+   * `countsTowardRanking` separates the two things a gift does to a box. Progress
+   * always advances — coins are coins. But `treasure_contributions` is a pure
+   * RANKING ledger (every reader of it decides who wins a box's rewards), so a
+   * gift that should not buy its sender a place on the podium passes `false`:
+   * the box still fills, the sender simply does not rank for it. Self-gifts use
+   * this, which is why solo-filling a box in an empty room wins nothing.
    */
   async applyGiftProgress(
     roomId: string,
@@ -47,6 +54,7 @@ export class TreasureProgressService {
     amount: bigint,
     giftTxnId?: string,
     contextType: string = 'AUDIO_ROOM',
+    countsTowardRanking: boolean = true,
   ): Promise<ProgressResult> {
     if (amount <= BigInt(0)) {
       throw new Error('Progress amount must be greater than zero');
@@ -139,8 +147,8 @@ export class TreasureProgressService {
             },
           });
 
-          // Record contribution ledger entry
-          if (contributionForThisBox > BigInt(0)) {
+          // Record contribution ledger entry (ranking only — see the doc above)
+          if (contributionForThisBox > BigInt(0) && countsTowardRanking) {
             await this.prisma.treasureContribution.create({
               data: {
                 boxId: box.id,
@@ -213,16 +221,18 @@ export class TreasureProgressService {
             },
           });
 
-          await this.prisma.treasureContribution.create({
-            data: {
-              boxId: box.id,
-              sessionId: session.id,
-              roomId,
-              userId,
-              amount: remainingContribution,
-              giftTxnId,
-            },
-          });
+          if (countsTowardRanking) {
+            await this.prisma.treasureContribution.create({
+              data: {
+                boxId: box.id,
+                sessionId: session.id,
+                roomId,
+                userId,
+                amount: remainingContribution,
+                giftTxnId,
+              },
+            });
+          }
 
           remainingContribution = BigInt(0);
         }

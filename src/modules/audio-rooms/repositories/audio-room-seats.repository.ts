@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  PremiumSeatStatus,
   Prisma,
   RoomMemberRole,
   RoomRole,
@@ -143,12 +144,22 @@ export class AudioRoomSeatsRepository {
     });
   }
 
-  /** Mute/unmute every occupied speaker + premium seat (room-mute). */
-  async setSpeakerSeatsMuted(roomId: string, isMuted: boolean, actorId: string): Promise<void> {
-    await this.prisma.roomSeat.updateMany({
-      where: { roomId, seatType: { in: [SeatType.SPEAKER, SeatType.PREMIUM_ADMIN] } },
-      data: { isMuted, ...auditUpdate(actorId) },
-    });
+  /**
+   * Broad Mute, as one atomic write: the room flag and the per-seat fan-out
+   * both land or neither does. Split across two statements they can diverge —
+   * seats left muted under a flag that reads false strand every speaker with
+   * `canToggleMic` false and no way back, since the client derives the toggle
+   * from the flag but the mute lives on the seat. The owner seat is not in the
+   * fan-out; the host is exempt from Broad Mute everywhere in the module.
+   */
+  async setRoomMutedTx(roomId: string, isRoomMuted: boolean, actorId: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.roomSettings.update({ where: { roomId }, data: { isRoomMuted } }),
+      this.prisma.roomSeat.updateMany({
+        where: { roomId, seatType: { in: [SeatType.SPEAKER, SeatType.PREMIUM_ADMIN] } },
+        data: { isMuted: isRoomMuted, ...auditUpdate(actorId) },
+      }),
+    ]);
   }
 
   /**
@@ -377,18 +388,82 @@ export class AudioRoomSeatsRepository {
     });
   }
 
-  /** Vacate every seat, cancel pending requests, and clear the queue (on room end/delete). */
-  async clearStageTx(roomId: string): Promise<void> {
+  /**
+   * Drops every session-scoped participant state for a room in one transaction —
+   * the reset that makes each live a genuinely fresh event.
+   *
+   * A room row is permanent and one-per-owner, so the same row is reused for every
+   * live. Without this, an ADMIN promoted in one session was still an ADMIN in the
+   * next: `RoomPermissionService.getEffectiveRole` resolves the `room_roles` grant
+   * *before* it ever looks at seat occupancy, so clearing the stage alone changed
+   * nothing for elevated users.
+   *
+   * Two kinds of grant deliberately survive:
+   *  - OWNER, which is a property of the room, not of a session.
+   *  - PREMIUM_ADMIN backed by an unexpired {@link PremiumAdminSeat}, which is a
+   *    time-boxed entitlement bought with gold and measured in days. Wiping it
+   *    because the owner ended a live would burn purchased value. A paid holder who
+   *    was *also* promoted to ADMIN is re-pinned down to the PREMIUM_ADMIN they
+   *    actually paid for rather than keeping the free promotion.
+   *
+   * Moderation penalties (`room_bans`, `room_mutes`) are NOT session state and are
+   * left untouched — they carry their own expiry, and clearing them here would let
+   * an offender wipe a ban by getting the room restarted.
+   */
+  async clearSessionStateTx(roomId: string): Promise<void> {
+    const paidSeats = await this.prisma.premiumAdminSeat.findMany({
+      where: { roomId, status: PremiumSeatStatus.ACTIVE, expiresAt: { gt: new Date() } },
+      select: { userId: true },
+    });
+    const paidUserIds = paidSeats.map((s) => s.userId);
+    const now = new Date();
+    // Rows this reset must not touch: the OWNER grant, plus anyone whose grant is
+    // paid for. Spelled out rather than leaning on `notIn: []` meaning "exclude
+    // nobody" — the empty case is the common one and deserves to be unambiguous.
+    const nonOwner = { roomId, role: { not: RoomMemberRole.OWNER } };
+    const resettable =
+      paidUserIds.length > 0 ? { ...nonOwner, userId: { notIn: paidUserIds } } : nonOwner;
+
     await this.prisma.$transaction([
+      // Stage: free every seat and drop the admin lock/mute flags with it, so the
+      // next session does not open with seats silenced or reserved by the last one.
       this.prisma.roomSeat.updateMany({
-        where: { roomId, occupantUserId: { not: null } },
-        data: { occupantUserId: null },
+        where: { roomId },
+        data: { occupantUserId: null, isMuted: false, isLocked: false },
       }),
       this.prisma.seatQueueEntry.deleteMany({ where: { roomId } }),
       this.prisma.seatRequest.updateMany({
         where: { roomId, status: SeatRequestStatus.PENDING },
-        data: { status: SeatRequestStatus.CANCELLED, resolvedAt: new Date() },
+        data: { status: SeatRequestStatus.CANCELLED, resolvedAt: now },
       }),
+      this.prisma.seatInvitation.updateMany({
+        where: { roomId, status: SeatInvitationStatus.PENDING },
+        data: { status: SeatInvitationStatus.EXPIRED, resolvedAt: now },
+      }),
+      // Authoritative grants.
+      this.prisma.roomRole.deleteMany({ where: resettable }),
+      // Denormalised mirror — `removeOwner` ranks successors by this column, so a
+      // stale ADMIN here would hand the room to last session's moderator.
+      this.prisma.roomMember.updateMany({
+        where: resettable,
+        data: { role: RoomMemberRole.LISTENER },
+      }),
+      this.prisma.roomSettings.updateMany({
+        where: { roomId },
+        data: { isRoomMuted: false },
+      }),
+      ...(paidUserIds.length > 0
+        ? [
+            this.prisma.roomRole.updateMany({
+              where: { ...nonOwner, userId: { in: paidUserIds } },
+              data: { role: RoomMemberRole.PREMIUM_ADMIN },
+            }),
+            this.prisma.roomMember.updateMany({
+              where: { ...nonOwner, userId: { in: paidUserIds } },
+              data: { role: RoomMemberRole.PREMIUM_ADMIN },
+            }),
+          ]
+        : []),
     ]);
   }
 
@@ -425,9 +500,9 @@ export class AudioRoomSeatsRepository {
     return settings?.isRoomMuted ?? false;
   }
 
-  async setRoomMuted(roomId: string, isRoomMuted: boolean): Promise<void> {
-    await this.prisma.roomSettings.update({ where: { roomId }, data: { isRoomMuted } });
-  }
+  // Broad Mute is written only through `setRoomMutedTx` — the room flag and the
+  // per-seat fan-out are one operation. Standalone setters for either half used
+  // to exist here; they are gone so the two cannot drift apart again.
 
   async setRequireApprovalForSeat(roomId: string, requireApprovalForSeat: boolean): Promise<void> {
     await this.prisma.roomSettings.update({ where: { roomId }, data: { requireApprovalForSeat } });

@@ -2,6 +2,7 @@ export * from './audio-room-socket.listener';
 export * from './audio-room-seats.listener';
 export * from './voice-socket.listener';
 export * from './voice-seat-sync.listener';
+export * from './voice-lifecycle.listener';
 export * from './moderation-socket.listener';
 export * from './chat-socket.listener';
 export * from './gift-socket.listener';

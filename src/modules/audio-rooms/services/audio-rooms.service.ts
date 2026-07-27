@@ -326,7 +326,15 @@ export class AudioRoomsService implements IAudioRoomsService {
   }
 
   async end(actor: RoomActor, roomId: string): Promise<void> {
-    const room = await this.getManageableRoom(roomId, actor);
+    const room = await this.repo.findRoomRow(roomId);
+    if (!room) throw this.roomNotFound();
+    if (room.ownerId !== actor.id && !this.isPlatformAdmin(actor.roles)) {
+      throw new BusinessException(
+        ERROR_CODES.NOT_ROOM_OWNER,
+        'Only the room owner or a platform admin can end this room.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
     const durationSeconds = (Date.now() - room.createdAt.getTime()) / 1000;
     await this.repo.endRoom(roomId, actor.id, durationSeconds);
     await this.repo.appendLog(roomId, actor.id, RoomLogAction.ENDED, {
@@ -370,7 +378,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     const updated = restarted
       ? await this.repo.updateRoom(roomId, { status: 'LIVE', endedAt: null }, actor.id)
       : room;
-    await this.seatsService.onRoomOpened(roomId, updated.ownerId);
+    await this.seatsService.onRoomOpened(roomId, updated.ownerId, restarted);
 
     const view = await this.toView(updated);
     await this.repo.setCachedSnapshot(view, this.cacheTtl);

@@ -657,6 +657,22 @@ export class AudioRoomSeatsService {
     await this.assertLiveRoom(roomId);
     await this.permissions.assertPermission(roomId, actor, RoomPermission.MUTE_USERS);
     const seat = await this.requireSeat(roomId, seatIndex);
+    // The owner outranks every in-room moderator, which the rest of the module
+    // already enforces (ModerationService rejects actions against them, and they
+    // can unmute themselves through Broad Mute). Seat-mute was the one hole: an
+    // ADMIN could silence the host by muting whichever chair they were sitting
+    // in. Unmuting is always allowed — it can only ever restore them.
+    if (
+      muted &&
+      seat.occupantUserId &&
+      (await this.rooms.getOwnerId(roomId)) === seat.occupantUserId
+    ) {
+      throw this.err(
+        ERROR_CODES.CANNOT_MODERATE_OWNER,
+        'The room owner cannot be muted.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
     await this.seats.setSeatMuted(roomId, seatIndex, muted, actor.id);
     await this.seats.appendSeatHistory({
       roomId,
@@ -678,10 +694,21 @@ export class AudioRoomSeatsService {
   async setRoomMuted(actor: RoomActor, roomId: string, muted: boolean): Promise<StageSnapshot> {
     await this.assertLiveRoom(roomId);
     await this.permissions.assertPermission(roomId, actor, RoomPermission.ROOM_MUTE);
-    await this.seats.setRoomMuted(roomId, muted);
-    if (muted) {
-      await this.seats.setSpeakerSeatsMuted(roomId, true, actor.id);
-    }
+    // Symmetric on purpose. Broad Mute stamps `isMuted` onto every speaker seat;
+    // lifting it has to wipe them back, or the flag outlives the mute that set it.
+    // Because the flag lives on the seat rather than the occupant, a single
+    // on→off toggle used to leave every speaker chair permanently armed: whoever
+    // sat there next was inaudible and could not unmute. The owner seat is
+    // excluded from the fan-out, which is why the host stayed audible on seat 0
+    // and went silent on every other seat.
+    //
+    // Under the room seat lock like every other seat mutation here, and issued
+    // as one transaction: this is the only operation that rewrites the whole
+    // stage at once, so two toggles racing each other could otherwise interleave
+    // and commit the flag from one with the seat rows from the other.
+    await this.locks.withLock(roomSeatLockKey(roomId), () =>
+      this.seats.setRoomMutedTx(roomId, muted, actor.id),
+    );
     await this.seats.appendSeatHistory({
       roomId,
       actorId: actor.id,
@@ -810,8 +837,23 @@ export class AudioRoomSeatsService {
   }
 
   /** The room went live: clear any stale pending requests and occupy Seat 0 automatically for the owner. */
-  async onRoomOpened(roomId: string, ownerId: string): Promise<void> {
-    await this.seats.clearPendingRequests(roomId);
+  /**
+   * A live is opening on this (permanent) room. `restarted` distinguishes a
+   * genuinely new session from the redundant `POST /:id/start` the client fires on
+   * every owner entry — only the former resets participant state, so a stray start
+   * can never demote the admins of the session already in progress.
+   *
+   * The reset is repeated here rather than trusted to {@link onRoomClosed} alone
+   * because rooms that ended before this fix — or via a path that never emitted
+   * `room.ended` — still carry their old grants.
+   */
+  async onRoomOpened(roomId: string, ownerId: string, restarted: boolean): Promise<void> {
+    if (restarted) {
+      await this.seats.clearSessionStateTx(roomId);
+      await this.seats.invalidateStage(roomId);
+    } else {
+      await this.seats.clearPendingRequests(roomId);
+    }
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
       // Ensure Seat 0 is occupied by ownerId
       await this.seats.setOccupant(roomId, OWNER_SEAT_INDEX, ownerId, ownerId);
@@ -823,9 +865,14 @@ export class AudioRoomSeatsService {
     await this.rebuildStage(roomId);
   }
 
-  /** The room ended/was deleted: clear all seats + the queue and drop the cache. */
+  /**
+   * The room ended/was deleted: drop every session-scoped participant state (roles,
+   * seats, queue, pending requests/invites, room mute) and the cached stage, so the
+   * next live starts from a clean roster. See
+   * {@link AudioRoomSeatsRepository.clearSessionStateTx} for what deliberately survives.
+   */
   async onRoomClosed(roomId: string): Promise<void> {
-    await this.seats.clearStageTx(roomId);
+    await this.seats.clearSessionStateTx(roomId);
     await this.seats.invalidateStage(roomId);
   }
 
@@ -877,9 +924,22 @@ export class AudioRoomSeatsService {
     actorId: string,
   ): Promise<void> {
     await this.seats.setOccupant(roomId, seat.seatIndex, userId, actorId);
+    // The mute flag is *derived from the occupant*, so recompute it outright on
+    // every seat change rather than only ever setting it. Two things follow:
+    //
+    // 1. Broad Mute follows the person, not the chair. The owner is exempt from
+    //    it everywhere else (VoiceService.setSelfMute lets them unmute through
+    //    it, and the client zeroes `roomMuted` for them), so keying the exemption
+    //    off the seat type rather than the user silenced the host the moment they
+    //    stepped off seat 0. Everyone else is still muted on the way in.
+    // 2. Writing `false` — not just skipping the write — is what heals a chair
+    //    already left armed by an earlier build, so no backfill is needed for
+    //    rooms that toggled Broad Mute before this was fixed.
     const isRoomMuted = await this.seats.isRoomMuted(roomId);
-    if (isRoomMuted && seat.seatType !== SeatType.OWNER) {
-      await this.seats.setSeatMuted(roomId, seat.seatIndex, true, actorId);
+    const isOwner = (await this.rooms.getOwnerId(roomId)) === userId;
+    const shouldMute = isRoomMuted && !isOwner;
+    if (shouldMute !== seat.isMuted) {
+      await this.seats.setSeatMuted(roomId, seat.seatIndex, shouldMute, actorId);
     }
     await this.seats.appendSeatHistory({
       roomId,
@@ -905,6 +965,15 @@ export class AudioRoomSeatsService {
     action: SeatHistoryAction,
   ): Promise<void> {
     await this.seats.setOccupant(roomId, seat.seatIndex, null, actorId);
+    // A mute is a moderation action against whoever was sitting here, but it is
+    // stored on the seat — so clear it as they leave. Left set, an empty chair
+    // stays armed and silences the next person to take it, with no mute badge
+    // and no way for them to unmute themselves (`canToggleMic` is false while
+    // seat-muted). Only written when it was actually set, to keep the common
+    // path at one query.
+    if (seat.isMuted) {
+      await this.seats.setSeatMuted(roomId, seat.seatIndex, false, actorId);
+    }
     await this.seats.appendSeatHistory({
       roomId,
       actorId,

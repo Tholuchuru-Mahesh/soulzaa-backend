@@ -103,6 +103,31 @@ describe('VideoRoomTreasureProgressService', () => {
       );
     });
 
+    // Contributions are the ranking ledger the winner draws read from. A
+    // self-gift still fills the ladder, but must not buy its sender a place in
+    // that draw — otherwise a host alone in their own room takes the podium
+    // unopposed. Progress and ranking are deliberately separable here.
+    it('applies a self-gift to the ladder but writes NO ranking contribution', async () => {
+      repo.addProgress.mockResolvedValue(box(1, 15_000n, 5_000n));
+
+      const res = await service.apply(tx, {
+        roomId: 'r1',
+        senderId: 'u1',
+        amount: 5_000,
+        giftTxnId: 'g1',
+        countsTowardRanking: false,
+      });
+
+      expect(res.applied).toBe(5_000);
+      expect(repo.addContribution).not.toHaveBeenCalled();
+    });
+
+    it('defaults to ranking when countsTowardRanking is omitted', async () => {
+      repo.addProgress.mockResolvedValue(box(1, 15_000n, 5_000n));
+      await apply(5_000);
+      expect(repo.addContribution).toHaveBeenCalled();
+    });
+
     it('emits a progress event carrying the completion percentage', async () => {
       repo.addProgress.mockResolvedValue(box(1, 15_000n, 3_000n));
       const res = await apply(3_000);

@@ -195,14 +195,28 @@ export class VoiceService implements IVoiceService {
           HttpStatus.FORBIDDEN,
         );
       }
-      const isRoomMuted = await this.roomsSvc.isRoomMuted(roomId);
-      if (isRoomMuted) {
+      // Both halves of a force-mute, because Broad Mute sets both: the room
+      // flag *and* `isMuted` on every speaker seat. Checking only the flag left
+      // the seat half bypassable — the client hides the toggle in either case
+      // (`canToggleMic` is `!seatMuted && !roomMuted`), so anything that reaches
+      // here called the endpoint directly. The owner lookup is deferred until a
+      // mute is actually in force to keep the ordinary unmute at two reads.
+      const [isRoomMuted, isSeatMuted] = await Promise.all([
+        this.roomsSvc.isRoomMuted(roomId),
+        this.roomsSvc.isSeatMuted(roomId, actor.id),
+      ]);
+      if (isRoomMuted || isSeatMuted) {
         const room = await this.rooms.findRoomRow(roomId);
+        // The owner outranks every force-mute in the room. The seat service
+        // refuses to seat-mute them at all and the client zeroes both flags for
+        // them; this is the same rule at the voice layer.
         const isOwner = room?.ownerId === actor.id;
         if (!isOwner) {
           throw new BusinessException(
             ERROR_CODES.MEMBER_MUTED,
-            'Broad Mute is enabled in this room. You cannot unmute yourself.',
+            isRoomMuted
+              ? 'Broad Mute is enabled in this room. You cannot unmute yourself.'
+              : 'Your seat has been muted by a moderator. You cannot unmute yourself.',
             HttpStatus.FORBIDDEN,
           );
         }
@@ -423,6 +437,37 @@ export class VoiceService implements IVoiceService {
     );
     await this.enqueueSessionAnalytics(roomId, session, Math.floor(durationSeconds));
     await this.rebuildVoiceState(roomId);
+  }
+
+  /**
+   * The live ended: tear down every voice session in the room.
+   *
+   * Sessions are unique on (room,user) and *reactivated* on rejoin rather than
+   * recreated, so one left ACTIVE at the end of a live is inherited whole by the
+   * next one — including its PUBLISHER role and `selfMuted` flag. Ending them here
+   * is what makes a rejoining user come back as a muted subscriber.
+   *
+   * No `voice.left` is published per user: the room-ended broadcast already tells
+   * every client to tear the channel down, and a burst of per-user leaves on a
+   * closing room is noise. Analytics still gets its per-session record.
+   */
+  async onRoomClosed(roomId: string): Promise<void> {
+    const sessions = await this.voice.listActiveSessions(roomId);
+    for (const session of sessions) {
+      const durationSeconds = (Date.now() - session.joinedAt.getTime()) / 1000;
+      await this.voice.endSession(roomId, session.userId, durationSeconds);
+      await this.clearVoiceRuntime(roomId, session.userId);
+      await this.voice.appendVoiceSessionLog({
+        roomId,
+        userId: session.userId,
+        action: VoiceSessionAction.LEFT,
+        metadata: { durationSeconds: Math.floor(durationSeconds), reason: 'room_ended' },
+      });
+      await this.enqueueSessionAnalytics(roomId, session, Math.floor(durationSeconds));
+    }
+    // Dropped rather than rebuilt — a rebuilt snapshot would just re-cache an empty
+    // stage for a room nobody should be reading.
+    await this.voice.invalidateState(roomId);
   }
 
   // ======================= Public contract (IVoiceService) =======================

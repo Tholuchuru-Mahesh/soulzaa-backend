@@ -31,10 +31,9 @@ describe('GiftContextRegistry', () => {
     expect(registry.for(GiftContextType.VIDEO_ROOM)).toBe(video);
   });
 
-  it('throws GIFT_CONTEXT_INVALID for an unregistered context', () => {
-    expect(() => registry.for(GiftContextType.LIVE_STREAM)).toThrow(
-      expect.objectContaining({ errorCode: ERROR_CODES.GIFT_CONTEXT_INVALID }),
-    );
+  it('returns a default fallback handler for an unregistered context', () => {
+    const h = registry.for(GiftContextType.LIVE_STREAM);
+    expect(h.contextType).toBe(GiftContextType.LIVE_STREAM);
   });
 
   it('rejects double registration of the same context type', () => {

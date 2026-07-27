@@ -44,7 +44,12 @@ export class ExpActivityListener implements OnModuleInit {
           referenceId: p.transactionId,
         });
       }
-      if (p.receiverExp > 0) {
+      // A self-gift pays the SENDER leg only. Self-gifting is a supported flow,
+      // but crediting both legs to one user would make it worth
+      // (senderRate + receiverRate) per coin while gifting anyone else pays the
+      // sender rate alone — making self-dealing the cheapest route to a level.
+      // Paying just the sender leg keeps every gift worth the same to its sender.
+      if (p.receiverExp > 0 && p.receiverId !== p.senderId) {
         await this.exp.award({
           userId: p.receiverId,
           amount: p.receiverExp,

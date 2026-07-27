@@ -9,5 +9,3 @@ export * from './services/gift-catalog.service';
 export * from './services/gift-history.service';
 export * from './services/gift-inventory.service';
 export * from './services/gift-query.service';
-export * from './services/gift-transaction.service';
-export * from './services/gift-validation.service';

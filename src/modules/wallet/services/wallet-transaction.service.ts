@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   TransactionStatus,
   TransactionType,
@@ -238,8 +238,8 @@ export class WalletTransactionService {
 
     const senderWallet = await this.walletService.getOrCreateWallet(dto.senderUserId);
     const recipientWallet = isSelfTransfer
-        ? senderWallet
-        : await this.walletService.getOrCreateWallet(dto.recipientUserId);
+      ? senderWallet
+      : await this.walletService.getOrCreateWallet(dto.recipientUserId);
 
     this.validationService.validateWalletActive(senderWallet);
     if (!isSelfTransfer) {
@@ -259,8 +259,8 @@ export class WalletTransactionService {
 
       const freshSender = await tx.wallet.findUnique({ where: { id: senderWallet.id } });
       const freshRecipient = isSelfTransfer
-          ? freshSender
-          : await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
+        ? freshSender
+        : await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
 
       if (!freshSender || !freshRecipient) {
         throw new NotFoundException('One or both transfer wallets not found');
@@ -305,14 +305,14 @@ export class WalletTransactionService {
       });
 
       const updatedRecipient = isSelfTransfer
-          ? updatedSender
-          : await tx.wallet.update({
-              where: { id: recipientWallet.id },
-              data: {
-                availableBalance: { increment: amountBig },
-                version: { increment: 1 },
-              },
-            });
+        ? updatedSender
+        : await tx.wallet.update({
+            where: { id: recipientWallet.id },
+            data: {
+              availableBalance: { increment: amountBig },
+              version: { increment: 1 },
+            },
+          });
 
       // 3. Paired Double-Entry Ledger Records
       // DEBIT on sender

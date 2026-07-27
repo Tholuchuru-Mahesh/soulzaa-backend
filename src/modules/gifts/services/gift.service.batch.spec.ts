@@ -108,7 +108,22 @@ describe('GiftService.sendGiftBatch (multi-receiver)', () => {
       debit: jest.fn().mockResolvedValue({ transactionId: 'w-debit', duplicate: false }),
       credit: jest.fn().mockResolvedValue({ transactionId: 'w-credit', duplicate: false }),
     };
-    locks = { withLock: jest.fn().mockImplementation((_key, cb) => cb()) };
+    // Non-reentrant, like the real Redis lock — a passthrough mock once let a
+    // self-gift nest the sender's wallet key inside itself all the way to prod.
+    const heldLocks = new Set<string>();
+    locks = {
+      withLock: jest.fn().mockImplementation(async (key: string, cb: () => Promise<unknown>) => {
+        if (heldLocks.has(key)) {
+          throw new Error(`Could not acquire lock "${key}" after 20 retries`);
+        }
+        heldLocks.add(key);
+        try {
+          return await cb();
+        } finally {
+          heldLocks.delete(key);
+        }
+      }),
+    };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() } as never;
     registry = new GiftContextRegistry();
     handler = videoHandler();
@@ -142,17 +157,17 @@ describe('GiftService.sendGiftBatch (multi-receiver)', () => {
     await service.sendGiftBatch(SENDER, batchDto(['r1', 'r2', 'r3']));
     const keys = wallet.credit.mock.calls.map((c) => c[0].idempotencyKey);
     expect(keys).toEqual([
-      `gift-credit:${IDEM}:r1`,
-      `gift-credit:${IDEM}:r2`,
-      `gift-credit:${IDEM}:r3`,
+      `gift-credit-earnings:${IDEM}:r1`,
+      `gift-credit-earnings:${IDEM}:r2`,
+      `gift-credit-earnings:${IDEM}:r3`,
     ]);
     expect(new Set(keys).size).toBe(3);
   });
 
-  it('credits each receiver 30% of THEIR gift, not of the batch total', async () => {
+  it('credits each receiver 100% of THEIR gift in EARNINGS', async () => {
     await service.sendGiftBatch(SENDER, batchDto(['r1', 'r2', 'r3']));
     const amounts = wallet.credit.mock.calls.map((c) => c[0].amount);
-    expect(amounts).toEqual([30, 30, 30]);
+    expect(amounts).toEqual([100, 100, 100]);
     expect(wallet.credit.mock.calls[0][0].currency).toBe(WalletCurrency.EARNINGS);
   });
 

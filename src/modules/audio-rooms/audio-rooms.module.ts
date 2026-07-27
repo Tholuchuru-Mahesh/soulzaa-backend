@@ -27,6 +27,7 @@ import { PremiumSocketListener } from './listeners/premium-socket.listener';
 import { ProgressionSocketListener } from './listeners/progression-socket.listener';
 import { RoomCosmeticsSocketListener } from './listeners/room-cosmetics-socket.listener';
 import { TreasureSocketListener } from './listeners/treasure-socket.listener';
+import { VoiceLifecycleListener } from './listeners/voice-lifecycle.listener';
 import { VoiceSeatSyncListener } from './listeners/voice-seat-sync.listener';
 import { VoiceSocketListener } from './listeners/voice-socket.listener';
 import { AudioRoomSeatsRepository } from './repositories/audio-room-seats.repository';
@@ -131,6 +132,7 @@ import { VoiceService } from './services/voice.service';
     AudioRoomSeatsListener,
     VoiceSocketListener,
     VoiceSeatSyncListener,
+    VoiceLifecycleListener,
     ModerationSocketListener,
     ChatSocketListener,
     GiftSocketListener,

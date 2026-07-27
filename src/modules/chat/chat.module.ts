@@ -7,6 +7,7 @@ import { ConversationRepository } from './repositories/conversation.repository';
 import { MessageRepository } from './repositories/message.repository';
 import { ChatViewMapper } from './services/chat-view.mapper';
 import { ChatService } from './services/chat.service';
+import { PrivateChatGiftContextHandler } from './services/private-chat-gift-context.handler';
 
 /**
  * Chat domain — 1:1 conversations, direct messages, receipts, reactions,
@@ -33,6 +34,9 @@ import { ChatService } from './services/chat.service';
     // services
     ChatViewMapper,
     ChatService,
+    // Registers PRIVATE_CHAT with the gift context registry on init. Without it
+    // that context falls through to the registry's permissive default handler.
+    PrivateChatGiftContextHandler,
     // listeners
     ChatSocketListener,
     // public token

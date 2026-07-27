@@ -84,14 +84,6 @@ export class GiftRepository {
     return this.prisma.gift.count({ where: { name } });
   }
 
-  /** Idempotent seed helper: insert a gift only if the name is new. */
-  async seedGift(data: Prisma.GiftUncheckedCreateInput): Promise<boolean> {
-    const exists = await this.prisma.gift.count({ where: { name: data.name } });
-    if (exists > 0) return false;
-    await this.prisma.gift.create({ data });
-    return true;
-  }
-
   // ---- Gift ledger (immutable) ----
 
   findTxnByIdempotencyKey(

@@ -20,17 +20,38 @@ export class VideoRoomGiftTargetResolver {
   ) {}
 
   /**
-   * Resolve recipients for a send. The returned list is de-duplicated, excludes
-   * the sender, is non-empty, and is within the configured cap — so callers can
-   * treat it as already-validated.
+   * Targets that address the *room* rather than named people. Only these drop
+   * the sender — see {@link resolve}.
+   */
+  private static readonly BROADCAST_TARGETS: ReadonlySet<string> = new Set<string>([
+    VideoRoomGiftTarget.SEAT_ALL,
+    VideoRoomGiftTarget.ROOM_ALL,
+  ]);
+
+  /**
+   * Resolve recipients for a send. The returned list is de-duplicated, non-empty,
+   * and within the configured cap — so callers can treat it as already-validated.
+   *
+   * Whether the sender is dropped depends on how they addressed the gift:
+   *
+   * - **Broadcast** (`SEAT_ALL`, `ROOM_ALL`) — dropped. "Gift the stage" stays
+   *   usable for someone who is themselves on stage: they gift everyone else,
+   *   and are not billed a share for themselves they never chose to send.
+   * - **Explicit** (`SINGLE`, `MULTI`) — kept. Naming yourself is a self-gift,
+   *   which is a supported product flow; silently dropping the only recipient
+   *   would turn a deliberate send into `GIFT_RECEIVER_INVALID`.
+   *
+   * Doing this here rather than in validation keeps the distinction in one place:
+   * it is a property of the *selector*, not of the money.
    */
   async resolve(roomId: string, dto: SendVideoRoomGiftDto, senderId: string): Promise<string[]> {
     const cfg = loadVideoRoomGiftConfig(this.config);
     const candidates = await this.candidatesFor(roomId, dto, cfg.allowRoomAll);
 
-    // Excluding the sender here rather than in validation keeps "gift the stage"
-    // usable for someone who is themselves on stage: they gift everyone else.
-    const receivers = [...new Set(candidates)].filter((id) => id && id !== senderId);
+    const isBroadcast = VideoRoomGiftTargetResolver.BROADCAST_TARGETS.has(dto.target);
+    const receivers = [...new Set(candidates)].filter(
+      (id) => id && (!isBroadcast || id !== senderId),
+    );
 
     if (receivers.length === 0) {
       throw new BusinessException(

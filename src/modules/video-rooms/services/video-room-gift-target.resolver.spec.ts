@@ -110,13 +110,61 @@ describe('VideoRoomGiftTargetResolver', () => {
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.GIFT_TOO_MANY_RECEIVERS });
   });
 
-  it('MULTI containing only the sender throws instead of sending nothing', async () => {
+  // ---- Self-gifting: explicit targets keep the sender, broadcasts drop them ----
+
+  it('SINGLE addressed at the sender resolves to a self-gift', async () => {
+    await expect(
+      resolver.resolve(
+        'r1',
+        dto({ target: VideoRoomGiftTarget.SINGLE, receiverId: SENDER }),
+        SENDER,
+      ),
+    ).resolves.toEqual([SENDER]);
+  });
+
+  it('MULTI containing only the sender resolves to a self-gift', async () => {
     await expect(
       resolver.resolve(
         'r1',
         dto({ target: VideoRoomGiftTarget.MULTI, receiverIds: [SENDER] }),
         SENDER,
       ),
+    ).resolves.toEqual([SENDER]);
+  });
+
+  it('MULTI keeps the sender alongside other named recipients', async () => {
+    await expect(
+      resolver.resolve(
+        'r1',
+        dto({ target: VideoRoomGiftTarget.MULTI, receiverIds: ['u1', SENDER, 'u2'] }),
+        SENDER,
+      ),
+    ).resolves.toEqual(['u1', SENDER, 'u2']);
+  });
+
+  it('MULTI still de-duplicates a repeated self-target into one charge', async () => {
+    await expect(
+      resolver.resolve(
+        'r1',
+        dto({ target: VideoRoomGiftTarget.MULTI, receiverIds: [SENDER, SENDER] }),
+        SENDER,
+      ),
+    ).resolves.toEqual([SENDER]);
+  });
+
+  it('ROOM_ALL still drops the sender — a broadcast must not bill you for yourself', async () => {
+    config.get.mockReturnValue(cfg({ allowRoomAll: 'true' }));
+    const receivers = await resolver.resolve(
+      'r1',
+      dto({ target: VideoRoomGiftTarget.ROOM_ALL }),
+      SENDER,
+    );
+    expect(receivers).not.toContain(SENDER);
+  });
+
+  it('SINGLE with no receiverId still throws rather than defaulting to the sender', async () => {
+    await expect(
+      resolver.resolve('r1', dto({ target: VideoRoomGiftTarget.SINGLE }), SENDER),
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.GIFT_RECEIVER_INVALID });
   });
 

@@ -50,6 +50,7 @@ describe('AudioRoomSeatsService', () => {
       resolveAllPendingRequestsForUser: jest.fn().mockResolvedValue(undefined),
       clearPendingRequests: jest.fn().mockResolvedValue(undefined),
       clearAllPendingRequests: jest.fn().mockResolvedValue(undefined),
+      clearSessionStateTx: jest.fn().mockResolvedValue(undefined),
       enqueue: jest.fn().mockResolvedValue({ position: 1 }),
       dequeue: jest.fn().mockResolvedValue(undefined),
       listSeats: jest.fn().mockResolvedValue([seat()]),
@@ -65,6 +66,7 @@ describe('AudioRoomSeatsService', () => {
       setSeatLocked: jest.fn().mockResolvedValue(undefined),
       setSeatMuted: jest.fn().mockResolvedValue(undefined),
       isRoomMuted: jest.fn().mockResolvedValue(false),
+      setRoomMutedTx: jest.fn().mockResolvedValue(undefined),
       upsertRole: jest.fn().mockResolvedValue(undefined),
       getRole: jest.fn().mockResolvedValue(null),
       countAdmins: jest.fn().mockResolvedValue(0),
@@ -345,16 +347,196 @@ describe('AudioRoomSeatsService', () => {
     });
   });
 
+  /**
+   * A seat mute is a moderation action against a *person*, but it is stored on
+   * the seat row. Everything below pins the flag to the occupant so it can never
+   * be inherited by whoever sits down next.
+   */
   describe('setRoomMuted', () => {
     it('mutes all speaker seats and flags the room', async () => {
-      seats.setRoomMuted = jest.fn().mockResolvedValue(undefined);
-      seats.setSpeakerSeatsMuted = jest.fn().mockResolvedValue(undefined);
       await service.setRoomMuted(OWNER, 'r', true);
-      expect(seats.setRoomMuted).toHaveBeenCalledWith('r', true);
-      expect(seats.setSpeakerSeatsMuted).toHaveBeenCalledWith('r', true, OWNER.id);
+      expect(seats.setRoomMutedTx).toHaveBeenCalledWith('r', true, OWNER.id);
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'audio_room.seat_updated' }),
       );
+    });
+
+    /**
+     * Broad Mute writes `isMuted` onto every speaker seat. Lifting it has to
+     * write them back, or the flag outlives the mute that set it — and since
+     * the seat, not the occupant, carries it, the next person to sit there is
+     * silenced by a mute that is no longer in force. That is what stranded the
+     * owner: seat 0 is a SeatType.OWNER seat, which Broad Mute never touches,
+     * so they were audible there and mute everywhere else.
+     */
+    it('unmutes the speaker seats it muted when broad mute is lifted', async () => {
+      await service.setRoomMuted(OWNER, 'r', false);
+      expect(seats.setRoomMutedTx).toHaveBeenCalledWith('r', false, OWNER.id);
+    });
+
+    /**
+     * Broad Mute is two writes — the room flag and the per-seat fan-out — and
+     * the two have to agree or the room is stranded: seats muted under a flag
+     * that reads false leaves every speaker silent with `canToggleMic` false
+     * and no way back except another full toggle. Splitting them across two
+     * calls let a second toggle interleave between them, so they are issued as
+     * one repository call and, like every other seat mutation in this service,
+     * under the room seat lock.
+     */
+    it('writes the room flag and the seat fan-out as one atomic call', async () => {
+      await service.setRoomMuted(OWNER, 'r', true);
+      expect(seats.setRoomMutedTx).toHaveBeenCalledTimes(1);
+    });
+
+    it('serializes concurrent toggles by writing inside the room seat lock', async () => {
+      const order: string[] = [];
+      locks.withLock = jest.fn(async <T>(_k: string, fn: () => Promise<T>) => {
+        order.push('lock:enter');
+        const result = await fn();
+        order.push('lock:exit');
+        return result;
+      }) as never;
+      seats.setRoomMutedTx.mockImplementation(async () => {
+        order.push('write');
+      });
+      await service.setRoomMuted(OWNER, 'r', true);
+      expect(order).toEqual(['lock:enter', 'write', 'lock:exit']);
+    });
+  });
+
+  describe('seat mute does not outlive its occupant', () => {
+    it('clears the seat mute when the occupant leaves', async () => {
+      seats.getSeatByOccupant.mockResolvedValue(
+        seat({ occupantUserId: LISTENER.id, isMuted: true }),
+      );
+      await service.leaveSeat(LISTENER, 'r');
+      expect(seats.setSeatMuted).toHaveBeenCalledWith('r', 1, false, LISTENER.id);
+    });
+
+    it('clears the seat mute when a moderator removes the speaker', async () => {
+      seats.getSeatByOccupant.mockResolvedValue(
+        seat({ occupantUserId: LISTENER.id, isMuted: true }),
+      );
+      await service.removeSpeaker(OWNER, 'r', LISTENER.id);
+      expect(seats.setSeatMuted).toHaveBeenCalledWith('r', 1, false, OWNER.id);
+    });
+
+    it('does not touch the mute flag on a seat that was not muted', async () => {
+      seats.getSeatByOccupant.mockResolvedValue(
+        seat({ occupantUserId: LISTENER.id, isMuted: false }),
+      );
+      await service.leaveSeat(LISTENER, 'r');
+      expect(seats.setSeatMuted).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The owner is exempt from Broad Mute everywhere else — VoiceService.setSelfMute
+     * lets them unmute through it, and the client zeroes `roomMuted` for them. The
+     * exemption has to key off *who* they are, not which seat they landed on, or
+     * moving one seat over silences the host of a broad-muted room.
+     */
+    it('does not seat-mute the owner taking a speaker seat in a broad-muted room', async () => {
+      permissions.hasPermission.mockResolvedValue(true);
+      seats.isRoomMuted.mockResolvedValue(true);
+      seats.getSeatByOccupant.mockResolvedValue(
+        seat({ seatIndex: 0, seatType: SeatType.OWNER, occupantUserId: OWNER.id }),
+      );
+      seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 4 }));
+
+      await service.takeSeat(OWNER, 'r', 4);
+
+      expect(seats.setSeatMuted).not.toHaveBeenCalledWith('r', 4, true, OWNER.id);
+    });
+
+    it('refuses to seat-mute the owner, whichever seat they are on', async () => {
+      seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 4, occupantUserId: OWNER.id }));
+      await expect(service.setSeatMuted(LISTENER, 'r', 4, true)).rejects.toBeInstanceOf(
+        BusinessException,
+      );
+      expect(seats.setSeatMuted).not.toHaveBeenCalled();
+    });
+
+    it('still allows unmuting the owner seat', async () => {
+      seats.getSeatByIndex.mockResolvedValue(
+        seat({ seatIndex: 4, occupantUserId: OWNER.id, isMuted: true }),
+      );
+      await service.setSeatMuted(LISTENER, 'r', 4, false);
+      expect(seats.setSeatMuted).toHaveBeenCalledWith('r', 4, false, LISTENER.id);
+    });
+
+    /**
+     * The heal path for rooms that toggled Broad Mute on an older build: those
+     * chairs are still armed with no occupant, and no amount of leaving fixes
+     * them because nobody is sitting there. Taking the seat clears it.
+     */
+    it('clears a stale mute left on an empty seat when someone takes it', async () => {
+      permissions.hasPermission.mockResolvedValue(true);
+      seats.isRoomMuted.mockResolvedValue(false);
+      seats.getSeatByOccupant.mockResolvedValue(null);
+      seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 4, isMuted: true }));
+
+      await service.takeSeat(LISTENER, 'r', 4);
+
+      expect(seats.setSeatMuted).toHaveBeenCalledWith('r', 4, false, LISTENER.id);
+    });
+
+    it('still seat-mutes a non-owner taking a speaker seat in a broad-muted room', async () => {
+      permissions.hasPermission.mockResolvedValue(true);
+      seats.isRoomMuted.mockResolvedValue(true);
+      seats.getSeatByOccupant.mockResolvedValue(null);
+      seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 4 }));
+
+      await service.takeSeat(LISTENER, 'r', 4);
+
+      expect(seats.setSeatMuted).toHaveBeenCalledWith('r', 4, true, LISTENER.id);
+    });
+  });
+
+  /**
+   * A room row is permanent and reused for every live, so "the room ended" is the
+   * only boundary at which session-scoped participant state can be dropped. If it
+   * is not dropped here, the next live inherits the previous one's admins.
+   */
+  describe('onRoomClosed', () => {
+    it('wipes session state, not just the stage', async () => {
+      await service.onRoomClosed('r');
+
+      expect(seats.clearSessionStateTx).toHaveBeenCalledWith('r');
+    });
+
+    it('invalidates the cached stage so no client reads the old roster', async () => {
+      await service.onRoomClosed('r');
+
+      expect(seats.invalidateStage).toHaveBeenCalledWith('r');
+    });
+  });
+
+  /**
+   * Reopening is the second line of defence: rooms that ended before this fix (or
+   * via a path that skipped the ENDED event) still carry stale grants, and the
+   * owner reopening the room must not walk into last session's admin list.
+   *
+   * The `restarted` flag matters — the client calls start-then-join on *every*
+   * owner entry, so a redundant start on an already-LIVE room must never wipe the
+   * admins of the session currently in progress.
+   */
+  describe('onRoomOpened', () => {
+    it('clears leftover session state when a new live is starting', async () => {
+      await service.onRoomOpened('r', OWNER.id, true);
+
+      expect(seats.clearSessionStateTx).toHaveBeenCalledWith('r');
+    });
+
+    it('leaves roles alone on a redundant start of an already-live room', async () => {
+      await service.onRoomOpened('r', OWNER.id, false);
+
+      expect(seats.clearSessionStateTx).not.toHaveBeenCalled();
+    });
+
+    it('still seats the owner on seat 0 either way', async () => {
+      await service.onRoomOpened('r', OWNER.id, false);
+
+      expect(seats.setOccupant).toHaveBeenCalledWith('r', 0, OWNER.id, OWNER.id);
     });
   });
 });

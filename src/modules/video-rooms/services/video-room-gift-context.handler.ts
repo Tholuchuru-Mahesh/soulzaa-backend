@@ -264,6 +264,12 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
         amount: ctx.totalCoinValue,
         giftTxnId: ctx.transactionId,
         batchId: ctx.batchId,
+        // A send whose ONLY recipient is the sender fills the ladder but does
+        // not rank for it, so a host alone in their own room cannot take the
+        // podium unopposed. A mixed send still ranks in full: it required a real
+        // counterparty, and padding it with yourself trades coins for rank 1:1 —
+        // exactly what gifting that person more would have cost anyway.
+        countsTowardRanking: ctx.receiverIds.some((id) => id !== ctx.senderId),
       });
 
       if (!result.sessionId) return empty;

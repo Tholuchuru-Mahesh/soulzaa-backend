@@ -379,6 +379,30 @@ describe('AudioRoomsService', () => {
       );
     });
 
+    /**
+     * The room row is permanent, so a restart is the boundary at which last
+     * session's admins/speakers are dropped — but the client fires start-then-join
+     * on every owner entry, so the reset must be keyed on an actual restart or a
+     * stray start would demote the admins of the live already in progress.
+     */
+    it('tells the seat layer this is a fresh session when the room was ended', async () => {
+      repo.findRoomRow.mockResolvedValue(endedRoom());
+      repo.updateRoom.mockResolvedValue(roomRow({ status: 'LIVE' }));
+
+      await service.start(OWNER, 'room-1');
+
+      expect(seatsService.onRoomOpened).toHaveBeenCalledWith('room-1', OWNER.id, true);
+    });
+
+    it('does not signal a restart when the room is already live', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow({ status: 'LIVE' }));
+
+      await service.start(OWNER, 'room-1');
+
+      expect(seatsService.onRoomOpened).toHaveBeenCalledWith('room-1', OWNER.id, false);
+      expect(repo.updateRoom).not.toHaveBeenCalled();
+    });
+
     it('carries the fields a lobby client needs to render the room without a refetch', async () => {
       repo.findRoomRow.mockResolvedValue(endedRoom());
       repo.updateRoom.mockResolvedValue(roomRow({ status: 'LIVE' }));

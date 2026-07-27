@@ -16,8 +16,6 @@ import { GiftHistoryService } from './services/gift-history.service';
 import { GiftInventoryService } from './services/gift-inventory.service';
 import { GiftLeaderboardService } from './services/gift-leaderboard.service';
 import { GiftQueryService } from './services/gift-query.service';
-import { GiftTransactionService } from './services/gift-transaction.service';
-import { GiftValidationService } from './services/gift-validation.service';
 import { GiftService } from './services/gift.service';
 
 @Global()
@@ -31,9 +29,7 @@ import { GiftService } from './services/gift.service';
     GiftAuditService,
     GiftCatalogService,
     GiftAvailabilityService,
-    GiftValidationService,
     GiftInventoryService,
-    GiftTransactionService,
     GiftHistoryService,
     GiftQueryService,
     GiftLeaderboardService,
@@ -48,9 +44,7 @@ import { GiftService } from './services/gift.service';
     GiftAuditService,
     GiftCatalogService,
     GiftAvailabilityService,
-    GiftValidationService,
     GiftInventoryService,
-    GiftTransactionService,
     GiftHistoryService,
     GiftQueryService,
     GiftLeaderboardService,

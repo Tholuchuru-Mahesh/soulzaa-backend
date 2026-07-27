@@ -116,7 +116,14 @@ function buildMocks(): Mocks {
       createTransaction: jest
         .fn()
         .mockImplementation((d) =>
-          Promise.resolve({ id: 'gtxn-1', status: 'COMPLETED', ...d, createdAt: new Date() }),
+          Promise.resolve({
+            id: 'gtxn-1',
+            status: 'COMPLETED',
+            ...d,
+            totalCoinValue: d.totalCoinValue?.toString() ?? '100',
+            creatorEarnings: d.creatorEarnings?.toString() ?? '100',
+            createdAt: new Date(),
+          }),
         ),
       listTransactions: jest.fn().mockResolvedValue([[], 0]),
     },
@@ -270,16 +277,17 @@ describe('AUDIO_ROOM gift baseline (VR-10 BC gate)', () => {
     expect(names).toContain('gift.refunded');
   });
 
-  it('BC-6: AUDIO_ROOM writes creatorEarnings = 0n and credits no EARNINGS', async () => {
+  it('writes creatorEarnings = 100n and credits 100% EARNINGS to receiver', async () => {
     await service.sendGift(SENDER, dto());
-    expect(m.repo.createTransaction.mock.calls[0][0].creatorEarnings).toBe(0n);
+    expect(m.repo.createTransaction.mock.calls[0][0].creatorEarnings).toBe(100n);
     const earningsCredits = m.wallet.credit.mock.calls.filter(
       (c) => c[0].currency === WalletCurrency.EARNINGS,
     );
-    expect(earningsCredits).toHaveLength(0);
+    expect(earningsCredits).toHaveLength(1);
+    expect(earningsCredits[0][0].amount).toBe(100);
   });
 
-  it('BC-6: persists the ledger row with the audio-room shape', async () => {
+  it('persists the ledger row with the audio-room shape', async () => {
     await service.sendGift(SENDER, dto());
     expect(m.repo.createTransaction.mock.calls[0][0]).toMatchObject({
       senderId: SENDER.id,
@@ -291,7 +299,7 @@ describe('AUDIO_ROOM gift baseline (VR-10 BC gate)', () => {
       comboTier: 1,
       unitCoinValue: 100,
       totalCoinValue: 100n,
-      creatorEarnings: 0n,
+      creatorEarnings: 100n,
       luckyMultiplier: 1,
       isLuckyWin: false,
       idempotencyKey: IDEM,
@@ -305,10 +313,10 @@ describe('AUDIO_ROOM gift baseline (VR-10 BC gate)', () => {
     expect(names.filter((n) => n === 'gift.sent')).toHaveLength(1);
   });
 
-  it('BC-7: records the leaderboard with zero receiver earnings', async () => {
+  it('records the leaderboard with receiver earnings', async () => {
     await service.sendGift(SENDER, dto());
     expect(m.leaderboards.record).toHaveBeenCalledWith(
-      expect.objectContaining({ giftValue: 100, receiverEarnings: 0 }),
+      expect.objectContaining({ giftValue: 100, receiverEarnings: 100 }),
     );
   });
 

@@ -253,7 +253,8 @@ export const ERROR_CODES = {
   GIFT_DISABLED: 'GIFT_DISABLED',
   GIFT_INVALID_QUANTITY: 'GIFT_INVALID_QUANTITY',
   GIFT_VIP_RESTRICTED: 'GIFT_VIP_RESTRICTED',
-  CANNOT_GIFT_SELF: 'CANNOT_GIFT_SELF',
+  // No CANNOT_GIFT_SELF: self-gifting is a supported product flow. A user may
+  // name themselves as the recipient of any gift, in audio and video rooms alike.
   GIFT_RECEIVER_INVALID: 'GIFT_RECEIVER_INVALID',
   GIFT_CONTEXT_INVALID: 'GIFT_CONTEXT_INVALID',
   GIFT_RATE_LIMITED: 'GIFT_RATE_LIMITED',

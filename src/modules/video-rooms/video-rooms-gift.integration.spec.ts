@@ -17,6 +17,26 @@ import { VideoRoomGiftTargetResolver } from './services/video-room-gift-target.r
 import { VideoRoomGiftService } from './services/video-room-gift.service';
 
 /**
+ * A NON-REENTRANT lock, like the real Redis one. The passthrough mock this
+ * replaces could not detect a key being nested inside itself — which is exactly
+ * how a self-gift deadlocked in production for ~2.1s before throwing.
+ */
+const lockService = () => {
+  const held = new Set<string>();
+  return {
+    withLock: jest.fn(async (key: string, cb: () => Promise<unknown>) => {
+      if (held.has(key)) throw new Error(`Could not acquire lock "${key}" after 20 retries`);
+      held.add(key);
+      try {
+        return await cb();
+      } finally {
+        held.delete(key);
+      }
+    }),
+  };
+};
+
+/**
  * VR-10 end-to-end: the REAL GiftService, GiftContextRegistry and
  * VideoRoomGiftContextHandler wired together, with only the outermost edges
  * (Prisma, Redis, wallet, queue, socket bus) faked.
@@ -226,7 +246,7 @@ describe('VR-10 gift engine (integration)', () => {
       config as never,
       { enqueue: jest.fn() } as never,
       prisma as never,
-      { withLock: jest.fn().mockImplementation((_k: string, cb: () => unknown) => cb()) } as never,
+      lockService() as never,
       bus as never,
       wallet as never,
       { getLevelOrdinal: jest.fn().mockResolvedValue(0) } as never,
@@ -273,7 +293,7 @@ describe('VR-10 gift engine (integration)', () => {
 
     const delivery = new VideoRoomGiftDeliveryService(
       { register: jest.fn() } as never,
-      { withLock: jest.fn().mockImplementation((_k: string, cb: () => unknown) => cb()) } as never,
+      lockService() as never,
       { appendEvent: jest.fn().mockResolvedValue(undefined) } as never,
       bus as never,
       metrics as never,
@@ -461,10 +481,19 @@ describe('VR-10 gift engine (integration)', () => {
     );
   });
 
-  it('rejects a self-gift without touching the wallet', async () => {
+  it('drops a seated sender from a SEAT_ALL broadcast rather than billing them', async () => {
     harness = build({ seats: [seat(0, SENDER_ID), seat(1, 'u1')] });
     await send();
-    // The sender is filtered out of SEAT_ALL rather than charged for themselves.
+    // SEAT_ALL is a broadcast selector, so the sender is filtered out. This is
+    // NOT a self-gift ban — an explicitly addressed SINGLE/MULTI send keeps the
+    // sender; see video-room-gift-target.resolver.spec.ts.
     expect(harness.ledger.map((r) => r.receiverId)).toEqual(['u1']);
+  });
+
+  it('bills and ledgers a SINGLE gift the sender addressed to themselves', async () => {
+    harness = build({ seats: [seat(0, SENDER_ID), seat(1, 'u1')] });
+    await send(VideoRoomGiftTarget.SINGLE, { receiverId: SENDER_ID });
+    expect(harness.ledger.map((r) => r.receiverId)).toEqual([SENDER_ID]);
+    expect(harness.ledger[0].senderId).toBe(SENDER_ID);
   });
 });

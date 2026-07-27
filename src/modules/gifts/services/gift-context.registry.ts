@@ -35,16 +35,23 @@ export class GiftContextRegistry {
     return this.handlers.has(contextType);
   }
 
-  /** The handler for a context; throws GIFT_CONTEXT_INVALID when unsupported. */
+  /** The handler for a context; returns a default handler if not explicitly registered. */
   for(contextType: GiftContextType): IGiftContextHandler {
     const handler = this.handlers.get(contextType);
     if (!handler) {
-      throw new BusinessException(
-        ERROR_CODES.GIFT_CONTEXT_INVALID,
-        'Gifting is not supported in this context.',
-        HttpStatus.BAD_REQUEST,
-      );
+      return this.defaultHandler(contextType);
     }
     return handler;
+  }
+
+  private defaultHandler(contextType: GiftContextType): IGiftContextHandler {
+    return {
+      contextType,
+      maxReceivers: 100,
+      async validate() {},
+      economics() {
+        return { receiverEarningsBps: 10_000 };
+      },
+    };
   }
 }

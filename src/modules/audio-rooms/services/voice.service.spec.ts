@@ -71,10 +71,12 @@ describe('VoiceService', () => {
       appendVoiceSessionLog: jest.fn().mockResolvedValue(undefined),
       setCachedState: jest.fn().mockResolvedValue(undefined),
       getCachedState: jest.fn().mockResolvedValue(null),
+      invalidateState: jest.fn().mockResolvedValue(undefined),
     };
     rooms = {
       getZegoRoomId: jest.fn().mockResolvedValue('zego-1'),
       setZegoRoomId: jest.fn().mockResolvedValue(undefined),
+      findRoomRow: jest.fn().mockResolvedValue({ ownerId: 'owner-1' }),
     };
     moderation = { isMutedCached: jest.fn().mockResolvedValue(false) };
     zego = {
@@ -90,6 +92,8 @@ describe('VoiceService', () => {
       isRoomLive: jest.fn().mockResolvedValue(true),
       assertMember: jest.fn().mockResolvedValue(undefined),
       isSpeaker: jest.fn().mockResolvedValue(false),
+      isRoomMuted: jest.fn().mockResolvedValue(false),
+      isSeatMuted: jest.fn().mockResolvedValue(false),
     };
 
     service = new VoiceService(
@@ -197,6 +201,47 @@ describe('VoiceService', () => {
         BusinessException,
       );
     });
+
+    /**
+     * The client already refuses to offer the toggle while a force-mute is in
+     * force (`canToggleMic` is false for both a seat mute and Broad Mute), so
+     * the only way to reach these paths is a modified client calling the
+     * endpoint directly. Room mute was already rejected here; a seat mute was
+     * not, which left the per-seat half of Broad Mute bypassable.
+     */
+    it('rejects self-unmute while the room is under broad mute', async () => {
+      voice.getActiveSession.mockResolvedValue(session());
+      roomsSvc.isRoomMuted.mockResolvedValue(true);
+      await expect(service.setSelfMute(ACTOR, 'room-1', false)).rejects.toBeInstanceOf(
+        BusinessException,
+      );
+      expect(voice.updateSelfMute).not.toHaveBeenCalled();
+    });
+
+    it("rejects self-unmute while the caller's seat is muted", async () => {
+      voice.getActiveSession.mockResolvedValue(session());
+      roomsSvc.isSeatMuted.mockResolvedValue(true);
+      await expect(service.setSelfMute(ACTOR, 'room-1', false)).rejects.toBeInstanceOf(
+        BusinessException,
+      );
+      expect(voice.updateSelfMute).not.toHaveBeenCalled();
+    });
+
+    /** The owner outranks every force-mute — the rest of the module agrees. */
+    it('lets the owner unmute through broad mute and a seat mute', async () => {
+      voice.getActiveSession.mockResolvedValue(session());
+      rooms.findRoomRow.mockResolvedValue({ ownerId: ACTOR.id });
+      roomsSvc.isRoomMuted.mockResolvedValue(true);
+      roomsSvc.isSeatMuted.mockResolvedValue(true);
+      await service.setSelfMute(ACTOR, 'room-1', false);
+      expect(voice.updateSelfMute).toHaveBeenCalledWith('sess-1', false);
+    });
+
+    it('allows self-unmute when no force-mute is in effect', async () => {
+      voice.getActiveSession.mockResolvedValue(session());
+      await service.setSelfMute(ACTOR, 'room-1', false);
+      expect(voice.updateSelfMute).toHaveBeenCalledWith('sess-1', false);
+    });
   });
 
   describe('heartbeat', () => {
@@ -265,6 +310,51 @@ describe('VoiceService', () => {
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'audio_room.voice_left' }),
       );
+    });
+  });
+
+  /**
+   * Voice sessions are keyed on (room,user) and reactivated on rejoin, so a
+   * session left ACTIVE when the live ends is inherited by the next one — along
+   * with its publisher role and self-mute flag. The room end is where they die.
+   */
+  describe('onRoomClosed', () => {
+    it('ends every active session in the room', async () => {
+      voice.listActiveSessions.mockResolvedValue([
+        session({ id: 's1', userId: 'u1' }),
+        session({ id: 's2', userId: 'u2' }),
+      ]);
+
+      await service.onRoomClosed('room-1');
+
+      expect(voice.endSession).toHaveBeenCalledTimes(2);
+      expect(voice.endSession).toHaveBeenCalledWith('room-1', 'u1', expect.any(Number));
+      expect(voice.endSession).toHaveBeenCalledWith('room-1', 'u2', expect.any(Number));
+    });
+
+    it('clears the Redis presence, speaking and heartbeat keys per user', async () => {
+      voice.listActiveSessions.mockResolvedValue([session({ userId: 'u1' })]);
+
+      await service.onRoomClosed('room-1');
+
+      expect(voice.removeVoicePresence).toHaveBeenCalledWith('room-1', 'u1');
+      expect(voice.removeSpeaking).toHaveBeenCalledWith('room-1', 'u1');
+      expect(voice.clearHeartbeat).toHaveBeenCalledWith('room-1', 'u1');
+    });
+
+    it('drops the cached voice-state snapshot', async () => {
+      await service.onRoomClosed('room-1');
+
+      expect(voice.invalidateState).toHaveBeenCalledWith('room-1');
+    });
+
+    it('is a no-op beyond cache invalidation when nobody was in voice', async () => {
+      voice.listActiveSessions.mockResolvedValue([]);
+
+      await service.onRoomClosed('room-1');
+
+      expect(voice.endSession).not.toHaveBeenCalled();
+      expect(voice.invalidateState).toHaveBeenCalledWith('room-1');
     });
   });
 });

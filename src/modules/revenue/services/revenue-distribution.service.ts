@@ -77,19 +77,9 @@ export class RevenueDistributionService {
         hostPercentage: split.hostPercentage,
       });
 
-      // 3. Credit host wallet via IWalletService (WalletTransactionService double-entry ledger)
-      const walletRes = await this.walletService.credit({
-        userId: hostId,
-        currency: WalletCurrency.EARNINGS,
-        amount: Number(split.hostEarningsCoins),
-        reason: 'HOST_EARNING' as any,
-        idempotencyKey: `host-earning:${giftTxnId}`,
-        referenceType: 'gift_transaction',
-        referenceId: giftTxnId,
-        metadata: { contextType, contextId },
-      });
-
-      const walletTxnId = walletRes?.transactionId ?? `tx-rev-${Date.now()}`;
+      // 3. Receiver EARNINGS (100%) settled atomically in GiftService send transaction.
+      // Record transaction reference for revenue auditing & analytics.
+      const walletTxnId = `tx-rev-${giftTxnId}`;
 
       // 4. Create immutable RevenueDistribution record
       const distribution = await this.prisma.revenueDistribution.create({

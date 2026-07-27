@@ -73,8 +73,7 @@ export class VideoRoomsGiftsController {
   })
   @ApiResponse({
     status: 400,
-    description:
-      'GIFT_RECEIVER_INVALID · GIFT_TOO_MANY_RECEIVERS · CANNOT_GIFT_SELF · GIFT_CONTEXT_INVALID',
+    description: 'GIFT_RECEIVER_INVALID · GIFT_TOO_MANY_RECEIVERS · GIFT_CONTEXT_INVALID',
   })
   @ApiResponse({ status: 401, description: 'UNAUTHORIZED' })
   @ApiResponse({

@@ -104,6 +104,7 @@ export const ROOM_SOCKET_EVENTS = {
   PK_CANCELLED: 'pk.cancelled',
   PK_INVITED: 'pk.invited',
   PK_REJECTED: 'pk.rejected',
+  PK_RECEIVER_BONUS: 'pk.receiver_bonus',
   // ---- Lucky Packets (AR-14) ----
   LUCKY_PACKET_CREATED: 'lucky_packet.created',
   LUCKY_PACKET_CLAIMED: 'lucky_packet.claimed',

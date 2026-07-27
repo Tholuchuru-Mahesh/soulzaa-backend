@@ -129,8 +129,24 @@ describe('GiftService', () => {
     prisma = {
       $transaction: jest.fn().mockImplementation((cb) => cb(prisma)),
     };
+    // Models the real Redis lock faithfully: it is NON-REENTRANT. A passthrough
+    // `(key, cb) => cb()` mock hid a production deadlock — a self-gift put the
+    // sender's wallet key into the lock list twice, `withLocks` nested it inside
+    // itself, and the inner acquire spun out its retry budget (~2.1s) and threw.
+    // Throwing here on a re-entrant acquire keeps that class of bug testable.
+    const heldLocks = new Set<string>();
     locks = {
-      withLock: jest.fn().mockImplementation((key, cb) => cb()),
+      withLock: jest.fn().mockImplementation(async (key: string, cb: () => Promise<unknown>) => {
+        if (heldLocks.has(key)) {
+          throw new Error(`Could not acquire lock "${key}" after 20 retries`);
+        }
+        heldLocks.add(key);
+        try {
+          return await cb();
+        } finally {
+          heldLocks.delete(key);
+        }
+      }),
     };
     treasure = {
       processTreasureContribution: jest
@@ -172,28 +188,149 @@ describe('GiftService', () => {
   });
 
   describe('sendGift', () => {
-    it('debits sender, credits host 10% in audio room, persists, and broadcasts', async () => {
+    it('debits sender 100% GOLD and credits receiver 100% EARNINGS on gift send', async () => {
       const res = await service.sendGift(SENDER, dto());
       expect(wallet.debit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: SENDER.id, currency: 'GOLD', amount: 100 }),
         expect.anything(),
       );
-      // Gifting in audio rooms credits host's wallet directly with 10% (10 coins)
+      // Universal Settlement Engine: Receiver EARNINGS credited 100% (100 coins)
       expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'owner-id', currency: 'GOLD', amount: 10 }),
+        expect.objectContaining({ userId: RECEIVER, currency: 'EARNINGS', amount: 100 }),
+        expect.anything(),
+      );
+      // Because 100 <= 1000, Receiver Available Balance (GOLD) is NOT updated.
+      expect(wallet.credit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'GOLD' }),
         expect.anything(),
       );
       expect(repo.createTransaction).toHaveBeenCalled();
-      expect(leaderboards.record).toHaveBeenCalledWith(
-        expect.objectContaining({ giftValue: 100, receiverEarnings: 0 }),
-      );
       expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'gift.sent' }));
       expect(res.id).toBe('gtxn-1');
+    });
+
+    it('credits receiver 10% Available Balance (GOLD) when gift value > 1000', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 15000 }));
+      await service.sendGift(SENDER, dto());
+
+      // Sender debited 15,000 GOLD
+      expect(wallet.debit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: SENDER.id, currency: 'GOLD', amount: 15000 }),
+        expect.anything(),
+      );
+
+      // Receiver EARNINGS credited 15,000 (100%)
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'EARNINGS', amount: 15000 }),
+        expect.anything(),
+      );
+
+      // Receiver Available Balance (GOLD) credited 1,500 (10%)
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'GOLD', amount: 1500 }),
+        expect.anything(),
+      );
     });
 
     it('allows gifting yourself', async () => {
       const res = await service.sendGift(SENDER, dto({ receiverId: SENDER.id }));
       expect(res.id).toBe('gtxn-1');
+    });
+
+    it('takes the sender wallet lock ONCE on a self-gift instead of deadlocking on itself', async () => {
+      await service.sendGift(SENDER, dto({ receiverId: SENDER.id }));
+
+      const senderLockAcquisitions = locks.withLock.mock.calls
+        .map((call: unknown[]) => call[0] as string)
+        .filter((key: string) => key.includes(SENDER.id));
+
+      // Sender and receiver are the same wallet — locking it twice, nested, can
+      // never succeed against a non-reentrant lock.
+      expect(senderLockAcquisitions).toHaveLength(1);
+    });
+
+    it('runs a self-gift through the identical pipeline: one debit, ledger row, broadcast', async () => {
+      await service.sendGift(SENDER, dto({ receiverId: SENDER.id }));
+
+      // Charged exactly once, for the full amount — sender === receiver must not
+      // net the debit out, skip it, or double it.
+      expect(wallet.debit).toHaveBeenCalledTimes(1);
+      expect(wallet.debit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: SENDER.id, currency: 'GOLD', amount: 100 }),
+        expect.anything(),
+      );
+
+      // An immutable ledger row exists with both sides set to the same user, so
+      // the send shows up in gift history, wallet history and audit.
+      expect(repo.createTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ senderId: SENDER.id, receiverId: SENDER.id }),
+        expect.anything(),
+      );
+
+      // Broadcast to the room like any other gift — clients animate off this.
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'gift.sent',
+          payload: expect.objectContaining({ senderId: SENDER.id, receiverId: SENDER.id }),
+        }),
+      );
+    });
+
+    it('feeds a self-gift into the treasure box and still pays the host their 10%', async () => {
+      await service.sendGift(SENDER, dto({ receiverId: SENDER.id }));
+
+      expect(treasure.processTreasureContribution).toHaveBeenCalledTimes(1);
+      expect(treasure.processTreasureContribution).toHaveBeenCalledWith(
+        expect.anything(),
+        ROOM,
+        SENDER.id,
+        SENDER.id,
+        100,
+        expect.any(String),
+      );
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'owner-id', currency: 'GOLD', amount: 10 }),
+        expect.anything(),
+      );
+    });
+
+    it('records a self-gift on the leaderboards and enqueues ranking + analytics', async () => {
+      await service.sendGift(SENDER, dto({ receiverId: SENDER.id }));
+
+      expect(leaderboards.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contextId: ROOM,
+          senderId: SENDER.id,
+          receiverId: SENDER.id,
+          giftValue: 100,
+        }),
+      );
+      expect(queue.enqueue).toHaveBeenCalledWith(
+        expect.anything(),
+        'gift.ranking',
+        expect.objectContaining({ contextId: ROOM }),
+      );
+      expect(queue.enqueue).toHaveBeenCalledWith(
+        expect.anything(),
+        'gift.sent',
+        expect.objectContaining({ transactionId: expect.any(String) }),
+      );
+    });
+
+    it('replays a self-gift idempotently instead of charging twice', async () => {
+      const first = await service.sendGift(
+        SENDER,
+        dto({ receiverId: SENDER.id, idempotencyKey: 'self-idem-1' }),
+      );
+      repo.findTxnByIdempotencyKey.mockResolvedValue(first);
+
+      const replay = await service.sendGift(
+        SENDER,
+        dto({ receiverId: SENDER.id, idempotencyKey: 'self-idem-1' }),
+      );
+
+      expect(replay.id).toBe(first.id);
+      expect(wallet.debit).toHaveBeenCalledTimes(1);
     });
 
     it('rejects a missing gift', async () => {
@@ -247,12 +384,9 @@ describe('GiftService', () => {
       });
     });
 
-    it('rejects an unsupported (non audio-room) context', async () => {
-      await expect(
-        service.sendGift(SENDER, dto({ contextType: 'PRIVATE_CHAT' as any })),
-      ).rejects.toMatchObject({
-        errorCode: 'GIFT_CONTEXT_INVALID',
-      });
+    it('supports private chat and other contexts via default fallback handler', async () => {
+      const res = await service.sendGift(SENDER, dto({ contextType: 'PRIVATE_CHAT' as any }));
+      expect(res.id).toBe('gtxn-1');
     });
 
     it('propagates INSUFFICIENT_BALANCE and does not persist', async () => {

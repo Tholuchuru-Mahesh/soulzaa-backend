@@ -54,6 +54,36 @@ describe('AudioRoomGiftContextHandler', () => {
     expect(rooms.assertMember).toHaveBeenCalledWith('room-1', 'sender-1');
   });
 
+  it('accepts a self-gift: the sender may name themselves as the recipient', async () => {
+    users.findById.mockResolvedValue({ id: 'sender-1' });
+    const selfReq = { ...REQ, receiverIds: ['sender-1'] };
+
+    await expect(handler.validate(selfReq as never)).resolves.toBeUndefined();
+    // The sender is checked as a member once as the sender, once as the
+    // recipient — no branch treats the two ids being equal as special.
+    expect(rooms.assertMember).toHaveBeenCalledWith('room-1', 'sender-1');
+    expect(rooms.isMember).toHaveBeenCalledWith('room-1', 'sender-1');
+  });
+
+  it('rejects a self-gift from outside the room like any other send', async () => {
+    // Room membership still governs: leaving the room revokes self-gifting too.
+    rooms.isMember.mockResolvedValue(false);
+    const selfReq = { ...REQ, receiverIds: ['sender-1'] };
+
+    await expect(handler.validate(selfReq as never)).rejects.toMatchObject({
+      errorCode: ERROR_CODES.GIFT_RECEIVER_INVALID,
+    });
+  });
+
+  it('rejects a self-gift into a dead room like any other send', async () => {
+    rooms.isRoomLive.mockResolvedValue(false);
+    const selfReq = { ...REQ, receiverIds: ['sender-1'] };
+
+    await expect(handler.validate(selfReq as never)).rejects.toMatchObject({
+      errorCode: ERROR_CODES.GIFT_CONTEXT_INVALID,
+    });
+  });
+
   it('rejects a send when the room is not live', async () => {
     rooms.isRoomLive.mockResolvedValue(false);
     await expect(handler.validate(REQ as never)).rejects.toMatchObject({
@@ -229,4 +259,109 @@ describe('AudioRoomGiftContextHandler.onSend (treasure + host reward + refund)',
     await handler.onSend(TX, CTX as never);
     expect(wallet.credit).not.toHaveBeenCalled();
   });
+
+  describe('High-Value Gift PK Battle Bonus', () => {
+    it('does NOT credit bonus if gift value <= 1000', async () => {
+      const tx = {
+        pkBattle: { findFirst: jest.fn() },
+        pkParticipant: { findUnique: jest.fn() },
+      } as any;
+      const ctx = { ...CTX, totalCoinValue: 1000 };
+      await handler.onSend(tx, ctx as never);
+
+      expect(tx.pkBattle.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('credits 10% bonus when gift value > 1000 and receiver is active PK participant', async () => {
+      const activeBattle = { id: 'battle-123' };
+      const participant = { id: 'part-1', userId: 'receiver-1' };
+      const tx = {
+        pkBattle: { findFirst: jest.fn().mockResolvedValue(activeBattle) },
+        pkParticipant: { findUnique: jest.fn().mockResolvedValue(participant) },
+      } as any;
+      const ctx = { ...CTX, totalCoinValue: 5000 };
+
+      const effects = await handler.onSend(tx, ctx as never);
+
+      expect(tx.pkBattle.findFirst).toHaveBeenCalledWith({
+        where: { roomId: 'room-1', status: 'ACTIVE' },
+      });
+      expect(tx.pkParticipant.findUnique).toHaveBeenCalledWith({
+        where: { battleId_userId: { battleId: 'battle-123', userId: 'receiver-1' } },
+      });
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'receiver-1',
+          currency: 'GOLD',
+          amount: 500,
+          reason: 'PK_BATTLE_RECEIVER_BONUS',
+          metadata: expect.objectContaining({
+            senderId: 'sender-1',
+            receiverId: 'receiver-1',
+            roomId: 'room-1',
+            pkBattleId: 'battle-123',
+            originalGiftValue: 5000,
+            bonusPercentage: 10,
+            bonusCoins: 500,
+          }),
+        }),
+        tx,
+      );
+      expect(effects.events.map((e) => e.name)).toContain('audio_room.pk_receiver_bonus');
+    });
+
+    it('rounds bonus down using integer coin policy (e.g., 1001 coins -> 100 bonus)', async () => {
+      const activeBattle = { id: 'battle-123' };
+      const participant = { id: 'part-1', userId: 'receiver-1' };
+      const tx = {
+        pkBattle: { findFirst: jest.fn().mockResolvedValue(activeBattle) },
+        pkParticipant: { findUnique: jest.fn().mockResolvedValue(participant) },
+      } as any;
+      const ctx = { ...CTX, totalCoinValue: 1001 };
+
+      await handler.onSend(tx, ctx as never);
+
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'receiver-1',
+          amount: 100,
+          reason: 'PK_BATTLE_RECEIVER_BONUS',
+        }),
+        tx,
+      );
+    });
+
+    it('does NOT credit bonus if receiver is not a PK participant', async () => {
+      const activeBattle = { id: 'battle-123' };
+      const tx = {
+        pkBattle: { findFirst: jest.fn().mockResolvedValue(activeBattle) },
+        pkParticipant: { findUnique: jest.fn().mockResolvedValue(null) },
+      } as any;
+      const ctx = { ...CTX, totalCoinValue: 5000 };
+
+      await handler.onSend(tx, ctx as never);
+
+      expect(wallet.credit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'PK_BATTLE_RECEIVER_BONUS' }),
+        tx,
+      );
+    });
+
+    it('does NOT credit bonus if no active PK battle in room', async () => {
+      const tx = {
+        pkBattle: { findFirst: jest.fn().mockResolvedValue(null) },
+        pkParticipant: { findUnique: jest.fn() },
+      } as any;
+      const ctx = { ...CTX, totalCoinValue: 5000 };
+
+      await handler.onSend(tx, ctx as never);
+
+      expect(tx.pkParticipant.findUnique).not.toHaveBeenCalled();
+      expect(wallet.credit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ reason: 'PK_BATTLE_RECEIVER_BONUS' }),
+        tx,
+      );
+    });
+  });
 });
+
