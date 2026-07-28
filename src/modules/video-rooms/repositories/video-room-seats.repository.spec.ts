@@ -59,6 +59,14 @@ describe('VideoRoomSeatsRepository', () => {
     expect(count).toBe(3);
   });
 
+  it('createLayout omits the audit stamp for a system backfill (null actor)', async () => {
+    await repo.createLayout('r1', [{ seatIndex: 0, seatType: VideoRoomSeatType.OWNER }], null);
+    const arg = prisma.videoRoomSeat.createMany.mock.calls[0][0];
+    expect(arg.skipDuplicates).toBe(true);
+    expect(arg.data[0]).toEqual({ roomId: 'r1', seatIndex: 0, seatType: VideoRoomSeatType.OWNER });
+    expect(arg.data[0]).not.toHaveProperty('createdBy');
+  });
+
   it('findSeat keys on the (roomId,seatIndex) unique index', async () => {
     await repo.findSeat('r1', 2);
     expect(prisma.videoRoomSeat.findUnique).toHaveBeenCalledWith({
@@ -89,6 +97,7 @@ describe('VideoRoomSeatsRepository', () => {
     await expect(repo.getSeatLayout('r1')).resolves.toEqual({
       hostSeatCount: 6,
       guestSeatCount: 2,
+      hasSettings: true,
     });
   });
 
@@ -97,6 +106,8 @@ describe('VideoRoomSeatsRepository', () => {
     const layout = await repo.getSeatLayout('r1');
     expect(layout.hostSeatCount).toBe(9);
     expect(layout.guestSeatCount).toBe(0);
+    // …and says so, so callers never write seat rows off a defaulted layout.
+    expect(layout.hasSettings).toBe(false);
   });
 
   it('setSeatLayout stamps audit on the settings row', async () => {

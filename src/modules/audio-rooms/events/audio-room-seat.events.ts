@@ -98,6 +98,9 @@ export type SeatUpdateReason =
   | 'role_revoked'
   | 'speaker_removed'
   | 'invited'
+  | 'seat_requested'
+  | 'request_accepted'
+  | 'request_rejected'
   | 'request_cancelled'
   | 'queue_advanced';
 

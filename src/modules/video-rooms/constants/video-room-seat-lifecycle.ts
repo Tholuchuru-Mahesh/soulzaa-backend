@@ -1,4 +1,4 @@
-import { VideoRoomSeatStatus } from '@prisma/client';
+import { VideoRoomSeatStatus, VideoRoomSeatType } from '@prisma/client';
 import { VIDEO_ROOM_OWNER_SEAT_INDEX } from './video-room.constants';
 
 /**
@@ -58,6 +58,42 @@ export function canSeatTransition(from: VideoRoomSeatStatus, to: VideoRoomSeatSt
 /** Seat index 0 is always the protected owner seat. */
 export function isOwnerSeat(seatIndex: number): boolean {
   return seatIndex === VIDEO_ROOM_OWNER_SEAT_INDEX;
+}
+
+/** One seat in a room's stage layout: its index and the type that index carries. */
+export interface SeatLayoutEntry {
+  seatIndex: number;
+  seatType: VideoRoomSeatType;
+}
+
+/**
+ * THE single source of truth for a video stage's index→seatType shape:
+ * `1 + hostSeatCount + guestSeatCount` seats, index 0 = OWNER, indices
+ * `1..hostSeatCount` = HOST, the remainder = GUEST.
+ *
+ * `VideoRoomSettings.hostSeatCount`/`guestSeatCount` only *declare* the layout;
+ * the authoritative seats are the `video_room_seats` rows. Everything that
+ * materialises those rows — room creation, `configureLayout`, and the cold-cache
+ * backfill in `VideoRoomSeatStateService.rebuild` — must build them here. A second
+ * copy of this loop is exactly how the declared layout and the stored rows drift
+ * apart (the SEAT_FULL-on-an-empty-room bug: settings said 10 seats, zero rows
+ * existed, so `findOpenSeat` searched an empty array).
+ */
+export function buildSeatLayout(hostSeatCount: number, guestSeatCount: number): SeatLayoutEntry[] {
+  const total = 1 + hostSeatCount + guestSeatCount;
+  const layout: SeatLayoutEntry[] = [];
+  for (let i = 0; i < total; i++) {
+    layout.push({
+      seatIndex: i,
+      seatType:
+        i === VIDEO_ROOM_OWNER_SEAT_INDEX
+          ? VideoRoomSeatType.OWNER
+          : i <= hostSeatCount
+            ? VideoRoomSeatType.HOST
+            : VideoRoomSeatType.GUEST,
+    });
+  }
+  return layout;
 }
 
 /**

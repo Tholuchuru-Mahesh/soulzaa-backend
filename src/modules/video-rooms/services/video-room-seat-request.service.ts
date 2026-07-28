@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import {
   VideoRoomSeatRequest,
   VideoRoomSeatRequestStatus,
@@ -7,6 +7,7 @@ import {
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
+import type { PublicIdentity } from 'src/modules/users/interfaces/profile.interface';
 import { canTransitionRequest } from '../constants/video-room-seat-workflow';
 import { VideoRoomPermission } from '../constants/video-room-permissions';
 import {
@@ -24,6 +25,7 @@ import { VideoRoomEventsRepository } from '../repositories/video-room-events.rep
 import type { SetRequestStatusOptions } from '../repositories/video-room-seats.repository';
 import { VideoRoomSeatsRepository } from '../repositories/video-room-seats.repository';
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
+import { VideoRoomIdentityCache } from './video-room-identity-cache.service';
 import { VideoRoomPermissionService } from './video-room-permission.service';
 import { VideoRoomSeatQueueService } from './video-room-seat-queue.service';
 import { VideoRoomSeatService } from './video-room-seat.service';
@@ -41,6 +43,8 @@ import { VideoRoomSeatService } from './video-room-seat.service';
  */
 @Injectable()
 export class VideoRoomSeatRequestService {
+  private readonly logger = new Logger(VideoRoomSeatRequestService.name);
+
   constructor(
     private readonly seatSvc: VideoRoomSeatService,
     private readonly seats: VideoRoomSeatsRepository,
@@ -50,6 +54,7 @@ export class VideoRoomSeatRequestService {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly moderation: VideoRoomModerationRepository,
     private readonly queue: VideoRoomSeatQueueService,
+    private readonly identities: VideoRoomIdentityCache,
   ) {}
 
   /** Ask for a seat (a specific seat, or any). One pending request per user. */
@@ -389,14 +394,25 @@ export class VideoRoomSeatRequestService {
   async listRequests(
     actor: RoomActor,
     roomId: string,
-  ): Promise<Array<VideoRoomSeatRequestView & { position: number | null }>> {
+  ): Promise<Array<VideoRoomSeatRequestView & { position: number | null; user?: PublicIdentity }>> {
     const room = await this.seatSvc.requireLiveRoom(roomId);
     await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_SEATS);
     const pending = await this.seats.listPendingRequests(roomId);
+
+    // Identity is display-only: a lookup failure must degrade to bare rows
+    // rather than 500 the host's Requests panel.
+    let identities = new Map<string, PublicIdentity>();
+    try {
+      identities = await this.identities.resolve(pending.map((r) => r.userId));
+    } catch (err) {
+      this.logger.warn(`Identity enrichment failed for room ${roomId}: ${String(err)}`);
+    }
+
     const rows = await Promise.all(
       pending.map(async (req) => ({
         ...toVideoRoomSeatRequestView(req),
         position: await this.queue.position(roomId, req.userId),
+        user: identities.get(req.userId),
       })),
     );
     return rows.sort((a, b) => (a.position ?? Infinity) - (b.position ?? Infinity));

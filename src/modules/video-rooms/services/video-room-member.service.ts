@@ -4,6 +4,7 @@ import { PlatformRole, VideoRoom, VideoRoomLogAction, VideoRoomMemberRole } from
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { LockService } from 'src/infra/redis/lock.service';
+import type { PublicIdentity } from 'src/modules/users/interfaces/profile.interface';
 import { loadVideoRoomConfig, VideoRoomConfig } from '../config/video-room.config';
 import {
   VIDEO_ROOM_DEFAULT_PAGE_SIZE,
@@ -27,6 +28,7 @@ import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 import { VideoRoomsMetrics } from '../video-rooms.metrics';
 import { derivePresenceState } from './video-room-presence-state';
 import { VideoRoomEventService } from './video-room-event.service';
+import { VideoRoomIdentityCache } from './video-room-identity-cache.service';
 import { VideoRoomPasswordService } from './video-room-password.service';
 import { VideoRoomPresenceService } from './video-room-presence.service';
 import { VideoRoomQueryService } from './video-room-query.service';
@@ -89,6 +91,7 @@ export class VideoRoomMemberService {
     private readonly locks: LockService,
     config: ConfigService,
     private readonly seats: VideoRoomSeatsRepository,
+    private readonly identities: VideoRoomIdentityCache,
   ) {
     this.cfg = loadVideoRoomConfig(config);
   }
@@ -191,7 +194,20 @@ export class VideoRoomMemberService {
       await this.repo.appendLog({ roomId, actorId: actor.id, action: VideoRoomLogAction.JOINED });
       await this.audit(roomId, actor.id, 'member.joined', ctx);
 
-      await this.events.emitUserJoined({ roomId, userId: actor.id, participantCount: liveCount });
+      // RoomActor carries only { id, roles } — it is built from the access
+      // token and has never had profile fields. Reading actor.username /
+      // .name / .avatarUrl here did not compile AND emitted three undefineds,
+      // which is why clients fell through to the literal string "User".
+      // Resolve real identity from the same cache the roster uses.
+      const joiner = (await this.identities.resolve([actor.id]).catch(() => null))?.get(actor.id);
+      await this.events.emitUserJoined({
+        roomId,
+        userId: actor.id,
+        username: joiner?.username,
+        name: joiner?.displayName ?? undefined,
+        avatarUrl: joiner?.avatarUrl ?? undefined,
+        participantCount: liveCount,
+      });
       await this.events.emitSessionCreated({ roomId, userId: actor.id, socketId: ctx.socketId });
       this.metrics.incJoin();
       this.metrics.setViewers(liveCount);
@@ -323,7 +339,7 @@ export class VideoRoomMemberService {
     return payload;
   }
 
-  /** A page of active members (roster). */
+  /** A page of active members (roster). Also the Flutter client's identity-cache warm source. */
   async listMembers(
     roomId: string,
     take: number,
@@ -331,7 +347,19 @@ export class VideoRoomMemberService {
   ): Promise<{ items: VideoRoomMemberView[]; total: number }> {
     const rows = await this.repo.listActiveMembers(roomId, take, skip);
     const total = await this.repo.countActiveMembers(roomId);
-    return { items: rows.map(toVideoRoomMemberView), total };
+
+    // Display-only: never fail the roster because identity lookup did.
+    let identities = new Map<string, PublicIdentity>();
+    try {
+      identities = await this.identities.resolve(rows.map((r) => r.userId));
+    } catch (err) {
+      this.logger.warn(`Member identity enrichment failed for room ${roomId}: ${String(err)}`);
+    }
+
+    return {
+      items: rows.map((r) => ({ ...toVideoRoomMemberView(r), user: identities.get(r.userId) })),
+      total,
+    };
   }
 
   /** Live presence for the room's active members (derived per member). */
@@ -390,7 +418,6 @@ export class VideoRoomMemberService {
       actorId: row.userId,
       eventType: 'session.expired',
       payload: { userId: row.userId, socketId: row.socketId ?? null, durationSeconds },
-      correlationId: row.socketId ?? undefined,
     });
     await this.events.emitUserLeft({
       roomId: row.roomId,

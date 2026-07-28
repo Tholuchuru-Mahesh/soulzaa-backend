@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { loadVideoRoomConfig } from '../config/video-room.config';
+import { buildSeatLayout } from '../constants/video-room-seat-lifecycle';
 import { videoRoomSeatStateKey } from '../constants/video-room.constants';
 import type { SeatStageMutation, SeatStageSnapshot } from '../interfaces/seat-stage.interface';
 import { seatRowToEntry } from '../mappers/video-room-seat-stage.mapper';
@@ -33,12 +34,43 @@ export class VideoRoomSeatStateService {
     return this.cache.get<SeatStageSnapshot>(videoRoomSeatStateKey(roomId));
   }
 
-  /** Re-derive the snapshot from the durable projection (version reset to 1) + cache it. */
+  /**
+   * Re-derive the snapshot from the durable projection (version reset to 1) + cache it.
+   *
+   * Self-heals a room whose layout was never materialised. `VideoRoomSettings`
+   * *declares* the layout (`hostSeatCount`/`guestSeatCount`, 9/0 by default) but
+   * the authoritative seats are the `video_room_seats` rows, and every room created
+   * before that materialisation existed has zero rows — which projected to a stage
+   * with no seats at all, so `findOpenSeat` threw SEAT_FULL on a visibly empty room.
+   * When the projection is empty but the room declares seats, materialise the layout
+   * and re-read before projecting.
+   *
+   * Safe under `videoRoomSeatLockKey(roomId)` (which `mutateStage` holds around its
+   * `rebuild` call): `createLayout` is a single plain Prisma `createMany` that
+   * acquires no lock, so it cannot re-enter the non-reentrant Redis lock, and its
+   * `skipDuplicates` + the (roomId,seatIndex) unique index make it idempotent for the
+   * unlocked callers (`getStage`, viewer presence, media) that race alongside it.
+   */
   async rebuild(roomId: string): Promise<SeatStageSnapshot> {
-    const [layout, rows] = await Promise.all([
+    const [layout, existing] = await Promise.all([
       this.seats.getSeatLayout(roomId),
       this.seats.listSeats(roomId),
     ]);
+    // `hasSettings` gate: without it an unknown room id would fall back to the
+    // platform defaults and have seat rows written for a room that never existed.
+    const needsLayout =
+      existing.length === 0 &&
+      layout.hasSettings &&
+      layout.hostSeatCount + layout.guestSeatCount > 0;
+    let rows = existing;
+    if (needsLayout) {
+      await this.seats.createLayout(
+        roomId,
+        buildSeatLayout(layout.hostSeatCount, layout.guestSeatCount),
+        null,
+      );
+      rows = await this.seats.listSeats(roomId);
+    }
     const snapshot: SeatStageSnapshot = {
       roomId,
       version: 1,

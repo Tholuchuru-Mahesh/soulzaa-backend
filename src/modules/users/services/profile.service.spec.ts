@@ -327,4 +327,73 @@ describe('ProfileService', () => {
     expect(share.shareUrl).toBe('https://soulzaa.app/u/aditya');
     expect(share.deepLink).toBe('soulzaa://user/aditya');
   });
+
+  describe('resolvePublicIdentities', () => {
+    it('batch-resolves identity plus level, vipLevel and verified in 4 queries', async () => {
+      const users = {
+        findByIds: jest.fn().mockResolvedValue([
+          { id: 'u1', username: 'rahul_92', fullName: 'Rahul' },
+          { id: 'u2', username: 'priya', fullName: null },
+        ]),
+      };
+      const profiles = {
+        profilesByIds: jest.fn().mockResolvedValue([{ userId: 'u1', avatarKey: 'avatars/u1.jpg' }]),
+        statisticsByIds: jest.fn().mockResolvedValue([{ userId: 'u1', level: 24, vipLevel: 3 }]),
+        verificationsByIds: jest.fn().mockResolvedValue([{ userId: 'u1', verified: true }]),
+      };
+      const media = {
+        resolve: jest.fn(async (k: string | null) => (k ? `https://cdn/${k}` : null)),
+      };
+      const svc = Object.create(ProfileService.prototype) as ProfileService;
+      Object.assign(svc, { users, profiles, media });
+
+      const out = await svc.resolvePublicIdentities(['u1', 'u2', 'u1']);
+
+      expect(users.findByIds).toHaveBeenCalledTimes(1);
+      expect(profiles.statisticsByIds).toHaveBeenCalledTimes(1);
+      expect(profiles.verificationsByIds).toHaveBeenCalledTimes(1);
+      expect(out.get('u1')).toEqual({
+        displayName: 'Rahul',
+        avatarUrl: 'https://cdn/avatars/u1.jpg',
+        username: 'rahul_92',
+        level: 24,
+        vipLevel: 3,
+        verified: true,
+      });
+    });
+
+    it('defaults badges for a user with no statistics or verification rows', async () => {
+      const users = {
+        findByIds: jest.fn().mockResolvedValue([{ id: 'u2', username: 'priya', fullName: null }]),
+      };
+      const profiles = {
+        profilesByIds: jest.fn().mockResolvedValue([]),
+        statisticsByIds: jest.fn().mockResolvedValue([]),
+        verificationsByIds: jest.fn().mockResolvedValue([]),
+      };
+      const media = { resolve: jest.fn().mockResolvedValue(null) };
+      const svc = Object.create(ProfileService.prototype) as ProfileService;
+      Object.assign(svc, { users, profiles, media });
+
+      const out = await svc.resolvePublicIdentities(['u2']);
+
+      expect(out.get('u2')).toEqual({
+        displayName: 'priya',
+        avatarUrl: null,
+        username: 'priya',
+        level: 1,
+        vipLevel: 0,
+        verified: false,
+      });
+    });
+
+    it('returns an empty map without querying when given no ids', async () => {
+      const users = { findByIds: jest.fn() };
+      const svc = Object.create(ProfileService.prototype) as ProfileService;
+      Object.assign(svc, { users, profiles: {}, media: {} });
+
+      expect((await svc.resolvePublicIdentities([])).size).toBe(0);
+      expect(users.findByIds).not.toHaveBeenCalled();
+    });
+  });
 });

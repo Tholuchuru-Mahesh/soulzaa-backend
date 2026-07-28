@@ -304,6 +304,7 @@ describe('VR-16 moderation engine (behavior)', () => {
       locks as never,
       config as never,
       { hasActiveRoomInvitation: jest.fn().mockResolvedValue(false) } as never,
+      { resolve: jest.fn().mockResolvedValue(new Map()) } as never,
     );
   });
 

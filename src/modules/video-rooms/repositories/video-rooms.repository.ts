@@ -18,7 +18,13 @@ import { auditCreate, auditSoftDelete, auditUpdate } from 'src/common/utils/audi
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
-import { VIDEO_ROOM_TRENDING_KEY, videoRoomCacheKey } from '../constants/video-room.constants';
+import { buildSeatLayout } from '../constants/video-room-seat-lifecycle';
+import {
+  VIDEO_ROOM_DEFAULT_GUEST_SEATS,
+  VIDEO_ROOM_DEFAULT_HOST_SEATS,
+  VIDEO_ROOM_TRENDING_KEY,
+  videoRoomCacheKey,
+} from '../constants/video-room.constants';
 
 /** Append-only audit entry input (write-once). */
 export interface AppendLogInput {
@@ -329,11 +335,23 @@ export class VideoRoomsRepository {
 
   /**
    * Create room + settings + statistics + owner member + authoritative OWNER grant
-   * + CREATED log in one transaction. Seat rows are NOT created here — the intended
-   * layout lives in VideoRoomSettings.hostSeatCount/guestSeatCount; materialising
-   * seat rows is the seat phase's concern (seat management is out of VR-2 scope).
+   * + the materialised seat layout + CREATED log in one transaction.
+   *
+   * Seat rows used to be deferred to "the seat phase", but nothing there ever
+   * created them for a new room: `createLayout`'s only caller was the Settings →
+   * Seats reconfigure screen. So every room shipped with settings declaring 10
+   * seats and zero `video_room_seats` rows, and the seat stage — which projects
+   * those rows, not the counts — came back empty, failing every seat claim with
+   * SEAT_FULL. The layout is materialised here, inside the same transaction as the
+   * settings row that declares it, so the two can never disagree. (Rooms created
+   * before this fix self-heal on their next stage rebuild — see
+   * `VideoRoomSeatStateService.rebuild`.)
    */
   async createRoomTx(data: CreateVideoRoomData): Promise<VideoRoom> {
+    const seatLayout = buildSeatLayout(
+      VIDEO_ROOM_DEFAULT_HOST_SEATS,
+      VIDEO_ROOM_DEFAULT_GUEST_SEATS,
+    );
     return this.prisma.$transaction(async (tx) => {
       const room = await tx.videoRoom.create({
         data: {
@@ -356,7 +374,24 @@ export class VideoRoomsRepository {
           ...auditCreate(data.ownerId),
         },
       });
-      await tx.videoRoomSettings.create({ data: { roomId: room.id } });
+      // Written explicitly (rather than leaning on the schema defaults) so the
+      // declared counts and the seat rows below come from one value.
+      await tx.videoRoomSettings.create({
+        data: {
+          roomId: room.id,
+          hostSeatCount: VIDEO_ROOM_DEFAULT_HOST_SEATS,
+          guestSeatCount: VIDEO_ROOM_DEFAULT_GUEST_SEATS,
+        },
+      });
+      await tx.videoRoomSeat.createMany({
+        data: seatLayout.map((s) => ({
+          roomId: room.id,
+          seatIndex: s.seatIndex,
+          seatType: s.seatType,
+          ...auditCreate(data.ownerId),
+        })),
+        skipDuplicates: true,
+      });
       await tx.videoRoomStatistics.create({ data: { roomId: room.id } });
       await tx.videoRoomMember.create({
         data: {

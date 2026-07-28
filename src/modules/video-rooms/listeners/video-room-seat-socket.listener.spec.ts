@@ -14,7 +14,12 @@ describe('VideoRoomSeatSocketListener', () => {
       },
     };
     sockets = { emitToNamespaceRoom: jest.fn() };
-    new VideoRoomSeatSocketListener(bus as never, sockets as never).onModuleInit();
+    const identities = { resolve: jest.fn().mockResolvedValue(new Map()) };
+    new VideoRoomSeatSocketListener(
+      bus as never,
+      sockets as never,
+      identities as never,
+    ).onModuleInit();
   });
 
   it('bridges seat_taken → video_room.seat_updated', () => {
@@ -90,8 +95,9 @@ describe('VideoRoomSeatSocketListener — VR-8 status routing', () => {
         }),
       },
       sockets: { emitToNamespaceRoom: jest.fn() },
+      identities: { resolve: jest.fn().mockResolvedValue(new Map()) },
     };
-    new VideoRoomSeatSocketListener(deps.bus, deps.sockets).onModuleInit();
+    new VideoRoomSeatSocketListener(deps.bus, deps.sockets, deps.identities).onModuleInit();
   });
 
   describe('request resolutions map to distinct events', () => {
@@ -181,6 +187,80 @@ describe('VideoRoomSeatSocketListener — VR-8 status routing', () => {
     it('bridges a queue update', () => {
       fire(VIDEO_ROOM_SEAT_EVENTS.QUEUE_UPDATED, { roomId: 'r1', size: 3, top: [] });
       expect(emitted()).toEqual([VIDEO_ROOM_SOCKET_EVENTS.SEAT_QUEUE_UPDATED]);
+    });
+  });
+
+  describe('seat_requested identity enrichment', () => {
+    const flush = () => new Promise((r) => setImmediate(r));
+
+    it('returns synchronously — never awaits the lookup on the publisher stack', () => {
+      deps.identities.resolve = jest.fn(() => new Promise(() => {})); // never settles
+
+      const result = handlers['video_room.seat_requested']({
+        payload: { roomId: 'room1', requestId: 'r1', userId: 'u1', seatIndex: null },
+      });
+
+      expect(result).toBeUndefined();
+    });
+
+    it('emits the enriched payload after the deferred lookup', async () => {
+      deps.identities.resolve = jest.fn().mockResolvedValue(
+        new Map([
+          [
+            'u1',
+            {
+              displayName: 'Rahul',
+              avatarUrl: null,
+              username: 'rahul_92',
+              level: 24,
+              vipLevel: 3,
+              verified: true,
+            },
+          ],
+        ]),
+      );
+
+      handlers['video_room.seat_requested']({
+        payload: { roomId: 'room1', requestId: 'r1', userId: 'u1', seatIndex: null },
+      });
+      await flush();
+      await flush();
+
+      expect(deps.sockets.emitToNamespaceRoom).toHaveBeenCalledWith(
+        expect.anything(),
+        'room1',
+        'video_room.seat_requested',
+        expect.objectContaining({
+          requestId: 'r1',
+          user: expect.objectContaining({ displayName: 'Rahul' }),
+        }),
+      );
+    });
+
+    it('emits the BARE payload when the lookup rejects', async () => {
+      deps.identities.resolve = jest.fn().mockRejectedValue(new Error('redis down'));
+
+      handlers['video_room.seat_requested']({
+        payload: { roomId: 'room1', requestId: 'r1', userId: 'u1', seatIndex: null },
+      });
+      await flush();
+      await flush();
+
+      const [, , , payload] = deps.sockets.emitToNamespaceRoom.mock.calls.at(-1);
+      expect(payload).toEqual({ roomId: 'room1', requestId: 'r1', userId: 'u1', seatIndex: null });
+    });
+
+    it('emits the bare payload when the user cannot be resolved', async () => {
+      deps.identities.resolve = jest.fn().mockResolvedValue(new Map());
+
+      handlers['video_room.seat_requested']({
+        payload: { roomId: 'room1', requestId: 'r1', userId: 'ghost', seatIndex: null },
+      });
+      await flush();
+      await flush();
+
+      const [, , , payload] = deps.sockets.emitToNamespaceRoom.mock.calls.at(-1);
+      expect(payload.user).toBeUndefined();
     });
   });
 });

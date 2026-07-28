@@ -257,10 +257,41 @@ const seatKey = (roomId: string, seatIndex: number): string => `${roomId}:${seat
 class FakeVideoRoomSeatsRepository {
   readonly seats = new Map<string, FakeSeatRow>();
   readonly requests = new Map<string, FakeSeatRequestRow>();
-  layout = { hostSeatCount: 1, guestSeatCount: 0 };
+  layout = { hostSeatCount: 1, guestSeatCount: 0, hasSettings: true };
 
-  async getSeatLayout(_roomId: string): Promise<{ hostSeatCount: number; guestSeatCount: number }> {
+  async getSeatLayout(
+    _roomId: string,
+  ): Promise<{ hostSeatCount: number; guestSeatCount: number; hasSettings: boolean }> {
     return this.layout;
+  }
+
+  /** Mirrors the real repo's idempotent batch insert (skipDuplicates + unique index). */
+  async createLayout(
+    roomId: string,
+    layout: { seatIndex: number; seatType: VideoRoomSeatType }[],
+    actorId: string | null,
+  ): Promise<number> {
+    let created = 0;
+    for (const s of layout) {
+      const key = seatKey(roomId, s.seatIndex);
+      if (this.seats.has(key)) continue;
+      this.seats.set(key, {
+        roomId,
+        seatIndex: s.seatIndex,
+        seatType: s.seatType,
+        seatStatus: VideoRoomSeatStatus.EMPTY,
+        occupantUserId: null,
+        reservedForUserId: null,
+        isLocked: false,
+        isMuted: false,
+        isVideoOn: false,
+        metadata: null,
+        createdBy: actorId,
+        updatedBy: actorId,
+      });
+      created++;
+    }
+    return created;
   }
 
   async listSeats(roomId: string): Promise<FakeSeatRow[]> {

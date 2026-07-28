@@ -191,29 +191,42 @@ export class ProfileService implements IProfileService {
   }
 
   /**
-   * Batch identity resolver for other modules (e.g. games player panels) that
-   * only need displayName + avatar, not the full profile/stats/verification
-   * aggregate — avoids the N+1 cache-then-DB path `getProfileView` takes per id.
-   * `fullName` lives on `users`, `avatarKey` on `user_profiles`; both are
-   * batch-loaded in parallel and joined in memory. Missing ids are dropped.
+   * Batch identity resolver for other modules (e.g. games player panels,
+   * video-room seat/request panels) that only need displayName + avatar plus
+   * badge fields (username, level, vipLevel, verified), not the full
+   * profile/stats/verification aggregate — avoids the N+1 cache-then-DB path
+   * `getProfileView` takes per id. `fullName`/`username` live on `users`,
+   * `avatarKey` on `user_profiles`, `level`/`vipLevel` on `user_statistics`,
+   * `verified` on `user_verifications`; all four are batch-loaded in parallel
+   * and joined in memory. Missing ids are dropped; missing statistics/
+   * verification rows default to level 1, vipLevel 0, verified false.
    */
   async resolvePublicIdentities(ids: string[]): Promise<Map<string, PublicIdentity>> {
     const unique = [...new Set(ids)];
     const result = new Map<string, PublicIdentity>();
     if (unique.length === 0) return result;
 
-    const [identityUsers, profileRows] = await Promise.all([
+    const [identityUsers, profileRows, statsRows, verificationRows] = await Promise.all([
       this.users.findByIds(unique),
       this.profiles.profilesByIds(unique),
+      this.profiles.statisticsByIds(unique),
+      this.profiles.verificationsByIds(unique),
     ]);
     const profileByUserId = new Map(profileRows.map((p) => [p.userId, p]));
+    const statsByUserId = new Map(statsRows.map((s) => [s.userId, s]));
+    const verifiedByUserId = new Map(verificationRows.map((v) => [v.userId, v]));
 
     await Promise.all(
       identityUsers.map(async (user) => {
         const avatarKey = profileByUserId.get(user.id)?.avatarKey ?? null;
+        const stats = statsByUserId.get(user.id);
         result.set(user.id, {
           displayName: user.fullName ?? user.username,
           avatarUrl: await this.media.resolve(avatarKey),
+          username: user.username,
+          level: stats?.level ?? 1,
+          vipLevel: stats?.vipLevel ?? 0,
+          verified: verifiedByUserId.get(user.id)?.verified ?? false,
         });
       }),
     );

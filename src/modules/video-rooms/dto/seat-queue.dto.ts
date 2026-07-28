@@ -109,4 +109,19 @@ export class SeatRequestListItemDto {
 
   @ApiPropertyOptional({ nullable: true, description: '1-based queue position.' })
   position!: number | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Requester display identity. Absent when the user could not be resolved ' +
+      '(deleted) or identity lookup degraded — clients render a placeholder, never a fake name.',
+  })
+  user?: {
+    displayName: string | null;
+    avatarUrl: string | null;
+    username?: string;
+    level?: number;
+    vipLevel?: number;
+    verified?: boolean;
+  };
 }

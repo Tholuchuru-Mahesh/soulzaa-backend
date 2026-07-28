@@ -254,6 +254,7 @@ export class AudioRoomSeatsService {
           type: requestType,
         }),
       );
+      await this.publishUpdate(roomId, actor.id, 'seat_requested', dto.seatIndex ?? null, actor.id);
       await this.rebuildStage(roomId);
       return { status: 'queued' as const, seatIndex: null, position: entry.position };
     });
@@ -314,6 +315,7 @@ export class AudioRoomSeatsService {
       await this.bus.publish(
         new SeatRejectedEvent({ roomId, userId: request.userId, requestId, actorId: actor.id }),
       );
+      await this.publishUpdate(roomId, actor.id, 'request_rejected', null, request.userId);
       await this.rebuildStage(roomId);
       return;
     }
@@ -349,6 +351,7 @@ export class AudioRoomSeatsService {
       await this.bus.publish(
         new SeatJoinedEvent({ roomId, userId: request.userId, seatIndex: seat.seatIndex }),
       );
+      await this.publishUpdate(roomId, actor.id, 'request_accepted', seat.seatIndex, request.userId);
     });
     await this.rebuildStage(roomId);
   }

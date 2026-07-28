@@ -1,7 +1,9 @@
-import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import type { PublicIdentity } from 'src/modules/users/interfaces/profile.interface';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { SocketManager } from 'src/infra/socket/socket.manager';
 import { VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS } from '../constants/video-room.constants';
+import { VideoRoomIdentityCache } from '../services/video-room-identity-cache.service';
 import {
   VIDEO_ROOM_SEAT_EVENTS,
   type SeatInvitationDeliveredEvent,
@@ -72,9 +74,12 @@ const INVITATION_RESOLUTION_EVENTS: Partial<Record<SeatInvitationResolution, str
  */
 @Injectable()
 export class VideoRoomSeatSocketListener implements OnModuleInit {
+  private readonly logger = new Logger(VideoRoomSeatSocketListener.name);
+
   constructor(
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly sockets: SocketManager,
+    private readonly identities: VideoRoomIdentityCache,
   ) {}
 
   onModuleInit(): void {
@@ -99,9 +104,16 @@ export class VideoRoomSeatSocketListener implements OnModuleInit {
     this.bus.subscribe<SeatReleasedEvent>(VIDEO_ROOM_SEAT_EVENTS.RELEASED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.SEAT_RELEASED, e.payload),
     );
-    this.bus.subscribe<SeatRequestedEvent>(VIDEO_ROOM_SEAT_EVENTS.REQUESTED, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.SEAT_REQUESTED, e.payload),
-    );
+    // Deliberately NOT `async`. `InMemoryEventBus.publish` (emitAsync) awaits
+    // listeners on the publisher's own stack — which here is the
+    // `POST :id/seats/request` request path. Awaiting the identity lookup
+    // inline would add a Redis/DB round-trip to that request AND let a lookup
+    // failure propagate into `publish()`, losing the seat request because its
+    // *notification* could not be decorated. Same deferral rationale as
+    // `video-room-seat-queue.listener.ts:35-59`.
+    this.bus.subscribe<SeatRequestedEvent>(VIDEO_ROOM_SEAT_EVENTS.REQUESTED, (e) => {
+      setImmediate(() => void this.emitSeatRequested(e.payload));
+    });
     this.bus.subscribe<SeatRequestResolvedEvent>(VIDEO_ROOM_SEAT_EVENTS.REQUEST_RESOLVED, (e) => {
       const event = REQUEST_RESOLUTION_EVENTS[e.payload.status];
       if (event) this.emit(e.payload.roomId, event, e.payload);
@@ -143,5 +155,29 @@ export class VideoRoomSeatSocketListener implements OnModuleInit {
 
   private emit(roomId: string, event: string, payload: unknown): void {
     this.sockets.emitToNamespaceRoom(VIDEO_ROOM_NAMESPACE, roomId, event, payload);
+  }
+
+  /**
+   * Broadcast `seat_requested`, decorated with the requester's identity when it
+   * is available. Enrichment is best-effort: on any failure the BARE payload
+   * still goes out, because a host who sees an un-named request can still act
+   * on it, whereas a host who sees nothing cannot.
+   *
+   * The client rarely needs this anyway — a requester is always an active
+   * member, so the host's identity cache is already warmed by `GET :id/members`
+   * on entry and by `video_room.user_joined` afterwards.
+   */
+  private async emitSeatRequested(payload: SeatRequestedEvent['payload']): Promise<void> {
+    let user: PublicIdentity | undefined;
+    try {
+      user = (await this.identities.resolve([payload.userId])).get(payload.userId);
+    } catch (err) {
+      this.logger.warn(`seat_requested identity enrichment failed: ${String(err)}`);
+    }
+    this.emit(
+      payload.roomId,
+      VIDEO_ROOM_SOCKET_EVENTS.SEAT_REQUESTED,
+      user ? { ...payload, user } : payload,
+    );
   }
 }

@@ -2,6 +2,7 @@ import {
   VideoRoomCreationSource,
   VideoRoomLogAction,
   VideoRoomMemberRole,
+  VideoRoomSeatType,
   VideoRoomStatus,
   VideoRoomVisibility,
 } from '@prisma/client';
@@ -16,6 +17,7 @@ function makeTx() {
   return {
     videoRoom: { create: jest.fn().mockResolvedValue({ id: 'r1', ownerId: 'owner' }) },
     videoRoomSettings: { create: jest.fn().mockResolvedValue(undefined) },
+    videoRoomSeat: { createMany: jest.fn().mockResolvedValue({ count: 10 }) },
     videoRoomStatistics: { create: jest.fn().mockResolvedValue(undefined) },
     videoRoomMember: { create: jest.fn().mockResolvedValue(undefined) },
     videoRoomRole: { create: jest.fn().mockResolvedValue(undefined) },
@@ -128,7 +130,9 @@ describe('VideoRoomsRepository', () => {
     const roomArg = tx.videoRoom.create.mock.calls[0][0].data;
     expect(roomArg).toMatchObject({ ownerId: 'owner', name: 'My Room', createdBy: 'owner' });
     // Sibling rows keyed by the new room id.
-    expect(tx.videoRoomSettings.create).toHaveBeenCalledWith({ data: { roomId: 'r1' } });
+    expect(tx.videoRoomSettings.create).toHaveBeenCalledWith({
+      data: { roomId: 'r1', hostSeatCount: 9, guestSeatCount: 0 },
+    });
     expect(tx.videoRoomStatistics.create).toHaveBeenCalledWith({ data: { roomId: 'r1' } });
     // Owner membership + authoritative OWNER grant.
     expect(tx.videoRoomMember.create.mock.calls[0][0].data).toMatchObject({
@@ -149,6 +153,29 @@ describe('VideoRoomsRepository', () => {
       actorId: 'owner',
       action: VideoRoomLogAction.CREATED,
     });
+  });
+
+  it('createRoomTx materialises the declared seat layout (owner + 9 hosts) in the same tx', async () => {
+    await repo.createRoomTx(createData({ ownerId: 'owner' }));
+
+    const arg = tx.videoRoomSeat.createMany.mock.calls[0][0];
+    expect(arg.skipDuplicates).toBe(true);
+    expect(arg.data).toHaveLength(10);
+    expect(arg.data[0]).toMatchObject({
+      roomId: 'r1',
+      seatIndex: 0,
+      seatType: VideoRoomSeatType.OWNER,
+      createdBy: 'owner',
+    });
+    expect(arg.data.slice(1).map((s: { seatIndex: number }) => s.seatIndex)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
+    expect(
+      arg.data.slice(1).every((s: { seatType: string }) => s.seatType === VideoRoomSeatType.HOST),
+    ).toBe(true);
+    // Same counts the settings row declares — one source, so they cannot diverge.
+    const settings = tx.videoRoomSettings.create.mock.calls[0][0].data;
+    expect(arg.data).toHaveLength(1 + settings.hostSeatCount + settings.guestSeatCount);
   });
 
   it('createRoomTx persists an explicit metadata payload (access policy)', async () => {

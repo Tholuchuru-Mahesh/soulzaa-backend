@@ -43,6 +43,7 @@ describe('VideoRoomMemberService.join', () => {
   let metrics: any;
   let locks: any;
   let seats: any;
+  let identities: any;
   let service: VideoRoomMemberService;
 
   const actor = (id = 'u1', roles: any[] = []) => ({ id, roles });
@@ -111,6 +112,7 @@ describe('VideoRoomMemberService.join', () => {
     };
     locks = { withLock: jest.fn((_k: string, fn: () => Promise<unknown>) => fn()) };
     seats = { hasActiveRoomInvitation: jest.fn().mockResolvedValue(false) };
+    identities = { resolve: jest.fn().mockResolvedValue(new Map()) };
 
     service = new VideoRoomMemberService(
       repo,
@@ -126,6 +128,7 @@ describe('VideoRoomMemberService.join', () => {
       locks,
       configMock(),
       seats as never,
+      identities as never,
     );
   });
 
@@ -218,6 +221,44 @@ describe('VideoRoomMemberService.join', () => {
     expect(locks.withLock).toHaveBeenCalled();
   });
 
+  it('emits the joiner real display name, not undefined', async () => {
+    identities.resolve = jest.fn().mockResolvedValue(
+      new Map([
+        [
+          'u1',
+          {
+            displayName: 'Rahul',
+            avatarUrl: 'https://cdn/a.jpg',
+            username: 'rahul_92',
+            level: 24,
+            vipLevel: 3,
+            verified: true,
+          },
+        ],
+      ]),
+    );
+
+    await service.join(actor('u1'), ROOM, {}, ctx);
+
+    expect(events.emitUserJoined).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Rahul',
+        username: 'rahul_92',
+        avatarUrl: 'https://cdn/a.jpg',
+      }),
+    );
+  });
+
+  it('still emits the join when identity resolution fails', async () => {
+    identities.resolve = jest.fn().mockRejectedValue(new Error('redis down'));
+
+    await service.join(actor('u1'), ROOM, {}, ctx);
+
+    expect(events.emitUserJoined).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u1', name: undefined }),
+    );
+  });
+
   // ---- leave ----
 
   it('leave removes presence, ends the session, deactivates, and publishes UserLeft', async () => {
@@ -298,6 +339,83 @@ describe('VideoRoomMemberService.join', () => {
     const res = await service.listMembers(ROOM, 20, 0);
     expect(res.total).toBe(1);
     expect(res.items[0]).toMatchObject({ userId: 'u1', role: VideoRoomMemberRole.VIEWER });
+  });
+
+  describe('listMembers identity enrichment', () => {
+    it('attaches identity to every member row', async () => {
+      repo.listActiveMembers = jest.fn().mockResolvedValue([
+        {
+          userId: 'u1',
+          role: 'OWNER',
+          memberStatus: 'ACTIVE',
+          joinedAt: new Date(0),
+          lastActiveAt: new Date(0),
+          isActive: true,
+        },
+        {
+          userId: 'u2',
+          role: 'VIEWER',
+          memberStatus: 'ACTIVE',
+          joinedAt: new Date(0),
+          lastActiveAt: new Date(0),
+          isActive: true,
+        },
+      ]);
+      repo.countActiveMembers = jest.fn().mockResolvedValue(2);
+      identities.resolve = jest.fn().mockResolvedValue(
+        new Map([
+          [
+            'u1',
+            {
+              displayName: 'Rahul',
+              avatarUrl: null,
+              username: 'rahul_92',
+              level: 24,
+              vipLevel: 3,
+              verified: true,
+            },
+          ],
+          [
+            'u2',
+            {
+              displayName: 'Priya',
+              avatarUrl: null,
+              username: 'priya',
+              level: 5,
+              vipLevel: 0,
+              verified: false,
+            },
+          ],
+        ]),
+      );
+
+      const out = await service.listMembers('room1', 50, 0);
+
+      expect(identities.resolve).toHaveBeenCalledWith(['u1', 'u2']);
+      expect(out.items[0].user?.displayName).toBe('Rahul');
+      expect(out.items[1].user?.level).toBe(5);
+      expect(out.total).toBe(2);
+    });
+
+    it('returns bare rows when identity resolution throws', async () => {
+      repo.listActiveMembers = jest.fn().mockResolvedValue([
+        {
+          userId: 'u1',
+          role: 'VIEWER',
+          memberStatus: 'ACTIVE',
+          joinedAt: new Date(0),
+          lastActiveAt: new Date(0),
+          isActive: true,
+        },
+      ]);
+      repo.countActiveMembers = jest.fn().mockResolvedValue(1);
+      identities.resolve = jest.fn().mockRejectedValue(new Error('redis down'));
+
+      const out = await service.listMembers('room1', 50, 0);
+
+      expect(out.items[0].user).toBeUndefined();
+      expect(out.items[0].userId).toBe('u1');
+    });
   });
 
   // ---- reclaim (called by the monitor) ----

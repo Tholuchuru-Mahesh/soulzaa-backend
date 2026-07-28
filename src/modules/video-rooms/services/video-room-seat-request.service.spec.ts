@@ -53,6 +53,7 @@ beforeEach(() => {
       position: jest.fn().mockResolvedValue(1),
       publishUpdate: jest.fn(),
     },
+    identities: { resolve: jest.fn().mockResolvedValue(new Map()) },
   };
   svc = new VideoRoomSeatRequestService(
     deps.seatSvc,
@@ -63,6 +64,7 @@ beforeEach(() => {
     deps.bus,
     deps.moderation,
     deps.queue,
+    deps.identities,
   );
 });
 
@@ -645,5 +647,66 @@ describe('listRequests', () => {
     deps.queue.position.mockResolvedValue(4);
     const rows = await svc.listRequests(actor('owner'), 'r1');
     expect(rows[0]).toMatchObject({ userId: 'u1', position: 4 });
+  });
+});
+
+describe('listRequests identity enrichment', () => {
+  it('attaches the requester identity to each row', async () => {
+    deps.seats.listPendingRequests = jest.fn().mockResolvedValue([
+      { id: 'r1', userId: 'u1', seatIndex: null, status: 'PENDING', createdAt: new Date(0) },
+      { id: 'r2', userId: 'u2', seatIndex: 2, status: 'PENDING', createdAt: new Date(1) },
+    ]);
+    deps.queue.position = jest.fn(async (_r: string, u: string) => (u === 'u1' ? 1 : 2));
+    deps.identities.resolve = jest.fn().mockResolvedValue(
+      new Map([
+        [
+          'u1',
+          {
+            displayName: 'Rahul',
+            avatarUrl: null,
+            username: 'rahul_92',
+            level: 24,
+            vipLevel: 3,
+            verified: true,
+          },
+        ],
+      ]),
+    );
+
+    const rows = await svc.listRequests({ id: 'owner' } as any, 'room1');
+
+    expect(deps.identities.resolve).toHaveBeenCalledWith(['u1', 'u2']);
+    expect(rows[0].user?.displayName).toBe('Rahul');
+    expect(rows[0].position).toBe(1);
+  });
+
+  it('omits `user` for an unresolvable requester instead of inventing one', async () => {
+    deps.seats.listPendingRequests = jest
+      .fn()
+      .mockResolvedValue([
+        { id: 'r1', userId: 'ghost', seatIndex: null, status: 'PENDING', createdAt: new Date(0) },
+      ]);
+    deps.queue.position = jest.fn().mockResolvedValue(1);
+    deps.identities.resolve = jest.fn().mockResolvedValue(new Map());
+
+    const rows = await svc.listRequests({ id: 'owner' } as any, 'room1');
+
+    expect(rows[0].user).toBeUndefined();
+    expect(rows[0].userId).toBe('ghost');
+  });
+
+  it('still returns rows when identity resolution throws', async () => {
+    deps.seats.listPendingRequests = jest
+      .fn()
+      .mockResolvedValue([
+        { id: 'r1', userId: 'u1', seatIndex: null, status: 'PENDING', createdAt: new Date(0) },
+      ]);
+    deps.queue.position = jest.fn().mockResolvedValue(1);
+    deps.identities.resolve = jest.fn().mockRejectedValue(new Error('redis down'));
+
+    const rows = await svc.listRequests({ id: 'owner' } as any, 'room1');
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].user).toBeUndefined();
   });
 });

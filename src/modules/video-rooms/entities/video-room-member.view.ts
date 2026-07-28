@@ -9,6 +9,11 @@ export interface VideoRoomMemberView {
   joinedAt: Date;
   lastActiveAt: Date;
   isActive: boolean;
+  /**
+   * Display identity. Optional: absent for an unresolvable user, or when
+   * enrichment degraded. Clients warm their identity cache from this.
+   */
+  user?: import('src/modules/users/interfaces/profile.interface').PublicIdentity;
 }
 
 /** Client-safe live presence for one member (VR-3). */

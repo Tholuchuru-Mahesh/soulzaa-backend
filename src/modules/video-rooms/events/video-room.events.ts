@@ -133,6 +133,9 @@ export class RoomRestoredEvent extends DomainEvent<{
 export class UserJoinedEvent extends DomainEvent<{
   roomId: string;
   userId: string;
+  username?: string;
+  name?: string;
+  avatarUrl?: string;
   participantCount: number;
 }> {
   readonly name = VIDEO_ROOM_EVENTS.USER_JOINED;

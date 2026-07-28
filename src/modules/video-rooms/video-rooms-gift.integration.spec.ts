@@ -6,6 +6,10 @@ import {
   VideoRoomStatus,
   WalletCurrency,
 } from '@prisma/client';
+
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString();
+};
 import { GiftContextRegistry } from 'src/modules/gifts/services/gift-context.registry';
 import { GiftService } from 'src/modules/gifts/services/gift.service';
 import { VideoRoomGiftTarget } from './dto/send-video-room-gift.dto';
@@ -328,7 +332,7 @@ describe('VR-10 gift engine (integration)', () => {
     harness = build();
   });
 
-  it('single-receiver send: one debit, one EARNINGS credit, one ledger row, one job', async () => {
+  it('single-receiver send: one debit, one 100% EARNINGS credit, one ledger row, one job', async () => {
     const view = await send(VideoRoomGiftTarget.SINGLE, { receiverId: 'u1' });
 
     expect(harness.walletMoves.filter((m) => m.kind === 'debit')).toHaveLength(1);
@@ -343,20 +347,32 @@ describe('VR-10 gift engine (integration)', () => {
     expect(view.transactions).toHaveLength(1);
   });
 
-  it('SEAT_ALL debits once for N, credits each receiver, writes N rows sharing a batchId', async () => {
+  it('SEAT_ALL debits once for N, credits each receiver (100% EARNINGS), writes N rows sharing a batchId', async () => {
     const view = await send();
 
     const debits = harness.walletMoves.filter((m) => m.kind === 'debit');
     const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
     expect(debits).toHaveLength(1);
     expect(debits[0].amount).toBe(200); // 100 x 1 x 2 receivers
-    expect(credits).toHaveLength(2); // one EARNINGS credit per receiver
+    expect(credits).toHaveLength(2); // one 100% EARNINGS credit per receiver
     expect(credits.every((c) => c.currency === WalletCurrency.EARNINGS)).toBe(true);
 
     expect(harness.ledger).toHaveLength(2);
     const batchIds = harness.ledger.map((r) => (r.metadata as { batchId: string }).batchId);
     expect(new Set(batchIds).size).toBe(1);
     expect(view.totalCoinValue).toBe(200);
+  });
+
+  it('credits 100% EARNINGS for video-room gifts to each receiver wallet', async () => {
+    await send();
+    const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
+    expect(credits).toHaveLength(2);
+    // 100% of the per-receiver gift value, in EARNINGS — not a share of it.
+    expect(credits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ currency: WalletCurrency.EARNINGS, amount: 100 }),
+      ]),
+    );
   });
 
   it('credits no GOLD cashback when the gift value is at or below the threshold', async () => {
@@ -371,8 +387,11 @@ describe('VR-10 gift engine (integration)', () => {
 
   it('records the full gift value as creator earnings on the ledger row', async () => {
     await send();
+    // The handler economics (100% EARNINGS) reach the ledger, and the wallet
+    // movement that backs them happened once per receiver.
     expect(harness.ledger[0].creatorEarnings).toBe(100n);
     expect(harness.ledger[0].totalCoinValue).toBe(100n);
+    expect(harness.walletMoves.filter((m) => m.kind === 'credit')).toHaveLength(2);
   });
 
   it('rolls the whole batch back when one receiver fails validation', async () => {

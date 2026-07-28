@@ -75,11 +75,25 @@ export interface UserCard {
   country: string | null;
 }
 
-/** Minimal public identity for cross-module display needs (e.g. games player panels). */
+/**
+ * Minimal public identity for cross-module display needs (e.g. games player
+ * panels, video-room seat/request panels).
+ *
+ * The badge fields are optional so the original two-field consumers keep
+ * compiling unchanged; `resolvePublicIdentities` always populates all six.
+ */
 export interface PublicIdentity {
   /** `fullName ?? username` — null only if neither exists. */
   displayName: string | null;
   avatarUrl: string | null;
+  /** Raw handle, for surfaces that show @handle alongside the display name. */
+  username?: string;
+  /** `UserStatistics.level`; 1 when the row is absent. */
+  level?: number;
+  /** `UserStatistics.vipLevel`; 0 (not VIP) when the row is absent. */
+  vipLevel?: number;
+  /** `UserVerification.verified`; false when the row is absent. */
+  verified?: boolean;
 }
 
 export interface IProfileService {
@@ -95,9 +109,11 @@ export interface IProfileService {
   /** Resolve lightweight cards for a set of user ids (missing ids are dropped). */
   getCards(ids: string[]): Promise<UserCard[]>;
   /**
-   * Batch-resolve display name + avatar URL for a set of (human) user ids —
-   * for other modules that just need identity, not the full profile/stats
-   * aggregate (e.g. games player panels). Missing ids are absent from the map.
+   * Batch-resolve display name + avatar URL plus badge fields (username,
+   * level, vipLevel, verified) for a set of (human) user ids — for other
+   * modules that just need identity, not the full profile/stats/verification
+   * aggregate (e.g. games player panels, video-room seat/request panels).
+   * Missing ids are absent from the map.
    */
   resolvePublicIdentities(ids: string[]): Promise<Map<string, PublicIdentity>>;
   /** Atomically adjust a counter (delta may be negative). Returns nothing. */

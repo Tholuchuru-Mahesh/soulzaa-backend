@@ -206,6 +206,8 @@ import { VideoRoomAnalyticsAggregationProcessor } from './processors/video-room-
 import { VideoRoomsAdminController } from './controllers/video-rooms-admin.controller';
 import { VideoRoomsAdminRepository } from './repositories/video-rooms-admin.repository';
 import { VideoRoomsAdminService } from './services/video-rooms-admin.service';
+import { VideoRoomIdentityCache } from './services/video-room-identity-cache.service';
+import { VideoRoomIdentityCacheListener } from './listeners/video-room-identity-cache.listener';
 
 /**
  * Video Rooms domain — VR-0: Enterprise Foundation.
@@ -258,6 +260,10 @@ import { VideoRoomsAdminService } from './services/video-rooms-admin.service';
   ],
   providers: [
     VideoRoomsRepository,
+    // Display identity for seat/member/join surfaces. Thin cache over the
+    // global PROFILE_SERVICE — no module import needed (UsersModule is @Global).
+    VideoRoomIdentityCache,
+    VideoRoomIdentityCacheListener,
     // VR-1 domain repositories (pure persistence for the seat/role/moderation/
     // media-session/event/reference tables). Services consuming them land per phase.
     VideoRoomRolesRepository,

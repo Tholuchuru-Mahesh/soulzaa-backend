@@ -8,20 +8,16 @@ import {
   VideoRoomSeatRequest,
   VideoRoomSeatRequestStatus,
   VideoRoomSeatStatus,
-  VideoRoomSeatType,
 } from '@prisma/client';
 import { auditCreate, auditUpdate } from 'src/common/utils/audit.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import type { SeatLayoutEntry } from '../constants/video-room-seat-lifecycle';
 import {
   VIDEO_ROOM_DEFAULT_GUEST_SEATS,
   VIDEO_ROOM_DEFAULT_HOST_SEATS,
 } from '../constants/video-room.constants';
 
-/** One seat in a room's initial stage layout (built at room creation). */
-export interface SeatLayoutEntry {
-  seatIndex: number;
-  seatType: VideoRoomSeatType;
-}
+export type { SeatLayoutEntry };
 
 export interface CreateSeatRequestInput {
   roomId: string;
@@ -79,15 +75,29 @@ export class VideoRoomSeatsRepository {
 
   // ---- Seats ----
 
-  /** Create a room's initial seat layout in one batch (idempotent per room via
-   * the (roomId,seatIndex) unique index — callers create once at room creation). */
-  async createLayout(roomId: string, layout: SeatLayoutEntry[], actorId: string): Promise<number> {
+  /**
+   * Create a room's seat layout in one batch. Idempotent per room via the
+   * (roomId,seatIndex) unique index + `skipDuplicates`, so it is safe to run
+   * concurrently and repeatedly: a racing caller inserts the rows the first
+   * caller missed and nothing is overwritten. Returns the number of rows this
+   * call actually inserted (0 ⇒ the layout was already materialised).
+   *
+   * `actorId` is null for system-initiated materialisation (the cold-cache
+   * backfill in `VideoRoomSeatStateService.rebuild`), which has no acting user;
+   * `createdBy`/`updatedBy` are nullable uuid columns, so they simply stay unset
+   * rather than being stamped with a fake actor.
+   */
+  async createLayout(
+    roomId: string,
+    layout: SeatLayoutEntry[],
+    actorId: string | null,
+  ): Promise<number> {
     const { count } = await this.prisma.videoRoomSeat.createMany({
       data: layout.map((s) => ({
         roomId,
         seatIndex: s.seatIndex,
         seatType: s.seatType,
-        ...auditCreate(actorId),
+        ...(actorId ? auditCreate(actorId) : {}),
       })),
       skipDuplicates: true,
     });
@@ -410,12 +420,21 @@ export class VideoRoomSeatsRepository {
 
   // ---- Layout (VideoRoomSettings seat counts) ----
 
-  /** The room's configured seat counts (platform defaults when settings are absent). */
-  async getSeatLayout(roomId: string): Promise<{ hostSeatCount: number; guestSeatCount: number }> {
+  /**
+   * The room's configured seat counts (platform defaults when settings are absent).
+   * `hasSettings` distinguishes "this room declares this layout" from "we fell back
+   * to the platform defaults because there is no settings row" — the latter is also
+   * what an unknown/never-created room id returns, so anything that *writes* seat
+   * rows off the back of this must check it first.
+   */
+  async getSeatLayout(
+    roomId: string,
+  ): Promise<{ hostSeatCount: number; guestSeatCount: number; hasSettings: boolean }> {
     const settings = await this.prisma.videoRoomSettings.findUnique({ where: { roomId } });
     return {
       hostSeatCount: settings?.hostSeatCount ?? VIDEO_ROOM_DEFAULT_HOST_SEATS,
       guestSeatCount: settings?.guestSeatCount ?? VIDEO_ROOM_DEFAULT_GUEST_SEATS,
+      hasSettings: settings !== null,
     };
   }
 

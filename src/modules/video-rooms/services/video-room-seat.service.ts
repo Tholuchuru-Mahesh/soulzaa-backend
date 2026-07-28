@@ -3,7 +3,11 @@ import { Prisma, VideoRoomSeatStatus, VideoRoomSeatType, VideoRoomStatus } from 
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
-import { isOwnerSeat } from '../constants/video-room-seat-lifecycle';
+import {
+  buildSeatLayout,
+  isOwnerSeat,
+  type SeatLayoutEntry,
+} from '../constants/video-room-seat-lifecycle';
 import { VideoRoomPermission } from '../constants/video-room-permissions';
 import { VIDEO_ROOM_MAX_SEATS, videoRoomSeatLockKey } from '../constants/video-room.constants';
 import type { SeatStageView } from '../entities/video-room-seat-stage.view';
@@ -270,22 +274,29 @@ export class VideoRoomSeatService {
     }
     return this.mutateStage(roomId, async (base) => {
       await this.seats.setSeatLayout(roomId, hostSeatCount, guestSeatCount, actor.id);
-      const desired: SeatEntrySnapshot[] = [];
-      for (let i = 0; i < total; i++) {
-        const seatType =
-          i === 0
-            ? VideoRoomSeatType.OWNER
-            : i <= hostSeatCount
-              ? VideoRoomSeatType.HOST
-              : VideoRoomSeatType.GUEST;
-        const existing = base.seats.find((s) => s.seatIndex === i);
-        desired.push(existing ? { ...existing, seatType } : this.emptyEntry(i, seatType));
+      // Same index→seatType shape as room creation and the rebuild backfill — see
+      // `buildSeatLayout`. Existing occupancy is carried over; only the type is re-derived.
+      const layout = buildSeatLayout(hostSeatCount, guestSeatCount);
+      const retyped: SeatLayoutEntry[] = [];
+      const desired: SeatEntrySnapshot[] = layout.map(({ seatIndex, seatType }) => {
+        const existing = base.seats.find((s) => s.seatIndex === seatIndex);
+        if (existing && existing.seatType !== seatType) retyped.push({ seatIndex, seatType });
+        return existing ? { ...existing, seatType } : this.emptyEntry(seatIndex, seatType);
+      });
+      await this.seats.createLayout(roomId, layout, actor.id);
+      // `createLayout` is `createMany({ skipDuplicates: true })` — it INSERTS the indices
+      // that don't exist yet and never UPDATES the ones that do. Seats are materialised at
+      // room creation now, so on a reconfigure every index up to the old total already
+      // exists and the insert is a no-op for them: without this loop a seat re-declared
+      // HOST→GUEST would keep `seatType = HOST` in the DB while the snapshot said GUEST.
+      // That desync is invisible through the API (reads come off the snapshot) but is read
+      // straight from the row by `VideoRoomPermissionService.derive` (GUEST ⇒ PARTICIPANT,
+      // anything else ⇒ HOST) and re-projected over the snapshot by the next `rebuild`.
+      // Only genuinely-changed indices are written, and only `seatType` — occupancy, locks
+      // and mute state are left exactly as they are.
+      for (const { seatIndex, seatType } of retyped) {
+        await this.seats.updateSeat(roomId, seatIndex, { seatType }, actor.id);
       }
-      await this.seats.createLayout(
-        roomId,
-        desired.map((d) => ({ seatIndex: d.seatIndex, seatType: d.seatType })),
-        actor.id,
-      );
       const displaced = base.seats.filter((s) => s.seatIndex >= total && s.occupantUserId);
       await this.seats.deleteSeatsFrom(roomId, total);
       const next = await this.seatState.commit(roomId, base, {

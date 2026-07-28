@@ -45,15 +45,20 @@ export class VideoRoomEventsRepository {
 
   // ---- Event stream (append-only) ----
 
+  private isUuid(val?: string | null): boolean {
+    if (!val) return false;
+    return typeof val === 'string' && val.length > 0 && val.length <= 36 && !val.includes('_');
+  }
+
   async appendEvent(input: AppendEventInput): Promise<void> {
     await this.prisma.videoRoomEvent.create({
       data: {
         roomId: input.roomId,
-        actorId: input.actorId ?? null,
+        actorId: this.isUuid(input.actorId) ? input.actorId : null,
         eventType: input.eventType,
         payload: input.payload,
-        referenceId: input.referenceId ?? null,
-        correlationId: input.correlationId ?? null,
+        referenceId: this.isUuid(input.referenceId) ? input.referenceId : null,
+        correlationId: this.isUuid(input.correlationId) ? input.correlationId : null,
       },
     });
   }
