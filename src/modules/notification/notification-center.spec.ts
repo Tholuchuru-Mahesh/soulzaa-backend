@@ -243,19 +243,58 @@ describe('NotificationPreferenceService', () => {
 
 import { NotificationChannelService } from './services/notification-channel.service';
 
+/** Channel service wired to stub transports — no real network in unit tests. */
+function buildChannelService(prisma: unknown) {
+  return new NotificationChannelService(
+    prisma as any,
+    {
+      pushTokensForUser: jest.fn().mockResolvedValue([{ deviceId: 'd1', pushToken: 't1' }]),
+    } as any,
+    { sendToTokens: jest.fn().mockResolvedValue({ delivered: 1, failed: 0, retired: 0 }) } as any,
+    { emitToUserEverywhere: jest.fn() } as any,
+    { resolve: () => ({ name: 'console', send: jest.fn().mockResolvedValue(undefined) }) } as any,
+    { name: 'console', send: jest.fn().mockResolvedValue(undefined) } as any,
+  );
+}
+
 describe('NotificationChannelService', () => {
   let service: NotificationChannelService;
 
   beforeEach(() => {
-    service = new NotificationChannelService();
+    service = new NotificationChannelService(
+      buildPrismaMock() as any,
+      { pushTokensForUser: jest.fn().mockResolvedValue([]) } as any,
+      { sendToTokens: jest.fn() } as any,
+      { emitToUserEverywhere: jest.fn() } as any,
+      { resolve: () => ({ name: 'console', send: jest.fn() }) } as any,
+      { name: 'console', send: jest.fn() } as any,
+    );
   });
 
-  it('registers custom channels and dispatches context simulation', async () => {
+  it('registers custom channels', () => {
     service.registerChannel('TELEGRAM');
     expect(service.isChannelRegistered('TELEGRAM')).toBe(true);
+  });
+
+  it('does not report success for a registered channel that has no transport', async () => {
+    service.registerChannel('TELEGRAM');
 
     const res = await service.dispatchToChannel('TELEGRAM', { notificationId: makeUuid() });
-    expect(res.success).toBe(true);
+
+    // Registering a name makes the channel known, not deliverable. Reporting
+    // success here would count a send that no transport ever made.
+    expect(res.success).toBe(false);
+    expect(res.errorMessage).toContain('no delivery transport');
+  });
+
+  it('does not report success for push when the recipient has no device tokens', async () => {
+    const res = await service.dispatchToChannel('PUSH', {
+      notificationId: makeUuid(),
+      recipientId: 'u-1',
+    });
+
+    expect(res.success).toBe(false);
+    expect(res.errorMessage).toContain('no registered push tokens');
   });
 
   it('returns failure when dispatching to an unregistered channel', async () => {
@@ -395,7 +434,7 @@ describe('NotificationDispatchService', () => {
 
   beforeEach(() => {
     prisma = buildPrismaMock();
-    channelService = new NotificationChannelService();
+    channelService = buildChannelService(prisma);
     const config = new NotificationConfigurationService(prisma as any);
     const preference = new NotificationPreferenceService(prisma as any);
     const statistics = new NotificationStatisticsService(prisma as any);
@@ -471,7 +510,7 @@ describe('NotificationCenterService — Lifecycle', () => {
     const statistics = new NotificationStatisticsService(prisma as any);
     const events = new NotificationEventService(buildEventEmitterMock() as any);
     const audit = new NotificationAuditService(prisma as any);
-    const channels = new NotificationChannelService();
+    const channels = buildChannelService(prisma);
     const dispatch = new NotificationDispatchService(
       prisma as any,
       channels,

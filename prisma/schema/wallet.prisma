@@ -90,6 +90,7 @@ enum WalletTxnReason {
   VIP_PURCHASE
   VIP_RENEWAL
   EVENT_REWARD
+  ATTENDANCE_REWARD
   COSMETIC_PURCHASE
   PREMIUM_SEAT
   LUCKY_PACKET_CREATE
@@ -194,7 +195,7 @@ model WalletReservation {
   walletId      String            @db.Uuid
   currency      WalletCurrency    @default(GOLD)
   amount        BigInt
-  purpose       String            // e.g. GAME_STAKE, WITHDRAWAL_HOLD, TREASURE_HOLD
+  purpose       String // e.g. GAME_STAKE, WITHDRAWAL_HOLD, TREASURE_HOLD
   status        ReservationStatus @default(HELD)
   referenceType String?
   referenceId   String?           @db.Uuid
@@ -211,12 +212,12 @@ model WalletReservation {
 
 /// Operational Audit Log for Wallet locks, balance reconciliations, and limit events
 model WalletAudit {
-  id         String   @id @default(uuid()) @db.Uuid
-  walletId   String   @db.Uuid
-  action     String   // e.g. WALLET_CREATED, WALLET_LOCKED, BALANCE_RECONCILED
-  details    Json?
-  actorId    String?  @db.Uuid
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid()) @db.Uuid
+  walletId  String   @db.Uuid
+  action    String // e.g. WALLET_CREATED, WALLET_LOCKED, BALANCE_RECONCILED
+  details   Json?
+  actorId   String?  @db.Uuid
+  createdAt DateTime @default(now())
 
   @@index([walletId])
   @@index([createdAt])

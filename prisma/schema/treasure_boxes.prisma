@@ -269,4 +269,3 @@ model TreasureAudit {
   @@index([createdAt])
   @@map("treasure_audits")
 }
-

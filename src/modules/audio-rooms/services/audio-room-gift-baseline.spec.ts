@@ -43,7 +43,6 @@ const HOST = 'owner-id';
 const IDEM = 'idem-1';
 
 const GIFT_CFG = {
-  creatorEarningRatePercent: 30,
   senderExpPerCoin: 1,
   receiverExpPerCoin: 1,
   rateMax: 20,
@@ -113,18 +112,16 @@ function buildMocks(): Mocks {
       findTxnByIdempotencyKey: jest.fn().mockResolvedValue(null),
       hitRateLimit: jest.fn().mockResolvedValue(false),
       comboTick: jest.fn().mockResolvedValue(1),
-      createTransaction: jest
-        .fn()
-        .mockImplementation((d) =>
-          Promise.resolve({
-            id: 'gtxn-1',
-            status: 'COMPLETED',
-            ...d,
-            totalCoinValue: d.totalCoinValue?.toString() ?? '100',
-            creatorEarnings: d.creatorEarnings?.toString() ?? '100',
-            createdAt: new Date(),
-          }),
-        ),
+      createTransaction: jest.fn().mockImplementation((d) =>
+        Promise.resolve({
+          id: 'gtxn-1',
+          status: 'COMPLETED',
+          ...d,
+          totalCoinValue: d.totalCoinValue?.toString() ?? '100',
+          creatorEarnings: d.creatorEarnings?.toString() ?? '100',
+          createdAt: new Date(),
+        }),
+      ),
       listTransactions: jest.fn().mockResolvedValue([[], 0]),
     },
     catalog: {
@@ -199,6 +196,7 @@ function buildGiftService(m: Mocks): GiftService {
     m.wallet as unknown as IWalletService,
     m.vip as unknown as IVipService,
     registry,
+    { get: jest.fn().mockResolvedValue(null) },
   );
 }
 

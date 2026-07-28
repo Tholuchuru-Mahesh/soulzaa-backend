@@ -16,7 +16,7 @@ const REQ = {
   quantity: 1,
 };
 
-const GIFT_CFG = { creatorEarningRatePercent: 30 };
+const GIFT_CFG = {};
 const VR_GIFT_CFG = {
   blockedCountries: '',
   maxReceivers: 9,
@@ -115,10 +115,6 @@ describe('VideoRoomGiftContextHandler', () => {
 
   it('reads maxReceivers from config', () => {
     expect(handler.maxReceivers).toBe(9);
-  });
-
-  it('economics return 0 — the host is paid once by the revenue split, not the gift path', () => {
-    expect(handler.economics(REQ as never)).toEqual({ receiverEarningsBps: 0 });
   });
 
   describe('validate', () => {

@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { WalletCurrency } from '@prisma/client';
 import { EVENT_BUS } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
@@ -66,12 +65,15 @@ describe('Phase 7: Enterprise Host Earnings & Revenue Distribution Engine', () =
     },
   };
 
+  /** A platform configured for an explicit 50/50 split. */
+  const configuredFiftyFifty = (key: string) => {
+    if (key === 'host.revenue_percentage') return Promise.resolve(50.0);
+    if (key === 'platform.revenue_percentage') return Promise.resolve(50.0);
+    return Promise.resolve(null);
+  };
+
   const mockPlatformConfigService = {
-    get: jest.fn().mockImplementation((key: string) => {
-      if (key === 'host.revenue_percentage') return Promise.resolve(50.0);
-      if (key === 'platform.revenue_percentage') return Promise.resolve(50.0);
-      return Promise.resolve(null);
-    }),
+    get: jest.fn().mockImplementation(configuredFiftyFifty),
   };
 
   const mockCoinEconomyService = {
@@ -125,15 +127,33 @@ describe('Phase 7: Enterprise Host Earnings & Revenue Distribution Engine', () =
     eventService = module.get<RevenueEventService>(RevenueEventService);
 
     jest.clearAllMocks();
+    // clearAllMocks drops call history but keeps implementations, so a test that
+    // overrides the config mock would otherwise leak into every test after it.
+    mockPlatformConfigService.get.mockImplementation(configuredFiftyFifty);
   });
 
   describe('1. Dynamic Revenue Calculation', () => {
-    it('should calculate 50/50 split math correctly for a 1,000 coin gift', async () => {
+    it('should calculate a configured 50/50 split correctly for a 1,000 coin gift', async () => {
       const split = await calculationService.calculateSplit(BigInt(1_000));
       expect(split.hostPercentage).toBe(50.0);
       expect(split.platformPercentage).toBe(50.0);
       expect(split.hostEarningsCoins).toBe(BigInt(500));
       expect(split.platformEarningsCoins).toBe(BigInt(500));
+    });
+
+    it('records the whole gift as host earnings when no split is configured', async () => {
+      // GiftService credits the receiver 100% of gift value to EARNINGS. If the
+      // recorded split defaulted to anything less, the revenue tables would
+      // under-report what the ledger actually paid out and the two would never
+      // reconcile.
+      mockPlatformConfigService.get.mockResolvedValue(null);
+
+      const split = await calculationService.calculateSplit(BigInt(1_000));
+
+      expect(split.hostPercentage).toBe(100.0);
+      expect(split.platformPercentage).toBe(0.0);
+      expect(split.hostEarningsCoins).toBe(BigInt(1_000));
+      expect(split.platformEarningsCoins).toBe(BigInt(0));
     });
 
     it('should handle dynamic custom split configuration (e.g. 70% host / 30% platform)', async () => {
@@ -175,7 +195,7 @@ describe('Phase 7: Enterprise Host Earnings & Revenue Distribution Engine', () =
   });
 
   describe('3. Revenue Distribution & Double-Entry Wallet Integration', () => {
-    it('should process gift revenue and credit host Earnings Wallet via IWalletService', async () => {
+    it('records the host/platform split without re-crediting the wallet', async () => {
       mockCoinEconomyService.isEconomyFrozen.mockResolvedValue(false);
       mockPrismaService.revenueDistribution.findUnique.mockResolvedValue(null);
       mockPrismaService.user.findUnique.mockResolvedValue({ id: 'host-1', status: 'ACTIVE' });
@@ -201,16 +221,11 @@ describe('Phase 7: Enterprise Host Earnings & Revenue Distribution Engine', () =
       expect(result.duplicate).toBe(false);
       expect(result.hostEarningsCoins).toBe('500');
 
-      expect(mockWalletService.credit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'host-1',
-          currency: WalletCurrency.EARNINGS,
-          amount: 500,
-          reason: 'HOST_EARNING',
-          referenceType: 'gift_transaction',
-          referenceId: 'gift-tx-100',
-        }),
-      );
+      // GiftService already credited the receiver's EARNINGS wallet inside the
+      // send transaction (see its settlement workflow). Crediting again here
+      // would pay the host twice for one gift, so this engine only records the
+      // split — a wallet call reappearing in this path is the regression.
+      expect(mockWalletService.credit).not.toHaveBeenCalled();
 
       expect(mockPrismaService.hostEarnings.upsert).toHaveBeenCalledWith(
         expect.objectContaining({

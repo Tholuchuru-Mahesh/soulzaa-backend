@@ -5,31 +5,31 @@
 
 /// Enterprise Family Entity
 model Family {
-  id                 String   @id @default(uuid()) @db.Uuid
-  name               String   @unique
-  tag                String   @unique
-  badge              String?
-  logo               String?
-  banner             String?
-  description        String?
-  country            String   @default("GLOBAL")
-  language           String   @default("en")
-  category           String   @default("GENERAL")
-  founderId          String   @db.Uuid
-  status             String   @default("ACTIVE")
-  isVerified         Boolean  @default(false)
-  privacy            String   @default("PUBLIC")
-  announcement       String?
-  welcomeMessage     String?
-  level              Int      @default(1)
-  exp                BigInt   @default(0)
-  coins              BigInt   @default(0)
-  score              BigInt   @default(0)
-  reputation         BigInt   @default(0)
-  memberCount        Int      @default(1)
-  maxMembers         Int      @default(100)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @unique
+  tag            String   @unique
+  badge          String?
+  logo           String?
+  banner         String?
+  description    String?
+  country        String   @default("GLOBAL")
+  language       String   @default("en")
+  category       String   @default("GENERAL")
+  founderId      String   @db.Uuid
+  status         String   @default("ACTIVE")
+  isVerified     Boolean  @default(false)
+  privacy        String   @default("PUBLIC")
+  announcement   String?
+  welcomeMessage String?
+  level          Int      @default(1)
+  exp            BigInt   @default(0)
+  coins          BigInt   @default(0)
+  score          BigInt   @default(0)
+  reputation     BigInt   @default(0)
+  memberCount    Int      @default(1)
+  maxMembers     Int      @default(100)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([founderId])
   @@index([status])

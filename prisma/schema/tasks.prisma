@@ -10,7 +10,7 @@ model MissionDefinition {
   code              String   @unique
   name              String
   description       String?
-  category          String   // DAILY_TASK | WEEKLY_MISSION | MONTHLY_MISSION | SEASON_MISSION | EVENT_MISSION | FAMILY_MISSION | VIP_MISSION | GIFT_MISSION | AUDIO_ROOM_MISSION | VIDEO_ROOM_MISSION | GAME_MISSION | REFERRAL_MISSION | CREATOR_MISSION | MODERATOR_MISSION | AGENCY_MISSION | OFFICIAL_MISSION | PLATFORM_CHALLENGE | CUSTOM
+  category          String // DAILY_TASK | WEEKLY_MISSION | MONTHLY_MISSION | SEASON_MISSION | EVENT_MISSION | FAMILY_MISSION | VIP_MISSION | GIFT_MISSION | AUDIO_ROOM_MISSION | VIDEO_ROOM_MISSION | GAME_MISSION | REFERRAL_MISSION | CREATOR_MISSION | MODERATOR_MISSION | AGENCY_MISSION | OFFICIAL_MISSION | PLATFORM_CHALLENGE | CUSTOM
   requiredTaskCount Int      @default(1)
   rewardDefinition  Json?
   status            String   @default("ACTIVE") // DRAFT | SCHEDULED | ACTIVE | PAUSED | COMPLETED | EXPIRED | CANCELLED | ARCHIVED
@@ -27,32 +27,32 @@ model MissionDefinition {
 
 /// Task Definition
 model TaskDefinition {
-  id                 String   @id @default(uuid()) @db.Uuid
-  code               String   @unique
-  missionId          String?  @db.Uuid
-  name               String
-  description        String?
-  category           String
-  objective          String
-  requiredProgress   Int      @default(1)
-  progressRules      Json?    // JSON evaluation rule
-  completionRules    Json?
-  rewardDefinition   Json?
-  visibility         String   @default("PUBLIC") // PUBLIC | PRIVATE | HIDDEN
-  priority           Int      @default(0)
-  difficulty         String   @default("EASY")   // EASY | MEDIUM | HARD | EXPERT
-  startTime          DateTime?
-  endTime            DateTime?
-  repeatable         Boolean  @default(false)
-  resetPolicy        String   @default("DAILY")  // NONE | DAILY | WEEKLY | MONTHLY | SEASONAL
-  maxCompletions     Int      @default(1)
-  status             String   @default("ACTIVE")
+  id               String    @id @default(uuid()) @db.Uuid
+  code             String    @unique
+  missionId        String?   @db.Uuid
+  name             String
+  description      String?
+  category         String
+  objective        String
+  requiredProgress Int       @default(1)
+  progressRules    Json? // JSON evaluation rule
+  completionRules  Json?
+  rewardDefinition Json?
+  visibility       String    @default("PUBLIC") // PUBLIC | PRIVATE | HIDDEN
+  priority         Int       @default(0)
+  difficulty       String    @default("EASY") // EASY | MEDIUM | HARD | EXPERT
+  startTime        DateTime?
+  endTime          DateTime?
+  repeatable       Boolean   @default(false)
+  resetPolicy      String    @default("DAILY") // NONE | DAILY | WEEKLY | MONTHLY | SEASONAL
+  maxCompletions   Int       @default(1)
+  status           String    @default("ACTIVE")
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  mission            MissionDefinition? @relation(fields: [missionId], references: [id])
-  taskProgresses     TaskProgress[]
+  mission        MissionDefinition? @relation(fields: [missionId], references: [id])
+  taskProgresses TaskProgress[]
 
   @@index([category])
   @@index([status])
@@ -86,16 +86,16 @@ model TaskProgress {
 
 /// Per-User Mission Progress Tracking
 model MissionProgress {
-  id                String    @id @default(uuid()) @db.Uuid
-  missionId         String    @db.Uuid
-  userId            String    @db.Uuid
-  completedTaskCount Int      @default(0)
-  requiredTaskCount Int
-  isCompleted       Boolean   @default(false)
-  rewardClaimed     Boolean   @default(false)
-  completedAt       DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                 String    @id @default(uuid()) @db.Uuid
+  missionId          String    @db.Uuid
+  userId             String    @db.Uuid
+  completedTaskCount Int       @default(0)
+  requiredTaskCount  Int
+  isCompleted        Boolean   @default(false)
+  rewardClaimed      Boolean   @default(false)
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   mission MissionDefinition @relation(fields: [missionId], references: [id])
 
@@ -142,15 +142,15 @@ model TaskHistory {
 
 /// Pre-Aggregated Task Statistics
 model TaskStatistics {
-  id                 String   @id @default(uuid()) @db.Uuid
-  period             String   @default("DAILY")
-  dateKey            String
-  category           String
-  activeTasks        Int      @default(0)
-  completedTasks     Int      @default(0)
-  completedMissions  Int      @default(0)
-  rewardsDispatched  Int      @default(0)
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(uuid()) @db.Uuid
+  period            String   @default("DAILY")
+  dateKey           String
+  category          String
+  activeTasks       Int      @default(0)
+  completedTasks    Int      @default(0)
+  completedMissions Int      @default(0)
+  rewardsDispatched Int      @default(0)
+  updatedAt         DateTime @updatedAt
 
   @@unique([period, dateKey, category])
   @@map("task_statistics")

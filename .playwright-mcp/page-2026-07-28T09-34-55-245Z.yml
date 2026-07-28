@@ -1,0 +1,72 @@
+- generic [ref=e13]:
+  - navigation [ref=e14]:
+    - generic [ref=e15]:
+      - generic [ref=e16]: Soulzaa
+      - generic [ref=e17]: Super Admin
+    - generic [ref=e18]:
+      - generic [ref=e19]: Overview
+      - button "Platform" [ref=e20] [cursor=pointer]
+    - generic [ref=e21]:
+      - generic [ref=e22]: Financial
+      - button "Coin position" [ref=e23] [cursor=pointer]
+      - button "Treasury" [ref=e24] [cursor=pointer]
+      - button "Wallets" [ref=e25] [cursor=pointer]
+      - button "Revenue" [ref=e26] [cursor=pointer]
+      - button "Withdrawals" [ref=e27] [cursor=pointer]
+      - button "Agencies" [ref=e28] [cursor=pointer]
+      - button "Coin sellers" [ref=e29] [cursor=pointer]
+    - generic [ref=e30]:
+      - generic [ref=e31]: Operations
+      - button "Users" [ref=e32] [cursor=pointer]
+      - button "Events" [ref=e33] [cursor=pointer]
+      - button "Tasks & missions" [ref=e34] [cursor=pointer]
+      - button "Notifications" [ref=e35] [cursor=pointer]
+      - button "Analytics" [ref=e36] [cursor=pointer]
+    - generic [ref=e37]:
+      - generic [ref=e38]: Engagement
+      - button "Gifts" [ref=e39] [cursor=pointer]
+      - button "Treasure" [ref=e40] [cursor=pointer]
+      - button "Families" [ref=e41] [cursor=pointer]
+      - button "VIP" [ref=e42] [cursor=pointer]
+      - button "Level & badges" [ref=e43] [cursor=pointer]
+      - button "Rankings" [ref=e44] [cursor=pointer]
+      - button "Referrals" [ref=e45] [cursor=pointer]
+    - generic [ref=e46]:
+      - generic [ref=e47]: Governance
+      - button "Moderation" [ref=e48] [cursor=pointer]
+      - button "Operational logs" [ref=e49] [cursor=pointer]
+      - button "Role approvals" [ref=e50] [cursor=pointer]
+      - button "User territory" [ref=e51] [cursor=pointer]
+  - generic [ref=e52]:
+    - banner [ref=e53]:
+      - generic [ref=e54]: SUPER_ADMIN
+      - button "Sign out" [ref=e55] [cursor=pointer]
+    - main [ref=e56]:
+      - generic [ref=e57]:
+        - generic [ref=e58]:
+          - heading "Right now" [level=2] [ref=e60]
+          - generic [ref=e61]:
+            - generic [ref=e62]:
+              - generic "0" [ref=e63]
+              - generic [ref=e64]: Live audio rooms
+            - generic [ref=e65]:
+              - generic "0" [ref=e66]
+              - generic [ref=e67]: Live video rooms
+            - generic [ref=e68]:
+              - generic "6" [ref=e69]
+              - generic [ref=e70]: Daily actives
+        - generic [ref=e71]:
+          - heading "Population" [level=2] [ref=e73]
+          - generic [ref=e74]:
+            - generic [ref=e75]:
+              - generic "10" [ref=e76]
+              - generic [ref=e77]: Total users
+            - generic [ref=e78]:
+              - generic "10" [ref=e79]
+              - generic [ref=e80]: Active
+            - generic [ref=e81]:
+              - generic "10" [ref=e82]
+              - generic [ref=e83]: New today
+            - generic [ref=e84]:
+              - generic "0" [ref=e85]
+              - generic [ref=e86]: Families

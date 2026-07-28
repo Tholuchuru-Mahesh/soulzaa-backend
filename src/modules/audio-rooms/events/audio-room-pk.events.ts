@@ -96,4 +96,3 @@ export class PkReceiverBonusEvent extends DomainEvent<{
 }> {
   readonly name = AUDIO_ROOM_PK_EVENTS.RECEIVER_BONUS;
 }
-

@@ -136,7 +136,14 @@ export class GamesRepository {
     return this.prisma.gameLobbyMember.findMany({
       where: { lobbyId },
       orderBy: { joinedAt: 'asc' },
-      select: { userId: true, team: true, isBot: true, botName: true, isReady: true, joinedAt: true },
+      select: {
+        userId: true,
+        team: true,
+        isBot: true,
+        botName: true,
+        isReady: true,
+        joinedAt: true,
+      },
     });
   }
 

@@ -22,13 +22,18 @@ export class RevenueConfigurationService {
 
   /**
    * Retrieves the active revenue split configuration from Platform Configuration Service.
-   * Defaults to 50% Host, 50% Platform if unconfigured.
+   *
+   * Defaults to 100% host / 0% platform because that is what actually moves:
+   * GiftService credits the receiver's EARNINGS wallet with the full gift value.
+   * Recording a smaller share here would leave the revenue tables permanently
+   * short of the ledger. Operators change the split through configuration; the
+   * fallback only decides what an unconfigured environment records.
    */
   async getRevenueSplitConfig(): Promise<RevenueSplitConfig> {
     try {
-      const hostPct = (await this.platformConfig.get<number>('host.revenue_percentage')) ?? 50.0;
+      const hostPct = (await this.platformConfig.get<number>('host.revenue_percentage')) ?? 100.0;
       const platformPct =
-        (await this.platformConfig.get<number>('platform.revenue_percentage')) ?? 50.0;
+        (await this.platformConfig.get<number>('platform.revenue_percentage')) ?? 0.0;
       const agencyPct = (await this.platformConfig.get<number>('future.agency_percentage')) ?? 0.0;
       const referralPct =
         (await this.platformConfig.get<number>('future.referral_percentage')) ?? 0.0;
@@ -46,11 +51,11 @@ export class RevenueConfigurationService {
       };
     } catch (err) {
       this.logger.warn(
-        `Failed to fetch dynamic revenue config, using 50/50 fallback: ${(err as Error).message}`,
+        `Failed to fetch dynamic revenue config, recording the full gift to the host: ${(err as Error).message}`,
       );
       return {
-        hostPercentage: 50.0,
-        platformPercentage: 50.0,
+        hostPercentage: 100.0,
+        platformPercentage: 0.0,
         agencyPercentage: 0.0,
         referralPercentage: 0.0,
         coinSellerPercentage: 0.0,

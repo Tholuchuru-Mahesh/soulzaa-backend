@@ -6,11 +6,11 @@
 
 /// Enterprise Platform Event Definition
 model EventDefinition {
-  id                 String   @id @default(uuid()) @db.Uuid
-  code               String   @unique
+  id                 String    @id @default(uuid()) @db.Uuid
+  code               String    @unique
   name               String
   description        String?
-  category           String   // AUDIO_ROOM | VIDEO_ROOM | GIFT | FAMILY | VIP | TOURNAMENT | PK_COMPETITION | GAME | FESTIVAL | SEASON | REFERRAL_CAMPAIGN | CREATOR_CAMPAIGN | OFFICIAL_CAMPAIGN | AGENCY_CAMPAIGN | MODERATOR_CAMPAIGN | PLATFORM_CHALLENGE | CUSTOM
+  category           String // AUDIO_ROOM | VIDEO_ROOM | GIFT | FAMILY | VIP | TOURNAMENT | PK_COMPETITION | GAME | FESTIVAL | SEASON | REFERRAL_CAMPAIGN | CREATOR_CAMPAIGN | OFFICIAL_CAMPAIGN | AGENCY_CAMPAIGN | MODERATOR_CAMPAIGN | PLATFORM_CHALLENGE | CUSTOM
   banner             String?
   thumbnail          String?
   startTime          DateTime
@@ -20,15 +20,22 @@ model EventDefinition {
   participationRules Json?
   eligibilityRules   Json?
   rewardDefinition   Json?
-  maxParticipants    Int      @default(1000)
-  visibility         String   @default("PUBLIC") // PUBLIC | HIDDEN | PRIVATE | VIP_ONLY
+  maxParticipants    Int       @default(1000)
+  visibility         String    @default("PUBLIC") // PUBLIC | HIDDEN | PRIVATE | VIP_ONLY
   country            String?
   region             String?
+  // Normalised geography — read by eligibility and routing. The strings above
+  // are display labels only.
+  countryId          String?   @db.Uuid
+  regionId           String?   @db.Uuid
   season             String?
-  priority           Int      @default(0)
-  status             String   @default("DRAFT") // DRAFT | SCHEDULED | REGISTRATION_OPEN | REGISTRATION_CLOSED | ACTIVE | PAUSED | COMPLETED | CANCELLED | ARCHIVED
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  priority           Int       @default(0)
+  status             String    @default("DRAFT") // DRAFT | SCHEDULED | REGISTRATION_OPEN | REGISTRATION_CLOSED | ACTIVE | PAUSED | COMPLETED | CANCELLED | ARCHIVED
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  scopeCountry Country? @relation("EventScopeCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  scopeRegion  Region?  @relation("EventScopeRegion", fields: [regionId], references: [id], onDelete: SetNull)
 
   registrations EventRegistration[]
   participants  EventParticipant[]
@@ -38,6 +45,8 @@ model EventDefinition {
   @@index([status])
   @@index([startTime, endTime])
   @@index([country])
+  @@index([countryId])
+  @@index([regionId])
   @@map("event_definitions")
 }
 

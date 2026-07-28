@@ -14,6 +14,7 @@ import { ReferralStatisticsService } from './services/referral-statistics.servic
 import { ReferralAuditService } from './services/referral-audit.service';
 import { ReferralEventService } from './services/referral-event.service';
 import { ReferralQueryService } from './services/referral-query.service';
+import { ReferralProgressionListener } from './listeners/referral-progression.listener';
 
 const SERVICES = [
   ReferralService,
@@ -34,7 +35,7 @@ const SERVICES = [
 @Module({
   imports: [PrismaModule],
   controllers: [ReferralController],
-  providers: [...SERVICES],
+  providers: [ReferralProgressionListener, ...SERVICES],
   exports: [...SERVICES],
 })
 export class ReferralsModule {}

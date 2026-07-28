@@ -1,0 +1,4 @@
+- generic [ref=e248]:
+  - heading "No console access" [level=1] [ref=e249]
+  - paragraph [ref=e250]: Your account holds USER, which does not include a dashboard permission. Operational roles use the Soulzaa mobile app.
+  - button "Sign out" [ref=e251] [cursor=pointer]

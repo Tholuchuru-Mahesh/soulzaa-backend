@@ -2,6 +2,7 @@
 // module is a one-line change here.
 import { AgenciesModule } from './agencies/agencies.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { AttendanceModule } from './attendance/attendance.module';
 import { AudioRoomsModule } from './audio-rooms/audio-rooms.module';
 import { AuthModule } from './auth/auth.module';
 import { BackpackModule } from './backpack/backpack.module';
@@ -45,6 +46,13 @@ import { EnterpriseEventsModule } from './enterprise-events/enterprise-events.mo
 import { TasksModule } from './tasks/tasks.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { AdminDashboardModule } from './admin-dashboard/admin-dashboard.module';
+import { DashboardFinancialModule } from './dashboard-financial/dashboard-financial.module';
+import { DashboardOperationsModule } from './dashboard-operations/dashboard-operations.module';
+import { DashboardEngagementModule } from './dashboard-engagement/dashboard-engagement.module';
+import { DashboardModerationModule } from './dashboard-moderation/dashboard-moderation.module';
+import { MobileWorkforceModule } from './mobile-workforce/mobile-workforce.module';
+import { MobilePartnerModule } from './mobile-partner/mobile-partner.module';
+import { RoleRequestsModule } from './role-requests/role-requests.module';
 
 export const DOMAIN_MODULES = [
   TreasuryModule,
@@ -65,6 +73,7 @@ export const DOMAIN_MODULES = [
   AudioRoomsModule,
   GiftsModule,
   BackpackModule,
+  AttendanceModule,
   CosmeticsModule,
   EventsModule,
   RankingsModule,
@@ -91,4 +100,13 @@ export const DOMAIN_MODULES = [
   TasksModule,
   ReferralsModule,
   AdminDashboardModule,
+  // Phase 21 web console sections (ADMIN / SUPER_ADMIN only).
+  DashboardFinancialModule,
+  DashboardOperationsModule,
+  DashboardEngagementModule,
+  DashboardModerationModule,
+  // Mobile consoles for the non-staff roles (scope- and ownership-narrowed).
+  MobileWorkforceModule,
+  MobilePartnerModule,
+  RoleRequestsModule,
 ];

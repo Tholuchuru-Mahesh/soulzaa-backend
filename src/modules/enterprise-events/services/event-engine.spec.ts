@@ -31,7 +31,18 @@ describe('Phase 16: Enterprise Events Engine', () => {
 
   const mockPrismaService: any = {
     user: {
-      findUnique: jest.fn().mockResolvedValue({ id: 'user-1', country: 'US' }),
+      // countryId is what eligibility reads now; `country` stays only as the
+      // free-text profile label.
+      findUnique: jest.fn().mockResolvedValue({ id: 'user-1', country: 'US', countryId: 'c-us' }),
+    },
+    country: {
+      findMany: jest
+        .fn()
+        .mockImplementation(({ where }) =>
+          Promise.resolve(
+            (where?.code?.in ?? []).includes('US') ? [{ id: 'c-us', code: 'US' }] : [],
+          ),
+        ),
     },
     userProfile: {
       findUnique: jest.fn().mockResolvedValue({ userId: 'user-1', country: 'US' }),

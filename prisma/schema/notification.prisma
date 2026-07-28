@@ -45,6 +45,10 @@ enum NotificationType {
   ANNOUNCEMENT
   MENTION
   SYSTEM
+
+  // ---- Role approval chain (append-only) ----
+  ROLE_REQUEST_UPDATE
+  ROLE_GRANTED
 }
 
 /// A single in-app notification for `userId`, optionally caused by
@@ -130,7 +134,7 @@ model NotificationPreference {
 model EnterpriseNotification {
   id          String    @id @default(uuid()) @db.Uuid
   recipientId String?   @db.Uuid // Null indicates a global announcement or broadcast
-  type        String    // WALLET | GIFT | VIP | LEVEL_UP | ACHIEVEMENT_UNLOCK | BADGE_UNLOCK | RANKING_PROMOTION | EVENT_REMINDER | TASK_COMPLETION | MISSION_COMPLETION | REFERRAL_QUALIFIED | WITHDRAWAL_UPDATES | FAMILY_UPDATES | MODERATION_ALERT | ANNOUNCEMENT | SYSTEM
+  type        String // WALLET | GIFT | VIP | LEVEL_UP | ACHIEVEMENT_UNLOCK | BADGE_UNLOCK | RANKING_PROMOTION | EVENT_REMINDER | TASK_COMPLETION | MISSION_COMPLETION | REFERRAL_QUALIFIED | WITHDRAWAL_UPDATES | FAMILY_UPDATES | MODERATION_ALERT | ANNOUNCEMENT | SYSTEM
   priority    String    @default("NORMAL") // LOW | NORMAL | HIGH | CRITICAL
   title       String?
   body        String?
@@ -138,11 +142,11 @@ model EnterpriseNotification {
   status      String    @default("PENDING") // PENDING | DISPATCHED | FAILED | CANCELLED
   retryCount  Int       @default(0)
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  inboxes     NotificationInbox[]
-  histories   NotificationHistory[]
+  inboxes   NotificationInbox[]
+  histories NotificationHistory[]
 
   @@index([recipientId])
   @@index([status])
@@ -153,26 +157,26 @@ model EnterpriseNotification {
 
 /// Notification Template Definition
 model NotificationTemplate {
-  id            String   @id @default(uuid()) @db.Uuid
-  code          String   @unique
+  id            String @id @default(uuid()) @db.Uuid
+  code          String @unique
   titleTemplate String
   bodyTemplate  String
-  locale        String   @default("en")
+  locale        String @default("en")
   variables     Json?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("notification_templates")
 }
 
 /// User Notification Preference
 model EnterpriseNotificationPreference {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  type      String   // WALLET | GIFT | VIP | etc.
-  channel   String   // IN_APP | PUSH | WEBSOCKET | EMAIL | SMS
-  enabled   Boolean  @default(true)
+  id      String  @id @default(uuid()) @db.Uuid
+  userId  String  @db.Uuid
+  type    String // WALLET | GIFT | VIP | etc.
+  channel String // IN_APP | PUSH | WEBSOCKET | EMAIL | SMS
+  enabled Boolean @default(true)
 
   updatedAt DateTime @updatedAt
 
@@ -182,19 +186,19 @@ model EnterpriseNotificationPreference {
 
 /// In-App Inbox Notification Instance
 model NotificationInbox {
-  id             String   @id @default(uuid()) @db.Uuid
-  notificationId String   @db.Uuid
-  recipientId    String   @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
+  notificationId String    @db.Uuid
+  recipientId    String    @db.Uuid
   title          String
   body           String
-  read           Boolean  @default(false)
+  read           Boolean   @default(false)
   readAt         DateTime?
-  deleted        Boolean  @default(false)
+  deleted        Boolean   @default(false)
   deletedAt      DateTime?
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  notification   EnterpriseNotification @relation(fields: [notificationId], references: [id])
+  notification EnterpriseNotification @relation(fields: [notificationId], references: [id])
 
   @@index([recipientId])
   @@index([read])
@@ -207,12 +211,12 @@ model NotificationHistory {
   id             String   @id @default(uuid()) @db.Uuid
   notificationId String   @db.Uuid
   recipientId    String?  @db.Uuid
-  channel        String   // IN_APP | PUSH | WEBSOCKET | EMAIL | SMS
-  status         String   // SENT | FAILED
+  channel        String // IN_APP | PUSH | WEBSOCKET | EMAIL | SMS
+  status         String // SENT | FAILED
   errorMessage   String?
   dispatchedAt   DateTime @default(now())
 
-  notification   EnterpriseNotification @relation(fields: [notificationId], references: [id])
+  notification EnterpriseNotification @relation(fields: [notificationId], references: [id])
 
   @@index([notificationId])
   @@index([recipientId])
@@ -221,15 +225,15 @@ model NotificationHistory {
 
 /// Pre-Aggregated Notification Statistics
 model NotificationStatistics {
-  id          String   @id @default(uuid()) @db.Uuid
-  period      String   @default("DAILY")
+  id          String @id @default(uuid()) @db.Uuid
+  period      String @default("DAILY")
   dateKey     String
   channel     String
-  sentCount   Int      @default(0)
-  readCount   Int      @default(0)
-  failedCount Int      @default(0)
+  sentCount   Int    @default(0)
+  readCount   Int    @default(0)
+  failedCount Int    @default(0)
 
-  updatedAt   DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@unique([period, dateKey, channel])
   @@map("notification_statistics")

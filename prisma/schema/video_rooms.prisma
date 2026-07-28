@@ -188,50 +188,50 @@ model VideoRoom {
 /// fields are added by the seat phase. Created alongside the room in one
 /// transaction (lifecycle phase).
 model VideoRoomSettings {
-  roomId               String   @id @db.Uuid
+  roomId                 String            @id @db.Uuid
   // ---- Chat ----
-  allowChat            Boolean  @default(true)
+  allowChat              Boolean           @default(true)
   /// @deprecated VR-9 — superseded by `chatMode` (PARTICIPANTS_ONLY).
   /// Still WRITTEN (mirrored from chatMode on every settings update) so any
   /// consumer not yet found — mobile client, admin surface, cached settings
   /// payload — keeps seeing a truthful value. NEVER READ by backend code.
   /// Drop in a later cleanup migration after a consumer audit.
-  allowViewerChat      Boolean  @default(true)
+  allowViewerChat        Boolean           @default(true)
   // ---- VR-9 chat policy ----
   chatMode               VideoRoomChatMode @default(NORMAL)
   chatMaxMessageLength   Int               @default(500)
   chatMaxAttachments     Int               @default(1)
   chatRateLimitPerMinute Int               @default(20)
-  slowModeSeconds      Int      @default(0)
+  slowModeSeconds        Int               @default(0)
   // ---- Economy / interactive ----
-  allowGifts           Boolean  @default(true)
-  allowTreasure        Boolean  @default(true)
-  allowPk              Boolean  @default(true)
+  allowGifts             Boolean           @default(true)
+  allowTreasure          Boolean           @default(true)
+  allowPk                Boolean           @default(true)
   // ---- Media ----
-  allowBeauty          Boolean  @default(true)
-  allowCameraSwitch    Boolean  @default(true)
-  allowScreenShare     Boolean  @default(false)
-  allowRecording       Boolean  @default(false)
+  allowBeauty            Boolean           @default(true)
+  allowCameraSwitch      Boolean           @default(true)
+  allowScreenShare       Boolean           @default(false)
+  allowRecording         Boolean           @default(false)
   // ---- Access / social ----
-  joinApprovalRequired Boolean  @default(false)
-  allowJoinRequest     Boolean  @default(true)
-  allowShare           Boolean  @default(true)
-  allowInvite          Boolean  @default(true)
-  allowFollow          Boolean  @default(true)
-  allowReporting       Boolean  @default(true)
-  allowAnnouncements   Boolean  @default(true)
-  isRoomMuted          Boolean  @default(false)
+  joinApprovalRequired   Boolean           @default(false)
+  allowJoinRequest       Boolean           @default(true)
+  allowShare             Boolean           @default(true)
+  allowInvite            Boolean           @default(true)
+  allowFollow            Boolean           @default(true)
+  allowReporting         Boolean           @default(true)
+  allowAnnouncements     Boolean           @default(true)
+  isRoomMuted            Boolean           @default(false)
   // ---- Limits ----
-  maxDurationMinutes   Int?
+  maxDurationMinutes     Int?
   // ---- Seat layout (multi-seat video; authoritative seat rows in video_room_seats) ----
-  hostSeatCount        Int      @default(9)
-  guestSeatCount       Int      @default(0)
+  hostSeatCount          Int               @default(9)
+  guestSeatCount         Int               @default(0)
   /// VR-8 — when true (default) a freed seat waits for owner/admin approval;
   /// when false the front of the seat queue is auto-promoted onto it.
-  seatApprovalRequired Boolean  @default(true)
-  metadata             Json?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  seatApprovalRequired   Boolean           @default(true)
+  metadata               Json?
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
   @@map("video_room_settings")
 }

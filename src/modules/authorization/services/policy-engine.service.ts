@@ -30,41 +30,37 @@ export const ROLE_RANKS: Record<string, number> = {
   USER: 10,
 };
 
+/** Highest rank among a role set; 0 when the set is empty or wholly unknown. */
+const maxRank = (roles: string[]): number =>
+  roles.reduce((highest, role) => Math.max(highest, ROLE_RANKS[role] ?? 0), 0);
+
 /**
- * Built-in Policy Rule: Enforces that actors cannot perform punitive or administrative actions against targets with equal or higher role rank.
+ * Built-in Policy Rule: an actor may only act on a target of strictly lower role
+ * rank. A moderator cannot touch an admin; peers of equal rank cannot touch each
+ * other; SUPER_ADMIN is exempt.
+ *
+ * The check applies to every action that names a target rather than to an
+ * allow-list of "punitive" action codes. An allow-list is fail-open — a new
+ * privileged action is unprotected until someone remembers to register it — so
+ * the default is inverted: declaring `targetRoles` opts an action in, and callers
+ * that genuinely need no rank check simply omit it.
  */
 @Injectable()
 export class RoleRankPolicyRule implements IPolicyRule {
   readonly name = 'RoleRankPolicyRule';
 
   async evaluate(context: PolicyContext): Promise<boolean> {
-    if (!context.targetRoles || context.targetRoles.length === 0) {
+    // No declared target — nothing to outrank.
+    if (!context.targetRoles) {
       return true;
     }
-
-    const actorMaxRank = Math.max(...context.actorRoles.map((r) => ROLE_RANKS[r] ?? 0));
-    const targetMaxRank = Math.max(...context.targetRoles.map((r) => ROLE_RANKS[r] ?? 0));
 
     // SUPER_ADMIN can act on anyone
     if (context.actorRoles.includes('SUPER_ADMIN')) {
       return true;
     }
 
-    // Actor must have strictly higher rank than target for administrative actions
-    const isPunitiveAction = [
-      'user.ban',
-      'user.mute',
-      'user.delete',
-      'user.update',
-      'room.mute',
-      'room.close',
-    ].includes(context.action);
-
-    if (isPunitiveAction) {
-      return actorMaxRank > targetMaxRank;
-    }
-
-    return true;
+    return maxRank(context.actorRoles) > maxRank(context.targetRoles);
   }
 }
 

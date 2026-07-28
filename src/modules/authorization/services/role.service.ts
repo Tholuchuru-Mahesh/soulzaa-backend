@@ -101,12 +101,47 @@ export class RoleService {
     });
   }
 
+  /**
+   * Invalidates every user whose resolved roles change when an edge under
+   * `parentRoleId` is added or removed. That is the parent itself plus all of its
+   * ancestors, since each inherits transitively through the edge. Descendants are
+   * unaffected — inheritance only ever flows downward.
+   *
+   * The upward walk is a fixpoint over the edge list, so a cycle in the hierarchy
+   * terminates rather than recursing forever.
+   */
+  private async invalidateHierarchyAffectedUsers(parentRoleId: string): Promise<void> {
+    const edges = await this.prisma.roleHierarchy.findMany({
+      select: { parentRoleId: true, childRoleId: true },
+    });
+
+    const affectedRoleIds = new Set<string>([parentRoleId]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const edge of edges) {
+        if (affectedRoleIds.has(edge.childRoleId) && !affectedRoleIds.has(edge.parentRoleId)) {
+          affectedRoleIds.add(edge.parentRoleId);
+          grew = true;
+        }
+      }
+    }
+
+    const holders = await this.prisma.userRole.findMany({
+      where: { roleId: { in: Array.from(affectedRoleIds) } },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+
+    await Promise.all(holders.map((h) => this.cacheService.invalidateUser(h.userId)));
+  }
+
   async addRoleHierarchyEdge(dto: CreateRoleHierarchyDto) {
     if (dto.parentRoleId === dto.childRoleId) {
       throw new ConflictException('Parent and Child roles cannot be the same entity');
     }
 
-    return this.prisma.roleHierarchy.upsert({
+    const edge = await this.prisma.roleHierarchy.upsert({
       where: {
         parentRoleId_childRoleId: {
           parentRoleId: dto.parentRoleId,
@@ -119,15 +154,21 @@ export class RoleService {
       },
       update: {},
     });
+
+    await this.invalidateHierarchyAffectedUsers(dto.parentRoleId);
+    return edge;
   }
 
   async removeRoleHierarchyEdge(parentRoleId: string, childRoleId: string) {
-    return this.prisma.roleHierarchy.deleteMany({
+    const result = await this.prisma.roleHierarchy.deleteMany({
       where: {
         parentRoleId,
         childRoleId,
       },
     });
+
+    await this.invalidateHierarchyAffectedUsers(parentRoleId);
+    return result;
   }
 
   async getRoleHierarchy() {

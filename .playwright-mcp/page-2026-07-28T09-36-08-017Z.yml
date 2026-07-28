@@ -1,0 +1,9 @@
+- generic [ref=e238]:
+  - generic [ref=e239]: Soulzaa
+  - generic [ref=e240]: Super Admin
+  - generic [ref=e241]: Email
+  - textbox [ref=e242]: superadmin@e2e.test
+  - generic [ref=e243]: Password
+  - textbox [ref=e244]: E2ePass!2026
+  - button "Sign in" [ref=e245] [cursor=pointer]
+  - paragraph [ref=e246]: This console is for platform staff. Operational roles use the mobile app.

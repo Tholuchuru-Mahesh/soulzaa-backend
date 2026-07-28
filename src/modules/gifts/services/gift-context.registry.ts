@@ -1,6 +1,5 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { GiftContextType } from '@prisma/client';
-import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { IGiftContextHandler } from '../interfaces/gift-context-handler.interface';
 
 /**
@@ -49,9 +48,6 @@ export class GiftContextRegistry {
       contextType,
       maxReceivers: 100,
       async validate() {},
-      economics() {
-        return { receiverEarningsBps: 10_000 };
-      },
     };
   }
 }

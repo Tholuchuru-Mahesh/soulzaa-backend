@@ -1,0 +1,142 @@
+- generic [ref=e13]:
+  - navigation [ref=e14]:
+    - generic [ref=e15]:
+      - generic [ref=e16]: Soulzaa
+      - generic [ref=e17]: Super Admin
+    - generic [ref=e18]:
+      - generic [ref=e19]: Overview
+      - button "Platform" [ref=e20] [cursor=pointer]
+    - generic [ref=e21]:
+      - generic [ref=e22]: Financial
+      - button "Coin position" [ref=e23] [cursor=pointer]
+      - button "Treasury" [ref=e24] [cursor=pointer]
+      - button "Wallets" [ref=e25] [cursor=pointer]
+      - button "Revenue" [ref=e26] [cursor=pointer]
+      - button "Withdrawals" [ref=e27] [cursor=pointer]
+      - button "Agencies" [ref=e28] [cursor=pointer]
+      - button "Coin sellers" [ref=e29] [cursor=pointer]
+    - generic [ref=e30]:
+      - generic [ref=e31]: Operations
+      - button "Users" [active] [ref=e32] [cursor=pointer]
+      - button "Events" [ref=e33] [cursor=pointer]
+      - button "Tasks & missions" [ref=e34] [cursor=pointer]
+      - button "Notifications" [ref=e35] [cursor=pointer]
+      - button "Analytics" [ref=e36] [cursor=pointer]
+    - generic [ref=e37]:
+      - generic [ref=e38]: Engagement
+      - button "Gifts" [ref=e39] [cursor=pointer]
+      - button "Treasure" [ref=e40] [cursor=pointer]
+      - button "Families" [ref=e41] [cursor=pointer]
+      - button "VIP" [ref=e42] [cursor=pointer]
+      - button "Level & badges" [ref=e43] [cursor=pointer]
+      - button "Rankings" [ref=e44] [cursor=pointer]
+      - button "Referrals" [ref=e45] [cursor=pointer]
+    - generic [ref=e46]:
+      - generic [ref=e47]: Governance
+      - button "Moderation" [ref=e48] [cursor=pointer]
+      - button "Operational logs" [ref=e49] [cursor=pointer]
+      - button "Role approvals" [ref=e50] [cursor=pointer]
+      - button "User territory" [ref=e51] [cursor=pointer]
+  - generic [ref=e52]:
+    - banner [ref=e53]:
+      - generic [ref=e54]: SUPER_ADMIN
+      - button "Sign out" [ref=e55] [cursor=pointer]
+    - main [ref=e56]:
+      - generic [ref=e133]:
+        - generic [ref=e134]:
+          - heading "By standing" [level=2] [ref=e136]
+          - table [ref=e138]:
+            - rowgroup [ref=e139]:
+              - row [ref=e140]:
+                - columnheader "Status" [ref=e141]
+                - columnheader "Users" [ref=e142]
+            - rowgroup [ref=e143]:
+              - row [ref=e144]:
+                - cell "ACTIVE" [ref=e145]
+                - cell "10" [ref=e146]
+        - generic [ref=e147]:
+          - heading "By role" [level=2] [ref=e149]
+          - table [ref=e151]:
+            - rowgroup [ref=e152]:
+              - row [ref=e153]:
+                - columnheader "Role" [ref=e154]
+                - columnheader "Users" [ref=e155]
+            - rowgroup [ref=e156]:
+              - row [ref=e157]:
+                - cell "ADMIN" [ref=e158]
+                - cell "1" [ref=e159]
+              - row [ref=e160]:
+                - cell "USER" [ref=e161]
+                - cell "1" [ref=e162]
+              - row [ref=e163]:
+                - cell "SUPER_ADMIN" [ref=e164]
+                - cell "1" [ref=e165]
+              - row [ref=e166]:
+                - cell "COUNTRY_MANAGER" [ref=e167]
+                - cell "1" [ref=e168]
+              - row [ref=e169]:
+                - cell "MODERATOR" [ref=e170]
+                - cell "1" [ref=e171]
+              - row [ref=e172]:
+                - cell "OFFICIAL" [ref=e173]
+                - cell "1" [ref=e174]
+        - generic [ref=e175]:
+          - heading "Newest accounts" [level=2] [ref=e177]
+          - table [ref=e179]:
+            - rowgroup [ref=e180]:
+              - row [ref=e181]:
+                - columnheader "Username" [ref=e182]
+                - columnheader "Email" [ref=e183]
+                - columnheader "Status" [ref=e184]
+                - columnheader "Joined" [ref=e185]
+            - rowgroup [ref=e186]:
+              - row [ref=e187]:
+                - cell "e2e_member" [ref=e188]
+                - cell "member@e2e.test" [ref=e189]
+                - cell "ACTIVE" [ref=e190]
+                - cell "28 Jul 2026, 12:33" [ref=e191]
+              - row [ref=e192]:
+                - cell "e2e_moderator" [ref=e193]
+                - cell "moderator@e2e.test" [ref=e194]
+                - cell "ACTIVE" [ref=e195]
+                - cell "28 Jul 2026, 12:33" [ref=e196]
+              - row [ref=e197]:
+                - cell "e2e_official" [ref=e198]
+                - cell "official@e2e.test" [ref=e199]
+                - cell "ACTIVE" [ref=e200]
+                - cell "28 Jul 2026, 12:33" [ref=e201]
+              - row [ref=e202]:
+                - cell "e2e_country_manager" [ref=e203]
+                - cell "cm@e2e.test" [ref=e204]
+                - cell "ACTIVE" [ref=e205]
+                - cell "28 Jul 2026, 12:33" [ref=e206]
+              - row [ref=e207]:
+                - cell "e2e_admin" [ref=e208]
+                - cell "admin@e2e.test" [ref=e209]
+                - cell "ACTIVE" [ref=e210]
+                - cell "28 Jul 2026, 12:33" [ref=e211]
+              - row [ref=e212]:
+                - cell "e2e_superadmin" [ref=e213]
+                - cell "superadmin@e2e.test" [ref=e214]
+                - cell "ACTIVE" [ref=e215]
+                - cell "28 Jul 2026, 12:33" [ref=e216]
+              - row [ref=e217]:
+                - cell "e2e_pop_nowhere" [ref=e218]
+                - cell "pop.none@e2e.test" [ref=e219]
+                - cell "ACTIVE" [ref=e220]
+                - cell "28 Jul 2026, 12:33" [ref=e221]
+              - row [ref=e222]:
+                - cell "e2e_pop_in" [ref=e223]
+                - cell "pop.in@e2e.test" [ref=e224]
+                - cell "ACTIVE" [ref=e225]
+                - cell "28 Jul 2026, 12:33" [ref=e226]
+              - row [ref=e227]:
+                - cell "e2e_pop_ka" [ref=e228]
+                - cell "pop.ka@e2e.test" [ref=e229]
+                - cell "ACTIVE" [ref=e230]
+                - cell "28 Jul 2026, 12:33" [ref=e231]
+              - row [ref=e232]:
+                - cell "e2e_pop_blr" [ref=e233]
+                - cell "pop.blr@e2e.test" [ref=e234]
+                - cell "ACTIVE" [ref=e235]
+                - cell "28 Jul 2026, 12:33" [ref=e236]

@@ -64,7 +64,9 @@ export class CreateLobbyDto {
   @IsString()
   carromMode?: string;
 
-  @ApiPropertyOptional({ description: 'Carrom team coin assignment: "team_a_white" or "team_a_black".' })
+  @ApiPropertyOptional({
+    description: 'Carrom team coin assignment: "team_a_white" or "team_a_black".',
+  })
   @IsOptional()
   @IsString()
   teamCoinAssignment?: string;
@@ -114,7 +116,9 @@ export class UpdateLobbySettingsDto {
   @IsString()
   carromMode?: string;
 
-  @ApiPropertyOptional({ description: 'Carrom team coin assignment: "team_a_white" or "team_a_black".' })
+  @ApiPropertyOptional({
+    description: 'Carrom team coin assignment: "team_a_white" or "team_a_black".',
+  })
   @IsOptional()
   @IsString()
   teamCoinAssignment?: string;

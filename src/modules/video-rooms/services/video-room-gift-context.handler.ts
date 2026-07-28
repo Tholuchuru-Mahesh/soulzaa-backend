@@ -7,7 +7,6 @@ import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import { QueueService } from 'src/infra/queue/queue.service';
 import type {
   GiftContextRequest,
-  GiftEconomics,
   GiftSendContext,
   GiftSendEffects,
   IGiftContextHandler,
@@ -151,9 +150,6 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
    * exactly like AUDIO_ROOM. Returning 0 here prevents the double-pay where the
    * gift path AND the revenue split both credited EARNINGS for the same gift.
    */
-  economics(_req: GiftContextRequest): GiftEconomics {
-    return { receiverEarningsBps: 0 };
-  }
 
   /**
    * Treasure contribution (VR-11) and PK scoring (VR-12), both inside the send

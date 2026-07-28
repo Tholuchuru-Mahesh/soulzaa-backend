@@ -1,0 +1,106 @@
+// ============================================================
+// Role requests — the approval chains that create staff. A request
+// travels Official → Manager → Admin (or Manager → Admin for
+// recommendations) and grants a role on approval. Owned by the
+// "role-requests" module. No cross-module relations: reference users
+// and organization rows by id.
+// ============================================================
+
+enum RoleRequestType {
+  AGENCY
+  COIN_SELLER
+  MODERATOR
+  BUSINESS_DEVELOPMENT
+}
+
+enum RoleRequestStatus {
+  SUBMITTED
+  IN_REVIEW
+  NEEDS_INFO
+  APPROVED
+  REJECTED
+  WITHDRAWN
+  CANCELLED
+}
+
+enum RoleRequestStage {
+  OFFICIAL
+  MANAGER
+  ADMIN
+}
+
+enum RoleRequestActionType {
+  SUBMIT
+  ADVANCE
+  SEND_BACK
+  RESUBMIT
+  APPROVE
+  REJECT
+  WITHDRAW
+  CANCEL
+}
+
+/// A live request for a role. One open request per (subject, type) is
+/// enforced by a partial unique index, so a concurrent double-submit
+/// cannot create two.
+model RoleRequest {
+  id                    String            @id @default(uuid()) @db.Uuid
+  reference             String            @unique
+  type                  RoleRequestType
+  subjectUserId         String            @db.Uuid
+  initiatedByUserId     String            @db.Uuid
+  status                RoleRequestStatus @default(SUBMITTED)
+  currentStage          RoleRequestStage?
+  currentStageEnteredAt DateTime?
+  pipelineVersion       Int
+  formData              Json?
+  documentKeys          String[]
+  regionId              String            @db.Uuid
+  stateId               String?           @db.Uuid
+  countryId             String?           @db.Uuid
+  submittedAt           DateTime          @default(now())
+  decidedAt             DateTime?
+  decidedByUserId       String?           @db.Uuid
+  outcomeReason         String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  actions RoleRequestAction[]
+
+  @@index([status, currentStage])
+  @@index([regionId, status])
+  @@index([countryId, status])
+  @@index([subjectUserId, type])
+  @@map("role_requests")
+}
+
+/// Append-only record of every stage action. Never updated, never deleted.
+model RoleRequestAction {
+  id                String                @id @default(uuid()) @db.Uuid
+  requestId         String                @db.Uuid
+  sequence          Int
+  stage             RoleRequestStage
+  action            RoleRequestActionType
+  actorUserId       String                @db.Uuid
+  actorRole         String
+  notes             String?
+  checklistSnapshot Json?
+  stageEnteredAt    DateTime
+  actedAt           DateTime              @default(now())
+
+  request RoleRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, sequence])
+  @@index([requestId, actedAt])
+  @@map("role_request_actions")
+}
+
+/// Per-year counter backing the human-readable reference (RR-2026-000154).
+/// Incremented atomically inside the submitting transaction.
+model RoleRequestCounter {
+  year         Int      @id
+  lastSequence Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@map("role_request_counters")
+}

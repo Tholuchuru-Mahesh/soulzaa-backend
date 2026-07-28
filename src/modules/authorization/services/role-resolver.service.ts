@@ -92,6 +92,15 @@ export class RoleResolver {
   }
 
   /**
+   * Effective role names for a user. Implements the IRoleSource port that
+   * common-layer guards depend on (they cannot import this module directly).
+   */
+  async getRoleNames(userId: string): Promise<string[]> {
+    const roles = await this.resolveAllUserRoles(userId);
+    return roles.map((r) => r.roleName);
+  }
+
+  /**
    * Checks if a user possesses a specific role (directly or hierarchically).
    */
   async hasRole(userId: string, targetRoleName: string): Promise<boolean> {

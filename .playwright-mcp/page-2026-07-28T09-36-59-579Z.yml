@@ -1,0 +1,19 @@
+- generic [ref=e262]:
+  - navigation [ref=e263]:
+    - generic [ref=e264]:
+      - generic [ref=e265]: Soulzaa
+      - generic [ref=e266]: Super Admin
+    - generic [ref=e267]:
+      - generic [ref=e268]: Governance
+      - button "User territory" [ref=e269] [cursor=pointer]
+  - generic [ref=e270]:
+    - banner [ref=e271]:
+      - generic [ref=e272]: MODERATOR
+      - button "Sign out" [ref=e273] [cursor=pointer]
+    - main [ref=e274]:
+      - generic [ref=e276]:
+        - heading "Find a user" [level=2] [ref=e278]
+        - paragraph [ref=e279]: Enter the user id to assign their territory.
+        - generic [ref=e280]:
+          - textbox "User id" [ref=e281]
+          - button "Load" [ref=e282] [cursor=pointer]

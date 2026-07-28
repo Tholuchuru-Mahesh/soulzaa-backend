@@ -1,8 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Server, Socket } from 'socket.io';
 import type { ExtendedError } from 'socket.io/dist/namespace';
+import { PLATFORM_ROLES, type PlatformRole } from '../../common/constants';
 import { EVENT_BUS, type IEventBus } from '../../common/events';
 import type { AuthenticatedUser } from '../../common/interfaces/authenticated-user';
+import { ROLE_SOURCE, type IRoleSource } from '../../common/interfaces/role-source.interface';
 import { MonitoringMetrics } from '../observability/monitoring.metrics';
 import { PresenceService } from '../redis/presence.service';
 import { TokenService } from '../auth/token.service';
@@ -43,6 +45,7 @@ export class SocketManager {
     private readonly presence: PresenceService,
     private readonly metrics: MonitoringMetrics,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    @Inject(ROLE_SOURCE) private readonly roleSource: IRoleSource,
   ) {}
 
   /**
@@ -59,8 +62,14 @@ export class SocketManager {
       }
       this.tokenService
         .verifyAccessToken(token)
-        .then((claims) => {
-          socket.data.user = { ...claims, id: claims.sub, roles: claims.roles ?? [] };
+        .then(async (claims) => {
+          // Roles from the RBAC store, not the claim: a connection outlives the
+          // token that opened it, so a revoked role must not persist with it.
+          const names = await this.roleSource.getRoleNames(claims.sub);
+          const roles = names.filter((name): name is PlatformRole =>
+            (PLATFORM_ROLES as readonly string[]).includes(name),
+          );
+          socket.data.user = { ...claims, id: claims.sub, roles };
           next();
         })
         .catch(() => next(new Error('Unauthorized: invalid token')));

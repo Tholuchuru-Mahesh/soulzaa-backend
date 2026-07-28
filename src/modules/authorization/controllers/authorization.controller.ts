@@ -165,6 +165,7 @@ export class AuthorizationController {
 
   @ApiOperation({ summary: 'Get resolved geographic scopes for a user' })
   @ApiResponse({ status: 200, description: 'List of assigned geographic scopes for user' })
+  @RequirePermissions('user.view')
   @Get('users/:userId/scopes')
   async getUserScopes(@Param('userId') userId: string) {
     return this.authorizationService.getUserScopes(userId);
@@ -176,6 +177,7 @@ export class AuthorizationController {
 
   @ApiOperation({ summary: 'Get resolved permissions for a user' })
   @ApiResponse({ status: 200, description: 'List of active permission codes for target user' })
+  @RequirePermissions('user.view')
   @Get('users/:userId/permissions')
   async getUserPermissions(@Param('userId') userId: string) {
     const permissions = await this.authorizationService.getUserPermissions(userId);
@@ -184,6 +186,7 @@ export class AuthorizationController {
 
   @ApiOperation({ summary: 'Get resolved roles for a user' })
   @ApiResponse({ status: 200, description: 'List of direct and inherited roles for target user' })
+  @RequirePermissions('user.view')
   @Get('users/:userId/roles')
   async getUserRoles(@Param('userId') userId: string) {
     const roles = await this.authorizationService.getUserRoles(userId);

@@ -6,7 +6,6 @@ import { GIFT_WALLET_REFERENCE_TYPE } from 'src/modules/gifts/constants/gifts.co
 import { GiftRefundedEvent } from 'src/modules/gifts/events/gift.events';
 import type {
   GiftContextRequest,
-  GiftEconomics,
   GiftSendContext,
   GiftSendEffects,
   IGiftContextHandler,
@@ -95,10 +94,6 @@ export class AudioRoomGiftContextHandler implements IGiftContextHandler, OnModul
         HttpStatus.BAD_REQUEST,
       );
     }
-  }
-
-  economics(_req: GiftContextRequest): GiftEconomics {
-    return { receiverEarningsBps: 0 };
   }
 
   /**

@@ -45,10 +45,6 @@ describe('AudioRoomGiftContextHandler', () => {
     expect(handler.maxReceivers).toBe(1);
   });
 
-  it('BC-6: economics credit the receiver nothing (treasure takes the coins)', () => {
-    expect(handler.economics(REQ as never)).toEqual({ receiverEarningsBps: 0 });
-  });
-
   it('accepts a valid single-receiver send', async () => {
     await expect(handler.validate(REQ as never)).resolves.toBeUndefined();
     expect(rooms.assertMember).toHaveBeenCalledWith('room-1', 'sender-1');
@@ -364,4 +360,3 @@ describe('AudioRoomGiftContextHandler.onSend (treasure + host reward + refund)',
     });
   });
 });
-

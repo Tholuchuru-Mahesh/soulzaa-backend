@@ -1,12 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { CacheService } from 'src/infra/redis/cache.service';
 
 @Injectable()
 export class AuthorizationCacheService {
   private readonly logger = new Logger(AuthorizationCacheService.name);
-  private readonly defaultTtlSeconds = 300; // 5 minutes default TTL
+  private readonly defaultTtlSeconds: number;
 
-  constructor(private readonly cacheService: CacheService) {}
+  constructor(
+    private readonly cacheService: CacheService,
+    config: ConfigService,
+  ) {
+    this.defaultTtlSeconds = Number(config.get('authorization', { infer: true })!.cacheTtlSeconds);
+  }
 
   private getPermsKey(userId: string): string {
     return `rbac:perms:${userId}`;

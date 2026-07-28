@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { AuthProviderType, OtpPurpose } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
+import { PLATFORM_ROLES, type PlatformRole } from 'src/common/constants';
+import { ROLE_SOURCE, type IRoleSource } from 'src/common/interfaces/role-source.interface';
 import { PasswordService } from 'src/infra/auth/password.service';
 import {
   USERS_SERVICE,
@@ -66,6 +68,7 @@ export class AuthService implements IAuthService {
     private readonly security: LoginSecurityService,
     private readonly firebaseService: FirebaseService,
     config: ConfigService,
+    @Inject(ROLE_SOURCE) private readonly roleSource: IRoleSource,
   ) {
     this.resetTtlSeconds = Number(config.get('security', { infer: true })!.passwordResetTtlSeconds);
   }
@@ -259,7 +262,13 @@ export class AuthService implements IAuthService {
       );
     }
     this.assertActive(user);
-    return this.sessions.refresh(userId, sessionId, presentedToken, this.claimsFor(user), ctx);
+    return this.sessions.refresh(
+      userId,
+      sessionId,
+      presentedToken,
+      await this.claimsFor(user),
+      ctx,
+    );
   }
 
   async logout(userId: string, sessionId: string): Promise<void> {
@@ -399,15 +408,29 @@ export class AuthService implements IAuthService {
     method: AuthMethod,
     isNewUser: boolean,
   ): Promise<AuthResult> {
-    const { sessionId, tokens } = await this.sessions.createSession(this.claimsFor(user), ctx);
+    const { sessionId, tokens } = await this.sessions.createSession(
+      await this.claimsFor(user),
+      ctx,
+    );
     await this.bus.publish(
       new UserLoggedInEvent({ userId: user.id, sessionId, method, deviceId: null, ip: ctx.ip }),
     );
     return { user, tokens, isNewUser };
   }
 
-  private claimsFor(user: UserIdentity): SessionClaims {
-    return { userId: user.id, roles: user.roles, isGuest: user.isGuest };
+  /**
+   * Builds the session claims, taking roles from the RBAC store so a token
+   * reflects assignments made through Super Admin role management. The legacy
+   * `User.roles` column is used only when the account has no RBAC assignment
+   * yet; guards resolve roles per-request regardless, so this claim is a
+   * convenience projection rather than an authority.
+   */
+  private async claimsFor(user: UserIdentity): Promise<SessionClaims> {
+    const assigned = (await this.roleSource.getRoleNames(user.id)).filter(
+      (name): name is PlatformRole => (PLATFORM_ROLES as readonly string[]).includes(name),
+    );
+    const roles = assigned.length > 0 ? assigned : user.roles;
+    return { userId: user.id, roles, isGuest: user.isGuest };
   }
 
   private assertActive(user: UserIdentity): void {

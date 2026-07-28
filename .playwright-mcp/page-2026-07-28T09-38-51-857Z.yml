@@ -1,0 +1,9 @@
+- generic [ref=f3e11]:
+  - generic [ref=f3e12]: Soulzaa
+  - generic [ref=f3e13]: Super Admin
+  - generic [ref=f3e14]: Email
+  - textbox [ref=f3e15]
+  - generic [ref=f3e16]: Password
+  - textbox [ref=f3e17]
+  - button "Sign in" [ref=f3e18] [cursor=pointer]
+  - paragraph [ref=f3e19]: This console is for platform staff. Operational roles use the mobile app.

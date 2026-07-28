@@ -111,16 +111,16 @@ model CreatorDailyStat {
 
 /// Analytics Report Record
 model AnalyticsReport {
-  id          String   @id @default(uuid()) @db.Uuid
+  id          String  @id @default(uuid()) @db.Uuid
   name        String
-  domain      String   // PLATFORM | FINANCIAL | WALLET | REVENUE | GIFT | TREASURE_BOX | WITHDRAWAL | AGENCY | COIN_SELLER | FAMILY | VIP | LEVEL | ACHIEVEMENT | RANKING | EVENT | TASK | REFERRAL | NOTIFICATION | GROWTH | RETENTION | MODERATION
+  domain      String // PLATFORM | FINANCIAL | WALLET | REVENUE | GIFT | TREASURE_BOX | WITHDRAWAL | AGENCY | COIN_SELLER | FAMILY | VIP | LEVEL | ACHIEVEMENT | RANKING | EVENT | TASK | REFERRAL | NOTIFICATION | GROWTH | RETENTION | MODERATION
   parameters  Json?
   data        Json?
-  generatedBy String?  @db.Uuid
+  generatedBy String? @db.Uuid
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  exports     ReportExport[]
+  exports ReportExport[]
 
   @@index([domain])
   @@index([createdAt])
@@ -151,28 +151,28 @@ model AnalyticsMetric {
 
 /// Configurable Dashboard Layouts
 model AnalyticsDashboard {
-  id          String   @id @default(uuid()) @db.Uuid
+  id          String  @id @default(uuid()) @db.Uuid
   name        String
   description String?
   layout      Json?
   metrics     Json?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("analytics_dashboards")
 }
 
 /// Dynamic aggregated statistics per period
 model AnalyticsStatistics {
-  id         String   @id @default(uuid()) @db.Uuid
-  period     String   @default("DAILY") // DAILY | WEEKLY | MONTHLY | YEARLY
+  id         String  @id @default(uuid()) @db.Uuid
+  period     String  @default("DAILY") // DAILY | WEEKLY | MONTHLY | YEARLY
   dateKey    String
   metricType String
-  count      Int      @default(0)
-  amount     Decimal  @default(0.0) @db.Decimal(20, 2)
+  count      Int     @default(0)
+  amount     Decimal @default(0.0) @db.Decimal(20, 2)
 
-  updatedAt  DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@unique([period, dateKey, metricType])
   @@map("analytics_statistics")
@@ -183,7 +183,7 @@ model AnalyticsAudit {
   id        String   @id @default(uuid()) @db.Uuid
   reportId  String?  @db.Uuid
   actorId   String?  @db.Uuid
-  action    String   // REPORT_GENERATED | REPORT_EXPORTED | DASHBOARD_REFRESHED | ANALYTICS_CONFIGURATION_UPDATED
+  action    String // REPORT_GENERATED | REPORT_EXPORTED | DASHBOARD_REFRESHED | ANALYTICS_CONFIGURATION_UPDATED
   details   Json?
   createdAt DateTime @default(now())
 
@@ -205,16 +205,16 @@ model AnalyticsConfiguration {
 
 /// Export requests registry
 model ReportExport {
-  id        String   @id @default(uuid()) @db.Uuid
-  reportId  String   @db.Uuid
-  format    String   // CSV | EXCEL | PDF | JSON
+  id        String    @id @default(uuid()) @db.Uuid
+  reportId  String    @db.Uuid
+  format    String // CSV | EXCEL | PDF | JSON
   url       String?
-  status    String   @default("PENDING") // PENDING | COMPLETED | FAILED
+  status    String    @default("PENDING") // PENDING | COMPLETED | FAILED
   expiresAt DateTime?
 
   createdAt DateTime @default(now())
 
-  report    AnalyticsReport @relation(fields: [reportId], references: [id])
+  report AnalyticsReport @relation(fields: [reportId], references: [id])
 
   @@index([reportId])
   @@map("report_exports")

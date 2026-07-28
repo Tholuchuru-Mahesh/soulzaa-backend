@@ -6,23 +6,30 @@
 
 /// Configurable Ranking Category Definition
 model RankingDefinition {
-  id              String   @id @default(uuid()) @db.Uuid
-  code            String   @unique
-  name            String
-  description     String?
-  category        String   // OVERALL | HOST | RECEIVER | GIFT_SENDER | FAMILY | VIP | LEVEL | ACHIEVEMENT | GAME | EVENT | AGENCY | COIN_SELLER | MODERATOR | SEASON | COUNTRY | REGION | CUSTOM
-  subcategory     String?
-  entityType      String   @default("USER")  // USER | FAMILY | ROOM | AGENCY | TEAM
-  timeWindow      String   @default("DAILY") // REALTIME | HOURLY | DAILY | WEEKLY | MONTHLY | QUARTERLY | YEARLY | SEASON | LIFETIME
-  scoreFormula    Json?    // configurable JSON scoring rules
-  visibility      String   @default("PUBLIC")
-  status          String   @default("ACTIVE")
-  maxEntries      Int      @default(1000)
-  country         String?
-  region          String?
-  season          String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id           String   @id @default(uuid()) @db.Uuid
+  code         String   @unique
+  name         String
+  description  String?
+  category     String // OVERALL | HOST | RECEIVER | GIFT_SENDER | FAMILY | VIP | LEVEL | ACHIEVEMENT | GAME | EVENT | AGENCY | COIN_SELLER | MODERATOR | SEASON | COUNTRY | REGION | CUSTOM
+  subcategory  String?
+  entityType   String   @default("USER") // USER | FAMILY | ROOM | AGENCY | TEAM
+  timeWindow   String   @default("DAILY") // REALTIME | HOURLY | DAILY | WEEKLY | MONTHLY | QUARTERLY | YEARLY | SEASON | LIFETIME
+  scoreFormula Json? // configurable JSON scoring rules
+  visibility   String   @default("PUBLIC")
+  status       String   @default("ACTIVE")
+  maxEntries   Int      @default(1000)
+  country      String?
+  region       String?
+  // Normalised geography. The strings above stay as display labels; these are
+  // what categorisation and filtering read.
+  countryId    String?  @db.Uuid
+  regionId     String?  @db.Uuid
+  season       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  scopeCountry Country? @relation("RankingScopeCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  scopeRegion  Region?  @relation("RankingScopeRegion", fields: [regionId], references: [id], onDelete: SetNull)
 
   entries   RankingEntry[]
   snapshots EnterpriseRankingSnapshot[]
@@ -31,26 +38,28 @@ model RankingDefinition {
   @@index([status])
   @@index([timeWindow])
   @@index([country])
+  @@index([countryId])
+  @@index([regionId])
   @@map("ranking_definitions")
 }
 
 /// Individual Ranking Entry (current score state)
 model RankingEntry {
-  id               String   @id @default(uuid()) @db.Uuid
-  rankingId        String   @db.Uuid
-  entityId         String   @db.Uuid   // userId | familyId | roomId | agencyId
-  entityType       String
-  score            BigInt   @default(0)
-  rank             Int
-  previousRank     Int?
-  rankDelta        Int      @default(0)  // positive = promoted, negative = demoted
-  country          String?
-  region           String?
-  period           String
-  dateKey          String
-  season           String?
-  metadata         Json?
-  updatedAt        DateTime @updatedAt
+  id           String   @id @default(uuid()) @db.Uuid
+  rankingId    String   @db.Uuid
+  entityId     String   @db.Uuid // userId | familyId | roomId | agencyId
+  entityType   String
+  score        BigInt   @default(0)
+  rank         Int
+  previousRank Int?
+  rankDelta    Int      @default(0) // positive = promoted, negative = demoted
+  country      String?
+  region       String?
+  period       String
+  dateKey      String
+  season       String?
+  metadata     Json?
+  updatedAt    DateTime @updatedAt
 
   ranking RankingDefinition @relation(fields: [rankingId], references: [id])
 
@@ -64,17 +73,17 @@ model RankingEntry {
 
 /// Immutable Point-in-Time Ranking Snapshot
 model EnterpriseRankingSnapshot {
-  id          String   @id @default(uuid()) @db.Uuid
-  rankingId   String   @db.Uuid
-  period      String
-  dateKey     String
-  entityId    String   @db.Uuid
-  entityType  String
-  rank        Int
+  id           String   @id @default(uuid()) @db.Uuid
+  rankingId    String   @db.Uuid
+  period       String
+  dateKey      String
+  entityId     String   @db.Uuid
+  entityType   String
+  rank         Int
   previousRank Int?
-  score       BigInt
-  metadata    Json?
-  createdAt   DateTime @default(now())
+  score        BigInt
+  metadata     Json?
+  createdAt    DateTime @default(now())
 
   ranking RankingDefinition @relation(fields: [rankingId], references: [id])
 
@@ -106,17 +115,17 @@ model RankingHistory {
 
 /// Pre-aggregated Ranking Statistics
 model RankingStatistics {
-  id                  String   @id @default(uuid()) @db.Uuid
-  period              String   @default("DAILY")
-  dateKey             String
-  category            String
-  totalEntries        Int      @default(0)
-  totalScoreAwarded   BigInt   @default(0)
-  topEntityId         String?
-  topEntityScore      BigInt?
-  promotions          Int      @default(0)
-  demotions           Int      @default(0)
-  updatedAt           DateTime @updatedAt
+  id                String   @id @default(uuid()) @db.Uuid
+  period            String   @default("DAILY")
+  dateKey           String
+  category          String
+  totalEntries      Int      @default(0)
+  totalScoreAwarded BigInt   @default(0)
+  topEntityId       String?
+  topEntityScore    BigInt?
+  promotions        Int      @default(0)
+  demotions         Int      @default(0)
+  updatedAt         DateTime @updatedAt
 
   @@unique([period, dateKey, category])
   @@map("ranking_statistics")

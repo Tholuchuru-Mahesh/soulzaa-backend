@@ -161,13 +161,13 @@ model RoomSettings {
 /// current occupancy; Redis presence is the live hot-path view. A returning
 /// user's row is reactivated rather than duplicated (unique on room+user).
 model RoomMember {
-  id               String         @id @default(uuid()) @db.Uuid
-  roomId           String         @db.Uuid
-  userId           String         @db.Uuid
-  role             RoomMemberRole @default(LISTENER)
-  joinedAt         DateTime       @default(now())
-  leftAt           DateTime?
-  isActive         Boolean        @default(true)
+  id       String         @id @default(uuid()) @db.Uuid
+  roomId   String         @db.Uuid
+  userId   String         @db.Uuid
+  role     RoomMemberRole @default(LISTENER)
+  joinedAt DateTime       @default(now())
+  leftAt   DateTime?
+  isActive Boolean        @default(true)
 
   // ---- Audit ----
   createdBy String?  @db.Uuid

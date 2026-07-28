@@ -24,7 +24,6 @@ const ROOM = 'room-1';
 const RECEIVER = 'receiver-1';
 
 const GIFT_CFG = {
-  creatorEarningRatePercent: 30,
   senderExpPerCoin: 1,
   receiverExpPerCoin: 1,
   rateMax: 20,
@@ -83,6 +82,7 @@ describe('GiftService', () => {
   let locks: Record<string, jest.Mock>;
   let treasure: Record<string, jest.Mock>;
   let registry: GiftContextRegistry;
+  let platformConfig: { get: jest.Mock };
   let service: GiftService;
 
   beforeEach(() => {
@@ -172,6 +172,7 @@ describe('GiftService', () => {
       treasure as unknown as ITreasureBoxesService,
     ).onModuleInit();
 
+    platformConfig = { get: jest.fn().mockResolvedValue(null) };
     service = new GiftService(
       repo as unknown as GiftRepository,
       catalog as unknown as GiftCatalogService,
@@ -184,6 +185,7 @@ describe('GiftService', () => {
       wallet as unknown as IWalletService,
       vip as unknown as IVipService,
       registry,
+      platformConfig,
     );
   });
 
@@ -228,6 +230,40 @@ describe('GiftService', () => {
       // Receiver Available Balance (GOLD) credited 1,500 (10%)
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: RECEIVER, currency: 'GOLD', amount: 1500 }),
+        expect.anything(),
+      );
+    });
+
+    it('honours the configured cashback rate and threshold', async () => {
+      // The PRD requires economy values to be operator-configurable rather than
+      // compiled in, so a Super Admin can retune cashback without a deploy.
+      platformConfig.get.mockImplementation(async (key: string) => {
+        if (key === 'gift.receiver_cashback_percentage') return 20;
+        if (key === 'gift.receiver_cashback_threshold') return 500;
+        return null;
+      });
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 600 }));
+
+      await service.sendGift(SENDER, dto());
+
+      // 600 clears the configured 500 threshold, so 20% is credited.
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'GOLD', amount: 120 }),
+        expect.anything(),
+      );
+    });
+
+    it('pays no cashback when the gift sits on the configured threshold', async () => {
+      platformConfig.get.mockImplementation(async (key: string) => {
+        if (key === 'gift.receiver_cashback_threshold') return 500;
+        return null;
+      });
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 500 }));
+
+      await service.sendGift(SENDER, dto());
+
+      expect(wallet.credit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'GOLD' }),
         expect.anything(),
       );
     });

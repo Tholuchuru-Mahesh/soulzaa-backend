@@ -15,22 +15,53 @@ export class CoinPackageService {
   ) {}
 
   /**
-   * List purchasable coin packages with filtering
+   * Resolves the storefront country for a caller from their normalised location.
+   *
+   * Server-side on purpose: the country used to come from a query parameter, so
+   * a client could ask for any region's pricing simply by changing it. A user
+   * with no normalised location sees only GLOBAL packages.
    */
-  async listPackages(dto: PackageQueryDto) {
-    const { platform, country, isActive = true } = dto;
-    const where: any = {};
+  private async resolveStorefrontCountry(userId?: string): Promise<string | null> {
+    if (!userId) return null;
 
-    if (isActive !== undefined) {
-      where.isActive = isActive;
-    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { locationCountry: { select: { code: true } } },
+    });
+    return user?.locationCountry?.code ?? null;
+  }
+
+  /**
+   * List purchasable coin packages with filtering.
+   *
+   * `userId` drives regional pricing. `dto.country` is honoured only when no
+   * user is supplied (catalogue management), never for the storefront.
+   */
+  async listPackages(dto: PackageQueryDto, userId?: string) {
+    const { platform, isActive = true } = dto;
+    const country = userId ? await this.resolveStorefrontCountry(userId) : dto.country;
+
+    // AND, not repeated `where.OR`: assigning OR twice silently dropped the
+    // platform constraint whenever a country was also supplied.
+    const and: Array<Record<string, unknown>> = [];
 
     if (platform && platform !== 'ALL') {
-      where.OR = [{ platform: 'ALL' }, { platform: platform.toUpperCase() }];
+      and.push({ OR: [{ platform: 'ALL' }, { platform: platform.toUpperCase() }] });
     }
 
     if (country && country !== 'GLOBAL') {
-      where.OR = [{ country: 'GLOBAL' }, { country: country.toUpperCase() }];
+      and.push({ OR: [{ country: 'GLOBAL' }, { country: country.toUpperCase() }] });
+    } else if (userId) {
+      // An un-normalised user gets the global catalogue rather than everything.
+      and.push({ country: 'GLOBAL' });
+    }
+
+    const where: Record<string, unknown> = {};
+    if (isActive !== undefined) {
+      where.isActive = isActive;
+    }
+    if (and.length > 0) {
+      where.AND = and;
     }
 
     const packages = await this.prisma.coinPackage.findMany({

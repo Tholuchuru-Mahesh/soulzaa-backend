@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { ROLE_SOURCE } from 'src/common/interfaces/role-source.interface';
 import { PrismaModule } from 'src/infra/prisma/prisma.module';
 import { RedisModule } from 'src/infra/redis/redis.module';
 import { AuthorizationController } from './controllers/authorization.controller';
@@ -41,6 +42,9 @@ import { RoleService } from './services/role.service';
     RbacPermissionsGuard,
     RbacRolesGuard,
     AuditLogInterceptor,
+    // Supplies the common-layer RolesGuard with RBAC-resolved roles, so
+    // @Roles(...) and @RequirePermissions(...) read the same store.
+    { provide: ROLE_SOURCE, useExisting: RoleResolver },
   ],
   exports: [
     AuthorizationService,
@@ -57,6 +61,7 @@ import { RoleService } from './services/role.service';
     RoleRankPolicyRule,
     RbacPermissionsGuard,
     RbacRolesGuard,
+    ROLE_SOURCE,
   ],
 })
 export class AuthorizationModule {}

@@ -4,7 +4,6 @@ import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { GiftContextRegistry } from 'src/modules/gifts/services/gift-context.registry';
 import type {
   GiftContextRequest,
-  GiftEconomics,
   IGiftContextHandler,
 } from 'src/modules/gifts/interfaces/gift-context-handler.interface';
 import { PRIVACY_SERVICE, type IPrivacyService } from 'src/modules/privacy/interfaces';
@@ -98,7 +97,4 @@ export class PrivateChatGiftContextHandler implements IGiftContextHandler, OnMod
    * satisfy the interface, and deliberately 0 so that if the field is ever wired
    * up this context does not silently start minting earnings.
    */
-  economics(_req: GiftContextRequest): GiftEconomics {
-    return { receiverEarningsBps: 0 };
-  }
 }

@@ -5,14 +5,14 @@
 
 /// Active mapping relationship between Agency and Host
 model AgencyRelationship {
-  id            String    @id @default(uuid()) @db.Uuid
-  agencyId      String    @db.Uuid
-  hostId        String    @db.Uuid
-  status        String    @default("ACTIVE")
-  effectiveFrom DateTime  @default(now())
+  id             String    @id @default(uuid()) @db.Uuid
+  agencyId       String    @db.Uuid
+  hostId         String    @db.Uuid
+  status         String    @default("ACTIVE")
+  effectiveFrom  DateTime  @default(now())
   effectiveUntil DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@unique([agencyId, hostId])
   @@index([hostId, status])
@@ -22,17 +22,17 @@ model AgencyRelationship {
 
 /// Immutable master record of every agency commission calculation & settlement
 model AgencySettlement {
-  id                      String   @id @default(uuid()) @db.Uuid
-  revenueDistributionId   String   @unique @db.Uuid
-  giftTxnId               String   @db.Uuid
-  agencyId                String   @db.Uuid
-  hostId                  String   @db.Uuid
-  hostEarningsCoins       BigInt
-  commissionPercentage    Float    @default(10.0)
-  agencyCommissionCoins   BigInt
-  walletTxnId             String?  @db.Uuid
-  status                  String   @default("COMPLETED")
-  createdAt               DateTime @default(now())
+  id                    String   @id @default(uuid()) @db.Uuid
+  revenueDistributionId String   @unique @db.Uuid
+  giftTxnId             String   @db.Uuid
+  agencyId              String   @db.Uuid
+  hostId                String   @db.Uuid
+  hostEarningsCoins     BigInt
+  commissionPercentage  Float    @default(10.0)
+  agencyCommissionCoins BigInt
+  walletTxnId           String?  @db.Uuid
+  status                String   @default("COMPLETED")
+  createdAt             DateTime @default(now())
 
   @@index([agencyId, createdAt])
   @@index([hostId, createdAt])

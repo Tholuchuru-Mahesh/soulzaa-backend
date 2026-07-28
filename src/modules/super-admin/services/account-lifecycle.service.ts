@@ -1,8 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AccountStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { AuthorizationCacheService } from 'src/modules/authorization/services/authorization-cache.service';
+import { PolicyEngineService } from 'src/modules/authorization/services/policy-engine.service';
+import { RoleResolver } from 'src/modules/authorization/services/role-resolver.service';
 import { LockAccountDto, SuspendAccountDto } from '../dto/account-status.dto';
 
 @Injectable()
@@ -11,7 +18,33 @@ export class AccountLifecycleService {
     private readonly prisma: PrismaService,
     private readonly cacheService: CacheService,
     private readonly authCacheService: AuthorizationCacheService,
+    private readonly roleResolver: RoleResolver,
+    private readonly policyEngine: PolicyEngineService,
   ) {}
+
+  /**
+   * Rank gate for account-state changes: holding `user.status.*` says an actor may
+   * manage accounts, not that they may manage *this* account. Without it an ADMIN
+   * could suspend a SUPER_ADMIN, or two peers could lock each other out.
+   */
+  private async assertMayActOn(actorId: string, targetUserId: string, action: string) {
+    const [actorRoles, targetRoles] = await Promise.all([
+      this.roleResolver.getRoleNames(actorId),
+      this.roleResolver.getRoleNames(targetUserId),
+    ]);
+
+    const allowed = await this.policyEngine.evaluate({
+      actorUserId: actorId,
+      actorRoles,
+      action,
+      targetUserId,
+      targetRoles,
+    });
+
+    if (!allowed) {
+      throw new ForbiddenException(`Insufficient authority to perform '${action}' on this account`);
+    }
+  }
 
   /**
    * Activates an account.
@@ -21,6 +54,8 @@ export class AccountLifecycleService {
     if (!user) {
       throw new NotFoundException(`User with ID '${userId}' not found`);
     }
+
+    await this.assertMayActOn(actorId, userId, 'user.status.activate');
 
     if (user.status === AccountStatus.DELETED) {
       throw new BadRequestException(`Cannot activate deleted account`);
@@ -49,6 +84,8 @@ export class AccountLifecycleService {
     if (!user) {
       throw new NotFoundException(`User with ID '${userId}' not found`);
     }
+
+    await this.assertMayActOn(actorId, userId, 'user.status.suspend');
 
     if (user.status === AccountStatus.DELETED) {
       throw new BadRequestException(`Cannot suspend deleted account`);
@@ -88,6 +125,8 @@ export class AccountLifecycleService {
       throw new NotFoundException(`User with ID '${userId}' not found`);
     }
 
+    await this.assertMayActOn(actorId, userId, 'user.status.lock');
+
     if (user.status === AccountStatus.DELETED) {
       throw new BadRequestException(`Cannot lock deleted account`);
     }
@@ -118,6 +157,8 @@ export class AccountLifecycleService {
       throw new NotFoundException(`User with ID '${userId}' not found`);
     }
 
+    await this.assertMayActOn(actorId, userId, 'user.status.unlock');
+
     if (user.status !== AccountStatus.LOCKED) {
       throw new BadRequestException(`Account '${user.username}' is not in locked status`);
     }
@@ -140,11 +181,13 @@ export class AccountLifecycleService {
   /**
    * Force logout user sessions and invalidates active session tokens in Redis.
    */
-  async forceLogout(userId: string, _actorId?: string) {
+  async forceLogout(userId: string, actorId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException(`User with ID '${userId}' not found`);
     }
+
+    await this.assertMayActOn(actorId, userId, 'user.session.force_logout');
 
     // Clear session tokens in Redis
     await Promise.all([

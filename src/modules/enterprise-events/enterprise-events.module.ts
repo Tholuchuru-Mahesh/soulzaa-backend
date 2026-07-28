@@ -1,6 +1,11 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
+import { QueueModule } from 'src/infra/queue/queue.module';
 import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
+import { ENTERPRISE_EVENT_QUEUES } from './constants/event-jobs.constants';
 import { EnterpriseEventController } from './controllers/event.controller';
+import { EnterpriseEventProcessor } from './processors/event.processor';
+import { EventLifecycleScheduler } from './services/event.scheduler';
 import { EventAuditService } from './services/event-audit.service';
 import { EventConfigurationService } from './services/event-configuration.service';
 import { EventEligibilityService } from './services/event-eligibility.service';
@@ -13,13 +18,21 @@ import { EventSchedulerService } from './services/event-scheduler.service';
 import { EventService } from './services/event.service';
 import { EventStatisticsService } from './services/event-statistics.service';
 import { EventValidationService } from './services/event-validation.service';
+import { EventProgressionListener } from './listeners/event-progression.listener';
 
 @Global()
 @Module({
-  imports: [PlatformConfigurationModule],
+  imports: [
+    PlatformConfigurationModule,
+    QueueModule,
+    BullModule.registerQueue({ name: ENTERPRISE_EVENT_QUEUES.LIFECYCLE }),
+  ],
   controllers: [EnterpriseEventController],
   providers: [
     // Phase 16: Enterprise Events Engine Services
+    EventProgressionListener,
+    EventLifecycleScheduler,
+    EnterpriseEventProcessor,
     EventConfigurationService,
     EventValidationService,
     EventAuditService,

@@ -33,11 +33,7 @@ describe('PrivateChatGiftContextHandler', () => {
     chat = { getConversation: jest.fn().mockResolvedValue(conversationView()) };
     privacy = { isBlockedEitherWay: jest.fn().mockResolvedValue(false) };
     registry = { register: jest.fn() };
-    handler = new PrivateChatGiftContextHandler(
-      chat as never,
-      privacy as never,
-      registry as never,
-    );
+    handler = new PrivateChatGiftContextHandler(chat as never, privacy as never, registry as never);
   });
 
   it('registers itself on module init', () => {
@@ -92,9 +88,7 @@ describe('PrivateChatGiftContextHandler', () => {
   // Gifting into a request the peer has not accepted is a way to reach someone
   // who has not agreed to hear from you.
   it('rejects while the conversation is still an unaccepted request', async () => {
-    chat.getConversation.mockResolvedValue(
-      conversationView({ isPendingOutbound: true }),
-    );
+    chat.getConversation.mockResolvedValue(conversationView({ isPendingOutbound: true }));
     await expect(handler.validate(REQ as never)).rejects.toMatchObject({
       errorCode: ERROR_CODES.GIFT_CONTEXT_INVALID,
     });

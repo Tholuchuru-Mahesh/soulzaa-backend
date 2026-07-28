@@ -18,6 +18,7 @@ import { PurchaseOrderService } from './purchase-order.service';
 import { PurchaseQueryService } from './purchase-query.service';
 import { PurchaseReconciliationService } from './purchase-reconciliation.service';
 import { ReceiptVerificationService } from './receipt-verification.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
   let packageService: CoinPackageService;
@@ -85,6 +86,12 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
         { provide: WalletTransactionService, useValue: mockWalletTxService },
         { provide: CoinEconomyService, useValue: mockCoinEconomyService },
         { provide: FinancialPolicyService, useValue: mockFinancialPolicyService },
+        // The mock gateway is opt-in; these tests are exactly the environment
+        // that opts in. Real providers stay unconfigured and so stay fail-closed.
+        {
+          provide: ConfigService,
+          useValue: { get: () => ({ allowMockGateway: true }) },
+        },
       ],
     }).compile();
 

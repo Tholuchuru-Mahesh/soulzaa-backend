@@ -6,21 +6,21 @@
 
 /// Referral Campaign Definition
 model ReferralCampaign {
-  id                 String   @id @default(uuid()) @db.Uuid
-  code               String   @unique
+  id                 String    @id @default(uuid()) @db.Uuid
+  code               String    @unique
   name               String
   description        String?
-  category           String   // USER | VIP | CREATOR | AGENCY | SELLER | CAMPAIGN | EVENT | FAMILY | PROMOTIONAL | INVITE_LINK | QR_CODE | CUSTOM
+  category           String // USER | VIP | CREATOR | AGENCY | SELLER | CAMPAIGN | EVENT | FAMILY | PROMOTIONAL | INVITE_LINK | QR_CODE | CUSTOM
   qualificationRules Json?
   rewardDefinition   Json?
-  maxUses            Int      @default(10000)
-  usesCount          Int      @default(0)
+  maxUses            Int       @default(10000)
+  usesCount          Int       @default(0)
   startTime          DateTime?
   endTime            DateTime?
-  status             String   @default("ACTIVE") // DRAFT | SCHEDULED | ACTIVE | PAUSED | COMPLETED | EXPIRED | CANCELLED | ARCHIVED
+  status             String    @default("ACTIVE") // DRAFT | SCHEDULED | ACTIVE | PAUSED | COMPLETED | EXPIRED | CANCELLED | ARCHIVED
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   codes         ReferralCode[]
   relationships ReferralRelationship[]
@@ -32,19 +32,19 @@ model ReferralCampaign {
 
 /// Referral Code Instance
 model ReferralCode {
-  id          String   @id @default(uuid()) @db.Uuid
-  code        String   @unique
-  referrerId  String   @db.Uuid
-  campaignId  String?  @db.Uuid
-  inviteLink  String?
-  qrCodeUrl   String?
-  maxUses     Int      @default(100)
-  usesCount   Int      @default(0)
-  expiresAt   DateTime?
-  status      String   @default("ACTIVE") // ACTIVE | EXPIRED | INACTIVE | CANCELLED
+  id         String    @id @default(uuid()) @db.Uuid
+  code       String    @unique
+  referrerId String    @db.Uuid
+  campaignId String?   @db.Uuid
+  inviteLink String?
+  qrCodeUrl  String?
+  maxUses    Int       @default(100)
+  usesCount  Int       @default(0)
+  expiresAt  DateTime?
+  status     String    @default("ACTIVE") // ACTIVE | EXPIRED | INACTIVE | CANCELLED
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   campaign      ReferralCampaign?      @relation(fields: [campaignId], references: [id])
   relationships ReferralRelationship[]
@@ -69,11 +69,11 @@ model ReferralRelationship {
   rewardedAt     DateTime?
   expiresAt      DateTime?
 
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  referralCode   ReferralCode?          @relation(fields: [referralCodeId], references: [id])
-  campaign       ReferralCampaign?      @relation(fields: [campaignId], references: [id])
+  referralCode   ReferralCode?           @relation(fields: [referralCodeId], references: [id])
+  campaign       ReferralCampaign?       @relation(fields: [campaignId], references: [id])
   qualifications ReferralQualification[]
   rewards        ReferralReward[]
 

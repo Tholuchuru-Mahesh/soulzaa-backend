@@ -30,6 +30,10 @@ import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.in
 import type { GiftContextRequest } from '../interfaces/gift-context-handler.interface';
 import { GiftRepository } from '../repositories/gift.repository';
 import { GiftCatalogService } from './gift-catalog.service';
+import {
+  PLATFORM_CONFIG,
+  type IPlatformConfiguration,
+} from 'src/modules/platform-configuration/interfaces/platform-configuration.interface';
 import { GiftContextRegistry } from './gift-context.registry';
 import { GiftLeaderboardService } from './gift-leaderboard.service';
 
@@ -45,7 +49,6 @@ export type SendGiftBatchDto = Omit<SendGiftDto, 'receiverId'> & {
 
 /** Resolved gift tuning from config. */
 interface GiftConfig {
-  creatorEarningRatePercent: number;
   senderExpPerCoin: number;
   receiverExpPerCoin: number;
   rateMax: number;
@@ -77,7 +80,35 @@ export class GiftService {
     @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
     @Inject(VIP_SERVICE) private readonly vip: IVipService,
     private readonly registry: GiftContextRegistry,
+    @Inject(PLATFORM_CONFIG) private readonly platformConfig: IPlatformConfiguration,
   ) {}
+
+  /**
+   * The Soulzaa gift settlement rule, read from platform configuration so a
+   * Super Admin can retune it without a deploy:
+   *  - the receiver's EARNINGS wallet takes `earningsPercent` of gift value;
+   *  - their GOLD wallet takes `cashbackPercent`, but only once the gift value
+   *    is strictly above `cashbackThreshold`.
+   * Defaults match the seeded settings, so an unconfigured environment behaves
+   * exactly as a configured one.
+   */
+  private async settlementRules(): Promise<{
+    earningsPercent: number;
+    cashbackPercent: number;
+    cashbackThreshold: number;
+  }> {
+    const [earningsPercent, cashbackPercent, cashbackThreshold] = await Promise.all([
+      this.platformConfig.get<number>('gift.receiver_earnings_percentage'),
+      this.platformConfig.get<number>('gift.receiver_cashback_percentage'),
+      this.platformConfig.get<number>('gift.receiver_cashback_threshold'),
+    ]);
+
+    return {
+      earningsPercent: typeof earningsPercent === 'number' ? earningsPercent : 100,
+      cashbackPercent: typeof cashbackPercent === 'number' ? cashbackPercent : 10,
+      cashbackThreshold: typeof cashbackThreshold === 'number' ? cashbackThreshold : 1000,
+    };
+  }
 
   /**
    * Single-receiver send. A thin wrapper over `sendGiftBatch` so audio rooms and
@@ -182,21 +213,27 @@ export class GiftService {
       : 1;
     const lucky = this.rollLucky(gift);
 
-    // Universal Soulzaa Gift Settlement Workflow:
+    // Universal Soulzaa Gift Settlement Workflow (rates from platform config):
     // 1. Sender pays 100% of the gift value (totalNum) from Available Balance (GOLD).
-    // 2. Receiver EARNINGS increases by 100% of the gift value (always, no conditions).
-    // 3. Receiver Available Balance (GOLD) increases by 10% ONLY IF giftValue > 1000 (otherwise 0).
+    // 2. Receiver EARNINGS increases by the configured share, by default the
+    //    whole gift value, with no further conditions.
+    // 3. Receiver Available Balance (GOLD) receives the configured cashback
+    //    share, and only once gift value is strictly above the threshold.
+    const rules = await this.settlementRules();
     const unit = gift.coinValue;
     const perReceiver = BigInt(unit) * BigInt(dto.quantity) * BigInt(lucky.multiplier);
     const perReceiverNum = Number(perReceiver);
     const totalNum = perReceiverNum * receiverIds.length;
 
-    // Rule 1: Every received gift increases Earnings by 100% of gift value.
-    const creatorEarnings = perReceiver;
-    const earningsNum = perReceiverNum;
+    // Rule 2: earnings share of the gift value.
+    const earningsNum = Math.floor((perReceiverNum * rules.earningsPercent) / 100);
+    const creatorEarnings = BigInt(earningsNum);
 
-    // Rule 2 & Rule 3: Available Balance receives 10% ONLY IF giftValue > 1000.
-    const availableBalanceCredited = perReceiverNum > 1000 ? Math.floor(perReceiverNum * 0.10) : 0;
+    // Rule 3: cashback, gated on the threshold.
+    const availableBalanceCredited =
+      perReceiverNum > rules.cashbackThreshold
+        ? Math.floor((perReceiverNum * rules.cashbackPercent) / 100)
+        : 0;
 
     const senderExp = Math.floor(perReceiverNum * cfg.senderExpPerCoin);
     const receiverExp = Math.floor(perReceiverNum * cfg.receiverExpPerCoin);

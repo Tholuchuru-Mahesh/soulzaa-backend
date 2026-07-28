@@ -12,6 +12,7 @@ import { AchievementService } from './services/achievement.service';
 import { AchievementStatisticsService } from './services/achievement-statistics.service';
 import { AchievementValidationService } from './services/achievement-validation.service';
 import { BadgeService } from './services/badge.service';
+import { AchievementProgressionListener } from './listeners/achievement-progression.listener';
 
 @Global()
 @Module({
@@ -19,6 +20,7 @@ import { BadgeService } from './services/badge.service';
   controllers: [AchievementController],
   providers: [
     // Phase 14: Enterprise Badge & Achievement Engine Services
+    AchievementProgressionListener,
     AchievementConfigurationService,
     AchievementValidationService,
     AchievementAuditService,

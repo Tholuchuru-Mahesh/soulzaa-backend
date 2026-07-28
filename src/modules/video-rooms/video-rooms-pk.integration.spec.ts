@@ -78,7 +78,7 @@ const DEFAULT_PK_CFG = {
   maxPerSweep: 50,
 };
 
-const GIFT_CFG = { creatorEarningRatePercent: 30, maxReceivers: 9 };
+const GIFT_CFG = { maxReceivers: 9 };
 
 /** In-memory double for `VideoRoomPkRepository`. `db`/`tx` params are accepted but ignored. */
 function createPkRepo() {

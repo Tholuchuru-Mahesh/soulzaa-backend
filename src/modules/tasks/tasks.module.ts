@@ -13,6 +13,7 @@ import { TaskRewardService } from './services/task-reward.service';
 import { TaskService } from './services/task.service';
 import { TaskStatisticsService } from './services/task-statistics.service';
 import { TaskValidationService } from './services/task-validation.service';
+import { TaskProgressionListener } from './listeners/task-progression.listener';
 
 @Global()
 @Module({
@@ -20,6 +21,7 @@ import { TaskValidationService } from './services/task-validation.service';
   controllers: [TaskController],
   providers: [
     // Phase 17: Enterprise Tasks & Missions Engine Services
+    TaskProgressionListener,
     TaskConfigurationService,
     TaskValidationService,
     TaskAuditService,

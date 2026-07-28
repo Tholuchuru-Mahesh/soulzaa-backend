@@ -117,11 +117,11 @@ model GiftInventory {
 
 /// Gift Availability Controls per Region / Platform
 model GiftAvailability {
-  id          String   @id @default(uuid()) @db.Uuid
-  giftId      String   @db.Uuid
-  country     String   @default("GLOBAL")
-  platform    String   @default("ALL")
-  isAvailable Boolean  @default(true)
+  id          String  @id @default(uuid()) @db.Uuid
+  giftId      String  @db.Uuid
+  country     String  @default("GLOBAL")
+  platform    String  @default("ALL")
+  isAvailable Boolean @default(true)
 
   gift Gift @relation(fields: [giftId], references: [id], onDelete: Cascade)
 

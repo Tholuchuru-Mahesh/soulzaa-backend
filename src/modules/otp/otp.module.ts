@@ -54,6 +54,6 @@ import { TwilioSmsProvider } from './services/providers/twilio-sms.provider';
     OtpMaintenanceProcessor,
     { provide: OTP_SERVICE, useExisting: OtpService },
   ],
-  exports: [OTP_SERVICE],
+  exports: [OTP_SERVICE, SmsProviderRegistry, ConsoleEmailProvider],
 })
 export class OtpModule {}

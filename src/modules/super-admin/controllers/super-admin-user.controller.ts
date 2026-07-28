@@ -100,9 +100,8 @@ export class SuperAdminUserController {
     @Param('id') userId: string,
     @Body() dto: AssignUserRoleDto,
     @CurrentUser('id') actorId: string,
-    @CurrentUser('roles') actorRoles: string[] = ['SUPER_ADMIN'],
   ) {
-    return this.userManagementService.assignRole(userId, dto, actorId, actorRoles);
+    return this.userManagementService.assignRole(userId, dto, actorId);
   }
 
   @ApiOperation({ summary: 'Remove a platform role from a user' })
@@ -114,9 +113,8 @@ export class SuperAdminUserController {
     @Param('id') userId: string,
     @Param('roleId') roleId: string,
     @CurrentUser('id') actorId: string,
-    @CurrentUser('roles') actorRoles: string[] = ['SUPER_ADMIN'],
   ) {
-    return this.userManagementService.removeRole(userId, roleId, actorId, actorRoles);
+    return this.userManagementService.removeRole(userId, roleId, actorId);
   }
 
   @ApiOperation({ summary: 'Replace an existing role assignment with a new role' })
@@ -128,9 +126,8 @@ export class SuperAdminUserController {
     @Param('id') userId: string,
     @Body() dto: UpdateUserRoleDto,
     @CurrentUser('id') actorId: string,
-    @CurrentUser('roles') actorRoles: string[] = ['SUPER_ADMIN'],
   ) {
-    return this.userManagementService.updateRole(userId, dto, actorId, actorRoles);
+    return this.userManagementService.updateRole(userId, dto, actorId);
   }
 
   @ApiOperation({ summary: 'Promote user to a higher administrative role' })
@@ -143,9 +140,8 @@ export class SuperAdminUserController {
     @Param('id') userId: string,
     @Body() dto: PromoteDemoteUserDto,
     @CurrentUser('id') actorId: string,
-    @CurrentUser('roles') actorRoles: string[] = ['SUPER_ADMIN'],
   ) {
-    return this.userManagementService.promoteUser(userId, dto, actorId, actorRoles);
+    return this.userManagementService.promoteUser(userId, dto, actorId);
   }
 
   @ApiOperation({ summary: 'Demote user to a lower administrative role' })
@@ -158,9 +154,8 @@ export class SuperAdminUserController {
     @Param('id') userId: string,
     @Body() dto: PromoteDemoteUserDto,
     @CurrentUser('id') actorId: string,
-    @CurrentUser('roles') actorRoles: string[] = ['SUPER_ADMIN'],
   ) {
-    return this.userManagementService.demoteUser(userId, dto, actorId, actorRoles);
+    return this.userManagementService.demoteUser(userId, dto, actorId);
   }
 
   // ---------------------------------------------------------

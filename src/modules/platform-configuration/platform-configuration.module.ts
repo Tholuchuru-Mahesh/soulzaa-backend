@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { PLATFORM_CONFIG } from './interfaces/platform-configuration.interface';
 import { PrismaModule } from 'src/infra/prisma/prisma.module';
 import { RedisModule } from 'src/infra/redis/redis.module';
 import { ConfigurationEngineService } from './services/configuration-engine.service';
@@ -18,6 +19,8 @@ import { SettingsQueryService } from './services/settings-query.service';
     FeatureFlagService,
     SettingsQueryService,
     PlatformConfigurationSeederService,
+    // Public port consumed by domain modules (see interfaces/).
+    { provide: PLATFORM_CONFIG, useExisting: ConfigurationEngineService },
   ],
   exports: [
     ConfigurationValidationService,
@@ -26,6 +29,7 @@ import { SettingsQueryService } from './services/settings-query.service';
     FeatureFlagService,
     SettingsQueryService,
     PlatformConfigurationSeederService,
+    PLATFORM_CONFIG,
   ],
 })
 export class PlatformConfigurationModule {}

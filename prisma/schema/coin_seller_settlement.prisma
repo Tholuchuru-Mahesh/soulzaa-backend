@@ -5,14 +5,14 @@
 
 /// Active mapping relationship between Coin Seller and Buyer
 model CoinSellerRelationship {
-  id            String    @id @default(uuid()) @db.Uuid
-  sellerId      String    @db.Uuid
-  buyerId       String    @db.Uuid
-  status        String    @default("ACTIVE")
-  effectiveFrom DateTime  @default(now())
+  id             String    @id @default(uuid()) @db.Uuid
+  sellerId       String    @db.Uuid
+  buyerId        String    @db.Uuid
+  status         String    @default("ACTIVE")
+  effectiveFrom  DateTime  @default(now())
   effectiveUntil DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@unique([sellerId, buyerId])
   @@index([buyerId, status])
@@ -43,7 +43,7 @@ model CoinSellerCommission {
   id           String   @id @default(uuid()) @db.Uuid
   settlementId String   @unique @db.Uuid
   sellerId     String   @db.Uuid
-  buyerId       String   @db.Uuid
+  buyerId      String   @db.Uuid
   amount       BigInt
   createdAt    DateTime @default(now())
 

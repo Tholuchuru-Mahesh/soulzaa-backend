@@ -37,6 +37,6 @@ import { FcmPushProvider } from './services/push/providers/fcm-push.provider';
     PushProcessor,
     { provide: DEVICE_SERVICE, useExisting: DeviceService },
   ],
-  exports: [DEVICE_SERVICE],
+  exports: [DEVICE_SERVICE, DeviceRepository, PushDispatcher],
 })
 export class DeviceModule {}

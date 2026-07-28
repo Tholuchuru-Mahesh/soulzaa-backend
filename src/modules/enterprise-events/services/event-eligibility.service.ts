@@ -11,6 +11,47 @@ export class EventEligibilityService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Country restriction, matched on normalised `countryId`.
+   *
+   * The allow-list is authored as ISO codes, so codes are resolved to ids once
+   * and compared by id. Free-text `user.country` is deliberately not read: it is
+   * self-reported and unnormalised ("India" vs "IN"), which silently rejected
+   * legitimate users — and is why an unnormalised user now fails closed rather
+   * than being admitted on the strength of a profile string.
+   */
+  async checkCountryEligibility(
+    userId: string,
+    rules: { allowedCountries?: unknown },
+  ): Promise<{ eligible: boolean; reason?: string }> {
+    if (!rules.allowedCountries || !Array.isArray(rules.allowedCountries)) {
+      return { eligible: true };
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { countryId: true },
+    });
+
+    if (!user?.countryId) {
+      return {
+        eligible: false,
+        reason: 'Your location has not been set, so country eligibility cannot be confirmed',
+      };
+    }
+
+    const allowed = await this.prisma.country.findMany({
+      where: { code: { in: rules.allowedCountries as string[] } },
+      select: { id: true, code: true },
+    });
+
+    if (allowed.some((country) => country.id === user.countryId)) {
+      return { eligible: true };
+    }
+
+    return { eligible: false, reason: 'Your country is not eligible for this event' };
+  }
+
+  /**
    * Checks if a user satisfies an event's eligibility rules and location restrictions.
    */
   async checkEligibility(userId: string, eventId: string): Promise<EligibilityResult> {
@@ -44,13 +85,10 @@ export class EventEligibilityService {
       }
     }
 
-    // 3. Country / Region restriction
-    if (rules.allowedCountries && Array.isArray(rules.allowedCountries)) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      const userCountry = user?.country ?? '';
-      if (!rules.allowedCountries.includes(userCountry)) {
-        reasons.push(`Country '${userCountry}' is not eligible for this event`);
-      }
+    // 3. Country / Region restriction — normalised ids, never profile text.
+    const countryCheck = await this.checkCountryEligibility(userId, rules);
+    if (!countryCheck.eligible && countryCheck.reason) {
+      reasons.push(countryCheck.reason);
     }
 
     // 4. Custom JSON conditions (e.g. minGiftsSent)

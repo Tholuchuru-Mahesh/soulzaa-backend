@@ -45,8 +45,9 @@ export class CoinPurchaseController {
   @ApiOperation({ summary: 'List active purchasable coin packages' })
   @ApiResponse({ status: 200, description: 'List of coin packages' })
   @Get('packages')
-  async listPackages(@Query() queryDto: PackageQueryDto) {
-    return this.packageService.listPackages(queryDto);
+  async listPackages(@Query() queryDto: PackageQueryDto, @CurrentUser('id') userId: string) {
+    // Region comes from the caller's normalised location, not the query string.
+    return this.packageService.listPackages(queryDto, userId);
   }
 
   @ApiOperation({ summary: 'Get coin package details by ID or code' })

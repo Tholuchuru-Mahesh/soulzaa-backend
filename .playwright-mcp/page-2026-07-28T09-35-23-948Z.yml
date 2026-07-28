@@ -1,0 +1,67 @@
+- generic [ref=e13]:
+  - navigation [ref=e14]:
+    - generic [ref=e15]:
+      - generic [ref=e16]: Soulzaa
+      - generic [ref=e17]: Super Admin
+    - generic [ref=e18]:
+      - generic [ref=e19]: Overview
+      - button "Platform" [ref=e20] [cursor=pointer]
+    - generic [ref=e21]:
+      - generic [ref=e22]: Financial
+      - button "Coin position" [active] [ref=e23] [cursor=pointer]
+      - button "Treasury" [ref=e24] [cursor=pointer]
+      - button "Wallets" [ref=e25] [cursor=pointer]
+      - button "Revenue" [ref=e26] [cursor=pointer]
+      - button "Withdrawals" [ref=e27] [cursor=pointer]
+      - button "Agencies" [ref=e28] [cursor=pointer]
+      - button "Coin sellers" [ref=e29] [cursor=pointer]
+    - generic [ref=e30]:
+      - generic [ref=e31]: Operations
+      - button "Users" [ref=e32] [cursor=pointer]
+      - button "Events" [ref=e33] [cursor=pointer]
+      - button "Tasks & missions" [ref=e34] [cursor=pointer]
+      - button "Notifications" [ref=e35] [cursor=pointer]
+      - button "Analytics" [ref=e36] [cursor=pointer]
+    - generic [ref=e37]:
+      - generic [ref=e38]: Engagement
+      - button "Gifts" [ref=e39] [cursor=pointer]
+      - button "Treasure" [ref=e40] [cursor=pointer]
+      - button "Families" [ref=e41] [cursor=pointer]
+      - button "VIP" [ref=e42] [cursor=pointer]
+      - button "Level & badges" [ref=e43] [cursor=pointer]
+      - button "Rankings" [ref=e44] [cursor=pointer]
+      - button "Referrals" [ref=e45] [cursor=pointer]
+    - generic [ref=e46]:
+      - generic [ref=e47]: Governance
+      - button "Moderation" [ref=e48] [cursor=pointer]
+      - button "Operational logs" [ref=e49] [cursor=pointer]
+      - button "Role approvals" [ref=e50] [cursor=pointer]
+      - button "User territory" [ref=e51] [cursor=pointer]
+  - generic [ref=e52]:
+    - banner [ref=e53]:
+      - generic [ref=e54]: SUPER_ADMIN
+      - button "Sign out" [ref=e55] [cursor=pointer]
+    - main [ref=e56]:
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - heading "Coin position" [level=2] [ref=e111]
+          - paragraph [ref=e112]: Every coin the platform has issued, by where it now sits.
+          - paragraph [ref=e113]: No coin movement recorded yet.
+        - generic [ref=e114]:
+          - heading "Flow" [level=2] [ref=e116]
+          - generic [ref=e117]:
+            - generic [ref=e118]:
+              - generic "0" [ref=e119]
+              - generic [ref=e120]: Purchased
+            - generic [ref=e121]:
+              - generic "0" [ref=e122]
+              - generic [ref=e123]: Gifted (gross)
+            - generic [ref=e124]:
+              - generic "0" [ref=e125]
+              - generic [ref=e126]: Host earnings
+            - generic [ref=e127]:
+              - generic "0" [ref=e128]
+              - generic [ref=e129]: Platform earnings
+            - generic [ref=e130]:
+              - generic "0" [ref=e131]
+              - generic [ref=e132]: Withdrawn

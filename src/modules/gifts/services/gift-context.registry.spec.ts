@@ -1,5 +1,4 @@
 import { GiftContextType } from '@prisma/client';
-import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { GiftContextRegistry } from './gift-context.registry';
 
 const handler = (contextType: GiftContextType) => ({

@@ -5,35 +5,35 @@
 
 /// VIP Tier Definition
 model VipTier {
-  id                 String   @id @default(uuid()) @db.Uuid
-  level              Int      @unique
-  name               String
-  displayOrder       Int      @default(1)
-  requiredExp        BigInt   @default(0)
-  requiredSpending   BigInt   @default(0)
-  subscriptionType   String   @default("MONTHLY")
-  durationDays       Int      @default(30)
-  price              BigInt   @default(0)
-  badge              String?
-  frame              String?
-  entranceEffect     String?
-  chatBubble         String?
-  nameColor          String?
-  profileDecoration  String?
-  seatDecoration     String?
-  giftDiscount       Float    @default(0.0)
-  storeDiscount      Float    @default(0.0)
-  dailyRewards       Json     @default("[]")
-  weeklyRewards      Json     @default("[]")
-  monthlyRewards     Json     @default("[]")
-  maxRooms           Int      @default(1)
-  priorityMatching   Boolean  @default(false)
-  exclusiveGifts     Json     @default("[]")
-  exclusiveEvents    Json     @default("[]")
-  visibility         Boolean  @default(true)
-  status             String   @default("ACTIVE")
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(uuid()) @db.Uuid
+  level             Int      @unique
+  name              String
+  displayOrder      Int      @default(1)
+  requiredExp       BigInt   @default(0)
+  requiredSpending  BigInt   @default(0)
+  subscriptionType  String   @default("MONTHLY")
+  durationDays      Int      @default(30)
+  price             BigInt   @default(0)
+  badge             String?
+  frame             String?
+  entranceEffect    String?
+  chatBubble        String?
+  nameColor         String?
+  profileDecoration String?
+  seatDecoration    String?
+  giftDiscount      Float    @default(0.0)
+  storeDiscount     Float    @default(0.0)
+  dailyRewards      Json     @default("[]")
+  weeklyRewards     Json     @default("[]")
+  monthlyRewards    Json     @default("[]")
+  maxRooms          Int      @default(1)
+  priorityMatching  Boolean  @default(false)
+  exclusiveGifts    Json     @default("[]")
+  exclusiveEvents   Json     @default("[]")
+  visibility        Boolean  @default(true)
+  status            String   @default("ACTIVE")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@map("vip_tiers")
 }

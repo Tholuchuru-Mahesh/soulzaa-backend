@@ -69,7 +69,9 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
       create: jest
         .fn()
         .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
-      update: jest.fn().mockResolvedValue({}),
+      update: jest
+        .fn()
+        .mockImplementation((args) => Promise.resolve({ id: makeUuid(), ...args.data })),
       findUnique: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -79,7 +81,61 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     },
     wallet: {
       aggregate: jest.fn().mockResolvedValue({ _sum: { availableBalance: 50000 } }),
+      count: jest.fn().mockResolvedValue(120),
     },
+    userSession: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    revenueDistribution: {
+      count: jest.fn().mockResolvedValue(10),
+      aggregate: jest.fn().mockResolvedValue({
+        _sum: { totalCoinValue: 1000, hostEarningsCoins: 700, platformEarningsCoins: 300 },
+      }),
+    },
+    withdrawalRequest: {
+      count: jest.fn().mockResolvedValue(5),
+      aggregate: jest.fn().mockResolvedValue({ _sum: { amountCoins: 400 } }),
+    },
+    treasureSession: { count: jest.fn().mockResolvedValue(3) },
+    treasureBox: { count: jest.fn().mockResolvedValue(6) },
+    treasureReward: { count: jest.fn().mockResolvedValue(9) },
+    agencyRelationship: { count: jest.fn().mockResolvedValue(4) },
+    agencySettlement: {
+      count: jest.fn().mockResolvedValue(2),
+      aggregate: jest
+        .fn()
+        .mockResolvedValue({ _sum: { hostEarningsCoins: 200, agencyCommissionCoins: 50 } }),
+    },
+    coinSellerRelationship: { count: jest.fn().mockResolvedValue(7) },
+    coinSellerSettlement: {
+      count: jest.fn().mockResolvedValue(3),
+      aggregate: jest
+        .fn()
+        .mockResolvedValue({ _sum: { purchaseAmountCoins: 900, sellerCommissionCoins: 90 } }),
+    },
+    family: { count: jest.fn().mockResolvedValue(8) },
+    familyMember: { count: jest.fn().mockResolvedValue(40) },
+    vipMembership: { count: jest.fn().mockResolvedValue(12) },
+    vipSubscription: { count: jest.fn().mockResolvedValue(11) },
+    userLevel: {
+      count: jest.fn().mockResolvedValue(60),
+      aggregate: jest
+        .fn()
+        .mockResolvedValue({ _sum: { lifetimeExp: 5000 }, _avg: { currentLevel: 4.5 } }),
+    },
+    achievementDefinition: { count: jest.fn().mockResolvedValue(20) },
+    userAchievement: { count: jest.fn().mockResolvedValue(70) },
+    badgeInventory: { count: jest.fn().mockResolvedValue(35) },
+    rankingDefinition: { count: jest.fn().mockResolvedValue(6) },
+    rankingEntry: { count: jest.fn().mockResolvedValue(300) },
+    enterpriseRankingSnapshot: { count: jest.fn().mockResolvedValue(15) },
+    eventDefinition: { count: jest.fn().mockResolvedValue(5) },
+    eventRegistration: { count: jest.fn().mockResolvedValue(50) },
+    eventParticipant: { count: jest.fn().mockResolvedValue(45) },
+    taskDefinition: { count: jest.fn().mockResolvedValue(25) },
+    missionDefinition: { count: jest.fn().mockResolvedValue(8) },
+    taskProgress: { count: jest.fn().mockResolvedValue(500) },
+    notificationHistory: { count: jest.fn().mockResolvedValue(880) },
     roomActivity: {
       aggregate: jest.fn().mockResolvedValue({ _sum: { totalGifts: 850 } }),
     },
@@ -315,22 +371,61 @@ import { ExportService } from './services/export.service';
 describe('ExportService', () => {
   let service: ExportService;
   let prisma: ReturnType<typeof buildPrismaMock>;
+  let s3: { putObject: jest.Mock; getPresignedDownloadUrl: jest.Mock };
 
   beforeEach(() => {
     prisma = buildPrismaMock();
+    prisma.analyticsReport.findUnique.mockResolvedValue({
+      id: 'report-1',
+      name: 'Revenue',
+      domain: 'REVENUE',
+      createdAt: new Date('2026-07-01T00:00:00Z'),
+      data: { total_revenue_coins: 42 },
+    });
+    s3 = {
+      putObject: jest.fn().mockResolvedValue(undefined),
+      getPresignedDownloadUrl: jest.fn().mockResolvedValue('https://signed.example/report.csv'),
+    };
     const events = new AnalyticsEventService(buildEventEmitterMock() as any);
     const audit = new AnalyticsAuditService(prisma as any);
-    service = new ExportService(prisma as any, events, audit);
+    service = new ExportService(prisma as any, s3 as any, events, audit);
   });
 
-  it('generates report download urls and registers exports', async () => {
-    const res: any = await service.exportReport({
-      reportId: makeUuid(),
-      format: 'PDF',
-    });
+  it('renders the report and stores it before reporting success', async () => {
+    const res: any = await service.exportReport({ reportId: 'report-1', format: 'CSV' });
 
+    expect(s3.putObject).toHaveBeenCalledWith(
+      expect.stringContaining('.csv'),
+      expect.any(Buffer),
+      'text/csv',
+    );
     expect(res.status).toBe('COMPLETED');
-    expect(res.url).toContain('.pdf');
+    expect(res.url).toBe('https://signed.example/report.csv');
+  });
+
+  it('writes the report metrics into the stored file', async () => {
+    await service.exportReport({ reportId: 'report-1', format: 'CSV' });
+
+    const [, body] = s3.putObject.mock.calls[0];
+    expect((body as Buffer).toString()).toContain('total_revenue_coins,42');
+  });
+
+  it('rejects a format it cannot render rather than storing a broken file', async () => {
+    await expect(service.exportReport({ reportId: 'report-1', format: 'PDF' })).rejects.toThrow(
+      /not supported/i,
+    );
+    expect(s3.putObject).not.toHaveBeenCalled();
+  });
+
+  it('marks the export FAILED when storage rejects the upload', async () => {
+    s3.putObject.mockRejectedValue(new Error('bucket unreachable'));
+
+    await expect(service.exportReport({ reportId: 'report-1', format: 'CSV' })).rejects.toThrow(
+      'bucket unreachable',
+    );
+    expect(prisma.reportExport.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: 'FAILED' } }),
+    );
   });
 });
 

@@ -25,7 +25,6 @@ const ROOM = 'video-room-1';
 const IDEM = 'idem-1';
 
 const GIFT_CFG = {
-  creatorEarningRatePercent: 30,
   senderExpPerCoin: 1,
   receiverExpPerCoin: 1,
   rateMax: 20,
@@ -144,6 +143,7 @@ describe('GiftService.sendGiftBatch (multi-receiver)', () => {
       wallet as unknown as IWalletService,
       { getLevelOrdinal: jest.fn().mockResolvedValue(0) } as unknown as IVipService,
       registry,
+      { get: jest.fn().mockResolvedValue(null) },
     );
   });
 

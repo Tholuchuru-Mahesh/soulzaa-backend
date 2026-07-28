@@ -4,6 +4,7 @@ import {
   GiftType,
   VideoRoomMemberRole,
   VideoRoomStatus,
+  WalletCurrency,
 } from '@prisma/client';
 import { GiftContextRegistry } from 'src/modules/gifts/services/gift-context.registry';
 import { GiftService } from 'src/modules/gifts/services/gift.service';
@@ -69,7 +70,6 @@ const GIFT = {
 };
 
 const GIFT_CFG = {
-  creatorEarningRatePercent: 30,
   senderExpPerCoin: 1,
   receiverExpPerCoin: 1,
   rateMax: 20,
@@ -251,6 +251,7 @@ describe('VR-10 gift engine (integration)', () => {
       wallet as never,
       { getLevelOrdinal: jest.fn().mockResolvedValue(0) } as never,
       registry,
+      { get: jest.fn().mockResolvedValue(null) },
     );
 
     const combo = new VideoRoomGiftComboService(
@@ -327,26 +328,30 @@ describe('VR-10 gift engine (integration)', () => {
     harness = build();
   });
 
-  it('single-receiver send: one debit, NO synchronous credit (revenue owns host payout), one ledger row, one job', async () => {
+  it('single-receiver send: one debit, one EARNINGS credit, one ledger row, one job', async () => {
     const view = await send(VideoRoomGiftTarget.SINGLE, { receiverId: 'u1' });
 
     expect(harness.walletMoves.filter((m) => m.kind === 'debit')).toHaveLength(1);
-    // Video rooms are a host context: the receiver is paid once by the revenue
-    // split (RevenueEventService), NOT synchronously by the gift path.
-    expect(harness.walletMoves.filter((m) => m.kind === 'credit')).toHaveLength(0);
+    // Soulzaa settlement rule 2: a received gift always credits the receiver
+    // EARNINGS with 100% of gift value, inside the send transaction. The
+    // revenue engine records that movement; it does not perform it.
+    const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
+    expect(credits).toHaveLength(1);
+    expect(credits[0]).toMatchObject({ currency: WalletCurrency.EARNINGS, amount: 100 });
     expect(harness.ledger).toHaveLength(1);
     expect(harness.enqueued).toHaveLength(1);
     expect(view.transactions).toHaveLength(1);
   });
 
-  it('SEAT_ALL debits once for N, makes no synchronous credit, writes N rows sharing a batchId', async () => {
+  it('SEAT_ALL debits once for N, credits each receiver, writes N rows sharing a batchId', async () => {
     const view = await send();
 
     const debits = harness.walletMoves.filter((m) => m.kind === 'debit');
     const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
     expect(debits).toHaveLength(1);
     expect(debits[0].amount).toBe(200); // 100 x 1 x 2 receivers
-    expect(credits).toHaveLength(0); // host payout is owned by the revenue split
+    expect(credits).toHaveLength(2); // one EARNINGS credit per receiver
+    expect(credits.every((c) => c.currency === WalletCurrency.EARNINGS)).toBe(true);
 
     expect(harness.ledger).toHaveLength(2);
     const batchIds = harness.ledger.map((r) => (r.metadata as { batchId: string }).batchId);
@@ -354,19 +359,20 @@ describe('VR-10 gift engine (integration)', () => {
     expect(view.totalCoinValue).toBe(200);
   });
 
-  it('makes no synchronous receiver credit for video-room (host-context) gifts', async () => {
+  it('credits no GOLD cashback when the gift value is at or below the threshold', async () => {
     await send();
-    // The gift path credits 0 for host contexts; the receiver earns via the
-    // configurable revenue split instead (covered in revenue-engine.spec.ts).
-    const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
-    expect(credits).toHaveLength(0);
+    // Settlement rule 3: GOLD cashback is credited only above 1,000 coins.
+    // This gift is 100, so EARNINGS moves but the available balance does not.
+    const gold = harness.walletMoves.filter(
+      (m) => m.kind === 'credit' && m.currency === WalletCurrency.GOLD,
+    );
+    expect(gold).toHaveLength(0);
   });
 
-  it('the handler economics (0 for host contexts) reach the ledger — no creator earnings via the gift path', async () => {
+  it('records the full gift value as creator earnings on the ledger row', async () => {
     await send();
-    expect(harness.ledger[0].creatorEarnings).toBe(0n);
+    expect(harness.ledger[0].creatorEarnings).toBe(100n);
     expect(harness.ledger[0].totalCoinValue).toBe(100n);
-    expect(harness.walletMoves.filter((m) => m.kind === 'credit')).toHaveLength(0);
   });
 
   it('rolls the whole batch back when one receiver fails validation', async () => {

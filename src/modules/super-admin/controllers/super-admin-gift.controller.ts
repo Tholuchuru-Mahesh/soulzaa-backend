@@ -92,7 +92,9 @@ export class SuperAdminGiftController {
 
   @ApiOperation({ summary: 'View gift transactions log for a context / room' })
   @ApiResponse({ status: 200, description: 'Room gift transactions' })
-  @RequirePermissions('gift.history.view')
+  // Platform-wide log across every user — distinct from the member-scoped
+  // `gift.history.view`, which only exposes the caller's own history.
+  @RequirePermissions('gift.transaction.view')
   @Get('transactions')
   async getRoomGiftHistory(
     @Query('contextId') contextId: string,

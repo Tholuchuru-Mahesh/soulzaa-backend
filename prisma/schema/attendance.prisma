@@ -1,0 +1,53 @@
+// ============================================================
+// Attendance — daily login streak. A seeded 30-rung ladder, per-user
+// streak state, and an immutable claim log. Owned by the "attendance"
+// module. No cross-module relations: reference users by id.
+// ============================================================
+
+/// One day of the reward ladder. Seeded on bootstrap, tuned by operators.
+model AttendanceLadderRung {
+  id         String         @id @default(uuid()) @db.Uuid
+  day        Int            @unique
+  coins      Int
+  currency   WalletCurrency @default(FREE)
+  expAmount  Int?
+  cosmeticId String?        @db.Uuid
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@map("attendance_ladder_rungs")
+}
+
+/// Per-user streak state. One row per user, created on first claim.
+model UserAttendance {
+  userId            String    @id @db.Uuid
+  currentDay        Int       @default(0)
+  cycleCount        Int       @default(0)
+  lastClaimDayKey   String?
+  lastClaimAt       DateTime?
+  lastClaimTimezone String?
+  totalClaims       Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("user_attendance")
+}
+
+/// Immutable record of one claim. Never updated or deleted.
+model AttendanceClaim {
+  id         String         @id @default(uuid()) @db.Uuid
+  userId     String         @db.Uuid
+  day        Int
+  cycle      Int
+  dayKey     String
+  coins      Int
+  currency   WalletCurrency
+  expAmount  Int?
+  cosmeticId String?        @db.Uuid
+  timezone   String
+  claimedAt  DateTime       @default(now())
+
+  @@unique([userId, dayKey])
+  @@index([userId, claimedAt])
+  @@map("attendance_claims")
+}

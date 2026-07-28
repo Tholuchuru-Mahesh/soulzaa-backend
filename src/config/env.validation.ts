@@ -114,6 +114,37 @@ export const envSchema = z.object({
   APNS_BUNDLE_ID: z.string().optional(),
   APNS_PRIVATE_KEY: z.string().optional(),
 
+  // ---- Payments ----
+  // Receipt verification credentials. Each is optional: an unconfigured provider
+  // REJECTS receipts rather than accepting them, so a missing secret can never
+  // become free coins.
+  // Base64 RSA public key from the Play Console — verifies the purchase signature
+  // locally, no network call.
+  GOOGLE_PLAY_LICENSE_KEY: z.string().optional(),
+  // App Store shared secret for the verifyReceipt endpoint.
+  APPLE_IAP_SHARED_SECRET: z.string().optional(),
+  // Use Apple's sandbox verification host (development builds).
+  APPLE_IAP_USE_SANDBOX: z.coerce.boolean().default(false),
+  // Razorpay key secret — signs `{order_id}|{payment_id}`.
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  // Stripe webhook signing secret (`whsec_...`).
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // Allows the MOCK_GATEWAY provider to approve receipts. Must stay false in
+  // production — it is an unauthenticated path to crediting a wallet.
+  PAYMENTS_ALLOW_MOCK_GATEWAY: z.coerce.boolean().default(false),
+
+  // ---- Authorization (RBAC) ----
+  // Cache lifetime (seconds) for resolved permissions, roles and geographic scopes.
+  // Bounds how long a role change can stay invisible if an invalidation is missed.
+  AUTHORIZATION_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+
+  // Whether a STATE or REGION scope also matches users who have no value at
+  // that level but sit in the right country. Required while location data is
+  // being backfilled — country is the only level recoverable from the old
+  // free-text field, so without it every Official's console is empty. Set to
+  // false once stateId/regionId coverage is complete to enforce exact scope.
+  AUTHORIZATION_SCOPE_COUNTRY_BRIDGE: z.coerce.boolean().default(true),
+
   // ---- Privacy ----
   // Cache lifetime (seconds) for privacy settings + block-set checks.
   PRIVACY_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
@@ -378,7 +409,6 @@ export const envSchema = z.object({
   CALL_WRITE_CHAT_LOG: z.coerce.boolean().default(true),
 
   // ---- Gifts (AR-5) ----
-  GIFT_CREATOR_EARNING_RATE_PERCENT: z.coerce.number().int().min(0).max(100).default(30),
   GIFT_SENDER_EXP_PER_COIN: z.coerce.number().min(0).default(1),
   GIFT_RECEIVER_EXP_PER_COIN: z.coerce.number().min(0).default(1),
   GIFT_RATE_MAX: z.coerce.number().int().positive().default(20),

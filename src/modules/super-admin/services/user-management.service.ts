@@ -36,34 +36,24 @@ export class UserManagementService {
   // ---------------------------------------------------------
   // Role Assignment Operations
   // ---------------------------------------------------------
-  async assignRole(userId: string, dto: AssignUserRoleDto, actorId: string, actorRoles: string[]) {
-    return this.roleAssignmentService.assignRole(userId, dto, actorId, actorRoles);
+  async assignRole(userId: string, dto: AssignUserRoleDto, actorId: string) {
+    return this.roleAssignmentService.assignRole(userId, dto, actorId);
   }
 
-  async removeRole(userId: string, roleIdOrName: string, actorId: string, actorRoles: string[]) {
-    return this.roleAssignmentService.removeRole(userId, roleIdOrName, actorId, actorRoles);
+  async removeRole(userId: string, roleIdOrName: string, actorId: string) {
+    return this.roleAssignmentService.removeRole(userId, roleIdOrName, actorId);
   }
 
-  async updateRole(userId: string, dto: UpdateUserRoleDto, actorId: string, actorRoles: string[]) {
-    return this.roleAssignmentService.updateRole(userId, dto, actorId, actorRoles);
+  async updateRole(userId: string, dto: UpdateUserRoleDto, actorId: string) {
+    return this.roleAssignmentService.updateRole(userId, dto, actorId);
   }
 
-  async promoteUser(
-    userId: string,
-    dto: PromoteDemoteUserDto,
-    actorId: string,
-    actorRoles: string[],
-  ) {
-    return this.roleAssignmentService.promoteUser(userId, dto, actorId, actorRoles);
+  async promoteUser(userId: string, dto: PromoteDemoteUserDto, actorId: string) {
+    return this.roleAssignmentService.promoteUser(userId, dto, actorId);
   }
 
-  async demoteUser(
-    userId: string,
-    dto: PromoteDemoteUserDto,
-    actorId: string,
-    actorRoles: string[],
-  ) {
-    return this.roleAssignmentService.demoteUser(userId, dto, actorId, actorRoles);
+  async demoteUser(userId: string, dto: PromoteDemoteUserDto, actorId: string) {
+    return this.roleAssignmentService.demoteUser(userId, dto, actorId);
   }
 
   // ---------------------------------------------------------

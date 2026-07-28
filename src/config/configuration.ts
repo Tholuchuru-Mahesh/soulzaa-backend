@@ -196,6 +196,20 @@ export const pushProvidersConfig = registerAs('pushProviders', () => ({
   },
 }));
 
+export const paymentsConfig = registerAs('payments', () => ({
+  googlePlayLicenseKey: env().GOOGLE_PLAY_LICENSE_KEY,
+  appleSharedSecret: env().APPLE_IAP_SHARED_SECRET,
+  appleUseSandbox: env().APPLE_IAP_USE_SANDBOX,
+  razorpayKeySecret: env().RAZORPAY_KEY_SECRET,
+  stripeWebhookSecret: env().STRIPE_WEBHOOK_SECRET,
+  allowMockGateway: env().PAYMENTS_ALLOW_MOCK_GATEWAY,
+}));
+
+export const authorizationConfig = registerAs('authorization', () => ({
+  cacheTtlSeconds: env().AUTHORIZATION_CACHE_TTL_SECONDS,
+  scopeCountryBridge: env().AUTHORIZATION_SCOPE_COUNTRY_BRIDGE,
+}));
+
 export const privacyConfig = registerAs('privacy', () => ({
   cacheTtlSeconds: env().PRIVACY_CACHE_TTL_SECONDS,
   defaultVisibility: env().PRIVACY_DEFAULT_VISIBILITY,
@@ -468,8 +482,6 @@ export const callsConfig = registerAs('calls', () => ({
 }));
 
 export const giftConfig = registerAs('gift', () => ({
-  // Share of the gift value credited to the receiver as creator earnings (%).
-  creatorEarningRatePercent: env().GIFT_CREATOR_EARNING_RATE_PERCENT,
   // EXP awarded per gold coin of gift value (sender/receiver).
   senderExpPerCoin: env().GIFT_SENDER_EXP_PER_COIN,
   receiverExpPerCoin: env().GIFT_RECEIVER_EXP_PER_COIN,
@@ -505,6 +517,8 @@ export const configurations = [
   profileConfig,
   pushConfig,
   pushProvidersConfig,
+  authorizationConfig,
+  paymentsConfig,
   privacyConfig,
   socialConfig,
   storageConfig,

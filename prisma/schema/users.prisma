@@ -49,6 +49,14 @@ model User {
   gender            Gender?
   dateOfBirth       DateTime?      @db.Date
   country           String?
+  // Normalised location. `country` above stays as the free-text profile value
+  // (AttendanceService resolves a timezone from it); these three are the
+  // authoritative reference used for geographic scope filtering, eligibility
+  // and routing. Nullable because a user may not be normalised yet, or may sit
+  // above the granularity held — a country with no states has a null stateId.
+  countryId         String?        @db.Uuid
+  stateId           String?        @db.Uuid
+  regionId          String?        @db.Uuid
   preferredLanguage String?
   roles             PlatformRole[] @default([USER])
   isGuest           Boolean        @default(false)
@@ -64,7 +72,14 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  locationCountry Country? @relation("UserLocationCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  locationState   State?   @relation("UserLocationState", fields: [stateId], references: [id], onDelete: SetNull)
+  locationRegion  Region?  @relation("UserLocationRegion", fields: [regionId], references: [id], onDelete: SetNull)
+
   @@index([status])
+  @@index([countryId])
+  @@index([stateId])
+  @@index([regionId])
   @@map("users")
 }
 

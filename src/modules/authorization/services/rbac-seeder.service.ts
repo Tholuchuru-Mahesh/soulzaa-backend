@@ -143,4 +143,49 @@ export class RbacSeederService implements OnApplicationBootstrap {
 
     this.logger.log('RBAC Database Seed Completed successfully');
   }
+
+  /**
+   * Migrates the legacy `User.roles` enum column into `UserRole` rows.
+   *
+   * Roles have two homes: that column, and the RBAC tables. Guards read only the
+   * tables, so any account whose roles were never migrated is already treated as
+   * having none — this reconciles them so the column can be retired.
+   *
+   * Deliberately NOT part of `seedAll()`, so deploying never rewrites role data
+   * on its own. Run it explicitly via `prisma/seed-rbac.ts`.
+   *
+   * Additive only: it creates missing assignments and never deletes one, so it is
+   * safe to re-run and cannot revoke roles curated through Super Admin.
+   */
+  async backfillLegacyUserRoles(): Promise<{ scanned: number; created: number }> {
+    const roles = await this.prisma.role.findMany({ select: { id: true, name: true } });
+    const roleIdByName = new Map(roles.map((r) => [r.name, r.id]));
+
+    const users = await this.prisma.user.findMany({ select: { id: true, roles: true } });
+    const existing = await this.prisma.userRole.findMany({
+      select: { userId: true, roleId: true },
+    });
+    const alreadyAssigned = new Set(existing.map((ur) => `${ur.userId}:${ur.roleId}`));
+
+    const pending: Array<{ userId: string; roleId: string }> = [];
+    for (const user of users) {
+      for (const legacyRole of user.roles) {
+        const roleId = roleIdByName.get(legacyRole);
+        // A legacy name with no seeded role has nothing to map onto.
+        if (!roleId) continue;
+        if (alreadyAssigned.has(`${user.id}:${roleId}`)) continue;
+        alreadyAssigned.add(`${user.id}:${roleId}`);
+        pending.push({ userId: user.id, roleId });
+      }
+    }
+
+    if (pending.length > 0) {
+      await this.prisma.userRole.createMany({ data: pending, skipDuplicates: true });
+    }
+
+    this.logger.log(
+      `Legacy role backfill: scanned ${users.length} users, created ${pending.length} assignments`,
+    );
+    return { scanned: users.length, created: pending.length };
+  }
 }

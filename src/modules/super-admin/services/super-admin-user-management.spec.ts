@@ -1,10 +1,15 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { AccountStatus } from '@prisma/client';
+import { AccountStatus, ScopeType } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { AuthorizationCacheService } from 'src/modules/authorization/services/authorization-cache.service';
 import { AuthorizationService } from 'src/modules/authorization/services/authorization.service';
+import {
+  PolicyEngineService,
+  RoleRankPolicyRule,
+} from 'src/modules/authorization/services/policy-engine.service';
+import { RoleResolver } from 'src/modules/authorization/services/role-resolver.service';
 import { RoleService } from 'src/modules/authorization/services/role.service';
 import { CountryService } from 'src/modules/organization/services/country.service';
 import { RegionService } from 'src/modules/organization/services/region.service';
@@ -71,6 +76,11 @@ describe('Super Admin Phase 2B: User & Role Management Services', () => {
     del: jest.fn(),
   };
 
+  const mockRoleResolver = {
+    hasRole: jest.fn(),
+    getRoleNames: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -85,14 +95,22 @@ describe('Super Admin Phase 2B: User & Role Management Services', () => {
         { provide: AuthorizationService, useValue: mockAuthorizationService },
         { provide: AuthorizationCacheService, useValue: mockAuthCacheService },
         { provide: CacheService, useValue: mockCacheService },
+        { provide: RoleResolver, useValue: mockRoleResolver },
+        PolicyEngineService,
+        RoleRankPolicyRule,
       ],
     }).compile();
 
     queryService = module.get<UserQueryService>(UserQueryService);
     roleAssignmentService = module.get<RoleAssignmentService>(RoleAssignmentService);
     lifecycleService = module.get<AccountLifecycleService>(AccountLifecycleService);
+    module.get(PolicyEngineService).onModuleInit();
 
     jest.clearAllMocks();
+
+    // Rank enforcement has its own suite (privileged-action-policy.spec.ts); a
+    // SUPER_ADMIN actor keeps it out of the way of the cases exercised here.
+    mockRoleResolver.getRoleNames.mockResolvedValue(['SUPER_ADMIN']);
   });
 
   describe('UserQueryService', () => {
@@ -134,9 +152,10 @@ describe('Super Admin Phase 2B: User & Role Management Services', () => {
     it('should throw ForbiddenException if non-SuperAdmin attempts to assign ADMIN role', async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({ id: 'u-1', username: 'target' });
       mockPrismaService.role.findFirst.mockResolvedValue({ id: 'r-admin', name: 'ADMIN' });
+      mockRoleResolver.hasRole.mockResolvedValue(false);
 
       await expect(
-        roleAssignmentService.assignRole('u-1', { role: 'ADMIN' }, 'actor-1', ['ADMIN']),
+        roleAssignmentService.assignRole('u-1', { role: 'ADMIN' }, 'actor-1'),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -144,17 +163,78 @@ describe('Super Admin Phase 2B: User & Role Management Services', () => {
       mockPrismaService.user.findUnique.mockResolvedValue({ id: 'u-1', username: 'target' });
       mockPrismaService.role.findFirst.mockResolvedValue({ id: 'r-mod', name: 'MODERATOR' });
       mockPrismaService.userRole.findUnique.mockResolvedValue(null);
+      mockRoleResolver.hasRole.mockResolvedValue(true);
       mockRoleService.assignRoleToUser.mockResolvedValue({
         id: 'ur-1',
         userId: 'u-1',
         roleId: 'r-mod',
       });
 
-      const res = await roleAssignmentService.assignRole('u-1', { role: 'MODERATOR' }, 'actor-1', [
-        'SUPER_ADMIN',
-      ]);
+      const res = await roleAssignmentService.assignRole('u-1', { role: 'MODERATOR' }, 'actor-1');
       expect(res.roleName).toBe('MODERATOR');
       expect(mockAuthCacheService.invalidateUser).toHaveBeenCalledWith('u-1');
+    });
+
+    describe('single Country Manager per country', () => {
+      /**
+       * Stands in for the database honouring the `where` clause: the country already
+       * has a country-scoped BUSINESS_DEVELOPMENT assignment, which must not be
+       * mistaken for an incumbent Country Manager.
+       */
+      const countryHeldByBusinessDevelopment = () =>
+        mockPrismaService.roleScope.findFirst.mockImplementation(
+          ({ where }: { where: { userRole?: { roleId?: string } } }) => {
+            const row = { userRole: { userId: 'other-user', roleId: 'r-bd' } };
+            const wanted = where.userRole?.roleId;
+            return Promise.resolve(wanted && wanted !== row.userRole.roleId ? null : row);
+          },
+        );
+
+      beforeEach(() => {
+        mockPrismaService.user.findUnique.mockResolvedValue({ id: 'u-1', username: 'target' });
+        mockPrismaService.userRole.findUnique.mockResolvedValue(null);
+        mockRoleResolver.hasRole.mockResolvedValue(true);
+        mockCountryService.getCountryById.mockResolvedValue({
+          id: 'c-1',
+          name: 'India',
+          isActive: true,
+        });
+        mockRoleService.assignRoleToUser.mockResolvedValue({ id: 'ur-1' });
+      });
+
+      it('allows a Country Manager when another role already holds a country scope there', async () => {
+        mockPrismaService.role.findFirst.mockResolvedValue({
+          id: 'r-cm',
+          name: 'COUNTRY_MANAGER',
+        });
+        countryHeldByBusinessDevelopment();
+
+        const res = await roleAssignmentService.assignRole(
+          'u-1',
+          { role: 'COUNTRY_MANAGER', scopeType: ScopeType.COUNTRY, countryId: 'c-1' },
+          'actor-1',
+        );
+
+        expect(res.roleName).toBe('COUNTRY_MANAGER');
+      });
+
+      it('still rejects a second Country Manager for the same country', async () => {
+        mockPrismaService.role.findFirst.mockResolvedValue({
+          id: 'r-cm',
+          name: 'COUNTRY_MANAGER',
+        });
+        mockPrismaService.roleScope.findFirst.mockResolvedValue({
+          userRole: { userId: 'incumbent', roleId: 'r-cm' },
+        });
+
+        await expect(
+          roleAssignmentService.assignRole(
+            'u-1',
+            { role: 'COUNTRY_MANAGER', scopeType: ScopeType.COUNTRY, countryId: 'c-1' },
+            'actor-1',
+          ),
+        ).rejects.toThrow(ConflictException);
+      });
     });
   });
 

@@ -8,6 +8,8 @@ import {
 import { ScopeType } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { AuthorizationCacheService } from 'src/modules/authorization/services/authorization-cache.service';
+import { PolicyEngineService } from 'src/modules/authorization/services/policy-engine.service';
+import { RoleResolver } from 'src/modules/authorization/services/role-resolver.service';
 import { RoleService } from 'src/modules/authorization/services/role.service';
 import { CountryService } from 'src/modules/organization/services/country.service';
 import { RegionService } from 'src/modules/organization/services/region.service';
@@ -27,12 +29,62 @@ export class RoleAssignmentService {
     private readonly stateService: StateService,
     private readonly regionService: RegionService,
     private readonly authCacheService: AuthorizationCacheService,
+    private readonly roleResolver: RoleResolver,
+    private readonly policyEngine: PolicyEngineService,
   ) {}
+
+  /**
+   * Resolves whether the acting user holds SUPER_ADMIN, reading the RBAC store
+   * rather than trusting a caller-supplied role list. A token claim goes stale
+   * the moment a role is revoked, so escalation checks must not depend on it.
+   */
+  private async actorIsSuperAdmin(actorId: string): Promise<boolean> {
+    return this.roleResolver.hasRole(actorId, 'SUPER_ADMIN');
+  }
+
+  /**
+   * Rank gate for role changes, applied twice per operation:
+   *
+   *  - against the *role being granted or revoked*, so an actor cannot hand out
+   *    authority at or above their own — the named ADMIN/COUNTRY_MANAGER checks
+   *    never covered SUPER_ADMIN itself, which left it grantable by any ADMIN;
+   *  - against the *account being modified*, so an ADMIN cannot rewrite the roles
+   *    of a SUPER_ADMIN or of a peer.
+   */
+  private async assertMayChangeRole(actorId: string, targetUserId: string, roleName: string) {
+    const [actorRoles, targetUserRoles] = await Promise.all([
+      this.roleResolver.getRoleNames(actorId),
+      this.roleResolver.getRoleNames(targetUserId),
+    ]);
+
+    const decisions = await Promise.all([
+      this.policyEngine.evaluate({
+        actorUserId: actorId,
+        actorRoles,
+        action: 'user.role.grant',
+        targetUserId,
+        targetRoles: [roleName],
+      }),
+      this.policyEngine.evaluate({
+        actorUserId: actorId,
+        actorRoles,
+        action: 'user.role.assign',
+        targetUserId,
+        targetRoles: targetUserRoles,
+      }),
+    ]);
+
+    if (decisions.some((allowed) => !allowed)) {
+      throw new ForbiddenException(
+        `Insufficient authority to change the '${roleName}' role on this account`,
+      );
+    }
+  }
 
   /**
    * Assigns a role to a user with strict validation rules.
    */
-  async assignRole(userId: string, dto: AssignUserRoleDto, actorId: string, actorRoles: string[]) {
+  async assignRole(userId: string, dto: AssignUserRoleDto, actorId: string) {
     // 1. Verify User Exists
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
@@ -51,10 +103,14 @@ export class RoleAssignmentService {
     }
 
     // 3. Validation Rule: Only SUPER_ADMIN can assign ADMIN or COUNTRY_MANAGER
-    const isSuperAdminActor = actorRoles.includes('SUPER_ADMIN');
-    if ((role.name === 'ADMIN' || role.name === 'COUNTRY_MANAGER') && !isSuperAdminActor) {
-      throw new ForbiddenException(`Only SUPER_ADMIN can assign '${role.name}' role`);
+    if (role.name === 'ADMIN' || role.name === 'COUNTRY_MANAGER') {
+      if (!(await this.actorIsSuperAdmin(actorId))) {
+        throw new ForbiddenException(`Only SUPER_ADMIN can assign '${role.name}' role`);
+      }
     }
+
+    // 3b. Rank gate — covers every other role, including SUPER_ADMIN itself.
+    await this.assertMayChangeRole(actorId, userId, role.name);
 
     // 4. Validation Rule: Check Duplicate Active Role Assignment
     const existingUserRole = await this.prisma.userRole.findUnique({
@@ -76,10 +132,13 @@ export class RoleAssignmentService {
       }
 
       if (role.name === 'COUNTRY_MANAGER') {
+        // Scoped to the Country Manager role itself — other roles (BD, Official)
+        // legitimately hold country scopes and must not read as an incumbent.
         const existingCM = await this.prisma.roleScope.findFirst({
           where: {
             scopeType: ScopeType.COUNTRY,
             countryId: dto.countryId,
+            userRole: { roleId: role.id },
           },
           include: {
             userRole: true,
@@ -135,7 +194,7 @@ export class RoleAssignmentService {
   /**
    * Removes a role assignment and its associated scopes from a user.
    */
-  async removeRole(userId: string, roleIdOrName: string, actorId: string, actorRoles: string[]) {
+  async removeRole(userId: string, roleIdOrName: string, actorId: string) {
     const roleNameUpper = roleIdOrName.trim().toUpperCase();
     const role = await this.prisma.role.findFirst({
       where: {
@@ -146,10 +205,13 @@ export class RoleAssignmentService {
       throw new NotFoundException(`Role '${roleIdOrName}' not found`);
     }
 
-    const isSuperAdminActor = actorRoles.includes('SUPER_ADMIN');
-    if ((role.name === 'ADMIN' || role.name === 'COUNTRY_MANAGER') && !isSuperAdminActor) {
-      throw new ForbiddenException(`Only SUPER_ADMIN can remove '${role.name}' role`);
+    if (role.name === 'ADMIN' || role.name === 'COUNTRY_MANAGER') {
+      if (!(await this.actorIsSuperAdmin(actorId))) {
+        throw new ForbiddenException(`Only SUPER_ADMIN can remove '${role.name}' role`);
+      }
     }
+
+    await this.assertMayChangeRole(actorId, userId, role.name);
 
     const userRole = await this.prisma.userRole.findUnique({
       where: {
@@ -177,8 +239,8 @@ export class RoleAssignmentService {
   /**
    * Replaces a user's role assignment with a new role assignment.
    */
-  async updateRole(userId: string, dto: UpdateUserRoleDto, actorId: string, actorRoles: string[]) {
-    await this.removeRole(userId, dto.currentRole, actorId, actorRoles);
+  async updateRole(userId: string, dto: UpdateUserRoleDto, actorId: string) {
+    await this.removeRole(userId, dto.currentRole, actorId);
     return this.assignRole(
       userId,
       {
@@ -189,19 +251,13 @@ export class RoleAssignmentService {
         regionId: dto.regionId,
       },
       actorId,
-      actorRoles,
     );
   }
 
   /**
    * Promotes a user to a higher platform role.
    */
-  async promoteUser(
-    userId: string,
-    dto: PromoteDemoteUserDto,
-    actorId: string,
-    actorRoles: string[],
-  ) {
+  async promoteUser(userId: string, dto: PromoteDemoteUserDto, actorId: string) {
     return this.assignRole(
       userId,
       {
@@ -212,19 +268,13 @@ export class RoleAssignmentService {
         regionId: dto.regionId,
       },
       actorId,
-      actorRoles,
     );
   }
 
   /**
    * Demotes a user by assigning target role.
    */
-  async demoteUser(
-    userId: string,
-    dto: PromoteDemoteUserDto,
-    actorId: string,
-    actorRoles: string[],
-  ) {
+  async demoteUser(userId: string, dto: PromoteDemoteUserDto, actorId: string) {
     return this.assignRole(
       userId,
       {
@@ -235,7 +285,6 @@ export class RoleAssignmentService {
         regionId: dto.regionId,
       },
       actorId,
-      actorRoles,
     );
   }
 }

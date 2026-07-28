@@ -23,16 +23,6 @@ export interface GiftContextRequest {
   quantity: number;
 }
 
-/** Per-receiver revenue split for this context. */
-export interface GiftEconomics {
-  /**
-   * Basis points of a receiver's share of totalCoinValue credited to their
-   * EARNINGS wallet. AUDIO_ROOM returns 0 (coins route to the treasure box);
-   * VIDEO_ROOM returns the configured creator rate.
-   */
-  receiverEarningsBps: number;
-}
-
 /** State handed to `onSend`, from inside the send transaction. */
 export interface GiftSendContext extends GiftContextRequest {
   /**
@@ -68,8 +58,6 @@ export interface IGiftContextHandler {
 
   /** Throws BusinessException when the send is not permitted. */
   validate(req: GiftContextRequest): Promise<void>;
-
-  economics(req: GiftContextRequest): GiftEconomics;
 
   /**
    * Extra Redis lock keys this context needs held around the send transaction,

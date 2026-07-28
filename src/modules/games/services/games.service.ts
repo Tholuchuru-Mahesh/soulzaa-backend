@@ -506,7 +506,13 @@ export class GamesService {
   async updateLobbySettings(
     actor: GameActor,
     code: string,
-    dto: { stake?: number; maxPlayers?: number; password?: string; carromMode?: string; teamCoinAssignment?: string },
+    dto: {
+      stake?: number;
+      maxPlayers?: number;
+      password?: string;
+      carromMode?: string;
+      teamCoinAssignment?: string;
+    },
   ): Promise<unknown> {
     const lobby = await this.requireLobby(code);
     this.assertHost(lobby.hostId, actor.id, 'Only the host can edit lobby settings.');

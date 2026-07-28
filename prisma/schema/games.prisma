@@ -113,35 +113,35 @@ model GameDefinition {
 
 /// A pre-match lobby. Host creates it, others join by code, host starts it.
 model GameLobby {
-  id           String          @id @default(uuid()) @db.Uuid
-  definitionId String          @db.Uuid
-  code         String          @unique
-  hostId       String          @db.Uuid
+  id                 String          @id @default(uuid()) @db.Uuid
+  definitionId       String          @db.Uuid
+  code               String          @unique
+  hostId             String          @db.Uuid
   /// Optional audio-room context the game is played inside.
-  roomId       String?         @db.Uuid
-  category     GameCategory
-  currency     GameCurrency
-  stake        BigInt
-  maxPlayers   Int
-  mode         GameMode        @default(CLASSIC)
-  carromMode   String?         @default("classic")
-  teamCoinAssignment String?   @default("team_a_white")
+  roomId             String?         @db.Uuid
+  category           GameCategory
+  currency           GameCurrency
+  stake              BigInt
+  maxPlayers         Int
+  mode               GameMode        @default(CLASSIC)
+  carromMode         String?         @default("classic")
+  teamCoinAssignment String?         @default("team_a_white")
   /// True for a lobby auto-formed by matchmaking — hidden from the public
   /// browse and started near-atomically once every matched player is ready.
-  isMatchmade  Boolean         @default(false)
+  isMatchmade        Boolean         @default(false)
   /// Private lobbies are join-by-code only — hidden from the public browse.
-  isPrivate    Boolean         @default(false)
+  isPrivate          Boolean         @default(false)
   /// Optional join gate (sha256 of the lobby password); null = no password.
-  passwordHash String?
-  status       GameLobbyStatus @default(OPEN)
-  sessionId    String?         @db.Uuid
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  expiresAt    DateTime
-  startedAt    DateTime?
-  cancelledAt  DateTime?
-  createdBy    String?         @db.Uuid
-  updatedBy    String?         @db.Uuid
+  passwordHash       String?
+  status             GameLobbyStatus @default(OPEN)
+  sessionId          String?         @db.Uuid
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  expiresAt          DateTime
+  startedAt          DateTime?
+  cancelledAt        DateTime?
+  createdBy          String?         @db.Uuid
+  updatedBy          String?         @db.Uuid
 
   @@index([status, expiresAt])
   @@index([definitionId, status])
@@ -173,28 +173,28 @@ model GameLobbyMember {
 
 /// The match once started — stakes are escrowed and the pot is fixed.
 model GameSession {
-  id           String            @id @default(uuid()) @db.Uuid
-  definitionId String            @db.Uuid
-  code         GameCode
-  lobbyId      String?           @db.Uuid
-  joinCode     String
-  hostId       String            @db.Uuid
-  roomId       String?           @db.Uuid
-  category     GameCategory
-  currency     GameCurrency
-  stake        BigInt
-  playerCount  Int
-  mode         GameMode          @default(CLASSIC)
-  carromMode   String?           @default("classic")
-  teamCoinAssignment String?     @default("team_a_white")
-  potAmount    BigInt            @default(0)
-  status       GameSessionStatus @default(ACTIVE)
-  startedAt    DateTime          @default(now())
-  completedAt  DateTime?
-  cancelledAt  DateTime?
-  settledAt    DateTime?
-  createdBy    String?           @db.Uuid
-  updatedBy    String?           @db.Uuid
+  id                 String            @id @default(uuid()) @db.Uuid
+  definitionId       String            @db.Uuid
+  code               GameCode
+  lobbyId            String?           @db.Uuid
+  joinCode           String
+  hostId             String            @db.Uuid
+  roomId             String?           @db.Uuid
+  category           GameCategory
+  currency           GameCurrency
+  stake              BigInt
+  playerCount        Int
+  mode               GameMode          @default(CLASSIC)
+  carromMode         String?           @default("classic")
+  teamCoinAssignment String?           @default("team_a_white")
+  potAmount          BigInt            @default(0)
+  status             GameSessionStatus @default(ACTIVE)
+  startedAt          DateTime          @default(now())
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  settledAt          DateTime?
+  createdBy          String?           @db.Uuid
+  updatedBy          String?           @db.Uuid
 
   @@index([status])
   @@index([definitionId, status])

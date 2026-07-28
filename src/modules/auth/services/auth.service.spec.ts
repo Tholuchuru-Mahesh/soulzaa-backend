@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { IEventBus } from 'src/common/events';
+import type { IRoleSource } from 'src/common/interfaces/role-source.interface';
 import { PasswordService } from 'src/infra/auth/password.service';
 
 jest.mock('firebase-admin/app', () => ({
@@ -66,6 +67,7 @@ describe('AuthService', () => {
     >
   >;
   let firebase: jest.Mocked<Pick<FirebaseService, 'verifyIdToken'>>;
+  let roleSource: jest.Mocked<IRoleSource>;
   let service: AuthService;
 
   beforeEach(() => {
@@ -111,6 +113,7 @@ describe('AuthService', () => {
     firebase = {
       verifyIdToken: jest.fn(),
     };
+    roleSource = { getRoleNames: jest.fn().mockResolvedValue([]) };
     const config = { get: () => ({ passwordResetTtlSeconds: 900 }) } as unknown as ConfigService;
 
     service = new AuthService(
@@ -124,6 +127,7 @@ describe('AuthService', () => {
       security as unknown as LoginSecurityService,
       firebase as unknown as FirebaseService,
       config,
+      roleSource,
     );
   });
 
@@ -184,6 +188,21 @@ describe('AuthService', () => {
       expect(security.recordSuccess).toHaveBeenCalled();
       expect(result.isNewUser).toBe(false);
       expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'user.logged_in' }));
+    });
+
+    it('stamps the token with roles resolved from the RBAC store', async () => {
+      // The legacy User.roles column still says USER; RBAC is the source of truth.
+      users.findByEmail.mockResolvedValue(makeIdentity({ roles: ['USER'] }));
+      repo.getCredential.mockResolvedValue({ passwordHash: 'HASH' } as never);
+      passwords.verify.mockResolvedValue(true);
+      roleSource.getRoleNames.mockResolvedValue(['ADMIN', 'USER']);
+
+      await service.loginWithPassword({ email: 'aditya@example.com', password: 'Str0ng@Pass' }, {});
+
+      expect(sessions.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'u1', roles: ['ADMIN', 'USER'] }),
+        expect.anything(),
+      );
     });
 
     it('records a failure and throws on a bad password', async () => {
