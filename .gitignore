@@ -30,3 +30,7 @@ yarn-error.log*
 # Misc
 *.pem
 .pnpm-store
+
+# Firebase Admin SDK service account key — NEVER commit.
+# Lives only on the server; a committed key gets auto-disabled by Google.
+firebase-service-account.json
