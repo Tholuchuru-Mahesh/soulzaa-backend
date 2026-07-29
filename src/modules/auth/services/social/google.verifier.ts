@@ -39,7 +39,9 @@ export class GoogleVerifier {
         const audMatch = payload?.aud && this.audiences.includes(payload.aud);
         const azpMatch = payload?.azp && this.audiences.includes(payload.azp);
         if (!audMatch && !azpMatch) {
-          throw new Error(`Token audience (${payload?.aud}) / azp (${payload?.azp}) does not match allowed client IDs`);
+          throw new Error(
+            `Token audience (${payload?.aud}) / azp (${payload?.azp}) does not match allowed client IDs`,
+          );
         }
       }
       if (!payload?.sub) throw new Error('Missing subject');

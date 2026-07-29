@@ -351,7 +351,13 @@ export class AudioRoomSeatsService {
       await this.bus.publish(
         new SeatJoinedEvent({ roomId, userId: request.userId, seatIndex: seat.seatIndex }),
       );
-      await this.publishUpdate(roomId, actor.id, 'request_accepted', seat.seatIndex, request.userId);
+      await this.publishUpdate(
+        roomId,
+        actor.id,
+        'request_accepted',
+        seat.seatIndex,
+        request.userId,
+      );
     });
     await this.rebuildStage(roomId);
   }
