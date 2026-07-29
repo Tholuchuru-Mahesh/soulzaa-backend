@@ -585,8 +585,8 @@ export class VideoRoomSeatInvitationService {
   // ---- Internal ----
 
   private async assertInvitesAllowed(roomId: string, message: string): Promise<void> {
-    const settings = await this.rooms.getSettings(roomId);
-    if (settings && !settings.allowInvite) {
+    const settings = await this.rooms.requireSettings(roomId);
+    if (!settings.allowInvite) {
       throw new BusinessException(ERROR_CODES.VIDEO_ROOM_FORBIDDEN, message, HttpStatus.FORBIDDEN);
     }
   }

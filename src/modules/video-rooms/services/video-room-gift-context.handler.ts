@@ -95,8 +95,8 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
       );
     }
 
-    const settings = await this.rooms.getSettings(roomId);
-    if (settings && !settings.allowGifts) {
+    const settings = await this.rooms.requireSettings(roomId);
+    if (!settings.allowGifts) {
       throw new BusinessException(
         ERROR_CODES.VIDEO_ROOM_GIFTS_DISABLED,
         'Gifting is disabled in this room.',

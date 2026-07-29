@@ -1,3 +1,4 @@
+import { HttpStatus } from '@nestjs/common';
 import {
   GiftCategory,
   GiftContextType,
@@ -10,6 +11,8 @@ import {
 (BigInt.prototype as any).toJSON = function () {
   return this.toString();
 };
+import { BusinessException } from 'src/common/exceptions/business.exception';
+import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { GiftContextRegistry } from 'src/modules/gifts/services/gift-context.registry';
 import { GiftService } from 'src/modules/gifts/services/gift.service';
 import { VideoRoomGiftTarget } from './dto/send-video-room-gift.dto';
@@ -152,7 +155,7 @@ describe('VR-10 gift engine (integration)', () => {
       get: jest.fn().mockImplementation((ns: string) => (ns === 'gift' ? GIFT_CFG : VR_GIFT_CFG)),
     };
 
-    const rooms = {
+    const rooms: Record<string, jest.Mock> = {
       findById: jest
         .fn()
         .mockResolvedValue({ id: ROOM, ownerId: 'owner-1', status: VideoRoomStatus.LIVE }),
@@ -163,6 +166,20 @@ describe('VR-10 gift engine (integration)', () => {
         .fn()
         .mockResolvedValue({ isActive: true, role: VideoRoomMemberRole.PARTICIPANT }),
     };
+    // Mirrors `getSettings` by default (delegates to it) so the `allowGifts`
+    // override above keeps working now that the handler reads
+    // `requireSettings` instead.
+    rooms.requireSettings = jest.fn(async () => {
+      const row = await rooms.getSettings();
+      if (!row) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return row;
+    });
 
     const cache = {
       increment: jest.fn().mockResolvedValue(1),

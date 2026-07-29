@@ -870,8 +870,8 @@ export class VideoRoomMediaService {
     flag: 'allowBeauty' | 'allowCameraSwitch',
     message: string,
   ): Promise<void> {
-    const settings = await this.rooms.getSettings(roomId);
-    if (settings && !settings[flag]) {
+    const settings = await this.rooms.requireSettings(roomId);
+    if (!settings[flag]) {
       throw new BusinessException(ERROR_CODES.VIDEO_ROOM_FORBIDDEN, message, HttpStatus.FORBIDDEN);
     }
   }

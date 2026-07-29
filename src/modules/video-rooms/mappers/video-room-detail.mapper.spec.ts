@@ -84,7 +84,6 @@ describe('toSettingsView', () => {
       seatApprovalRequired: false,
       hostSeatCount: 6,
       guestSeatCount: 2,
-      maxDurationMinutes: 120,
     });
   });
 
@@ -100,8 +99,30 @@ describe('toSettingsView', () => {
       'metadata',
       'createdAt',
       'updatedAt',
+      // Retired 2026-07-29: stored but unenforced, so no longer advertised.
+      // They return with their guards in sub-projects B and C.
+      'allowScreenShare',
+      'allowRecording',
+      'allowViewerChat',
+      'joinApprovalRequired',
+      'allowJoinRequest',
+      'allowShare',
+      'allowFollow',
+      'maxDurationMinutes',
     ]) {
       expect(view).not.toHaveProperty(internal);
     }
+  });
+
+  // isRoomMuted is real as of the mute-all wiring; seat counts are real and
+  // edited via the seats endpoint. All three must keep reaching the client.
+  it('retains isRoomMuted and the seat layout', () => {
+    const view = toSettingsView(settingsRow());
+
+    expect(view).toMatchObject({
+      isRoomMuted: expect.any(Boolean),
+      hostSeatCount: 6,
+      guestSeatCount: 2,
+    });
   });
 });

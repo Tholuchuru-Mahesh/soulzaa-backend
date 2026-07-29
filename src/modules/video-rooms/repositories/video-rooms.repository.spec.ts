@@ -1,3 +1,4 @@
+import { HttpStatus } from '@nestjs/common';
 import {
   VideoRoomCreationSource,
   VideoRoomLogAction,
@@ -9,6 +10,7 @@ import {
 import type { CacheService } from 'src/infra/redis/cache.service';
 import type { PrismaService } from 'src/infra/prisma/prisma.service';
 import type { RedisClient } from 'src/infra/redis/redis.constants';
+import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { VIDEO_ROOM_TRENDING_KEY } from '../constants/video-room.constants';
 import { CreateVideoRoomData, VideoRoomsRepository } from './video-rooms.repository';
 
@@ -293,6 +295,29 @@ describe('VideoRoomsRepository', () => {
       roomId: 'r1',
       chatMode: 'PARTICIPANTS_ONLY',
       allowViewerChat: false,
+    });
+  });
+
+  // ---- settings integrity ----
+
+  describe('requireSettings', () => {
+    it('returns the settings row when it exists', async () => {
+      const row = { roomId: 'room-1', allowGifts: true } as never;
+      prisma.videoRoomSettings.findUnique.mockResolvedValue(row);
+
+      await expect(repo.requireSettings('room-1')).resolves.toBe(row);
+    });
+
+    // A missing row is a data-integrity fault, not a policy decision: the row is
+    // created transactionally with the room. Reporting it as "feature disabled"
+    // would send a host to toggle a setting that cannot fix it.
+    it('throws VIDEO_ROOM_SETTINGS_MISSING when the row is absent', async () => {
+      prisma.videoRoomSettings.findUnique.mockResolvedValue(null);
+
+      await expect(repo.requireSettings('room-1')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+      });
     });
   });
 

@@ -95,8 +95,8 @@ export class VideoRoomReportService {
     const ref = await this.requireRoom(roomId);
     await this.assertActiveMember(ref.id, reporter.id);
 
-    const settings = await this.rooms.getSettings(ref.id);
-    if (settings && !settings.allowReporting) {
+    const settings = await this.rooms.requireSettings(ref.id);
+    if (!settings.allowReporting) {
       throw new BusinessException(
         ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
         'Reporting is disabled in this room.',

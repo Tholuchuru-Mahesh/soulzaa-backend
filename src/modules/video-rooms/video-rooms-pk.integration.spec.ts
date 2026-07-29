@@ -1,9 +1,12 @@
+import { HttpStatus } from '@nestjs/common';
 import {
   GiftContextType,
   VideoRoomMemberRole,
   VideoRoomPkMode,
   WalletTxnReason,
 } from '@prisma/client';
+import { BusinessException } from 'src/common/exceptions/business.exception';
+import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { ConnectionStatus } from './enums';
 import { VideoRoomGiftContextHandler } from './services/video-room-gift-context.handler';
 import { VideoRoomPkInvitationService } from './services/video-room-pk-invitation.service';
@@ -370,13 +373,27 @@ describe('VR-12 PK integration', () => {
     };
     const metrics = { setPkActive: jest.fn(), setPkRecoveryQueueDepth: jest.fn() };
 
-    const rooms = {
+    const rooms: Record<string, jest.Mock> = {
       findById: jest.fn().mockResolvedValue({ id: ROOM, ownerId: OWNER_ID, status: 'LIVE' }),
       getSettings: jest.fn().mockResolvedValue({ allowPk: true, allowGifts: true, metadata: null }),
       getMember: jest
         .fn()
         .mockResolvedValue({ isActive: true, role: VideoRoomMemberRole.PARTICIPANT }),
     };
+    // Mirrors `getSettings` by default (delegates to it) so any override of
+    // `getSettings` keeps working now that the validation service reads
+    // `requireSettings` instead.
+    rooms.requireSettings = jest.fn(async () => {
+      const row = await rooms.getSettings();
+      if (!row) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return row;
+    });
     const permissions = { assertPermission: jest.fn().mockResolvedValue(undefined) };
     const presence = {
       isHost: jest.fn().mockResolvedValue(true),

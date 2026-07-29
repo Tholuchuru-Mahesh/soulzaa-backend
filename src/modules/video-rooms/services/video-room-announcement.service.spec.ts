@@ -1,4 +1,6 @@
+import { HttpStatus } from '@nestjs/common';
 import { VideoRoomMessageType } from '@prisma/client';
+import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { VideoRoomAnnouncementService } from './video-room-announcement.service';
 
@@ -8,7 +10,7 @@ const ANN = { id: 'a1', roomId: 'r1', authorId: 'u1', content: 'hello', isPinned
 
 describe('VideoRoomAnnouncementService', () => {
   let permissions: { assertPermission: jest.Mock };
-  let rooms: { findById: jest.Mock; getSettings: jest.Mock };
+  let rooms: { findById: jest.Mock; getSettings: jest.Mock; requireSettings: jest.Mock };
   let events: Record<string, jest.Mock>;
   let chat: Record<string, jest.Mock>;
   let pins: { pin: jest.Mock; unpin: jest.Mock };
@@ -22,7 +24,23 @@ describe('VideoRoomAnnouncementService', () => {
       // Default-enabled so every pre-existing test keeps exercising the
       // allowed path unless a test explicitly overrides this.
       getSettings: jest.fn().mockResolvedValue({ allowAnnouncements: true }),
+      // Mirrors `getSettings` by default (delegates to it) so every test that
+      // overrides `getSettings` keeps working now that the service reads
+      // `requireSettings` instead; tests targeting the missing-row path
+      // override this mock directly.
+      requireSettings: jest.fn(),
     };
+    rooms.requireSettings.mockImplementation(async () => {
+      const row = await rooms.getSettings();
+      if (!row) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return row;
+    });
     events = {
       createAnnouncement: jest.fn().mockResolvedValue(ANN),
       listAnnouncements: jest.fn().mockResolvedValue([ANN]),
@@ -138,6 +156,20 @@ describe('VideoRoomAnnouncementService', () => {
       ).resolves.toBeDefined();
     });
 
+    // Guard hardening: a missing settings row must NOT read as "allowed".
+    it('raises VIDEO_ROOM_SETTINGS_MISSING when the settings row is absent', async () => {
+      rooms.requireSettings.mockRejectedValue(
+        new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        ),
+      );
+      await expect(
+        service.create(ACTOR as never, 'r1', { content: 'hello' }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING });
+    });
+
     it('refuses updating an announcement when allowAnnouncements is disabled', async () => {
       rooms.getSettings.mockResolvedValue({ allowAnnouncements: false });
       await expect(
@@ -158,7 +190,7 @@ describe('VideoRoomAnnouncementService', () => {
       await expect(service.create(ACTOR as never, 'r1', { content: 'x' })).rejects.toThrow(
         'denied',
       );
-      expect(rooms.getSettings).not.toHaveBeenCalled();
+      expect(rooms.requireSettings).not.toHaveBeenCalled();
     });
 
     it('still allows removing an announcement when allowAnnouncements is disabled (cleanup must not be trapped)', async () => {

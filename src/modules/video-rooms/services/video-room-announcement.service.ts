@@ -182,8 +182,8 @@ export class VideoRoomAnnouncementService {
    * turn it back on.
    */
   private async assertAnnouncementsAllowed(roomId: string): Promise<void> {
-    const settings = await this.rooms.getSettings(roomId);
-    if (settings && !settings.allowAnnouncements) {
+    const settings = await this.rooms.requireSettings(roomId);
+    if (!settings.allowAnnouncements) {
       throw new BusinessException(
         ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
         'Announcements are disabled in this room.',

@@ -1,9 +1,11 @@
+import { HttpStatus } from '@nestjs/common';
 import {
   VideoRoomChatMode,
   VideoRoomMemberRole,
   VideoRoomMessageType,
   VideoRoomStatus,
 } from '@prisma/client';
+import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { VideoRoomChatPolicyService } from './video-room-chat-policy.service';
@@ -33,7 +35,12 @@ const TEXT = {
 };
 
 describe('VideoRoomChatPolicyService', () => {
-  let rooms: { findById: jest.Mock; getSettings: jest.Mock; getMember: jest.Mock };
+  let rooms: {
+    findById: jest.Mock;
+    getSettings: jest.Mock;
+    requireSettings: jest.Mock;
+    getMember: jest.Mock;
+  };
   let permissions: { resolveEffectiveRole: jest.Mock };
   let moderation: { isActivelyMuted: jest.Mock; isActivelyBlocked: jest.Mock };
   let config: { get: jest.Mock };
@@ -43,8 +50,24 @@ describe('VideoRoomChatPolicyService', () => {
     rooms = {
       findById: jest.fn().mockResolvedValue(ROOM),
       getSettings: jest.fn().mockResolvedValue(settings()),
+      // Mirrors `getSettings` by default (delegates to it) so every test that
+      // overrides `getSettings` keeps working now that the service reads
+      // `requireSettings` instead; tests targeting the missing-row path
+      // override this mock directly.
+      requireSettings: jest.fn(),
       getMember: jest.fn().mockResolvedValue({ isActive: true }),
     };
+    rooms.requireSettings.mockImplementation(async () => {
+      const row = await rooms.getSettings();
+      if (!row) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return row;
+    });
     permissions = {
       resolveEffectiveRole: jest.fn().mockResolvedValue(VideoRoomMemberRole.VIEWER),
     };
@@ -93,9 +116,24 @@ describe('VideoRoomChatPolicyService', () => {
 
   it('rejects when chat is disabled, even for the owner', async () => {
     rooms.getSettings.mockResolvedValue(settings({ allowChat: false }));
+    rooms.requireSettings.mockResolvedValue(settings({ allowChat: false }));
     permissions.resolveEffectiveRole.mockResolvedValue(VideoRoomMemberRole.OWNER);
     await expect(policy.assertCanSend(actor('owner-1'), 'r1', TEXT)).rejects.toMatchObject({
       errorCode: ERROR_CODES.CHAT_DISABLED,
+    });
+  });
+
+  // Guard hardening: a missing settings row must NOT read as "allowed".
+  it('raises VIDEO_ROOM_SETTINGS_MISSING when the settings row is absent', async () => {
+    rooms.requireSettings.mockRejectedValue(
+      new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+        'Room settings are missing.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      ),
+    );
+    await expect(policy.assertCanSend(actor('owner-1'), 'r1', TEXT)).rejects.toMatchObject({
+      errorCode: ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
     });
   });
 

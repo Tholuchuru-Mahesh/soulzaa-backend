@@ -8,27 +8,25 @@ import type {
   VideoRoomLifecycleState,
 } from '../constants/video-room-lifecycle';
 
-/** Client-safe projection of the per-room settings row (drops audit/timestamps). */
+/**
+ * Client-safe projection of the per-room settings row (drops audit/timestamps).
+ *
+ * Contains ONLY settings that are implemented today. Columns that exist but are
+ * unenforced are deliberately absent — advertising them told clients the room
+ * could do things it cannot. They return with their guards in sub-projects B/C.
+ */
 export interface VideoRoomSettingsView {
   allowChat: boolean;
-  allowViewerChat: boolean;
   slowModeSeconds: number;
   allowGifts: boolean;
   allowTreasure: boolean;
   allowPk: boolean;
   allowBeauty: boolean;
   allowCameraSwitch: boolean;
-  allowScreenShare: boolean;
-  allowRecording: boolean;
-  joinApprovalRequired: boolean;
-  allowJoinRequest: boolean;
-  allowShare: boolean;
   allowInvite: boolean;
-  allowFollow: boolean;
   allowReporting: boolean;
   allowAnnouncements: boolean;
   isRoomMuted: boolean;
-  maxDurationMinutes: number | null;
   hostSeatCount: number;
   guestSeatCount: number;
   /**

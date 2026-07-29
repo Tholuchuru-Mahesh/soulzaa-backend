@@ -51,8 +51,24 @@ describe('VideoRoomSeatInvitationService', () => {
         // VR-17 — default to the column's own DB default so every pre-existing
         // test (which knows nothing about allowInvite) keeps passing.
         getSettings: jest.fn().mockResolvedValue({ allowInvite: true }),
+        // Mirrors `getSettings` by default (delegates to it) so every test that
+        // overrides `getSettings` to steer `allowInvite` keeps working now that
+        // the service reads `requireSettings` instead; tests targeting the
+        // missing-row path override this mock directly.
+        requireSettings: jest.fn(),
       },
     };
+    deps.rooms.requireSettings.mockImplementation(async () => {
+      const row = await deps.rooms.getSettings();
+      if (!row) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return row;
+    });
     svc = new VideoRoomSeatInvitationService(
       deps.seatSvc,
       deps.seats,
@@ -193,7 +209,21 @@ describe('VideoRoomSeatInvitationService', () => {
       await expect(svc.invite(actor('owner'), 'r1', 'u2', 3)).rejects.toMatchObject({
         errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
       });
-      expect(deps.rooms.getSettings).not.toHaveBeenCalled();
+      expect(deps.rooms.requireSettings).not.toHaveBeenCalled();
+    });
+
+    // Guard hardening: a missing settings row must NOT read as "allowed".
+    it('raises VIDEO_ROOM_SETTINGS_MISSING when the settings row is absent', async () => {
+      deps.rooms.requireSettings.mockRejectedValue(
+        new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        ),
+      );
+      await expect(svc.invite(actor('owner'), 'r1', 'u2', 3)).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+      });
     });
   });
 
@@ -290,7 +320,7 @@ describe('VideoRoomSeatInvitationService', () => {
       await expect(svc.inviteToRoom(actor('owner'), 'r1', 'u2')).rejects.toMatchObject({
         errorCode: ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
       });
-      expect(deps.rooms.getSettings).not.toHaveBeenCalled();
+      expect(deps.rooms.requireSettings).not.toHaveBeenCalled();
     });
   });
 

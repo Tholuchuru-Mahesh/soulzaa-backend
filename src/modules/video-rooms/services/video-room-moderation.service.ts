@@ -45,7 +45,9 @@ import {
   UserUnmutedEvent,
   UserWarnedEvent,
 } from '../events/video-room-moderation.events';
+import { RoomSettingsUpdatedEvent } from '../events/video-room.events';
 import type { RoomActor } from '../interfaces/room-actor.interface';
+import { toSettingsView } from '../mappers/video-room-detail.mapper';
 import { VideoRoomModerationMetrics } from '../metrics/video-room-moderation.metrics';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
 import { VideoRoomWarningRepository } from '../repositories/video-room-warning.repository';
@@ -460,15 +462,14 @@ export class VideoRoomModerationService {
     const ref = await this.requireRoom(roomId);
     await this.permissions.assertPermission(actor, ref, VideoRoomPermission.ROOM_MUTE);
 
-    let chatSettings: VideoRoomSettings | null = null;
+    let updatedSettings: VideoRoomSettings | null = null;
+    let changedFields: string[] = [];
+
     await this.locks.withLock(moderationLockKey(ref.id), async () => {
-      if (chans.includes('chat')) {
-        chatSettings = await this.rooms.updateSettings(ref.id, {
-          chatMode: VideoRoomChatMode.READ_ONLY,
-          // Mirrors VideoRoomChatSettingsService's deprecated-column upkeep.
-          allowViewerChat: false,
-        });
-      }
+      // Mic sweep runs BEFORE the settings write so a mid-sweep failure
+      // (getMediaState/forceMute throwing) under-claims — isRoomMuted stays
+      // unchanged with some mics already muted — instead of over-claiming a
+      // persisted `isRoomMuted: true` with no broadcast to match it.
       if (chans.includes('mic')) {
         const stage = await this.media.getMediaState(actor, ref.id);
         for (const participant of stage.participants) {
@@ -480,6 +481,25 @@ export class VideoRoomModerationService {
           });
         }
       }
+
+      // ONE settings write covering both channels. Previously only the `chat`
+      // branch wrote, so a mic-only mute changed no persisted state at all —
+      // which is why the client had no mute flag to read back.
+      const patch: Prisma.VideoRoomSettingsUpdateInput = {};
+      if (chans.includes('chat')) {
+        patch.chatMode = VideoRoomChatMode.READ_ONLY;
+        // Mirrors VideoRoomChatSettingsService's deprecated-column upkeep.
+        patch.allowViewerChat = false;
+      }
+      if (chans.includes('mic')) {
+        patch.isRoomMuted = true;
+      }
+
+      changedFields = Object.keys(patch);
+      if (changedFields.length > 0) {
+        updatedSettings = await this.rooms.updateSettings(ref.id, patch);
+      }
+
       await this.moderationRepo.appendAction({
         roomId: ref.id,
         moderatorId: actor.id,
@@ -497,7 +517,32 @@ export class VideoRoomModerationService {
         muted: true,
       }),
     );
-    await this.publishChatModeChanged(ref, actor, chatSettings, requestMeta);
+    // Only the `chat` channel drives ChatModeChangedEvent — a mic-only mute
+    // also writes the settings row now (isRoomMuted), but that must not make
+    // chat clients think the chat mode changed when it didn't.
+    await this.publishChatModeChanged(
+      ref,
+      actor,
+      chans.includes('chat') ? updatedSettings : null,
+      requestMeta,
+    );
+
+    // muteAll bypasses VideoRoomSettingsService (which gates on owner-only
+    // MANAGE_ROOM and would wrongly 403 ADMIN/MODERATOR), so it inherits that
+    // service's duty to announce the settings row it just wrote. Without this,
+    // no client reconciling from `settings_updated` ever learns the room muted.
+    if (updatedSettings) {
+      await this.bus.publish(
+        new RoomSettingsUpdatedEvent({
+          roomId: ref.id,
+          actorId: actor.id,
+          changed: changedFields,
+          settings: toSettingsView(updatedSettings) as NonNullable<
+            ReturnType<typeof toSettingsView>
+          >,
+        }),
+      );
+    }
   }
 
   /**
@@ -519,15 +564,14 @@ export class VideoRoomModerationService {
     const ref = await this.requireRoom(roomId);
     await this.permissions.assertPermission(actor, ref, VideoRoomPermission.ROOM_MUTE);
 
-    let chatSettings: VideoRoomSettings | null = null;
+    let updatedSettings: VideoRoomSettings | null = null;
+    let changedFields: string[] = [];
+
     await this.locks.withLock(moderationLockKey(ref.id), async () => {
-      if (chans.includes('chat')) {
-        chatSettings = await this.rooms.updateSettings(ref.id, {
-          chatMode: VideoRoomChatMode.NORMAL,
-          // Mirrors VideoRoomChatSettingsService's deprecated-column upkeep.
-          allowViewerChat: true,
-        });
-      }
+      // Mic sweep runs BEFORE the settings write — mirrors muteAll, so a
+      // mid-sweep failure under-claims (isRoomMuted stays unchanged, some
+      // mics already unmuted) instead of over-claiming a persisted
+      // `isRoomMuted: false` with no broadcast to match it.
       if (chans.includes('mic')) {
         const stage = await this.media.getMediaState(actor, ref.id);
         for (const participant of stage.participants) {
@@ -539,6 +583,23 @@ export class VideoRoomModerationService {
           });
         }
       }
+
+      // ONE settings write covering both channels — mirrors muteAll.
+      const patch: Prisma.VideoRoomSettingsUpdateInput = {};
+      if (chans.includes('chat')) {
+        patch.chatMode = VideoRoomChatMode.NORMAL;
+        // Mirrors VideoRoomChatSettingsService's deprecated-column upkeep.
+        patch.allowViewerChat = true;
+      }
+      if (chans.includes('mic')) {
+        patch.isRoomMuted = false;
+      }
+
+      changedFields = Object.keys(patch);
+      if (changedFields.length > 0) {
+        updatedSettings = await this.rooms.updateSettings(ref.id, patch);
+      }
+
       await this.moderationRepo.appendAction({
         roomId: ref.id,
         moderatorId: actor.id,
@@ -556,7 +617,27 @@ export class VideoRoomModerationService {
         muted: false,
       }),
     );
-    await this.publishChatModeChanged(ref, actor, chatSettings, requestMeta);
+    // Only the `chat` channel drives ChatModeChangedEvent — see muteAll's
+    // mirrored comment.
+    await this.publishChatModeChanged(
+      ref,
+      actor,
+      chans.includes('chat') ? updatedSettings : null,
+      requestMeta,
+    );
+
+    if (updatedSettings) {
+      await this.bus.publish(
+        new RoomSettingsUpdatedEvent({
+          roomId: ref.id,
+          actorId: actor.id,
+          changed: changedFields,
+          settings: toSettingsView(updatedSettings) as NonNullable<
+            ReturnType<typeof toSettingsView>
+          >,
+        }),
+      );
+    }
   }
 
   // ======================= Warn =======================

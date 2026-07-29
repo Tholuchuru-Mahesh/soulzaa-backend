@@ -1,6 +1,7 @@
 import { HttpStatus } from '@nestjs/common';
 import {
   PlatformRole,
+  VideoRoomChatMode,
   VideoRoomMemberRole,
   VideoRoomModerationActionType,
   VideoRoomModerationMuteType,
@@ -11,6 +12,7 @@ import { VIDEO_ROOM_NAMESPACE } from '../constants/video-room.constants';
 import { SYSTEM_MODERATOR_ID } from '../constants/video-room-moderation.constants';
 import { VIDEO_ROOM_CHAT_EVENTS } from '../events/video-room-chat.events';
 import { VIDEO_ROOM_MODERATION_EVENTS } from '../events/video-room-moderation.events';
+import { VIDEO_ROOM_EVENTS } from '../events/video-room.events';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { VideoRoomModerationService } from './video-room-moderation.service';
 
@@ -18,6 +20,45 @@ const ROOM = { id: 'room-1', ownerId: 'owner-1' };
 const OWNER: RoomActor = { id: 'owner-1', roles: [] as PlatformRole[] };
 const ACTOR: RoomActor = { id: 'admin-1', roles: [] as PlatformRole[] };
 const TARGET = 'user-2';
+
+/**
+ * A full `VideoRoomSettings` row so `updateSettings`'s mock can spread a
+ * write patch over it and hand `toSettingsView` something it can safely
+ * project (task 4: the settings_updated broadcast projects the full view,
+ * not just the patched keys).
+ */
+const settingsRow = {
+  roomId: ROOM.id,
+  allowChat: true,
+  allowViewerChat: true,
+  chatMode: VideoRoomChatMode.NORMAL,
+  chatMaxMessageLength: 500,
+  chatMaxAttachments: 1,
+  chatRateLimitPerMinute: 20,
+  slowModeSeconds: 0,
+  allowGifts: true,
+  allowTreasure: true,
+  allowPk: true,
+  allowBeauty: true,
+  allowCameraSwitch: true,
+  allowScreenShare: false,
+  allowRecording: false,
+  joinApprovalRequired: false,
+  allowJoinRequest: true,
+  allowShare: true,
+  allowInvite: true,
+  allowFollow: true,
+  allowReporting: true,
+  allowAnnouncements: true,
+  isRoomMuted: false,
+  maxDurationMinutes: null as number | null,
+  hostSeatCount: 9,
+  guestSeatCount: 0,
+  seatApprovalRequired: true,
+  metadata: null,
+  createdAt: new Date('2026-01-01T00:00:00Z'),
+  updatedAt: new Date('2026-01-01T00:00:00Z'),
+};
 
 describe('VideoRoomModerationService', () => {
   let rooms: any;
@@ -35,16 +76,21 @@ describe('VideoRoomModerationService', () => {
   let config: any;
   let subject: VideoRoomModerationService;
   let callOrder: string[];
+  let published: { name: string; payload: any }[];
 
   beforeEach(() => {
     callOrder = [];
+    published = [];
     rooms = {
       findById: jest.fn().mockResolvedValue(ROOM),
       getMember: jest.fn().mockResolvedValue({ userId: TARGET, isActive: true }),
       deactivateMember: jest.fn().mockImplementation(async () => {
         callOrder.push('deactivateMember');
       }),
-      updateSettings: jest.fn().mockResolvedValue(undefined),
+      updateSettings: jest.fn().mockImplementation(async (_roomId: string, data: any) => ({
+        ...settingsRow,
+        ...data,
+      })),
     };
     moderationRepo = {
       appendAction: jest.fn().mockImplementation(async () => {
@@ -106,8 +152,9 @@ describe('VideoRoomModerationService', () => {
     };
     queue = { add: jest.fn().mockResolvedValue(undefined) };
     bus = {
-      publish: jest.fn().mockImplementation(async (event: { name: string }) => {
+      publish: jest.fn().mockImplementation(async (event: { name: string; payload: unknown }) => {
         callOrder.push(`publish:${event.name}`);
+        published.push({ name: event.name, payload: event.payload });
       }),
     };
     media = {
@@ -681,7 +728,12 @@ describe('VideoRoomModerationService', () => {
         ROOM.id,
         expect.objectContaining({ targetUserId: 'speaker-2' }),
       );
-      expect(rooms.updateSettings).not.toHaveBeenCalled();
+      // A mic-only mute still writes the settings row (isRoomMuted) — see the
+      // "mute-all settings state" tests below. It just doesn't touch chatMode.
+      expect(rooms.updateSettings).toHaveBeenCalledWith(
+        ROOM.id,
+        expect.objectContaining({ isRoomMuted: true }),
+      );
     });
 
     it('audits the room-wide action with a null target and publishes RoomModerationUpdatedEvent', async () => {
@@ -773,7 +825,20 @@ describe('VideoRoomModerationService', () => {
         ROOM.id,
         expect.objectContaining({ targetUserId: 'speaker-2' }),
       );
-      expect(rooms.updateSettings).not.toHaveBeenCalled();
+      // A mic-only unmute still writes the settings row (isRoomMuted) — see
+      // the "mute-all settings state" tests below. It doesn't touch chatMode.
+      expect(rooms.updateSettings).toHaveBeenCalledWith(
+        ROOM.id,
+        expect.objectContaining({ isRoomMuted: false }),
+      );
+    });
+
+    it('mic-only: does not publish ChatModeChangedEvent (chat channel untouched)', async () => {
+      await subject.unmuteAll(ACTOR, ROOM.id, ['mic']);
+
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: VIDEO_ROOM_CHAT_EVENTS.CHAT_MODE_CHANGED }),
+      );
     });
 
     it('audits the room-wide action (ROOM_UNMUTED) with a null target and publishes RoomModerationUpdatedEvent(muted:false)', async () => {
@@ -806,6 +871,89 @@ describe('VideoRoomModerationService', () => {
         expect.stringContaining(ROOM.id),
         expect.any(Function),
       );
+    });
+  });
+
+  // ======================= muteAll/unmuteAll settings integrity =======================
+
+  describe('mute-all settings state', () => {
+    it('sets isRoomMuted when the mic channel is included', async () => {
+      await subject.muteAll(ACTOR, ROOM.id, ['mic']);
+
+      expect(rooms.updateSettings).toHaveBeenCalledWith(
+        ROOM.id,
+        expect.objectContaining({ isRoomMuted: true }),
+      );
+    });
+
+    // Chat state is carried by chatMode; isRoomMuted is the mic signal only.
+    it('leaves isRoomMuted untouched for a chat-only mute', async () => {
+      await subject.muteAll(ACTOR, ROOM.id, ['chat']);
+
+      const patch = rooms.updateSettings.mock.calls[0][1];
+      expect(patch).not.toHaveProperty('isRoomMuted');
+      expect(patch).toMatchObject({ chatMode: VideoRoomChatMode.READ_ONLY });
+    });
+
+    it('writes both channels in ONE updateSettings call', async () => {
+      await subject.muteAll(ACTOR, ROOM.id, ['chat', 'mic']);
+
+      expect(rooms.updateSettings).toHaveBeenCalledTimes(1);
+      expect(rooms.updateSettings).toHaveBeenCalledWith(
+        ROOM.id,
+        expect.objectContaining({
+          chatMode: VideoRoomChatMode.READ_ONLY,
+          isRoomMuted: true,
+        }),
+      );
+    });
+
+    it('clears isRoomMuted on unmuteAll of the mic channel', async () => {
+      await subject.unmuteAll(ACTOR, ROOM.id, ['mic']);
+
+      expect(rooms.updateSettings).toHaveBeenCalledWith(
+        ROOM.id,
+        expect.objectContaining({ isRoomMuted: false }),
+      );
+    });
+  });
+
+  describe('mute-all broadcast', () => {
+    const settingsEvents = () =>
+      published.filter((e) => e.name === VIDEO_ROOM_EVENTS.SETTINGS_UPDATED);
+
+    it('publishes RoomSettingsUpdatedEvent after muteAll', async () => {
+      await subject.muteAll(ACTOR, ROOM.id, ['mic']);
+
+      expect(settingsEvents()).toHaveLength(1);
+      expect(settingsEvents()[0].payload).toMatchObject({
+        roomId: ROOM.id,
+        actorId: ACTOR.id,
+      });
+      expect(settingsEvents()[0].payload.settings.isRoomMuted).toBe(true);
+    });
+
+    it('publishes RoomSettingsUpdatedEvent after unmuteAll', async () => {
+      await subject.unmuteAll(ACTOR, ROOM.id, ['mic']);
+
+      expect(settingsEvents()).toHaveLength(1);
+      expect(settingsEvents()[0].payload.settings.isRoomMuted).toBe(false);
+    });
+
+    it('lists exactly the written fields in `changed`', async () => {
+      await subject.muteAll(ACTOR, ROOM.id, ['chat', 'mic']);
+
+      expect([...settingsEvents()[0].payload.changed].sort()).toEqual(
+        ['allowViewerChat', 'chatMode', 'isRoomMuted'].sort(),
+      );
+    });
+
+    // An empty patch must not produce a phantom settings broadcast.
+    it('does not publish when no channel writes settings', async () => {
+      await subject.muteAll(ACTOR, ROOM.id, []);
+
+      expect(settingsEvents()).toHaveLength(0);
+      expect(rooms.updateSettings).not.toHaveBeenCalled();
     });
   });
 

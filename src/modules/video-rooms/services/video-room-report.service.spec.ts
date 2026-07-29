@@ -5,7 +5,7 @@ import {
   VideoRoomReportReason,
   VideoRoomReportStatus,
 } from '@prisma/client';
-import { ERROR_CODES } from 'src/common/exceptions';
+import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { SYSTEM_MODERATOR_ID } from '../constants/video-room-moderation.constants';
 import type { ListModerationDto } from '../dto/moderation.dto';
 import { VIDEO_ROOM_MODERATION_EVENTS } from '../events/video-room-moderation.events';
@@ -53,7 +53,23 @@ describe('VideoRoomReportService', () => {
       // (allowed) path rather than passing because reporting was silently
       // disabled underneath them.
       getSettings: jest.fn().mockResolvedValue({ allowReporting: true }),
+      // Mirrors `getSettings` by default (delegates to it) so every test that
+      // overrides `getSettings` keeps working now that `report()` reads
+      // `requireSettings` instead; tests targeting the missing-row path
+      // override this mock directly.
+      requireSettings: jest.fn(),
     };
+    rooms.requireSettings.mockImplementation(async () => {
+      const row = await rooms.getSettings();
+      if (!row) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return row;
+    });
     roles = {
       listActiveByRoom: jest.fn().mockResolvedValue([{ userId: 'admin-1' }, { userId: 'mod-2' }]),
     };
@@ -254,6 +270,23 @@ describe('VideoRoomReportService', () => {
       ).resolves.toBeDefined();
     });
 
+    // Guard hardening: a missing settings row must NOT read as "allowed".
+    it('raises VIDEO_ROOM_SETTINGS_MISSING when the settings row is absent', async () => {
+      rooms.requireSettings.mockRejectedValue(
+        new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        ),
+      );
+      await expect(
+        subject.report(REPORTER, ROOM.id, {
+          targetUserId: TARGET,
+          reason: VideoRoomReportReason.SPAM,
+        }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING });
+    });
+
     it('checks active membership before the allowReporting policy gate', async () => {
       rooms.getMember.mockResolvedValue(null);
       await expect(
@@ -262,7 +295,7 @@ describe('VideoRoomReportService', () => {
           reason: VideoRoomReportReason.SPAM,
         }),
       ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_NOT_MEMBER });
-      expect(rooms.getSettings).not.toHaveBeenCalled();
+      expect(rooms.requireSettings).not.toHaveBeenCalled();
     });
   });
 

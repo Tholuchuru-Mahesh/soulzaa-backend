@@ -1,9 +1,11 @@
+import { HttpStatus } from '@nestjs/common';
 import {
   VideoRoomChatMode,
   VideoRoomMemberRole,
   VideoRoomMessageType,
   VideoRoomStatus,
 } from '@prisma/client';
+import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { VideoRoomChatPolicyService } from './services/video-room-chat-policy.service';
 import { VideoRoomChatService } from './services/video-room-chat.service';
@@ -38,8 +40,23 @@ describe('VR-9 chat integration', () => {
     rooms = {
       findById: jest.fn().mockResolvedValue(ROOM),
       getSettings: jest.fn().mockResolvedValue(SETTINGS),
+      // Mirrors `getSettings` by default (delegates to it) so every test that
+      // overrides `getSettings` keeps working now that the policy service
+      // reads `requireSettings` instead.
+      requireSettings: jest.fn(),
       getMember: jest.fn().mockResolvedValue({ isActive: true }),
     };
+    rooms.requireSettings.mockImplementation(async () => {
+      const row = await rooms.getSettings();
+      if (!row) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return row;
+    });
     permissions = {
       resolveEffectiveRole: jest.fn().mockResolvedValue(VideoRoomMemberRole.VIEWER),
     };

@@ -1,4 +1,7 @@
+import { HttpStatus } from '@nestjs/common';
 import { TreasureSessionStatus } from '@prisma/client';
+import { BusinessException } from 'src/common/exceptions/business.exception';
+import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { TreasureBoxException } from '../exceptions/video-room-treasure.exceptions';
 import { VideoRoomTreasureService } from './video-room-treasure.service';
 
@@ -40,7 +43,23 @@ describe('VideoRoomTreasureService', () => {
     rooms = {
       findById: jest.fn().mockResolvedValue({ id: 'r1', ownerId: 'owner-1' }),
       getSettings: jest.fn().mockResolvedValue({ allowTreasure: true }),
+      // Mirrors `getSettings` by default (delegates to it) so every test that
+      // overrides `getSettings` keeps working now that the service reads
+      // `requireSettings` instead; tests targeting the missing-row path
+      // override this mock directly.
+      requireSettings: jest.fn(),
     };
+    rooms.requireSettings.mockImplementation(async () => {
+      const row = await rooms.getSettings();
+      if (!row) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return row;
+    });
     perms = { assertPermission: jest.fn().mockResolvedValue(undefined) };
     locks = { withLock: jest.fn((_k: string, fn: () => unknown) => fn()) };
     bus = { publish: jest.fn().mockResolvedValue(undefined) };
@@ -103,8 +122,24 @@ describe('VideoRoomTreasureService', () => {
     });
 
     it('refuses when the room disabled treasure', async () => {
+      // requireSettings now delegates to getSettings (see beforeEach), so
+      // overriding getSettings alone is enough to flow through both.
       rooms.getSettings.mockResolvedValue({ allowTreasure: false });
       await expect(service.create(ACTOR, 'r1')).rejects.toThrow(TreasureBoxException);
+    });
+
+    // Guard hardening: a missing settings row must NOT read as "allowed".
+    it('raises VIDEO_ROOM_SETTINGS_MISSING when the settings row is absent', async () => {
+      rooms.requireSettings.mockRejectedValue(
+        new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        ),
+      );
+      await expect(service.create(ACTOR, 'r1')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+      });
     });
 
     // A configuration fault must not masquerade as a state conflict — the exact

@@ -237,8 +237,8 @@ export class VideoRoomTreasureService {
   }
 
   private async assertRoomAllowsTreasure(roomId: string): Promise<void> {
-    const settings = await this.rooms.getSettings(roomId);
-    if (settings && !settings.allowTreasure) {
+    const settings = await this.rooms.requireSettings(roomId);
+    if (!settings.allowTreasure) {
       throw new TreasureBoxException(
         'Treasure boxes are disabled in this room.',
         HttpStatus.FORBIDDEN,

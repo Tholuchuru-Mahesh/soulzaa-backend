@@ -1,4 +1,7 @@
+import { HttpStatus } from '@nestjs/common';
 import { VideoRoomMemberRole, VideoRoomPkMode, VideoRoomStatus } from '@prisma/client';
+import { BusinessException } from 'src/common/exceptions/business.exception';
+import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { ConnectionStatus } from '../enums';
 import { DuplicatePKException, PKBattleException } from '../exceptions/video-room-pk.exceptions';
 import { VideoRoomPkValidationService } from './video-room-pk-validation.service';
@@ -56,10 +59,26 @@ describe('VideoRoomPkValidationService', () => {
         status: VideoRoomStatus.LIVE,
       }),
       getSettings: jest.fn().mockResolvedValue({ allowPk: true }),
+      // Mirrors `getSettings` by default (delegates to it) so every test that
+      // overrides `getSettings` keeps working now that the service reads
+      // `requireSettings` instead; tests targeting the missing-row path
+      // override this mock directly.
+      requireSettings: jest.fn(),
       getMember: jest.fn((_roomId: string, userId: string) =>
         Promise.resolve(members[userId] ?? null),
       ),
     };
+    rooms.requireSettings.mockImplementation(async () => {
+      const row = await rooms.getSettings();
+      if (!row) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return row;
+    });
     permissions = { assertPermission: jest.fn().mockResolvedValue(undefined) };
     presence = {
       isHost: jest.fn((_roomId: string, userId: string) =>
@@ -111,7 +130,21 @@ describe('VideoRoomPkValidationService', () => {
     // Gate ordering: a not-LIVE room must never reach the permission check —
     // that would leak the room's authorization surface to an unauthorized caller.
     expect(permissions.assertPermission).not.toHaveBeenCalled();
-    expect(rooms.getSettings).not.toHaveBeenCalled();
+    expect(rooms.requireSettings).not.toHaveBeenCalled();
+  });
+
+  // Guard hardening: a missing settings row must NOT read as "allowed".
+  it('raises VIDEO_ROOM_SETTINGS_MISSING when the settings row is absent', async () => {
+    rooms.requireSettings.mockRejectedValue(
+      new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+        'Room settings are missing.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      ),
+    );
+    await expect(service.assertCanCreate(ACTOR, ROOM_ID, DTO)).rejects.toMatchObject({
+      errorCode: ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+    });
   });
 
   it('refuses when the actor lacks START_PK', async () => {

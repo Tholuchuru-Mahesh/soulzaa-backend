@@ -101,10 +101,10 @@ export class VideoRoomPkValidationService {
     }
 
     // Gate 5: room settings may turn PK off even while the feature is
-    // globally enabled. A room with no settings row (should not happen in
-    // practice) defaults to allowed, matching the treasure-engine precedent.
-    const settings = await this.rooms.getSettings(roomId);
-    if (settings && !settings.allowPk) {
+    // globally enabled. A room with no settings row is a data-integrity fault
+    // and raises VIDEO_ROOM_SETTINGS_MISSING rather than defaulting to allowed.
+    const settings = await this.rooms.requireSettings(roomId);
+    if (!settings.allowPk) {
       throw new BusinessException(
         ERROR_CODES.VIDEO_ROOM_PK_DISABLED,
         'PK battles are disabled in this room.',

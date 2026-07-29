@@ -1,5 +1,5 @@
 import { HttpStatus } from '@nestjs/common';
-import { ERROR_CODES } from 'src/common/exceptions';
+import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { VideoRoomPublishRole } from '@prisma/client';
 import { VideoRoomMediaService } from './video-room-media.service';
 import { ConnectionType, MediaProviderKind } from '../enums';
@@ -38,7 +38,21 @@ function build(over: Partial<Record<string, unknown>> = {}) {
     // VR-17: default to the ENABLED policy so every pre-existing test keeps
     // exercising the real (non-gated) path rather than passing for the wrong reason.
     getSettings: jest.fn().mockResolvedValue({ allowBeauty: true, allowCameraSwitch: true }),
+    requireSettings: jest.fn(),
   };
+  // Task 3: requireSettings delegates to getSettings, preserving per-test overrides.
+  // Production calls requireSettings; per-test getSettings overrides still work via delegation.
+  rooms.requireSettings.mockImplementation(async (roomId) => {
+    const row = await rooms.getSettings(roomId);
+    if (!row) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+        'Room settings are missing.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    return row;
+  });
   const permissions = {
     resolveEffectiveRole: jest.fn().mockResolvedValue('VIEWER'),
     assertPermission: jest.fn().mockResolvedValue(undefined),
@@ -873,6 +887,22 @@ describe('VideoRoomMediaService — VR-17 media policy gates', () => {
     await expect(
       svc.switchCamera({ id: 'u1', roles: [] } as never, 'r', { facing: 'REAR' } as never),
     ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_MEDIA_SEAT_REQUIRED });
-    expect(rooms.getSettings).not.toHaveBeenCalled();
+    expect(rooms.requireSettings).not.toHaveBeenCalled();
+  });
+
+  // The two media policy flags are the only settings reads in this service.
+  // A missing row must not silently permit beauty/camera-switch.
+  it('raises VIDEO_ROOM_SETTINGS_MISSING when the settings row is absent', async () => {
+    const { svc, rooms } = build();
+    rooms.requireSettings.mockRejectedValue(
+      new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+        'Room settings are missing.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      ),
+    );
+    await expect(
+      svc.setBeauty({ id: 'u1', roles: [] } as never, 'r', { enabled: true, level: 50 }),
+    ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING });
   });
 });

@@ -153,6 +153,8 @@ export const ERROR_CODES = {
   VIDEO_ROOM_CONFIG_INVALID: 'VIDEO_ROOM_CONFIG_INVALID',
   // ---- Video Room lifecycle (VR-2) ----
   VIDEO_ROOM_FORBIDDEN: 'VIDEO_ROOM_FORBIDDEN',
+  /** Settings row absent for an existing room — data-integrity fault (500). */
+  VIDEO_ROOM_SETTINGS_MISSING: 'VIDEO_ROOM_SETTINGS_MISSING',
   VIDEO_ROOM_DELETED: 'VIDEO_ROOM_DELETED',
   VIDEO_ROOM_ALREADY_LOCKED: 'VIDEO_ROOM_ALREADY_LOCKED',
   // ---- Video Room member lifecycle (VR-3) ----

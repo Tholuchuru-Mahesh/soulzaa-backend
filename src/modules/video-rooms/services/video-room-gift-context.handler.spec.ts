@@ -1,4 +1,6 @@
+import { HttpStatus } from '@nestjs/common';
 import { GiftContextType, VideoRoomMemberRole, VideoRoomStatus } from '@prisma/client';
+import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import type { IGiftContextHandler } from 'src/modules/gifts/interfaces/gift-context-handler.interface';
 import { PkScoreUpdatedEvent, VIDEO_ROOM_PK_EVENTS } from '../events/video-room-pk.events';
@@ -54,8 +56,24 @@ describe('VideoRoomGiftContextHandler', () => {
     rooms = {
       findById: jest.fn().mockResolvedValue({ id: ROOM, status: VideoRoomStatus.LIVE }),
       getSettings: jest.fn().mockResolvedValue({ allowGifts: true, metadata: null }),
+      // Mirrors `getSettings` by default (delegates to it) so every test that
+      // overrides `getSettings` keeps working now that the service reads
+      // `requireSettings` instead; tests targeting the missing-row path
+      // override this mock directly.
+      requireSettings: jest.fn(),
       getMember: jest.fn().mockResolvedValue(member()),
     };
+    rooms.requireSettings.mockImplementation(async () => {
+      const row = await rooms.getSettings();
+      if (!row) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      }
+      return row;
+    });
     moderation = { isActivelyBlocked: jest.fn().mockResolvedValue(false) };
     config = { get: jest.fn() };
     registry = { register: jest.fn() };
@@ -138,8 +156,23 @@ describe('VideoRoomGiftContextHandler', () => {
 
     it('rejects when settings.allowGifts is false', async () => {
       rooms.getSettings.mockResolvedValue({ allowGifts: false, metadata: null });
+      rooms.requireSettings.mockResolvedValue({ allowGifts: false, metadata: null });
       await expect(handler.validate(REQ as never)).rejects.toMatchObject({
         errorCode: ERROR_CODES.VIDEO_ROOM_GIFTS_DISABLED,
+      });
+    });
+
+    // Guard hardening: a missing settings row must NOT read as "allowed".
+    it('raises VIDEO_ROOM_SETTINGS_MISSING when the settings row is absent', async () => {
+      rooms.requireSettings.mockRejectedValue(
+        new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+          'Room settings are missing.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        ),
+      );
+      await expect(handler.validate(REQ as never)).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
       });
     });
 
@@ -248,9 +281,13 @@ describe('VideoRoomGiftContextHandler', () => {
       await expect(handler.validate(REQ as never)).resolves.toBeUndefined();
     });
 
-    it('treats absent settings as gifting-allowed', async () => {
+    // Guard hardening: this used to assert "treats absent settings as
+    // gifting-allowed" — a missing settings row must NOT read as "allowed".
+    it('no longer treats absent settings as gifting-allowed', async () => {
       rooms.getSettings.mockResolvedValue(null);
-      await expect(handler.validate(REQ as never)).resolves.toBeUndefined();
+      await expect(handler.validate(REQ as never)).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+      });
     });
   });
 

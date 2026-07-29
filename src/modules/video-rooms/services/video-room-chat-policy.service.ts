@@ -69,8 +69,8 @@ export class VideoRoomChatPolicyService {
     const room = await this.loadLiveRoom(roomId);
     await this.assertActiveMember(roomId, actor.id);
 
-    const settings = await this.rooms.getSettings(roomId);
-    if (settings && !settings.allowChat) {
+    const settings = await this.rooms.requireSettings(roomId);
+    if (!settings.allowChat) {
       throw new BusinessException(
         ERROR_CODES.CHAT_DISABLED,
         'Chat is disabled in this room.',

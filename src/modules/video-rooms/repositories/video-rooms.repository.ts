@@ -1,4 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { BusinessException } from 'src/common/exceptions/business.exception';
+import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import {
   Prisma,
   VideoRoom,
@@ -242,6 +244,26 @@ export class VideoRoomsRepository {
   /** A room's settings row, or null when it has none (VR-8 seat queue policy lookup). */
   async getSettings(roomId: string): Promise<VideoRoomSettings | null> {
     return this.prisma.videoRoomSettings.findUnique({ where: { roomId } });
+  }
+
+  /**
+   * `getSettings` for callers that cannot proceed without the row.
+   *
+   * The row is created transactionally with the room, so absence is a
+   * data-integrity fault rather than a policy state. Guards that treated a
+   * missing row as "allowed" opened every gate at once and silently; this
+   * makes that condition loud instead.
+   */
+  async requireSettings(roomId: string): Promise<VideoRoomSettings> {
+    const settings = await this.getSettings(roomId);
+    if (!settings) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_SETTINGS_MISSING,
+        'Room settings are missing.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    return settings;
   }
 
   /**
