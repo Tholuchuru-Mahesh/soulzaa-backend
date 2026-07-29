@@ -47,7 +47,7 @@ export function IsVideoRoomPassword(): PropertyDecorator {
 }
 
 export function IsVideoRoomCategory(): PropertyDecorator {
-  return applyDecorators(ApiPropertyOptional(), IsOptional(), IsUUID());
+  return applyDecorators(ApiPropertyOptional(), IsOptional(), IsString());
 }
 
 export function IsVideoRoomLanguage(): PropertyDecorator {
