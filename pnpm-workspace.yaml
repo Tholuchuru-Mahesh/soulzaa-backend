@@ -1,6 +1,24 @@
 packages:
   - '.'
 
+# Security overrides for transitive dependencies flagged by Trivy (CI security-scan).
+# Each is a patch/minor bump within the same major, so the parent package's range
+# still resolves — no API break. Remove an entry once the parent ships a version
+# that already depends on a fixed release.
+overrides:
+  # CVE-2026-5079 (DoS via deeply nested multipart field names).
+  # Parent: @nestjs/platform-express@11 — depends on multer@^2, so 2.2.0 satisfies it.
+  multer: '^2.2.0'
+  # GHSA-8r6m-32jq-jx6q (repeated DOCTYPE resets entity expansion limits).
+  # Parent: @google-cloud/storage@7 — depends on fast-xml-parser@^5.
+  fast-xml-parser: '^5.10.1'
+  # NOTE: brace-expansion (CVE-2026-13149, CVE-2026-14257) is deliberately NOT
+  # overridden. CVE-2026-14257 affects everything through 5.0.7, so 5.0.8 is the
+  # only fix — but forcing it breaks minimatch@3.1.5, which does
+  # `require('brace-expansion')` and calls the module export directly. 5.x moved to
+  # a named export, so that call throws `TypeError: expand is not a function` and
+  # ESLint dies during glob resolution. Tried and reverted; tracked in .trivyignore.
+
 allowBuilds:
   '@firebase/util': true
   '@prisma/client': true

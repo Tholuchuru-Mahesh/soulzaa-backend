@@ -1,0 +1,31 @@
+# Trivy suppressions — reviewed 2026-07-30.
+#
+# Every entry is an ACCEPTED risk with a stated reason and a revisit trigger.
+# Do not add a CVE without both. Prefer a pnpm override in pnpm-workspace.yaml;
+# fall back to this file only when the override is proven to break the build.
+
+# ---------------------------------------------------------------------------
+# brace-expansion — denial of service via exponential-time brace expansion.
+#
+# Present transitively at 1.1.16 / 2.1.3 / 5.0.8 via minimatch@3.1.5, @9.0.9 and
+# @10.2.5. The 2.x copy is what Trivy flags: CVE-2026-14257 affects everything
+# through 5.0.7 and is fixed ONLY in 5.0.8, so no 2.x release clears it.
+#
+# Forcing 5.0.8 via a pnpm override was attempted and REVERTED — minimatch@3.1.5
+# calls the module export as a function (`require('brace-expansion')(...)`) while
+# 5.x exposes a named export, producing:
+#   TypeError: expand is not a function
+#       at Minimatch.braceExpand (minimatch@3.1.5/minimatch.js:271)
+# That kills ESLint during glob resolution.
+#
+# Accepted because the reachable paths are build/dev tooling — ESLint, jest and
+# glob matching over developer-controlled patterns — not request handling. No
+# user-supplied input reaches brace expansion at runtime.
+#
+# Revisit when: minimatch@3 leaves the tree (`pnpm why minimatch`), or the fix is
+# backported to the 2.x line.
+#
+# NOTE: CVE-2026-13149 is deliberately NOT listed — refreshing the lockfile moved
+# every copy to a fixed release (1.1.16 / 2.1.3 / 5.0.8), so it must stay visible
+# and fail the build if it ever regresses.
+CVE-2026-14257
