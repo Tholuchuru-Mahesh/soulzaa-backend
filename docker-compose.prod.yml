@@ -85,10 +85,16 @@ services:
 
   # ── API (single replica; use HPA in Kubernetes for multi-instance) ──────────
   api:
+    # `build` is kept only as a manual escape hatch (`up -d --build`) for when the
+    # registry is unreachable. Normal deploys PULL the image below — CI publishes
+    # it from the exact commit that passed test + security-scan, and building on a
+    # t3-class instance is slow and can OOM.
     build:
       context: .
       dockerfile: Dockerfile
-    image: ${DOCKER_IMAGE:-soulzaa-backend}:${IMAGE_TAG:-latest}
+    # Override IMAGE_TAG to pin a specific build (e.g. sha-<commit>) when rolling
+    # back without moving the git checkout.
+    image: ${DOCKER_IMAGE:-ghcr.io/tholuchuru-mahesh/soulzaa-backend}:${IMAGE_TAG:-latest}
     container_name: soulzaa-api
     restart: always
     logging: *default-logging
