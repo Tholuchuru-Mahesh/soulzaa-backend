@@ -184,23 +184,37 @@ jobs:
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1
+        env:
+          GIT_SHA: ${{ github.sha }}
+          # Passed explicitly rather than relying on the compose file's `:-`
+          # defaults. Docker Compose resolves interpolation from the shell
+          # environment BEFORE the project's .env file, and the host's .env sets
+          # DOCKER_IMAGE=soulzaa-backend (a local build tag), which otherwise wins
+          # and makes `pull` fail with "pull access denied for soulzaa-backend".
+          DOCKER_IMAGE: ghcr.io/tholuchuru-mahesh/soulzaa-backend
+          IMAGE_TAG: latest
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          script_stops: true
+          # Forward the vars above into the remote shell. Note this is also why
+          # GIT_SHA is an env var and not inlined into the script below — keeps
+          # workflow expressions out of the shell command string.
+          envs: GIT_SHA,DOCKER_IMAGE,IMAGE_TAG
           script: |
             set -euo pipefail
+            export DOCKER_IMAGE IMAGE_TAG
             cd ~/soulzaa-backend
 
             # Mirror the pushed commit exactly. Safe for the Firebase service
             # account key: it is gitignored and untracked, so reset leaves it be.
             git fetch --quiet origin main
-            git reset --hard --quiet ${{ github.sha }}
+            git reset --hard --quiet "$GIT_SHA"
 
             # Fail loudly rather than booting an API with no Firebase credential.
             test -f firebase-service-account.json
 
+            echo "deploying $DOCKER_IMAGE:$IMAGE_TAG"
             docker compose -f docker-compose.prod.yml pull api
             docker compose -f docker-compose.prod.yml up -d --no-build api
 
