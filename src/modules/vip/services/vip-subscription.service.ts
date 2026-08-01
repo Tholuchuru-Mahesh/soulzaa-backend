@@ -7,6 +7,7 @@ import {
   WALLET_SERVICE,
   type IWalletService,
 } from 'src/modules/wallet/interfaces/wallet.service.interface';
+import { VIP_EVENTS } from '../events/vip.events';
 import { VipAuditService } from './vip-audit.service';
 import { VipConfigurationService } from './vip-configuration.service';
 import { VipEventService } from './vip-event.service';
@@ -144,7 +145,7 @@ export class VipSubscriptionService {
         level: tier.level,
         price: coinCost.toString(),
       });
-      await this.eventService.publishVipEvent('vip.created', {
+      await this.eventService.publishVipEvent(VIP_EVENTS.CREATED, {
         userId,
         level: tier.level,
         expiresAt,
@@ -223,7 +224,7 @@ export class VipSubscriptionService {
 
       await this.statisticsService.updateStatistics('RENEW', coinCost);
       await this.auditService.logAudit('VIP_RENEWED', userId, { newExpiresAt: newExpiry });
-      await this.eventService.publishVipEvent('vip.renewed', {
+      await this.eventService.publishVipEvent(VIP_EVENTS.RENEWED, {
         userId,
         level: tier.level,
         expiresAt: newExpiry,
@@ -310,7 +311,7 @@ export class VipSubscriptionService {
         fromLevel: membership.level,
         toLevel: targetLevel,
       });
-      await this.eventService.publishVipEvent('vip.upgraded', {
+      await this.eventService.publishVipEvent(VIP_EVENTS.UPGRADED, {
         userId,
         fromLevel: membership.level,
         toLevel: targetLevel,
@@ -408,7 +409,7 @@ export class VipSubscriptionService {
         giftedBy: gifterUserId,
         level: tier.level,
       });
-      await this.eventService.publishVipEvent('vip.created', {
+      await this.eventService.publishVipEvent(VIP_EVENTS.CREATED, {
         userId: recipientUserId,
         level: tier.level,
         giftedBy: gifterUserId,

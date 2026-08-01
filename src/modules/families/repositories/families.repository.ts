@@ -272,6 +272,28 @@ export class FamiliesRepository {
     ]);
   }
 
+  /**
+   * Everyone who runs the family: FOUNDER, CO_FOUNDER, ELDER. Used to keep
+   * membership-churn notifications off the whole roster — see
+   * FamilyNotificationListener. `@@index([familyId, role])` covers this.
+   */
+  async listOfficerIds(familyId: string): Promise<string[]> {
+    const rows = await this.prisma.familyMember.findMany({
+      where: { familyId, role: { in: ['FOUNDER', 'CO_FOUNDER', 'ELDER'] } },
+      select: { userId: true },
+    });
+    return rows.map((r) => r.userId);
+  }
+
+  /** Every member, officers included. */
+  async listMemberIds(familyId: string): Promise<string[]> {
+    const rows = await this.prisma.familyMember.findMany({
+      where: { familyId },
+      select: { userId: true },
+    });
+    return rows.map((r) => r.userId);
+  }
+
   listRequests(
     familyId: string,
     status: string,

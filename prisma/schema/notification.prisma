@@ -49,6 +49,42 @@ enum NotificationType {
   // ---- Role approval chain (append-only) ----
   ROLE_REQUEST_UPDATE
   ROLE_GRANTED
+
+  // ---- Wallet (append-only) ----
+  /// Coins bought. GIFT_RECEIVE movements are excluded from the wallet
+  /// producer — GIFT_RECEIVED already covers those, and notifying on both
+  /// would double-notify every gift on the platform.
+  RECHARGE_SUCCESS
+  WITHDRAWAL_APPROVED
+  WITHDRAWAL_REJECTED
+  REFUND_PROCESSED
+  /// An unexplained credit (admin adjustment, event/attendance reward).
+  COINS_RECEIVED
+  /// An unexplained debit. Admin adjustments only — a user spending their own
+  /// coins does not need to be told they spent their own coins.
+  COINS_DEDUCTED
+
+  // ---- Games ----
+  GAME_MATCH_FOUND
+  GAME_STARTED
+  GAME_WON
+  GAME_LOST
+  GAME_OPPONENT_LEFT
+
+  // ---- VIP ----
+  VIP_ACTIVATED
+  VIP_RENEWED
+  VIP_EXPIRING
+  VIP_EXPIRED
+
+  // ---- Family (invitations ride the existing FAMILY_INVITE) ----
+  FAMILY_MEMBER_JOINED
+  FAMILY_MEMBER_LEFT
+  FAMILY_REMOVED
+
+  // ---- Security (never preference-gated; see PUSH_CATEGORIES.SECURITY) ----
+  SECURITY_NEW_LOGIN
+  SECURITY_PASSWORD_CHANGED
 }
 
 /// A single in-app notification for `userId`, optionally caused by

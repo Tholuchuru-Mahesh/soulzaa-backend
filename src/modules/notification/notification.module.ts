@@ -4,11 +4,17 @@ import { NotificationController } from './controllers/notification.controller';
 import { NotificationCenterController } from './controllers/notification-center.controller';
 import { NOTIFICATION_SERVICE } from './interfaces/notification.interface';
 import { ChatNotificationListener } from './listeners/chat-notification.listener';
+import { FamilyNotificationListener } from './listeners/family-notification.listener';
+import { GameNotificationListener } from './listeners/game-notification.listener';
 import { GiftNotificationListener } from './listeners/gift-notification.listener';
 import { NotificationSocketListener } from './listeners/notification-socket.listener';
+import { SecurityNotificationListener } from './listeners/security-notification.listener';
 import { SocialNotificationListener } from './listeners/social-notification.listener';
+import { VipNotificationListener } from './listeners/vip-notification.listener';
+import { WalletNotificationListener } from './listeners/wallet-notification.listener';
 import { NotificationPreferenceRepository } from './repositories/notification-preference.repository';
 import { NotificationRepository } from './repositories/notification.repository';
+import { NotificationGuard } from './services/notification-guard.service';
 import { NotificationService } from './services/notification.service';
 import { PushPolicy } from './services/push.policy';
 
@@ -64,12 +70,20 @@ const ENTERPRISE_SERVICES = [
     NotificationPreferenceRepository,
     // services
     PushPolicy,
+    // Dedupe + rate limiting for the bridge listeners. RedisModule is @Global,
+    // so RedisService resolves without an import here.
+    NotificationGuard,
     NotificationService,
     ...ENTERPRISE_SERVICES,
     // listeners
     SocialNotificationListener,
     ChatNotificationListener,
     GiftNotificationListener,
+    WalletNotificationListener,
+    GameNotificationListener,
+    VipNotificationListener,
+    FamilyNotificationListener,
+    SecurityNotificationListener,
     NotificationSocketListener,
     // public token
     { provide: NOTIFICATION_SERVICE, useExisting: NotificationService },

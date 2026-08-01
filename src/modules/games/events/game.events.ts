@@ -110,6 +110,12 @@ export class GameSettledEvent extends DomainEvent<{
   rakeAmount: number;
   winners: string[];
   payouts: { userId: string; amount: number }[];
+  /**
+   * Everyone who played, winners included. `winners` and `payouts` alone cannot
+   * identify the losers, so a consumer that needs to reach every player — the
+   * notification bridge telling someone they lost — has no other source.
+   */
+  participants: string[];
 }> {
   readonly name = GAME_EVENTS.SETTLED;
 }

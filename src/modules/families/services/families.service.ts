@@ -49,6 +49,14 @@ export class FamiliesService implements IFamiliesService {
     return member ? member.familyId : null;
   }
 
+  getOfficerIds(familyId: string): Promise<string[]> {
+    return this.repo.listOfficerIds(familyId);
+  }
+
+  getMemberIds(familyId: string): Promise<string[]> {
+    return this.repo.listMemberIds(familyId);
+  }
+
   async addFamilyExp(familyId: string, amount: number): Promise<void> {
     if (amount <= 0) return;
     const family = await this.repo.findById(familyId);

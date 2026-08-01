@@ -1,11 +1,13 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { WalletCurrency } from '@prisma/client';
+import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import {
   WALLET_SERVICE,
   type IWalletService,
 } from 'src/modules/wallet/interfaces/wallet.service.interface';
+import { WithdrawalApprovedEvent, WithdrawalRejectedEvent } from '../events/withdrawal.events';
 import { WithdrawalAuditService } from './withdrawal-audit.service';
 import { WithdrawalStatisticsService } from './withdrawal-statistics.service';
 
@@ -26,6 +28,7 @@ export class WithdrawalApprovalService {
     private readonly auditService: WithdrawalAuditService,
     private readonly statisticsService: WithdrawalStatisticsService,
     @Inject(WALLET_SERVICE) private readonly walletService: IWalletService,
+    @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
 
   /**
@@ -113,6 +116,29 @@ export class WithdrawalApprovalService {
               : 'WITHDRAWAL_PROCESSING';
 
       await this.auditService.logAudit(auditAction, req.userId, requestId, { reason }, reviewerId);
+
+      // Published after the status write commits, so a consumer that reads the
+      // request back sees the decision rather than racing it. Only the two
+      // decisions the user is waiting on are announced — UNDER_REVIEW is an
+      // internal step, and CANCELLED is usually the user's own action.
+      if (newStatus === 'APPROVED') {
+        await this.bus.publish(
+          new WithdrawalApprovedEvent({
+            withdrawalId: requestId,
+            userId: req.userId,
+            amount: Number(req.amountCoins),
+          }),
+        );
+      } else if (newStatus === 'REJECTED') {
+        await this.bus.publish(
+          new WithdrawalRejectedEvent({
+            withdrawalId: requestId,
+            userId: req.userId,
+            amount: Number(req.amountCoins),
+            reason,
+          }),
+        );
+      }
 
       return {
         requestId,

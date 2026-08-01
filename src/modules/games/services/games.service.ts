@@ -966,6 +966,7 @@ export class GamesService {
           rakeAmount,
           winners: input.winners,
           payouts,
+          participants: participants.map((p) => p.userId),
         }),
       );
       await this.queue.enqueue(QUEUE_NAMES.ANALYTICS_PROCESSING, 'game.settled', {

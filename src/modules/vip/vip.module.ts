@@ -22,6 +22,8 @@ import {
 } from './services';
 import { VipAdminService } from './services/vip-admin.service';
 import { VipConfigSeeder } from './services/vip-config.seeder.service';
+import { VipExpiryScheduler } from './services/vip-expiry.scheduler';
+import { VipExpiryService } from './services/vip-expiry.service';
 import { VipService } from './services/vip.service';
 
 @Global()
@@ -47,6 +49,10 @@ import { VipService } from './services/vip.service';
     VipStatisticsService,
     VipQueryService,
     VipEventService,
+    // Expiry is the one VIP state change with no request behind it, so it needs
+    // a scheduled sweep to be observable at all.
+    VipExpiryService,
+    VipExpiryScheduler,
   ],
   exports: [
     VIP_SERVICE,

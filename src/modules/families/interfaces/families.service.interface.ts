@@ -13,4 +13,16 @@ export interface IFamiliesService {
 
   /** Increments contribution points for a specific family member. */
   incrementMemberContribution(userId: string, points: number): Promise<void>;
+
+  /**
+   * User ids of everyone who runs the family — FOUNDER, CO_FOUNDER, ELDER.
+   *
+   * Exposed so consumers can address the people who act on membership changes
+   * without fanning out to the entire roster: a 500-member family would
+   * otherwise turn one join into 500 notification rows.
+   */
+  getOfficerIds(familyId: string): Promise<string[]>;
+
+  /** User ids of every member, officers included. */
+  getMemberIds(familyId: string): Promise<string[]>;
 }
