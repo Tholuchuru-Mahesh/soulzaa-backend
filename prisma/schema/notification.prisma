@@ -102,6 +102,15 @@ model NotificationPreference {
   pkEvents           Boolean @default(true)
   announcementEvents Boolean @default(true)
 
+  // ---- Domain producer categories (additive, default on) ----
+  /// Recharge, refund, withdrawal decision, admin balance adjustment.
+  walletEvents Boolean @default(true)
+  /// Match found and game settled. Lobby churn is never pushed.
+  gameEvents   Boolean @default(true)
+  vipEvents    Boolean @default(true)
+  /// Membership changes. Family invitations are gated by `inviteEvents`.
+  familyEvents Boolean @default(true)
+
   // ---- Presentation ----
   /// Drives which Android channel the push is delivered on (channels own their
   /// sound/vibration on Android and are immutable once created, so the *server*

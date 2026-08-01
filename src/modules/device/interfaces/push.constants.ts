@@ -18,6 +18,14 @@ export const PUSH_CATEGORIES = {
   GIFT: 'GIFT',
   /** Announcements and anything without a better home. */
   SYSTEM: 'SYSTEM',
+  /** Coins in or out: recharge, refund, withdrawal decision, admin adjustment. */
+  WALLET: 'WALLET',
+  /** Match found, game settled. In-session churn is socket traffic, not push. */
+  GAME: 'GAME',
+  /** VIP activated, renewed, expiring, expired. */
+  VIP: 'VIP',
+  /** Family membership changes. Family *invitations* ride INVITE. */
+  FAMILY: 'FAMILY',
   /**
    * Account-security alerts (a suspicious login). Deliberately **not** gated by
    * notification preferences: the one device that must never be able to silence
@@ -54,6 +62,10 @@ const TUNABLE_CHANNEL_PREFIX = {
   [PUSH_CATEGORIES.FOLLOW]: 'soulzaa_social',
   [PUSH_CATEGORIES.INVITE]: 'soulzaa_social',
   [PUSH_CATEGORIES.GIFT]: 'soulzaa_social',
+  [PUSH_CATEGORIES.WALLET]: 'soulzaa_wallet',
+  [PUSH_CATEGORIES.GAME]: 'soulzaa_games',
+  [PUSH_CATEGORIES.VIP]: 'soulzaa_vip',
+  [PUSH_CATEGORIES.FAMILY]: 'soulzaa_family',
 } as const satisfies Partial<Record<PushCategory, string>>;
 
 /** `s`/`n` = sound on/off, `v`/`n` = vibration on/off. */

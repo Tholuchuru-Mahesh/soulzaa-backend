@@ -52,6 +52,11 @@ export interface NotificationPreferenceView {
   treasureEvents: boolean;
   pkEvents: boolean;
   announcementEvents: boolean;
+  // ---- Domain producer categories ----
+  walletEvents: boolean;
+  gameEvents: boolean;
+  vipEvents: boolean;
+  familyEvents: boolean;
   sound: boolean;
   vibration: boolean;
   showPreview: boolean;
