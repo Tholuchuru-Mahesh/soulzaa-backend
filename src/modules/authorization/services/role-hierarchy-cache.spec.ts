@@ -1,3 +1,4 @@
+import type { IEventBus } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { AuthorizationCacheService } from './authorization-cache.service';
 import { RoleService } from './role.service';
@@ -36,6 +37,7 @@ describe('RoleService — role hierarchy edits invalidate affected users', () =>
     service = new RoleService(
       mockPrisma as unknown as PrismaService,
       mockCache as unknown as AuthorizationCacheService,
+      { publish: jest.fn(), subscribe: jest.fn() } as unknown as IEventBus,
     );
   });
 

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { AuthorizationService } from 'src/modules/authorization/services/authorization.service';
 import { UserSearchFilterDto } from '../dto/user-query.dto';
+import { maskPrivilegedRole } from './role-masking.util';
 
 @Injectable()
 export class UserQueryService {
@@ -13,7 +14,12 @@ export class UserQueryService {
   /**
    * Complex User Search & Filtering with Pagination & Sorting
    */
-  async searchUsers(dto: UserSearchFilterDto) {
+  /**
+   * `viewerIsSuperAdmin` gates role masking — an Admin must not be able to
+   * identify a Super Admin (spec §1). Defaults to false so a caller that
+   * forgets to pass it masks rather than leaks.
+   */
+  async searchUsers(dto: UserSearchFilterDto, viewerIsSuperAdmin = false) {
     const {
       query,
       role,
@@ -135,7 +141,7 @@ export class UserQueryService {
       const list = roleMap.get(ur.userId) ?? [];
       list.push({
         id: ur.role.id,
-        name: ur.role.name,
+        name: maskPrivilegedRole(ur.role.name, viewerIsSuperAdmin),
         displayName: ur.role.displayName,
         scopes: ur.roleScopes.map((s) => ({
           scopeType: s.scopeType,
@@ -166,7 +172,8 @@ export class UserQueryService {
   /**
    * Detailed User Profile Inspection (Roles, Inherited Permissions, Scopes, Audit Logs)
    */
-  async getUserProfileDetails(userId: string) {
+  /** See searchUsers for why `viewerIsSuperAdmin` defaults to false. */
+  async getUserProfileDetails(userId: string, viewerIsSuperAdmin = false) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -202,7 +209,7 @@ export class UserQueryService {
     const formattedRoles = userRoles.map((ur) => ({
       userRoleId: ur.id,
       roleId: ur.role.id,
-      roleName: ur.role.name,
+      roleName: maskPrivilegedRole(ur.role.name, viewerIsSuperAdmin),
       displayName: ur.role.displayName,
       description: ur.role.description,
       assignedAt: ur.createdAt,

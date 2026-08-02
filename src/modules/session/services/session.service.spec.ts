@@ -5,6 +5,7 @@ import { CacheService } from 'src/infra/redis/cache.service';
 import { TokenService } from 'src/infra/auth/token.service';
 import { SessionRepository } from '../repositories/session.repository';
 import { sha256 } from '../hash.util';
+import { LoginTelemetryService } from './login-telemetry.service';
 import { SessionService } from './session.service';
 import type { SessionClaims } from '../interfaces/session.interface';
 import type { IDeviceService } from 'src/modules/device/interfaces/device.interface';
@@ -82,6 +83,8 @@ describe('SessionService', () => {
       cache as unknown as CacheService,
       bus,
       devices as unknown as IDeviceService,
+      // Telemetry is observational; a stub keeps these tests about session mechanics.
+      new LoginTelemetryService(),
       config,
     );
   });

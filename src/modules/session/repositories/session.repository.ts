@@ -108,6 +108,13 @@ export class SessionRepository {
     event: SessionEventType;
     ip?: string | null;
     userAgent?: string | null;
+    /** Derived browser/OS/device/country. Optional — callers without it still record. */
+    telemetry?: {
+      browser?: string | null;
+      os?: string | null;
+      deviceType?: string | null;
+      country?: string | null;
+    };
     metadata?: Prisma.InputJsonValue;
   }): Promise<void> {
     return this.prisma.sessionHistory
@@ -118,6 +125,10 @@ export class SessionRepository {
           event: input.event,
           ip: input.ip ?? null,
           userAgent: input.userAgent ?? null,
+          browser: input.telemetry?.browser ?? null,
+          os: input.telemetry?.os ?? null,
+          deviceType: input.telemetry?.deviceType ?? null,
+          country: input.telemetry?.country ?? null,
           metadata: input.metadata,
         },
       })

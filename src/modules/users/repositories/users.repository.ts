@@ -50,4 +50,9 @@ export class UsersRepository {
   update(id: string, data: Prisma.UserUpdateInput): Promise<User> {
     return this.prisma.user.update({ where: { id }, data });
   }
+
+  /** Sets the staff-visibility flag. Callers come via UsersService.setHiddenAccount. */
+  async setHiddenAccount(id: string, hidden: boolean): Promise<void> {
+    await this.prisma.user.update({ where: { id }, data: { isHiddenAccount: hidden } });
+  }
 }

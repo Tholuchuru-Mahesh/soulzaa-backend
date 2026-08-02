@@ -98,6 +98,9 @@ export class RankingsRepository {
         id: true,
         username: true,
         fullName: true,
+        // Carried so the service can drop staff accounts from a board. Filtered
+        // in the service, not here, so ranks can be renumbered without gaps.
+        isHiddenAccount: true,
       },
     });
   }

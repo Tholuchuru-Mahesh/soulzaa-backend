@@ -36,6 +36,7 @@ function enforcedCodes(source: string): string[] {
 
 /** Authority Matrix rows marked "❌ Cannot Modify" / "❌ Cannot Perform" for Admin. */
 const SUPER_ADMIN_ONLY = [
+  'admin.provision', // Admin accounts are created only by Super Admin (PRD §1)
   'config.settings.update', // Global Platform Settings / System Configuration
   'config.settings.reset',
   'config.flags.manage', // App Maintenance Mode

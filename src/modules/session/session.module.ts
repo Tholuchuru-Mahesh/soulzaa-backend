@@ -3,6 +3,7 @@ import { SessionController } from './controllers/session.controller';
 import { SESSION_SERVICE } from './interfaces/session.interface';
 import { SessionSocketListener } from './listeners/session-socket.listener';
 import { SessionRepository } from './repositories/session.repository';
+import { LoginTelemetryService } from './services/login-telemetry.service';
 import { SessionManager } from './services/session.manager';
 import { SessionService } from './services/session.service';
 
@@ -22,6 +23,7 @@ import { SessionService } from './services/session.service';
   controllers: [SessionController],
   providers: [
     SessionRepository,
+    LoginTelemetryService,
     SessionService,
     SessionManager,
     SessionSocketListener,

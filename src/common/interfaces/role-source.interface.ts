@@ -12,6 +12,12 @@
 export interface IRoleSource {
   /** Effective role names for a user, including roles inherited via hierarchy. */
   getRoleNames(userId: string): Promise<string[]>;
+  /**
+   * Reverse lookup: every user holding at least one of these roles. Directly
+   * assigned only — a reconciliation job wants the accounts that *were granted*
+   * a role, not everyone who inherits its permissions.
+   */
+  getUserIdsWithAnyRole(roleNames: string[]): Promise<string[]>;
 }
 
 export const ROLE_SOURCE = Symbol('ROLE_SOURCE');

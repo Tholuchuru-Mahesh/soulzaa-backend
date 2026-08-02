@@ -22,6 +22,8 @@ export interface UserIdentity {
   roles: PlatformRole[];
   isGuest: boolean;
   status: AccountStatus;
+  /** True for platform staff accounts that must never surface to ordinary users. */
+  isHiddenAccount: boolean;
   emailVerifiedAt: Date | null;
   mobileVerifiedAt: Date | null;
   createdAt: Date;
@@ -69,4 +71,11 @@ export interface IUsersService {
   markMobileVerified(id: string): Promise<void>;
   promoteGuest(id: string, input: PromoteGuestInput): Promise<UserIdentity>;
   updateContact(id: string, contact: { email?: string; mobile?: string }): Promise<UserIdentity>;
+  /**
+   * Marks/unmarks an account as platform-staff-hidden. Written only by the
+   * admin-identity module, which owns the rule for what counts as hidden.
+   */
+  setHiddenAccount(id: string, hidden: boolean): Promise<void>;
+  /** Sets the account lifecycle status. Authority to do so is the caller's to enforce. */
+  setStatus(id: string, status: AccountStatus): Promise<void>;
 }

@@ -1,6 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Role } from '@prisma/client';
+import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { RoleAssignedEvent, RoleRevokedEvent } from '../events/role.events';
 import { AssignRoleDto } from '../dto/assign-role.dto';
 import { CreateRoleDto } from '../dto/create-role.dto';
 import { CreateRoleHierarchyDto } from '../dto/role-hierarchy.dto';
@@ -12,6 +14,7 @@ export class RoleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cacheService: AuthorizationCacheService,
+    @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
 
   async createRole(dto: CreateRoleDto): Promise<Role> {
@@ -70,7 +73,29 @@ export class RoleService {
     });
 
     await this.cacheService.invalidateUser(dto.userId);
+    // Published after the cache is invalidated, so a subscriber that re-reads
+    // roles (e.g. the hidden-account sync) sees the assignment it was told about.
+    await this.bus.publish(
+      new RoleAssignedEvent({
+        userId: dto.userId,
+        roleId: dto.roleId,
+        actorId: assignedByUserId ?? null,
+      }),
+    );
     return res;
+  }
+
+  /**
+   * Assign by role *name*. Callers that think in roles ("make this account an
+   * ADMIN") should not have to resolve a UUID first — and resolving it
+   * themselves would mean reading the roles table from outside this module.
+   */
+  async assignRoleByName(userId: string, roleName: string, assignedByUserId?: string) {
+    const role = await this.prisma.role.findUnique({ where: { name: roleName } });
+    if (!role) {
+      throw new NotFoundException(`Role '${roleName}' not found`);
+    }
+    return this.assignRoleToUser({ userId, roleId: role.id }, assignedByUserId);
   }
 
   async removeRoleFromUser(userId: string, roleId: string) {
@@ -82,6 +107,7 @@ export class RoleService {
     });
 
     await this.cacheService.invalidateUser(userId);
+    await this.bus.publish(new RoleRevokedEvent({ userId, roleId, actorId: null }));
     return res;
   }
 

@@ -1,9 +1,11 @@
+import { ROLE_SOURCE, type IRoleSource } from 'src/common/interfaces/role-source.interface';
 import {
   Body,
   Controller,
   Delete,
   Get,
   HttpCode,
+  Inject,
   HttpStatus,
   Param,
   Patch,
@@ -40,7 +42,10 @@ import { UserManagementService } from '../services/user-management.service';
 @UseInterceptors(AuditLogInterceptor)
 @Controller('super-admin/users')
 export class SuperAdminUserController {
-  constructor(private readonly userManagementService: UserManagementService) {}
+  constructor(
+    private readonly userManagementService: UserManagementService,
+    @Inject(ROLE_SOURCE) private readonly roleSource: IRoleSource,
+  ) {}
 
   // ---------------------------------------------------------
   // User Search & Listing APIs
@@ -53,8 +58,11 @@ export class SuperAdminUserController {
   })
   @RequirePermissions('user.list.view')
   @Get()
-  async searchUsers(@Query() filterDto: UserSearchFilterDto) {
-    return this.userManagementService.searchUsers(filterDto);
+  async searchUsers(@Query() filterDto: UserSearchFilterDto, @CurrentUser('id') viewerId: string) {
+    return this.userManagementService.searchUsers(
+      filterDto,
+      await this.viewerIsSuperAdmin(viewerId),
+    );
   }
 
   @ApiOperation({
@@ -64,8 +72,21 @@ export class SuperAdminUserController {
   @ApiResponse({ status: 200, description: 'Detailed user profile and RBAC state' })
   @RequirePermissions('user.profile.view')
   @Get(':id')
-  async getUserProfileDetails(@Param('id') id: string) {
-    return this.userManagementService.getUserProfileDetails(id);
+  async getUserProfileDetails(@Param('id') id: string, @CurrentUser('id') viewerId: string) {
+    return this.userManagementService.getUserProfileDetails(
+      id,
+      await this.viewerIsSuperAdmin(viewerId),
+    );
+  }
+
+  /**
+   * Only a Super Admin may identify another Super Admin (spec §1). Resolved from
+   * the RBAC store rather than the JWT claim, so a token minted before a
+   * demotion cannot still unmask.
+   */
+  private async viewerIsSuperAdmin(viewerId: string): Promise<boolean> {
+    const names = await this.roleSource.getRoleNames(viewerId);
+    return names.includes('SUPER_ADMIN');
   }
 
   @ApiOperation({ summary: 'Get audit logs history for a specific user' })

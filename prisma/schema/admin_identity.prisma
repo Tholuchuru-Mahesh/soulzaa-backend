@@ -1,0 +1,41 @@
+// ============================================================
+// Admin Identity — second-factor enrolment and device/IP trust
+// for hidden staff accounts. Owned by the "admin-identity" module.
+//
+// Deliberately separate from the session tables: staff second-factor
+// state must not be reachable through any user-facing session query,
+// and its lifecycle (enrol once, rotate rarely) differs from a session's.
+// No cross-module relations — userId is an opaque reference.
+// ============================================================
+
+/// TOTP enrolment for a staff account. One row per user; the secret is the
+/// shared key an authenticator app holds, so it is never returned by any read
+/// route after enrolment completes.
+model AdminCredential {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @unique @db.Uuid
+  totpSecret String
+  /// Null until the operator proves possession by submitting a valid code.
+  /// An unconfirmed enrolment must not satisfy the second factor.
+  enrolledAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@map("admin_credentials")
+}
+
+/// A device an operator has already used successfully. Presenting a known
+/// device hash lets the portal skip re-enrolment; an unknown one is challenged.
+/// `deviceHash` is a client-supplied fingerprint, never raw device details.
+model AdminTrustedDevice {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  deviceHash String
+  ipAddress  String?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, deviceHash])
+  @@index([userId])
+  @@map("admin_trusted_devices")
+}

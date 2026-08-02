@@ -14,6 +14,12 @@ export interface UserSearchOptions {
   country?: string;
   /** User ids to omit from results (e.g. the viewer's block relationships). */
   excludeIds?: string[];
+  /**
+   * Include platform-staff accounts. Off by default — a hidden account must not
+   * surface to ordinary users, and search is the most direct way it otherwise
+   * would. Only privileged admin-console callers set this.
+   */
+  includeHidden?: boolean;
 }
 
 /**
@@ -46,6 +52,7 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
     const where: Prisma.UserWhereInput = {
       status: 'ACTIVE',
       deletedAt: null,
+      ...(opts.includeHidden ? {} : { isHiddenAccount: false }),
       OR: [
         { username: { contains: q, mode: 'insensitive' } },
         { fullName: { contains: q, mode: 'insensitive' } },

@@ -60,6 +60,8 @@ export interface ProfileView {
   preferredLanguage: string | null;
   statistics: StatisticsView;
   verification: VerificationView;
+  /** True for platform staff accounts. Never rendered to ordinary users. */
+  isHiddenAccount: boolean;
   createdAt: Date;
 }
 
@@ -118,6 +120,11 @@ export interface IProfileService {
   resolvePublicIdentities(ids: string[]): Promise<Map<string, PublicIdentity>>;
   /** Atomically adjust a counter (delta may be negative). Returns nothing. */
   incrementStatistic(userId: string, field: StatisticField, delta: number): Promise<void>;
+  /**
+   * Drops the cached profile snapshot. Needed when a field other modules read
+   * off the snapshot changes outside this module — today, `isHiddenAccount`.
+   */
+  invalidateProfile(userId: string): Promise<void>;
   /** Search users; results exclude anyone in a block relationship with `viewerId`. */
   search(
     query: string,

@@ -70,6 +70,7 @@ interface CachedProfile {
   preferredLanguage: string | null;
   statistics: StatisticsView;
   verification: VerificationView;
+  isHiddenAccount: boolean;
   createdAt: string;
 }
 
@@ -163,9 +164,26 @@ export class ProfileService implements IProfileService {
    */
   private async gatedView(user: User | null, viewerId?: string): Promise<ProfileView | null> {
     if (!user) return null;
+    // A hidden staff account is indistinguishable from one that does not exist.
+    // Null (→ 404) rather than a 403: a 403 would itself confirm the handle
+    // belongs to staff, which is the very thing that must stay secret.
+    if (user.isHiddenAccount && !(await this.viewerIsStaff(viewerId))) return null;
     const allowed = await this.privacy.check(viewerId ?? null, user.id, PrivacyAction.VIEW_PROFILE);
     if (!allowed) return null;
     return this.getProfileView(user.id);
+  }
+
+  /**
+   * Only staff can see staff — "Only Super Admin and Admin can identify Admin
+   * accounts". Resolved from the viewer's own hidden flag rather than a role
+   * lookup, which would mean importing the authorization module across a
+   * boundary the dependency rules forbid. Called only when the target is
+   * hidden, so ordinary lookups cost nothing extra.
+   */
+  private async viewerIsStaff(viewerId?: string): Promise<boolean> {
+    if (!viewerId) return false;
+    const viewer = await this.users.findById(viewerId);
+    return viewer?.isHiddenAccount ?? false;
   }
 
   async getStatistics(userId: string): Promise<StatisticsView | null> {
@@ -176,18 +194,24 @@ export class ProfileService implements IProfileService {
   async getCards(ids: string[]): Promise<UserCard[]> {
     const unique = [...new Set(ids)];
     const views = await Promise.all(unique.map((id) => this.getProfileView(id)));
-    return views
-      .filter((v): v is ProfileView => v !== null)
-      .map((v) => ({
-        id: v.id,
-        username: v.username,
-        fullName: v.fullName,
-        avatarUrl: v.avatarUrl,
-        verified: v.verification.verified,
-        level: v.statistics.level,
-        vipLevel: v.statistics.vipLevel,
-        country: v.country,
-      }));
+    return (
+      views
+        .filter((v): v is ProfileView => v !== null)
+        // Platform-staff accounts are invisible to every consumer of this
+        // resolver — followers, friends, room members, live viewers, gift panels
+        // and mentions all resolve identities through here.
+        .filter((v) => !v.isHiddenAccount)
+        .map((v) => ({
+          id: v.id,
+          username: v.username,
+          fullName: v.fullName,
+          avatarUrl: v.avatarUrl,
+          verified: v.verification.verified,
+          level: v.statistics.level,
+          vipLevel: v.statistics.vipLevel,
+          country: v.country,
+        }))
+    );
   }
 
   /**
@@ -217,18 +241,23 @@ export class ProfileService implements IProfileService {
     const verifiedByUserId = new Map(verificationRows.map((v) => [v.userId, v]));
 
     await Promise.all(
-      identityUsers.map(async (user) => {
-        const avatarKey = profileByUserId.get(user.id)?.avatarKey ?? null;
-        const stats = statsByUserId.get(user.id);
-        result.set(user.id, {
-          displayName: user.fullName ?? user.username,
-          avatarUrl: await this.media.resolve(avatarKey),
-          username: user.username,
-          level: stats?.level ?? 1,
-          vipLevel: stats?.vipLevel ?? 0,
-          verified: verifiedByUserId.get(user.id)?.verified ?? false,
-        });
-      }),
+      // Same rule as getCards: staff accounts resolve to nothing. This path
+      // batch-loads rather than going through getProfileView, so it needs its
+      // own filter — game player panels and video-room seat panels use it.
+      identityUsers
+        .filter((user) => !user.isHiddenAccount)
+        .map(async (user) => {
+          const avatarKey = profileByUserId.get(user.id)?.avatarKey ?? null;
+          const stats = statsByUserId.get(user.id);
+          result.set(user.id, {
+            displayName: user.fullName ?? user.username,
+            avatarUrl: await this.media.resolve(avatarKey),
+            username: user.username,
+            level: stats?.level ?? 1,
+            vipLevel: stats?.vipLevel ?? 0,
+            verified: verifiedByUserId.get(user.id)?.verified ?? false,
+          });
+        }),
     );
     return result;
   }
@@ -395,6 +424,15 @@ export class ProfileService implements IProfileService {
     await this.cache.del(this.cacheKey(userId));
   }
 
+  /**
+   * Public face of `invalidate`, for modules that change a field this snapshot
+   * carries. Without it a freshly-promoted Admin would stay visible in every
+   * card list until the TTL lapsed.
+   */
+  async invalidateProfile(userId: string): Promise<void> {
+    await this.invalidate(userId);
+  }
+
   private buildSnapshot(
     user: User,
     profile: UserProfile,
@@ -416,6 +454,7 @@ export class ProfileService implements IProfileService {
       preferredLanguage: user.preferredLanguage,
       statistics: this.toStatisticsView(stats),
       verification: this.toVerificationView(verification),
+      isHiddenAccount: user.isHiddenAccount,
       createdAt: user.createdAt.toISOString(),
     };
   }
@@ -440,6 +479,9 @@ export class ProfileService implements IProfileService {
       preferredLanguage: snap.preferredLanguage,
       statistics: snap.statistics,
       verification: snap.verification,
+      // Snapshots cached before this field existed deserialise as undefined;
+      // default to visible so a pre-existing cache entry cannot hide a real user.
+      isHiddenAccount: snap.isHiddenAccount ?? false,
       createdAt: new Date(snap.createdAt),
     };
   }

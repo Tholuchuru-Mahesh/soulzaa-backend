@@ -61,6 +61,12 @@ model User {
   roles             PlatformRole[] @default([USER])
   isGuest           Boolean        @default(false)
   status            AccountStatus  @default(ACTIVE)
+  /// True for platform staff accounts that must never surface to ordinary
+  /// users. Denormalised from the ADMIN / SUPER_ADMIN role assignment and
+  /// written solely by the admin-identity module, so read paths can filter with
+  /// no extra query and no cross-module dependency. Deliberately not derived
+  /// from the legacy `roles` column below, which is being retired.
+  isHiddenAccount   Boolean        @default(false)
 
   emailVerifiedAt  DateTime?
   mobileVerifiedAt DateTime?
@@ -77,6 +83,7 @@ model User {
   locationRegion  Region?  @relation("UserLocationRegion", fields: [regionId], references: [id], onDelete: SetNull)
 
   @@index([status])
+  @@index([isHiddenAccount])
   @@index([countryId])
   @@index([stateId])
   @@index([regionId])

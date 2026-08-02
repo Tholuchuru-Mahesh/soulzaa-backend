@@ -281,6 +281,17 @@ export const DEFAULT_PERMISSIONS = [
     description: 'Can view platform configuration change audit history',
   },
 
+  // Admin identity — provisioning hidden staff accounts. Super Admin only:
+  // whoever can mint an Admin can mint platform-wide authority.
+  {
+    code: 'admin.provision',
+    module: 'admin',
+    action: 'manage',
+    category: 'SYSTEM',
+    displayName: 'Provision Admin Accounts',
+    description: 'Can create, list, suspend and restore hidden Admin accounts',
+  },
+
   // Super Admin Workforce & Operational Personnel Management (Phase 2C)
   {
     code: 'workforce.list.view',

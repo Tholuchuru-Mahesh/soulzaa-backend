@@ -38,6 +38,7 @@ function makeIdentity(overrides: Partial<UserIdentity> = {}): UserIdentity {
     roles: ['USER'],
     isGuest: false,
     status: 'ACTIVE',
+    isHiddenAccount: false,
     emailVerifiedAt: null,
     mobileVerifiedAt: null,
     createdAt: new Date(),
@@ -84,6 +85,8 @@ describe('AuthService', () => {
       markMobileVerified: jest.fn(),
       promoteGuest: jest.fn(),
       updateContact: jest.fn(),
+      setHiddenAccount: jest.fn(),
+      setStatus: jest.fn(),
     };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     social = { verify: jest.fn() };
@@ -113,7 +116,10 @@ describe('AuthService', () => {
     firebase = {
       verifyIdToken: jest.fn(),
     };
-    roleSource = { getRoleNames: jest.fn().mockResolvedValue([]) };
+    roleSource = {
+      getRoleNames: jest.fn().mockResolvedValue([]),
+      getUserIdsWithAnyRole: jest.fn().mockResolvedValue([]),
+    };
     const config = { get: () => ({ passwordResetTtlSeconds: 900 }) } as unknown as ConfigService;
 
     service = new AuthService(

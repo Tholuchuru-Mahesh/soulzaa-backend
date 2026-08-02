@@ -7,6 +7,7 @@ import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { TokenService } from 'src/infra/auth/token.service';
 import { authTokenEpochKey } from 'src/infra/auth/token-epoch';
+import { LoginTelemetryService } from './login-telemetry.service';
 import {
   DEVICE_SERVICE,
   type IDeviceService,
@@ -48,6 +49,7 @@ export class SessionService {
     private readonly cache: CacheService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(DEVICE_SERVICE) private readonly devices: IDeviceService,
+    private readonly telemetry: LoginTelemetryService,
     config: ConfigService,
   ) {
     const cfg = config.get('session', { infer: true })!;
@@ -110,6 +112,9 @@ export class SessionService {
       event: SessionEventType.CREATED,
       ip: ctx.ip ?? null,
       userAgent: ctx.userAgent ?? null,
+      // Spec §2: browser / OS / device / country on every login. Derived here so
+      // security review can filter without re-parsing every row.
+      telemetry: await this.telemetry.describe({ ip: ctx.ip, userAgent: ctx.userAgent }),
     });
     await this.bus.publish(
       new SessionCreatedEvent({ userId: claims.userId, sessionId: sid, deviceId, ip: ctx.ip }),

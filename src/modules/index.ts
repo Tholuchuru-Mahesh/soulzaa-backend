@@ -1,5 +1,6 @@
 // Registry of all domain modules. AppModule imports this array so adding a
 // module is a one-line change here.
+import { AdminIdentityModule } from './admin-identity/admin-identity.module';
 import { AgenciesModule } from './agencies/agencies.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { AttendanceModule } from './attendance/attendance.module';
@@ -62,6 +63,8 @@ export const DOMAIN_MODULES = [
   AuthorizationModule,
   AuthModule,
   UsersModule,
+  // After UsersModule and AuthorizationModule: it orchestrates both.
+  AdminIdentityModule,
   OtpModule,
   SessionModule,
   DeviceModule,

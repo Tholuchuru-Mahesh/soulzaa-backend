@@ -21,12 +21,12 @@ export class UserManagementService {
   // ---------------------------------------------------------
   // User Queries & Inspection
   // ---------------------------------------------------------
-  async searchUsers(dto: UserSearchFilterDto) {
-    return this.queryService.searchUsers(dto);
+  async searchUsers(dto: UserSearchFilterDto, viewerIsSuperAdmin = false) {
+    return this.queryService.searchUsers(dto, viewerIsSuperAdmin);
   }
 
-  async getUserProfileDetails(userId: string) {
-    return this.queryService.getUserProfileDetails(userId);
+  async getUserProfileDetails(userId: string, viewerIsSuperAdmin = false) {
+    return this.queryService.getUserProfileDetails(userId, viewerIsSuperAdmin);
   }
 
   async getUserAuditHistory(userId: string, page = 1, limit = 20) {

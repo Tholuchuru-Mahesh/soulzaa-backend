@@ -62,6 +62,7 @@ export class RankingsService implements IRankingsService {
 
     const userIds = entries.map((e) => e.member);
     const details = await this.repo.getUsersDetails(userIds);
+    entries = this.dropHiddenAccounts(entries, details);
     const { profiles, statistics } = await this.repo.getUserProfilesAndStats(userIds);
 
     const formatted: RankedGifter[] = entries.map((entry, index) => {
@@ -117,6 +118,7 @@ export class RankingsService implements IRankingsService {
 
     const userIds = entries.map((e) => e.member);
     const details = await this.repo.getUsersDetails(userIds);
+    entries = this.dropHiddenAccounts(entries, details);
     const { profiles, statistics } = await this.repo.getUserProfilesAndStats(userIds);
 
     const formatted: RankedReceiver[] = entries.map((entry, index) => {
@@ -223,6 +225,7 @@ export class RankingsService implements IRankingsService {
 
     const userIds = entries.map((e) => e.member);
     const details = await this.repo.getUsersDetails(userIds);
+    entries = this.dropHiddenAccounts(entries, details);
     const { profiles, statistics } = await this.repo.getUserProfilesAndStats(userIds);
 
     const formatted: RankedStreamer[] = entries.map((entry, index) => {
@@ -429,6 +432,27 @@ export class RankingsService implements IRankingsService {
    * two Redis keys on the deploy. VR-13's own ladders are UTC throughout; this
    * seam is not the place to correct history.
    */
+  /**
+   * Drops platform-staff accounts from a leaderboard page.
+   *
+   * Applied to the entry list *before* formatting so `index` renumbers the
+   * ranks and removal leaves no gap. Rankings hydrate straight from the users
+   * table rather than through the card resolver, so this is their own filter.
+   *
+   * A safety net rather than the primary defence: a staff account should never
+   * be scored in the first place. That also means `total` may over-count by the
+   * number dropped — acceptable for a case that should not arise, and far
+   * better than rendering the account.
+   */
+  private dropHiddenAccounts<T extends { member: string }>(
+    entries: T[],
+    details: Array<{ id: string; isHiddenAccount?: boolean }>,
+  ): T[] {
+    const hidden = new Set(details.filter((d) => d.isHiddenAccount).map((d) => d.id));
+    if (hidden.size === 0) return entries;
+    return entries.filter((e) => !hidden.has(e.member));
+  }
+
   private getDateKeys(date: Date): { daily: string; weekly: string; monthly: string } {
     return {
       daily: this.periods.dateKeyFor('daily', date, 'local'),

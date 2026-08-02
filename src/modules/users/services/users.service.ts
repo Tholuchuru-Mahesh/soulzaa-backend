@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, User } from '@prisma/client';
+import { AccountStatus, Prisma, User } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { UsersRepository } from '../repositories/users.repository';
 import type {
@@ -131,6 +131,23 @@ export class UsersService implements IUsersService {
     }
   }
 
+  /**
+   * Sets the staff-visibility flag. No business rule lives here on purpose: the
+   * rule for *what counts as hidden* belongs to the admin-identity module, which
+   * owns the role semantics. This module owns only the column.
+   */
+  async setHiddenAccount(id: string, hidden: boolean): Promise<void> {
+    await this.repo.setHiddenAccount(id, hidden);
+  }
+
+  /**
+   * Sets the account lifecycle status. No authority check here — this module
+   * owns the column, not the policy for who may change it.
+   */
+  async setStatus(id: string, status: AccountStatus): Promise<void> {
+    await this.repo.update(id, { status });
+  }
+
   // ---- Helpers ----
 
   /** Throw UNDERAGE if the DOB implies an age below the platform minimum. */
@@ -197,6 +214,7 @@ export class UsersService implements IUsersService {
       roles: user.roles,
       isGuest: user.isGuest,
       status: user.status,
+      isHiddenAccount: user.isHiddenAccount,
       emailVerifiedAt: user.emailVerifiedAt,
       mobileVerifiedAt: user.mobileVerifiedAt,
       createdAt: user.createdAt,

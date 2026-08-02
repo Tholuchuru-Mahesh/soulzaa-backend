@@ -107,4 +107,18 @@ export class RoleResolver {
     const roles = await this.resolveAllUserRoles(userId);
     return roles.some((r) => r.roleName === targetRoleName);
   }
+
+  /**
+   * Reverse lookup over direct assignments. Uncached on purpose: the only
+   * caller is a reconciliation job, and a stale answer there would silently
+   * leave accounts unreconciled.
+   */
+  async getUserIdsWithAnyRole(roleNames: string[]): Promise<string[]> {
+    if (roleNames.length === 0) return [];
+    const rows = await this.prisma.userRole.findMany({
+      where: { role: { name: { in: roleNames } } },
+      select: { userId: true },
+    });
+    return [...new Set(rows.map((r) => r.userId))];
+  }
 }
