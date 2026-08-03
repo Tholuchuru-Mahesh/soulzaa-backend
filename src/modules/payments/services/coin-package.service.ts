@@ -18,9 +18,7 @@ import { PurchaseAuditService } from './purchase-audit.service';
  * Server-side constant on purpose: it must never be sourced from the request,
  * or a client could pick its own region's pricing again.
  */
-const DEFAULT_STOREFRONT_COUNTRY = (
-  process.env.DEFAULT_STOREFRONT_COUNTRY ?? 'IN'
-).toUpperCase();
+const DEFAULT_STOREFRONT_COUNTRY = (process.env.DEFAULT_STOREFRONT_COUNTRY ?? 'IN').toUpperCase();
 
 @Injectable()
 export class CoinPackageService {
