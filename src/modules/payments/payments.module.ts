@@ -10,7 +10,6 @@ import { PaymentProviderFactory } from './adapters/payment-provider.factory';
 import { RazorpayAdapter } from './adapters/razorpay.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { CoinPurchaseController } from './controllers/coin-purchase.controller';
-import { CoinPackageSeederService } from './services/coin-package-seeder.service';
 import { CoinPackageService } from './services/coin-package.service';
 import { PurchaseAuditService } from './services/purchase-audit.service';
 import { PurchaseOrderService } from './services/purchase-order.service';
@@ -35,7 +34,6 @@ import { ReceiptVerificationService } from './services/receipt-verification.serv
     ReceiptVerificationService,
     PurchaseQueryService,
     PurchaseReconciliationService,
-    CoinPackageSeederService,
   ],
   exports: [
     PaymentProviderFactory,
@@ -45,7 +43,6 @@ import { ReceiptVerificationService } from './services/receipt-verification.serv
     ReceiptVerificationService,
     PurchaseQueryService,
     PurchaseReconciliationService,
-    CoinPackageSeederService,
   ],
 })
 export class PaymentsModule {}

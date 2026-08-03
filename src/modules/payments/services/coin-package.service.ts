@@ -7,6 +7,21 @@ import {
 } from '../dto/coin-package.dto';
 import { PurchaseAuditService } from './purchase-audit.service';
 
+/**
+ * Storefront shown to a signed-in user we could not place geographically.
+ *
+ * India is the launch market and the only one with a priced panel, so an
+ * unplaced user is far more likely to be Indian than not. The previous
+ * behaviour — GLOBAL only — made the INR catalogue unreachable in practice,
+ * because nothing in the signup flow ever sets `countryId`.
+ *
+ * Server-side constant on purpose: it must never be sourced from the request,
+ * or a client could pick its own region's pricing again.
+ */
+const DEFAULT_STOREFRONT_COUNTRY = (
+  process.env.DEFAULT_STOREFRONT_COUNTRY ?? 'IN'
+).toUpperCase();
+
 @Injectable()
 export class CoinPackageService {
   constructor(
@@ -52,8 +67,9 @@ export class CoinPackageService {
     if (country && country !== 'GLOBAL') {
       and.push({ OR: [{ country: 'GLOBAL' }, { country: country.toUpperCase() }] });
     } else if (userId) {
-      // An un-normalised user gets the global catalogue rather than everything.
-      and.push({ country: 'GLOBAL' });
+      // An un-normalised user gets GLOBAL plus the default storefront, not the
+      // whole catalogue and not GLOBAL alone. See DEFAULT_STOREFRONT_COUNTRY.
+      and.push({ OR: [{ country: 'GLOBAL' }, { country: DEFAULT_STOREFRONT_COUNTRY }] });
     }
 
     const where: Record<string, unknown> = {};

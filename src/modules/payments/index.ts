@@ -9,7 +9,6 @@ export * from './adapters/stripe.adapter';
 export * from './controllers/coin-purchase.controller';
 export * from './dto/coin-package.dto';
 export * from './dto/purchase-order.dto';
-export * from './services/coin-package-seeder.service';
 export * from './services/coin-package.service';
 export * from './services/purchase-audit.service';
 export * from './services/purchase-order.service';

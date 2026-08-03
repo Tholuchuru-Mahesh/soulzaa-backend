@@ -35,12 +35,20 @@ describe('CoinPackageService regional pricing', () => {
     expect(JSON.stringify(whereOf())).not.toContain('US');
   });
 
-  it('shows only global packages to a user with no normalised location', async () => {
+  it('falls back to the default storefront country when the caller has no location', async () => {
     prisma.user.findUnique.mockResolvedValue({ locationCountry: null });
 
     await service.listPackages({ country: 'US' }, 'u-1');
 
-    expect(whereOf().AND).toContainEqual({ country: 'GLOBAL' });
+    // Nobody sets `countryId` at signup, so almost every real user lands here.
+    // Restricting them to GLOBAL made the whole INR panel unreachable: those
+    // rows are country 'IN', so the storefront showed only the USD leftovers.
+    // The fallback is a server constant, never the caller's `country` — the
+    // request asked for US and must still not get it.
+    expect(whereOf().AND).toContainEqual({
+      OR: [{ country: 'GLOBAL' }, { country: 'IN' }],
+    });
+    expect(JSON.stringify(whereOf())).not.toContain('US');
   });
 
   it('keeps the platform constraint when a country also applies', async () => {

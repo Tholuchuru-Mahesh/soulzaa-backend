@@ -11,7 +11,6 @@ import { MockGatewayAdapter } from '../adapters/mock-gateway.adapter';
 import { PaymentProviderFactory } from '../adapters/payment-provider.factory';
 import { RazorpayAdapter } from '../adapters/razorpay.adapter';
 import { StripeAdapter } from '../adapters/stripe.adapter';
-import { CoinPackageSeederService } from './coin-package-seeder.service';
 import { CoinPackageService } from './coin-package.service';
 import { PurchaseAuditService } from './purchase-audit.service';
 import { PurchaseOrderService } from './purchase-order.service';
@@ -81,7 +80,6 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
         ReceiptVerificationService,
         PurchaseQueryService,
         PurchaseReconciliationService,
-        CoinPackageSeederService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: WalletTransactionService, useValue: mockWalletTxService },
         { provide: CoinEconomyService, useValue: mockCoinEconomyService },
