@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { AuthController } from './controllers/auth.controller';
 import { AUTH_SERVICE } from './interfaces/auth.interface';
 import { SOCIAL_VERIFIER } from './interfaces/social-identity-verifier.interface';
@@ -18,7 +18,14 @@ import { SocialVerifierRegistry } from './services/social/social-verifier.regist
  * (OTP_SERVICE) via their interfaces only, plus global infra (Token/Password
  * from AuthInfraModule, Prisma, Redis, EVENT_BUS). Exposes AUTH_SERVICE; all
  * other cross-module coordination is via published events.
+ *
+ * @Global for the same reason UsersModule and AuthorizationModule are: consumers
+ * in other domain modules (AdminProvisioningService) inject AUTH_SERVICE, and the
+ * dependency-cruiser boundary rule forbids importing this module's `*.module.ts`
+ * — only `interfaces/` and `events/` cross a module edge. Being global is the
+ * only mechanism left that lets the exported token resolve.
  */
+@Global()
 @Module({
   controllers: [AuthController],
   providers: [
