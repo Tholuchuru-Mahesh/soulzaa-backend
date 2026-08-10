@@ -169,9 +169,9 @@ describe('Coin Seller inventory and user sale', () => {
       });
       mockPrisma.user.findUnique.mockResolvedValue({ country: 'US' });
 
-      await expect(
-        saleService.sellCoinsToUser(SELLER, BUYER, 10000, 'sale-key-1'),
-      ).rejects.toThrow(/cannot sell/i);
+      await expect(saleService.sellCoinsToUser(SELLER, BUYER, 10000, 'sale-key-1')).rejects.toThrow(
+        /cannot sell/i,
+      );
       expect(mockWallet.credit).not.toHaveBeenCalled();
     });
   });
@@ -179,7 +179,12 @@ describe('Coin Seller inventory and user sale', () => {
   // ── PRD §32: idempotency ───────────────────────────────────────
   describe('idempotency (PRD §32)', () => {
     it('returns the original sale on replay instead of crediting twice', async () => {
-      const existing = { id: 'sale-1', sellerId: SELLER, buyerId: BUYER, coinAmount: BigInt(10000) };
+      const existing = {
+        id: 'sale-1',
+        sellerId: SELLER,
+        buyerId: BUYER,
+        coinAmount: BigInt(10000),
+      };
       mockPrisma.coinSellerUserSaleTransaction.findUnique.mockResolvedValue(existing);
 
       const result = await saleService.sellCoinsToUser(SELLER, BUYER, 10000, 'sale-key-1');
@@ -270,9 +275,9 @@ describe('Coin Seller inventory and user sale', () => {
         availableBalance: BigInt(1000),
       });
 
-      await expect(
-        saleService.sellCoinsToUser(SELLER, BUYER, 10000, 'sale-key-1'),
-      ).rejects.toThrow(/insufficient/i);
+      await expect(saleService.sellCoinsToUser(SELLER, BUYER, 10000, 'sale-key-1')).rejects.toThrow(
+        /insufficient/i,
+      );
       expect(tx.coinSellerInventory.update).not.toHaveBeenCalled();
       expect(mockWallet.credit).not.toHaveBeenCalled();
     });

@@ -99,7 +99,8 @@ export class WalletTransactionService {
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },
         data: {
-          availableBalance: dto.currency === WalletCurrency.GOLD ? { increment: amountBig } : undefined,
+          availableBalance:
+            dto.currency === WalletCurrency.GOLD ? { increment: amountBig } : undefined,
           goldBalance: dto.currency === WalletCurrency.GOLD ? { increment: amountBig } : undefined,
           gameBalance: dto.currency === WalletCurrency.GAME ? { increment: amountBig } : undefined,
           diamondBalance:
@@ -209,7 +210,8 @@ export class WalletTransactionService {
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },
         data: {
-          availableBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
+          availableBalance:
+            dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
           totalSpent: { increment: amountBig },
           goldBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
           gameBalance: dto.currency === WalletCurrency.GAME ? { decrement: amountBig } : undefined,
@@ -340,7 +342,8 @@ export class WalletTransactionService {
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },
         data: {
-          availableBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
+          availableBalance:
+            dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
           totalSpent: { increment: amountBig },
           goldBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
           gameBalance: dto.currency === WalletCurrency.GAME ? { decrement: amountBig } : undefined,

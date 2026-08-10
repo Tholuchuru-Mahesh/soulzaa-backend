@@ -29,12 +29,7 @@ export class CoinSellerUserSaleService {
    * request — the exact case idempotency exists for — created a second sale
    * and credited the buyer twice.
    */
-  async sellCoinsToUser(
-    sellerId: string,
-    buyerId: string,
-    amount: number,
-    idempotencyKey: string,
-  ) {
+  async sellCoinsToUser(sellerId: string, buyerId: string, amount: number, idempotencyKey: string) {
     if (!Number.isInteger(amount) || amount <= 0) {
       throw new BusinessException(
         ERROR_CODES.VALIDATION_ERROR,
@@ -64,7 +59,10 @@ export class CoinSellerUserSaleService {
       throw new BusinessException(ERROR_CODES.NOT_FOUND, 'Seller inventory not found');
     }
     if (inventory.availableBalance < BigInt(amount)) {
-      throw new BusinessException(ERROR_CODES.INSUFFICIENT_BALANCE, 'Insufficient seller inventory');
+      throw new BusinessException(
+        ERROR_CODES.INSUFFICIENT_BALANCE,
+        'Insufficient seller inventory',
+      );
     }
 
     // 2. Validate Buyer and Country Restriction

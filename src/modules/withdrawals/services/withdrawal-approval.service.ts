@@ -47,7 +47,14 @@ export class WithdrawalApprovalService {
         throw new BadRequestException(`Withdrawal request '${requestId}' not found`);
       }
 
-      if ([WithdrawalStatus.COMPLETED, WithdrawalStatus.REJECTED, WithdrawalStatus.CANCELLED, WithdrawalStatus.FAILED].includes(req.status as any)) {
+      if (
+        [
+          WithdrawalStatus.COMPLETED,
+          WithdrawalStatus.REJECTED,
+          WithdrawalStatus.CANCELLED,
+          WithdrawalStatus.FAILED,
+        ].includes(req.status as any)
+      ) {
         throw new BadRequestException(`Cannot review request in terminal state '${req.status}'`);
       }
 

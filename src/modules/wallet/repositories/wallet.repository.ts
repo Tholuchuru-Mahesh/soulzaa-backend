@@ -54,9 +54,7 @@ const CURRENCY_ALIASES: Partial<Record<WalletCurrency, WalletCurrency[]>> = {
  *
  * GOLD has no alias, so it stays a plain equality filter.
  */
-function currencyFilter(
-  currency: WalletCurrency,
-): WalletCurrency | { in: WalletCurrency[] } {
+function currencyFilter(currency: WalletCurrency): WalletCurrency | { in: WalletCurrency[] } {
   const aliases = CURRENCY_ALIASES[currency];
   return aliases ? { in: aliases } : currency;
 }

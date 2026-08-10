@@ -18,7 +18,16 @@ export class WithdrawalQueryService {
         _sum: { amountCoins: true, netPayoutAmountCoins: true },
       }),
       this.prisma.withdrawalRequest.aggregate({
-        where: { status: { in: [WithdrawalStatus.PENDING, WithdrawalStatus.UNDER_REVIEW, WithdrawalStatus.APPROVED, WithdrawalStatus.PROCESSING] } },
+        where: {
+          status: {
+            in: [
+              WithdrawalStatus.PENDING,
+              WithdrawalStatus.UNDER_REVIEW,
+              WithdrawalStatus.APPROVED,
+              WithdrawalStatus.PROCESSING,
+            ],
+          },
+        },
         _sum: { amountCoins: true },
       }),
     ]);
