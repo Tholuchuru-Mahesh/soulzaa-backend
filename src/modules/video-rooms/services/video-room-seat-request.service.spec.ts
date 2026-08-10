@@ -282,6 +282,15 @@ describe('approve → PROMOTED / FAILED', () => {
       requestId: 'q1',
       status: 'PROMOTED',
     });
+    // VR-6 parity — approval promotes the requester to speaker: the same
+    // ViewerPromotedEvent the host force-seat path emits must fire.
+    expect(pub()).toContain('ViewerPromotedEvent');
+    expect(publishedPayload('ViewerPromotedEvent')).toMatchObject({
+      roomId: 'r1',
+      userId: 'u1',
+      seatIndex: 2,
+      actorId: 'owner',
+    });
   });
 
   it('removes the promoted user from the queue', async () => {
@@ -302,6 +311,8 @@ describe('approve → PROMOTED / FAILED', () => {
       requestId: 'q1',
       status: 'FAILED',
     });
+    // A failed seating is NOT a promotion — no viewer_promoted signal.
+    expect(pub()).not.toContain('ViewerPromotedEvent');
   });
 
   // Fix I4 — INVERTED from the previous assertion ("leaves a failed requester

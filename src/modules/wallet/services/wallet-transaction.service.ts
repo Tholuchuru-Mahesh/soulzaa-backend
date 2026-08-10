@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   TransactionStatus,
   TransactionType,
@@ -6,8 +6,14 @@ import {
   WalletEntryType,
   WalletTxnReason,
 } from '@prisma/client';
+import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CreditWalletDto, DebitWalletDto, TransferWalletDto } from '../dto/create-transaction.dto';
+import {
+  WalletCreditedEvent,
+  WalletDebitedEvent,
+  type WalletMovementPayload,
+} from '../events/wallet.events';
 import { LedgerService } from './ledger.service';
 import { WalletAuditService } from './wallet-audit.service';
 import { WalletValidationService } from './wallet-validation.service';
@@ -21,7 +27,27 @@ export class WalletTransactionService {
     private readonly ledgerService: LedgerService,
     private readonly validationService: WalletValidationService,
     private readonly auditService: WalletAuditService,
+    @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
+
+  /**
+   * Publishes the same WALLET_EVENTS.CREDITED/DEBITED events `WalletService.move()`
+   * publishes on the Path A (gift/game/etc.) mutation flow, so `WalletRealtimeListener`
+   * pushes `transactionCreated`/`transactionCompleted`/`balanceChanged`/`walletUpdated`
+   * to the user's sockets everywhere for admin/IAP/reversal/transfer mutations too.
+   * Fired only after the DB transaction has committed (unlike Path A, which publishes
+   * from inside the still-open transaction) so a rollback can never emit a phantom event.
+   */
+  private async publishMovement(
+    type: WalletEntryType,
+    payload: WalletMovementPayload,
+  ): Promise<void> {
+    const event =
+      type === WalletEntryType.CREDIT
+        ? new WalletCreditedEvent(payload)
+        : new WalletDebitedEvent(payload);
+    await this.bus.publish(event);
+  }
 
   /**
    * Credits a user wallet account with double-entry ledger entry
@@ -44,7 +70,7 @@ export class WalletTransactionService {
     const wallet = await this.walletService.getOrCreateWallet(dto.userId);
     this.validationService.validateWalletActive(wallet);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Row-level pessimistic locking
       await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
       const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
@@ -117,6 +143,19 @@ export class WalletTransactionService {
         createdAt: transaction.createdAt,
       };
     });
+
+    await this.publishMovement(WalletEntryType.CREDIT, {
+      userId: dto.userId,
+      transactionId: result.transactionId,
+      currency: dto.currency ?? WalletCurrency.GOLD,
+      amount: Number(amountBig),
+      balanceAfter: Number(result.balanceAfter),
+      reason: dto.reason ?? WalletTxnReason.ADMIN_CREDIT,
+      referenceType: dto.referenceType ?? null,
+      referenceId: dto.referenceId ?? null,
+    });
+
+    return result;
   }
 
   /**
@@ -140,7 +179,7 @@ export class WalletTransactionService {
     this.validationService.validateWalletActive(wallet);
     this.validationService.validateSufficientBalance(wallet, amountBig, dto.currency);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Row-level pessimistic locking
       await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
       const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
@@ -215,6 +254,19 @@ export class WalletTransactionService {
         createdAt: transaction.createdAt,
       };
     });
+
+    await this.publishMovement(WalletEntryType.DEBIT, {
+      userId: dto.userId,
+      transactionId: result.transactionId,
+      currency: dto.currency ?? WalletCurrency.GOLD,
+      amount: Number(amountBig),
+      balanceAfter: Number(result.balanceAfter),
+      reason: dto.reason ?? WalletTxnReason.ADMIN_DEBIT,
+      referenceType: dto.referenceType ?? null,
+      referenceId: dto.referenceId ?? null,
+    });
+
+    return result;
   }
 
   /**
@@ -263,7 +315,7 @@ export class WalletTransactionService {
 
     const wallet = await this.walletService.getOrCreateWallet(dto.userId);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
       const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
       if (!freshWallet) throw new NotFoundException(`Wallet not found`);
@@ -332,6 +384,19 @@ export class WalletTransactionService {
         createdAt: transaction.createdAt,
       };
     });
+
+    await this.publishMovement(WalletEntryType.DEBIT, {
+      userId: dto.userId,
+      transactionId: result.transactionId,
+      currency: dto.currency ?? WalletCurrency.GOLD,
+      amount: Number(amountBig),
+      balanceAfter: Number(result.balanceAfter),
+      reason,
+      referenceType: dto.referenceType ?? null,
+      referenceId: dto.referenceId ?? null,
+    });
+
+    return result;
   }
 
   /**
@@ -364,7 +429,7 @@ export class WalletTransactionService {
     }
     this.validationService.validateSufficientBalance(senderWallet, amountBig);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       if (isSelfTransfer) {
         await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${senderWallet.id}::uuid FOR UPDATE`;
       } else {
@@ -488,6 +553,29 @@ export class WalletTransactionService {
         createdAt: transaction.createdAt,
       };
     });
+
+    await this.publishMovement(WalletEntryType.DEBIT, {
+      userId: dto.senderUserId,
+      transactionId: result.transactionId,
+      currency: dto.currency ?? WalletCurrency.GOLD,
+      amount: Number(amountBig),
+      balanceAfter: Number(result.senderAvailableBalance),
+      reason: WalletTxnReason.SYSTEM_TRANSFER,
+      referenceType: dto.referenceType ?? null,
+      referenceId: dto.referenceId ?? null,
+    });
+    await this.publishMovement(WalletEntryType.CREDIT, {
+      userId: dto.recipientUserId,
+      transactionId: result.transactionId,
+      currency: dto.currency ?? WalletCurrency.GOLD,
+      amount: Number(amountBig),
+      balanceAfter: Number(result.recipientAvailableBalance),
+      reason: WalletTxnReason.SYSTEM_TRANSFER,
+      referenceType: dto.referenceType ?? null,
+      referenceId: dto.referenceId ?? null,
+    });
+
+    return result;
   }
 
   private formatTransactionResponse(tx: any) {

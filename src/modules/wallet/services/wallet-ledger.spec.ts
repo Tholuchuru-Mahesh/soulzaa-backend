@@ -246,5 +246,97 @@ describe('Phase 3: Enterprise Wallet & Double-Entry Ledger Infrastructure', () =
       expect(result.transactionId).toBe('tx-1');
       expect((result as any).balanceAfter).toBe('1500');
     });
+
+    // VR-14 gap: creditWallet/debitWallet/reverseWallet/transferCoins (used by
+    // IAP purchases, admin/super-admin adjustments, and refund reversals) used
+    // to mutate the wallet without publishing WALLET_EVENTS, so those balance
+    // changes never reached WalletRealtimeListener and the user's sockets never
+    // got a `balanceChanged`/`walletUpdated` push — coins looked stale until a
+    // manual refresh. These assert the event is now published after commit.
+    it('publishes WALLET_EVENTS.CREDITED after a successful credit', async () => {
+      mockCoinEconomyService.isEconomyFrozen.mockResolvedValue(false);
+      mockPrismaService.walletTransaction.findUnique.mockResolvedValue(null);
+      mockPrismaService.wallet.findUnique.mockResolvedValue({
+        id: 'w-1',
+        userId: 'u-1',
+        status: WalletStatus.ACTIVE,
+        availableBalance: BigInt(500),
+      });
+      mockPrismaService.walletTransaction.create.mockResolvedValue({
+        id: 'tx-credit',
+        idempotencyKey: 'idemp-credit',
+        status: TransactionStatus.COMPLETED,
+        createdAt: new Date(),
+      });
+      mockPrismaService.wallet.update.mockResolvedValue({ availableBalance: BigInt(1500) });
+
+      await transactionService.creditWallet({
+        userId: 'u-1',
+        amount: 1000,
+        idempotencyKey: 'idemp-credit',
+      });
+
+      expect(mockEventBus.publish).toHaveBeenCalledTimes(1);
+      const event = mockEventBus.publish.mock.calls[0][0];
+      expect(event.name).toBe('wallet.credited');
+      expect(event.payload).toMatchObject({
+        userId: 'u-1',
+        transactionId: 'tx-credit',
+        amount: 1000,
+      });
+    });
+
+    it('publishes WALLET_EVENTS.DEBITED after a successful debit', async () => {
+      mockCoinEconomyService.isEconomyFrozen.mockResolvedValue(false);
+      mockPrismaService.walletTransaction.findUnique.mockResolvedValue(null);
+      mockPrismaService.wallet.findUnique.mockResolvedValue({
+        id: 'w-1',
+        userId: 'u-1',
+        status: WalletStatus.ACTIVE,
+        availableBalance: BigInt(500),
+        goldBalance: BigInt(500),
+      });
+      mockPrismaService.walletTransaction.create.mockResolvedValue({
+        id: 'tx-debit',
+        idempotencyKey: 'idemp-debit',
+        status: TransactionStatus.COMPLETED,
+        createdAt: new Date(),
+      });
+      mockPrismaService.wallet.update.mockResolvedValue({ availableBalance: BigInt(400) });
+
+      await transactionService.debitWallet({
+        userId: 'u-1',
+        amount: 100,
+        idempotencyKey: 'idemp-debit',
+      });
+
+      expect(mockEventBus.publish).toHaveBeenCalledTimes(1);
+      const event = mockEventBus.publish.mock.calls[0][0];
+      expect(event.name).toBe('wallet.debited');
+      expect(event.payload).toMatchObject({
+        userId: 'u-1',
+        transactionId: 'tx-debit',
+        amount: 100,
+      });
+    });
+
+    it('does not publish again on an idempotent replay', async () => {
+      mockPrismaService.walletTransaction.findUnique.mockResolvedValue({
+        id: 'tx-existing',
+        idempotencyKey: 'idemp-replay',
+        transactionType: 'DEPOSIT',
+        amount: BigInt(1000),
+        status: TransactionStatus.COMPLETED,
+        createdAt: new Date(),
+      });
+
+      await transactionService.creditWallet({
+        userId: 'u-1',
+        amount: 1000,
+        idempotencyKey: 'idemp-replay',
+      });
+
+      expect(mockEventBus.publish).not.toHaveBeenCalled();
+    });
   });
 });

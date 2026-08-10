@@ -18,6 +18,7 @@ import {
 import type { SeatStageView } from '../entities/video-room-seat-stage.view';
 import type { VideoRoomSeatRequestView } from '../entities/video-room-stage.view';
 import { SeatRequestResolvedEvent, SeatRequestedEvent } from '../events/video-room-seat.events';
+import { ViewerPromotedEvent } from '../events/video-room-viewer.events';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { toVideoRoomSeatRequestView } from '../mappers/video-room-stage.mapper';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
@@ -555,6 +556,19 @@ export class VideoRoomSeatRequestService {
         version: view.version,
         seatIndex,
         requestedAt: req.createdAt.toISOString(),
+      }),
+    );
+    // VR-6 parity — approving a seat request is a promotion to speaker too.
+    // Emit ViewerPromotedEvent (viewer_promoted socket event + "You are on a
+    // seat" notification + PROMOTED chat system message) exactly as the host
+    // force-seat path and the invite-accept path do, so every route onto the
+    // stage surfaces the same promotion signal to the promoted user and room.
+    await this.bus.publish(
+      new ViewerPromotedEvent({
+        roomId,
+        userId: req.userId,
+        seatIndex,
+        actorId: actor.id,
       }),
     );
     return view;

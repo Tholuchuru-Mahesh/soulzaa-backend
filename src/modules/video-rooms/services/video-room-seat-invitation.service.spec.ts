@@ -348,6 +348,15 @@ describe('VideoRoomSeatInvitationService', () => {
         invitationId: 'i1',
         status: 'ACCEPTED',
       });
+      // VR-6 parity — accepting an invitation promotes the invitee to speaker:
+      // the same ViewerPromotedEvent the host force-seat path emits must fire.
+      expect(pub()).toContain('ViewerPromotedEvent');
+      expect(publishedPayload('ViewerPromotedEvent')).toMatchObject({
+        roomId: 'r1',
+        userId: 'u2',
+        seatIndex: 3,
+        actorId: 'u2',
+      });
     });
 
     it('rejects a non-invitee (FORBIDDEN)', async () => {
@@ -415,6 +424,8 @@ describe('VideoRoomSeatInvitationService', () => {
         invitationId: 'i1',
         status: 'FAILED',
       });
+      // A failed seating is NOT a promotion — no viewer_promoted signal.
+      expect(pub()).not.toContain('ViewerPromotedEvent');
     });
 
     it('accepts from DELIVERED just as it does from PENDING', async () => {
@@ -435,6 +446,8 @@ describe('VideoRoomSeatInvitationService', () => {
         expect.anything(),
       );
       expect(pub()).not.toContain('SeatInvitationResolvedEvent');
+      // ...and therefore no promotion signal either.
+      expect(pub()).not.toContain('ViewerPromotedEvent');
     });
   });
 

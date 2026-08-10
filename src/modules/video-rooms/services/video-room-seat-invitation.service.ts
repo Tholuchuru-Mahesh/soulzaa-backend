@@ -21,6 +21,7 @@ import {
   SeatInvitationResolvedEvent,
   SeatInvitationSentEvent,
 } from '../events/video-room-seat.events';
+import { ViewerPromotedEvent } from '../events/video-room-viewer.events';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { toVideoRoomInvitationView } from '../mappers/video-room-stage.mapper';
 import { VideoRoomEventsRepository } from '../repositories/video-room-events.repository';
@@ -237,6 +238,22 @@ export class VideoRoomSeatInvitationService {
       bumpAttempt: true,
       lastError: null,
     });
+    // VR-6 parity — accepting an invitation IS a promotion to speaker. The host
+    // force-seat path (`VideoRoomViewerService.promote`) fires ViewerPromotedEvent
+    // so the room sees `viewer_promoted`, the invitee gets the "You are on a seat"
+    // notification, and the chat surface posts the PROMOTED system message. The
+    // invite-accept path seats through the same `seatUser` pipeline but used to
+    // stop at `seat_invitation_accepted`, so a client that keys its speaker-mode
+    // UI on `viewer_promoted` never switched the invitee to speaker. Emit it here
+    // so every route onto the stage produces the same promotion signal.
+    await this.bus.publish(
+      new ViewerPromotedEvent({
+        roomId,
+        userId: actor.id,
+        seatIndex,
+        actorId: actor.id,
+      }),
+    );
     await this.bus.publish(
       new SeatInvitationResolvedEvent({
         roomId,
