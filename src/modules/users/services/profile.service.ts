@@ -282,6 +282,7 @@ export class ProfileService implements IProfileService {
   async updateProfile(
     userId: string,
     input: {
+      username?: string;
       fullName?: string;
       bio?: string;
       gender?: ProfileView['gender'];
@@ -296,6 +297,27 @@ export class ProfileService implements IProfileService {
 
     // Identity display fields live on `users`; presentational extras on `user_profiles`.
     const identityData: Record<string, unknown> = {};
+    if (input.username !== undefined) {
+      const trimmed = input.username.trim();
+      if (!USERNAME_RE.test(trimmed)) {
+        throw new BusinessException(
+          ERROR_CODES.USERNAME_INVALID,
+          'Username must be 4–20 letters, digits or underscores',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      const existing = await this.users.findByUsername(trimmed);
+      if (existing && existing.id !== userId) {
+        throw new BusinessException(
+          ERROR_CODES.DUPLICATE_USERNAME,
+          'Username is already taken',
+          HttpStatus.CONFLICT,
+        );
+      }
+      identityData['username'] = trimmed;
+      changed.push('username');
+    }
+
     for (const f of ['fullName', 'gender', 'country', 'preferredLanguage'] as const) {
       if (input[f] !== undefined) {
         identityData[f] = input[f];
