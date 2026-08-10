@@ -4,13 +4,17 @@ import { PlatformConfigurationModule } from 'src/modules/platform-configuration/
 import { TreasuryModule } from 'src/modules/treasury/treasury.module';
 import { WalletModule } from 'src/modules/wallet/wallet.module';
 import { AppleIapAdapter } from './adapters/apple-iap.adapter';
+import { GooglePlayApiClient } from './adapters/google-play-api.client';
 import { GooglePlayAdapter } from './adapters/google-play.adapter';
 import { MockGatewayAdapter } from './adapters/mock-gateway.adapter';
 import { PaymentProviderFactory } from './adapters/payment-provider.factory';
 import { RazorpayAdapter } from './adapters/razorpay.adapter';
 import { StripeAdapter } from './adapters/stripe.adapter';
 import { CoinPurchaseController } from './controllers/coin-purchase.controller';
+import { GoogleRtdnController } from './controllers/google-rtdn.controller';
+import { PurchaseReconciliationScheduler } from './schedulers/purchase-reconciliation.scheduler';
 import { CoinPackageService } from './services/coin-package.service';
+import { GoogleRtdnService } from './services/google-rtdn.service';
 import { PurchaseAuditService } from './services/purchase-audit.service';
 import { PurchaseOrderService } from './services/purchase-order.service';
 import { PurchaseQueryService } from './services/purchase-query.service';
@@ -20,8 +24,9 @@ import { ReceiptVerificationService } from './services/receipt-verification.serv
 @Global()
 @Module({
   imports: [PrismaModule, PlatformConfigurationModule, TreasuryModule, WalletModule],
-  controllers: [CoinPurchaseController],
+  controllers: [CoinPurchaseController, GoogleRtdnController],
   providers: [
+    GooglePlayApiClient,
     GooglePlayAdapter,
     AppleIapAdapter,
     RazorpayAdapter,
@@ -34,8 +39,11 @@ import { ReceiptVerificationService } from './services/receipt-verification.serv
     ReceiptVerificationService,
     PurchaseQueryService,
     PurchaseReconciliationService,
+    PurchaseReconciliationScheduler,
+    GoogleRtdnService,
   ],
   exports: [
+    GooglePlayApiClient,
     PaymentProviderFactory,
     PurchaseAuditService,
     CoinPackageService,
@@ -43,6 +51,7 @@ import { ReceiptVerificationService } from './services/receipt-verification.serv
     ReceiptVerificationService,
     PurchaseQueryService,
     PurchaseReconciliationService,
+    GoogleRtdnService,
   ],
 })
 export class PaymentsModule {}

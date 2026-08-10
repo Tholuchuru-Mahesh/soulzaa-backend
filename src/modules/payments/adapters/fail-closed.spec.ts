@@ -1,5 +1,4 @@
 import { ConfigService } from '@nestjs/config';
-import { createSign, generateKeyPairSync } from 'node:crypto';
 import { AppleIapAdapter } from './apple-iap.adapter';
 import { GooglePlayAdapter } from './google-play.adapter';
 import { MockGatewayAdapter } from './mock-gateway.adapter';
@@ -7,7 +6,14 @@ import { MockGatewayAdapter } from './mock-gateway.adapter';
 const configWith = (payments: Record<string, unknown>) =>
   ({ get: () => payments }) as unknown as ConfigService;
 
-const order = { orderNumber: 'ord-1', priceAmount: 100, currency: 'USD' };
+const order = {
+  orderNumber: 'ord-1',
+  priceAmount: 100,
+  currency: 'USD',
+  // GooglePlayAdapter looks up the store product ID from the order's package;
+  // Apple and Mock ignore this field.
+  package: { googleProductId: 'in_gold_100' },
+};
 
 /**
  * The single most important property of a payment adapter: it must never report a
@@ -17,47 +23,66 @@ const order = { orderNumber: 'ord-1', priceAmount: 100, currency: 'USD' };
  */
 describe('payment adapters fail closed', () => {
   describe('GooglePlayAdapter', () => {
-    // A throwaway RSA key stands in for the Play Console licence key.
-    const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
-    const licenseKey = publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
-    const purchase = JSON.stringify({ orderId: 'GPA.1234', productId: 'coins_500' });
-    const sign = (payload: string) =>
-      createSign('RSA-SHA1').update(payload, 'utf8').sign(privateKey, 'base64');
+    const configuredClient = (purchase: Record<string, unknown>) =>
+      ({
+        isConfigured: () => true,
+        getProductPurchase: jest.fn().mockResolvedValue(purchase),
+      }) as any;
 
-    it('verifies a genuinely signed purchase', async () => {
-      const adapter = new GooglePlayAdapter(configWith({ googlePlayLicenseKey: licenseKey }));
+    it('surfaces the fields the verification service asserts on', async () => {
+      const adapter = new GooglePlayAdapter(
+        configuredClient({
+          orderId: 'GPA.1234',
+          productId: 'in_gold_100',
+          purchaseState: 0,
+          consumptionState: 0,
+          obfuscatedExternalAccountId: 'user-1',
+        }),
+      );
 
-      const result = await adapter.verifyReceipt(purchase, sign(purchase), order);
+      const result = await adapter.verifyReceipt('purchase-token', undefined, order);
 
       expect(result.isVerified).toBe(true);
       expect(result.providerTxnId).toBe('GPA.1234');
-    });
-
-    it('rejects a purchase payload that was altered after signing', async () => {
-      const adapter = new GooglePlayAdapter(configWith({ googlePlayLicenseKey: licenseKey }));
-      const signature = sign(purchase);
-
-      const tampered = JSON.stringify({ orderId: 'GPA.9999', productId: 'coins_50000' });
-      const result = await adapter.verifyReceipt(tampered, signature, order);
-
-      expect(result.isVerified).toBe(false);
+      expect(result.productId).toBe('in_gold_100');
+      expect(result.purchaseState).toBe(0);
+      expect(result.consumptionState).toBe(0);
+      expect(result.externalAccountId).toBe('user-1');
     });
 
     it('rejects when unconfigured', async () => {
-      const adapter = new GooglePlayAdapter(configWith({}));
+      const adapter = new GooglePlayAdapter({
+        isConfigured: () => false,
+        getProductPurchase: jest.fn(),
+      } as any);
 
-      const result = await adapter.verifyReceipt(purchase, sign(purchase), order);
+      const result = await adapter.verifyReceipt('purchase-token', undefined, order);
 
       expect(result.isVerified).toBe(false);
       expect(result.errorMessage).toMatch(/not configured/i);
     });
 
-    it('rejects when no signature is supplied', async () => {
-      const adapter = new GooglePlayAdapter(configWith({ googlePlayLicenseKey: licenseKey }));
+    it('rejects when Google returns an error rather than falling through to success', async () => {
+      const adapter = new GooglePlayAdapter({
+        isConfigured: () => true,
+        getProductPurchase: jest.fn().mockRejectedValue(new Error('HTTP 410 token expired')),
+      } as any);
 
-      const result = await adapter.verifyReceipt(purchase, undefined, order);
+      const result = await adapter.verifyReceipt('purchase-token', undefined, order);
 
       expect(result.isVerified).toBe(false);
+      expect(result.errorMessage).toMatch(/410/);
+    });
+
+    it('rejects a response with no orderId', async () => {
+      const adapter = new GooglePlayAdapter(
+        configuredClient({ productId: 'in_gold_100', purchaseState: 0 }),
+      );
+
+      const result = await adapter.verifyReceipt('purchase-token', undefined, order);
+
+      expect(result.isVerified).toBe(false);
+      expect(result.errorMessage).toMatch(/orderId/i);
     });
   });
 

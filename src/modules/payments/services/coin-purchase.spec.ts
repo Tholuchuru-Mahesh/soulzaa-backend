@@ -2,10 +2,12 @@ import { ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PaymentProvider, PurchaseOrderStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { QueueJobRegistry } from 'src/infra/queue/workers/queue-job.registry';
 import { CoinEconomyService } from 'src/modules/treasury/services/coin-economy.service';
 import { FinancialPolicyService } from 'src/modules/treasury/services/financial-policy.service';
 import { WalletTransactionService } from 'src/modules/wallet/services/wallet-transaction.service';
 import { AppleIapAdapter } from '../adapters/apple-iap.adapter';
+import { GooglePlayApiClient } from '../adapters/google-play-api.client';
 import { GooglePlayAdapter } from '../adapters/google-play.adapter';
 import { MockGatewayAdapter } from '../adapters/mock-gateway.adapter';
 import { PaymentProviderFactory } from '../adapters/payment-provider.factory';
@@ -45,6 +47,7 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
     paymentReceipt: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
     purchaseAudit: {
       create: jest.fn(),
@@ -84,12 +87,21 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
         { provide: WalletTransactionService, useValue: mockWalletTxService },
         { provide: CoinEconomyService, useValue: mockCoinEconomyService },
         { provide: FinancialPolicyService, useValue: mockFinancialPolicyService },
+        {
+          provide: GooglePlayApiClient,
+          useValue: {
+            isConfigured: () => false,
+            getProductPurchase: jest.fn(),
+            consumeProductPurchase: jest.fn(),
+          },
+        },
         // The mock gateway is opt-in; these tests are exactly the environment
         // that opts in. Real providers stay unconfigured and so stay fail-closed.
         {
           provide: ConfigService,
           useValue: { get: () => ({ allowMockGateway: true }) },
         },
+        { provide: QueueJobRegistry, useValue: { register: jest.fn() } },
       ],
     }).compile();
 
@@ -123,7 +135,9 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
 
   describe('PurchaseOrderService', () => {
     it('should create a purchase order with unique orderNumber and total coins', async () => {
-      mockPrismaService.purchaseOrder.findUnique.mockResolvedValue(null);
+      // The idempotency lookup is scoped to the caller, so it goes through
+      // findFirst rather than findUnique.
+      mockPrismaService.purchaseOrder.findFirst.mockResolvedValue(null);
       mockPrismaService.coinPackage.findFirst.mockResolvedValue({
         id: 'pkg-1',
         name: '100 Coins',
@@ -157,6 +171,32 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
 
       expect(order.id).toBe('order-1');
       expect(order.totalCoins).toBe('110');
+    });
+
+    it('scopes the idempotency-key lookup to the caller', async () => {
+      // The key is client-supplied. An unscoped lookup returns another user's
+      // order body (orderNumber, coin totals, price) to anyone who guesses one.
+      mockPrismaService.purchaseOrder.findFirst.mockResolvedValue(null);
+      mockPrismaService.coinPackage.findFirst.mockResolvedValue({
+        id: 'pkg-1',
+        name: '100 Coins',
+        coins: BigInt(100),
+        bonusCoins: BigInt(0),
+        priceAmount: 0.99,
+        currency: 'USD',
+        isActive: true,
+      });
+      mockPrismaService.purchaseOrder.create.mockResolvedValue({ id: 'order-2' });
+
+      await orderService.createPurchaseOrder('user-2', {
+        packageId: 'pkg-1',
+        provider: PaymentProvider.GOOGLE_PLAY,
+        idempotencyKey: 'someone-elses-key',
+      });
+
+      expect(mockPrismaService.purchaseOrder.findFirst).toHaveBeenCalledWith({
+        where: { idempotencyKey: 'someone-elses-key', userId: 'user-2' },
+      });
     });
   });
 
@@ -194,10 +234,13 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
         completedAt: new Date(),
       });
 
-      const result = await verificationService.verifyAndFulfillPurchase({
-        orderId: 'order-1',
-        receiptData: 'mock_receipt_data',
-      });
+      const result = await verificationService.verifyAndFulfillPurchase(
+        {
+          orderId: 'order-1',
+          receiptData: 'mock_receipt_data',
+        },
+        'user-1',
+      );
 
       expect(result.isVerified).toBe(true);
       expect(result.status).toBe(PurchaseOrderStatus.COMPLETED);
@@ -206,7 +249,7 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
           userId: 'user-1',
           amount: 100,
         }),
-        undefined,
+        'user-1',
       );
     });
 
@@ -215,6 +258,7 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
 
       mockPrismaService.purchaseOrder.findFirst.mockResolvedValue({
         id: 'order-1',
+        userId: 'user-1',
         status: PurchaseOrderStatus.CREATED,
         provider: PaymentProvider.MOCK_GATEWAY,
         coinsAmount: BigInt(100),
@@ -228,11 +272,14 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
       });
 
       await expect(
-        verificationService.verifyAndFulfillPurchase({
-          orderId: 'order-1',
-          receiptData: 'mock_data',
-          providerTxnId: 'dup_txn_id',
-        }),
+        verificationService.verifyAndFulfillPurchase(
+          {
+            orderId: 'order-1',
+            receiptData: 'mock_data',
+            providerTxnId: 'dup_txn_id',
+          },
+          'user-1',
+        ),
       ).rejects.toThrow(ConflictException);
     });
   });

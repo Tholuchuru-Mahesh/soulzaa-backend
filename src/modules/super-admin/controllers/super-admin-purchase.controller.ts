@@ -100,7 +100,11 @@ export class SuperAdminPurchaseController {
   @Post('orders/retry-verify')
   @HttpCode(HttpStatus.OK)
   async retryVerification(@Body() dto: VerifyPurchaseDto, @CurrentUser('id') actorId: string) {
-    return this.verificationService.verifyAndFulfillPurchase(dto, actorId);
+    // Admin path: a super admin retrying a stuck/failed order routinely acts on an
+    // order that isn't theirs, so this deliberately bypasses the caller-ownership
+    // check enforced for the user-facing verify endpoint. Safe only because this
+    // controller is gated by @RequireRoles('SUPER_ADMIN') + RBAC permission guards.
+    return this.verificationService.verifyAndFulfillPurchaseAsAdmin(dto, actorId);
   }
 
   @ApiOperation({ summary: 'View purchase operational audit log history' })

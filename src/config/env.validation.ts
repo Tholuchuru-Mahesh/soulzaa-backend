@@ -118,9 +118,21 @@ export const envSchema = z.object({
   // Receipt verification credentials. Each is optional: an unconfigured provider
   // REJECTS receipts rather than accepting them, so a missing secret can never
   // become free coins.
-  // Base64 RSA public key from the Play Console — verifies the purchase signature
-  // locally, no network call.
-  GOOGLE_PLAY_LICENSE_KEY: z.string().optional(),
+  // Android applicationId of the published app, e.g. `com.soulzaa.app`. Part of
+  // every Android Publisher API URL.
+  GOOGLE_PLAY_PACKAGE_NAME: z.string().optional(),
+  // Service-account credentials JSON with Android Publisher access, as a single
+  // string. Used to mint the OAuth token for purchase verification.
+  GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  // Expected `aud` when verifying the OIDC token on a Pub/Sub push. Without it
+  // the RTDN webhook rejects every delivery rather than trusting the caller.
+  GOOGLE_RTDN_PUSH_AUDIENCE: z.string().optional(),
+  // Expected `email` claim on that same OIDC token — the Pub/Sub subscription's
+  // service account. `verifyIdToken` alone only proves the token is genuinely
+  // Google-signed for the (guessable) audience URL, not who minted it; without
+  // this the RTDN webhook rejects every delivery rather than trusting any
+  // Google account.
+  GOOGLE_RTDN_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
   // App Store shared secret for the verifyReceipt endpoint.
   APPLE_IAP_SHARED_SECRET: z.string().optional(),
   // Use Apple's sandbox verification host (development builds).

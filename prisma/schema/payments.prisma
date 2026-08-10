@@ -24,20 +24,26 @@ enum PurchaseOrderStatus {
 
 /// Purchasable Soul Coin Package
 model CoinPackage {
-  id          String   @id @default(uuid()) @db.Uuid
-  code        String   @unique
-  name        String
-  coins       BigInt
-  bonusCoins  BigInt   @default(0)
-  priceAmount Decimal  @db.Decimal(12, 2)
-  currency    String   @default("USD")
-  country     String?  @default("GLOBAL")
-  platform    String?  @default("ALL")
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdBy   String?  @db.Uuid
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique
+  name            String
+  coins           BigInt
+  bonusCoins      BigInt   @default(0)
+  priceAmount     Decimal  @db.Decimal(12, 2)
+  currency        String   @default("USD")
+  country         String?  @default("GLOBAL")
+  platform        String?  @default("ALL")
+  /// Google Play in-app product ID. Play requires lowercase `[a-z0-9_.]`, so this
+  /// cannot reuse `code` (`IN_GOLD_100`). Null means the package is not sellable
+  /// on Android and the client hides it.
+  googleProductId String?  @unique
+  /// App Store product ID. Null until the iOS spec lands.
+  appleProductId  String?  @unique
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdBy       String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   orders PurchaseOrder[]
 
@@ -65,6 +71,12 @@ model PurchaseOrder {
   metadata            Json?
   expiresAt           DateTime?
   completedAt         DateTime?
+  /// When Google Play acknowledged the consume for this order's purchase token.
+  /// Null on a COMPLETED Google Play order means the consume never landed: the
+  /// SKU stays owned-and-unconsumed in Play, so the user can never re-buy that
+  /// tier and `restorePurchases()` redelivers it on every launch.
+  /// `PurchaseReconciliationService.retryPendingConsumes` sweeps exactly this set.
+  consumedAt          DateTime?
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
 
@@ -74,6 +86,7 @@ model PurchaseOrder {
   @@index([userId, createdAt])
   @@index([status])
   @@index([provider, providerTxnRef])
+  @@index([status, provider, consumedAt])
   @@map("purchase_orders")
 }
 

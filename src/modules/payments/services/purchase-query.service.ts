@@ -1,14 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { OrderQueryDto } from '../dto/purchase-order.dto';
-import { PurchaseOrderService } from './purchase-order.service';
 
 @Injectable()
 export class PurchaseQueryService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly orderService: PurchaseOrderService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Get purchase history for a specific user
@@ -89,9 +85,31 @@ export class PurchaseQueryService {
   }
 
   /**
-   * Get purchase order details
+   * Order details for a specific user.
+   *
+   * `userId` is required: without it this endpoint returned any order to any
+   * authenticated caller. A foreign order 404s rather than 403s, so the response
+   * does not confirm that the ID exists.
    */
-  async getOrderDetails(orderId: string) {
-    return this.orderService.getOrderById(orderId);
+  async getOrderDetails(orderId: string, userId: string) {
+    const order = await this.prisma.purchaseOrder.findFirst({
+      where: {
+        userId,
+        OR: [{ id: orderId }, { orderNumber: orderId }],
+      },
+      include: { package: true, receipts: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Purchase order '${orderId}' not found`);
+    }
+
+    return {
+      ...order,
+      coinsAmount: order.coinsAmount.toString(),
+      bonusCoinsAmount: order.bonusCoinsAmount.toString(),
+      totalCoins: order.totalCoins.toString(),
+      priceAmount: Number(order.priceAmount),
+    };
   }
 }

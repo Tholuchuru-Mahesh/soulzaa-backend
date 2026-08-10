@@ -17,9 +17,14 @@ export class PurchaseOrderService {
    * Creates a purchase order with unique orderNumber & idempotencyKey
    */
   async createPurchaseOrder(userId: string, dto: CreatePurchaseOrderDto) {
-    // Check idempotencyKey
-    const existingOrder = await this.prisma.purchaseOrder.findUnique({
-      where: { idempotencyKey: dto.idempotencyKey },
+    // Check idempotencyKey — scoped to the caller. The key is client-supplied,
+    // so an unscoped lookup hands back another user's order body (orderNumber,
+    // coin totals, price) to anyone who guesses or replays one. Scoping it means
+    // a collision across users falls through to `create`, where the UNIQUE
+    // constraint on idempotencyKey rejects it, rather than silently returning
+    // someone else's order.
+    const existingOrder = await this.prisma.purchaseOrder.findFirst({
+      where: { idempotencyKey: dto.idempotencyKey, userId },
     });
     if (existingOrder) {
       return this.formatOrderResponse(existingOrder);

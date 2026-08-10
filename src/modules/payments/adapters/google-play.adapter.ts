@@ -1,105 +1,82 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { createPublicKey, createVerify } from 'node:crypto';
+import { GooglePlayApiClient } from './google-play-api.client';
 import { IPaymentProviderAdapter, VerificationResult } from './payment-provider.interface';
 
 /**
- * Google Play purchase verification.
+ * Google Play purchase verification via the Android Publisher API.
  *
- * Play signs the purchase JSON with the app's private key and the client sends
- * the base64 `INAPP_DATA_SIGNATURE` alongside it. Verifying against the app's
- * public licence key (Play Console → Monetisation setup) proves the purchase is
- * genuine without an Android Publisher API round trip, so no OAuth service
- * account sits on the request path.
+ * This replaced an offline signature check against the Play licence key. A
+ * signature proves the purchase JSON came from Google, but says nothing about
+ * whether the purchase was later refunded, is still pending, or has already been
+ * consumed — all of which the API reports. The signature path was removed rather
+ * than kept as a fallback: a fallback that approves purchases the API would
+ * reject is a hole, not a safety net.
+ *
+ * `receiptData` carries the Play purchase token. `signature` is unused here.
  */
 @Injectable()
 export class GooglePlayAdapter implements IPaymentProviderAdapter {
   private readonly logger = new Logger(GooglePlayAdapter.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly apiClient: GooglePlayApiClient) {}
 
   async verifyReceipt(
     receiptData: string,
-    signature?: string,
+    _signature?: string,
     order?: any,
   ): Promise<VerificationResult> {
-    const licenseKey = this.config.get('payments', { infer: true })?.googlePlayLicenseKey;
-    if (!licenseKey) {
+    if (!this.apiClient.isConfigured()) {
       // Fail closed: an unconfigured provider must never approve a purchase.
       return {
         isVerified: false,
         providerTxnId: '',
-        errorMessage: 'Google Play is not configured (GOOGLE_PLAY_LICENSE_KEY missing)',
+        errorMessage:
+          'Google Play is not configured (GOOGLE_PLAY_PACKAGE_NAME or GOOGLE_PLAY_SERVICE_ACCOUNT_JSON missing)',
       };
     }
 
-    if (!signature) {
+    const productId = order?.package?.googleProductId;
+    if (!productId) {
       return {
         isVerified: false,
         providerTxnId: '',
-        errorMessage: 'Missing Google Play purchase signature',
+        errorMessage: 'Order package has no googleProductId; it cannot be sold on Android',
       };
     }
 
-    let verified: boolean;
     try {
-      // The licence key is a bare base64 DER SPKI blob; wrap it as PEM.
-      const pem = [
-        '-----BEGIN PUBLIC KEY-----',
-        ...(licenseKey.match(/.{1,64}/g) ?? []),
-        '-----END PUBLIC KEY-----',
-      ].join('\n');
-      const key = createPublicKey(pem);
+      const purchase = await this.apiClient.getProductPurchase(productId, receiptData);
 
-      // Play signs the exact purchase JSON with SHA1withRSA.
-      verified = createVerify('RSA-SHA1')
-        .update(receiptData, 'utf8')
-        .verify(key, Buffer.from(signature, 'base64'));
+      if (!purchase.orderId) {
+        return {
+          isVerified: false,
+          providerTxnId: '',
+          errorMessage: 'Google Play response is missing orderId',
+        };
+      }
+
+      return {
+        isVerified: true,
+        providerTxnId: purchase.orderId,
+        productId: purchase.productId,
+        purchaseState: purchase.purchaseState,
+        consumptionState: purchase.consumptionState,
+        externalAccountId: purchase.obfuscatedExternalAccountId,
+        amountVerified: order ? Number(order.priceAmount) : undefined,
+        currencyVerified: order?.currency,
+        rawPayload: { provider: 'GOOGLE_PLAY', ...purchase },
+      };
     } catch (err) {
-      this.logger.warn(`Google Play signature check errored: ${(err as Error).message}`);
+      // A network or API failure is not a valid purchase — never fall through.
+      const message = (err as Error).message;
+      this.logger.error(
+        `Google Play verification failed for order '${order?.orderNumber}': ${message}`,
+      );
       return {
         isVerified: false,
         providerTxnId: '',
-        errorMessage: `Google Play signature could not be checked: ${(err as Error).message}`,
+        errorMessage: `Google Play verification failed: ${message}`,
       };
     }
-
-    if (!verified) {
-      this.logger.warn(`Google Play signature mismatch for order '${order?.orderNumber}'`);
-      return {
-        isVerified: false,
-        providerTxnId: '',
-        errorMessage: 'Google Play signature verification failed',
-      };
-    }
-
-    let parsed: { orderId?: string; purchaseToken?: string; productId?: string };
-    try {
-      parsed = JSON.parse(receiptData);
-    } catch {
-      return {
-        isVerified: false,
-        providerTxnId: '',
-        errorMessage: 'Malformed Google Play purchase payload',
-      };
-    }
-
-    // orderId identifies the transaction; purchaseToken is the fallback identity.
-    const providerTxnId = parsed.orderId ?? parsed.purchaseToken;
-    if (!providerTxnId) {
-      return {
-        isVerified: false,
-        providerTxnId: '',
-        errorMessage: 'Google Play payload is missing orderId and purchaseToken',
-      };
-    }
-
-    return {
-      isVerified: true,
-      providerTxnId,
-      amountVerified: order ? Number(order.priceAmount) : undefined,
-      currencyVerified: order?.currency,
-      rawPayload: { provider: 'GOOGLE_PLAY', productId: parsed.productId, orderId: parsed.orderId },
-    };
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   TransactionStatus,
   TransactionType,
@@ -207,6 +207,123 @@ export class WalletTransactionService {
         transactionId: transaction.id,
         idempotencyKey: transaction.idempotencyKey,
         type: 'DEBIT',
+        amount: amountBig.toString(),
+        balanceBefore: balanceBefore.toString(),
+        balanceAfter: balanceAfter.toString(),
+        availableBalance: updatedWallet.availableBalance.toString(),
+        status: transaction.status,
+        createdAt: transaction.createdAt,
+      };
+    });
+  }
+
+  /**
+   * Debits a wallet for a reversal (refunded or charged-back purchase).
+   *
+   * Deliberately skips two checks that `debitWallet` enforces:
+   *
+   * - **Sufficient balance.** The coins are usually already spent by the time a
+   *   refund lands; refusing would leave refunded coins in circulation. The
+   *   balance goes negative and the user cannot spend again until they top up
+   *   past zero, which every other debit path already enforces.
+   * - **Wallet active.** A suspended wallet is precisely the fraud case a
+   *   claw-back targets. Refusing here would make the reversal permanently
+   *   un-appliable.
+   *
+   * Everything else is identical to `debitWallet`: economy-freeze validation,
+   * row-level locking, idempotency, and the immutable ledger append.
+   *
+   * Restricted to the refund path by an explicit reason check below — no
+   * other caller can reach the skipped guards, even by accident, because any
+   * `dto.reason` other than `PURCHASE_REVERSAL` is rejected before anything
+   * is read or mutated.
+   */
+  async reverseWallet(dto: DebitWalletDto, actorId?: string) {
+    if (dto.reason !== WalletTxnReason.PURCHASE_REVERSAL) {
+      throw new BadRequestException(
+        'reverseWallet is restricted to PURCHASE_REVERSAL; use debitWallet for every other debit',
+      );
+    }
+    // Narrowed to a `const` so the literal type survives capture inside the
+    // `$transaction` closure below (TS does not carry parameter narrowing
+    // across closure boundaries).
+    const reason = dto.reason;
+
+    await this.validationService.validateEconomyStatus();
+
+    const amountBig = BigInt(dto.amount);
+    this.validationService.validatePositiveAmount(amountBig);
+
+    const existingTx = await this.prisma.walletTransaction.findUnique({
+      where: { idempotencyKey: dto.idempotencyKey },
+    });
+    if (existingTx) {
+      return this.formatTransactionResponse(existingTx);
+    }
+
+    const wallet = await this.walletService.getOrCreateWallet(dto.userId);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
+      const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
+      if (!freshWallet) throw new NotFoundException(`Wallet not found`);
+
+      const balanceBefore = freshWallet.availableBalance;
+      const balanceAfter = balanceBefore - amountBig;
+
+      const transaction = await tx.walletTransaction.create({
+        data: {
+          transactionType: TransactionType.WITHDRAWAL,
+          status: TransactionStatus.COMPLETED,
+          sourceWalletId: wallet.id,
+          currency: dto.currency ?? WalletCurrency.GOLD,
+          amount: amountBig,
+          idempotencyKey: dto.idempotencyKey,
+          referenceType: dto.referenceType,
+          referenceId: dto.referenceId,
+          createdBy: actorId,
+        },
+      });
+
+      const updatedWallet = await tx.wallet.update({
+        where: { id: wallet.id },
+        data: {
+          availableBalance: { decrement: amountBig },
+          totalSpent: { increment: amountBig },
+          goldBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
+          freeBalance: dto.currency === WalletCurrency.FREE ? { decrement: amountBig } : undefined,
+          earningsBalance:
+            dto.currency === WalletCurrency.EARNINGS ? { decrement: amountBig } : undefined,
+          version: { increment: 1 },
+        },
+      });
+
+      await this.ledgerService.appendLedgerEntry(tx, {
+        transactionId: transaction.id,
+        walletId: wallet.id,
+        type: WalletEntryType.DEBIT,
+        currency: dto.currency ?? WalletCurrency.GOLD,
+        reason,
+        amount: amountBig,
+        balanceBefore,
+        balanceAfter,
+        referenceType: dto.referenceType,
+        referenceId: dto.referenceId,
+        description: dto.description ?? 'Purchase reversed',
+        actorId,
+      });
+
+      await this.auditService.logAudit(
+        wallet.id,
+        'TRANSACTION_CREATED',
+        { transactionId: transaction.id, type: 'REVERSAL', amount: amountBig.toString() },
+        actorId,
+      );
+
+      return {
+        transactionId: transaction.id,
+        idempotencyKey: transaction.idempotencyKey,
+        type: 'DEBIT' as const,
         amount: amountBig.toString(),
         balanceBefore: balanceBefore.toString(),
         balanceAfter: balanceAfter.toString(),

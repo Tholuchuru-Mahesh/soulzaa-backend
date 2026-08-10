@@ -197,7 +197,10 @@ export const pushProvidersConfig = registerAs('pushProviders', () => ({
 }));
 
 export const paymentsConfig = registerAs('payments', () => ({
-  googlePlayLicenseKey: env().GOOGLE_PLAY_LICENSE_KEY,
+  googlePlayPackageName: env().GOOGLE_PLAY_PACKAGE_NAME,
+  googlePlayServiceAccountJson: env().GOOGLE_PLAY_SERVICE_ACCOUNT_JSON,
+  googleRtdnPushAudience: env().GOOGLE_RTDN_PUSH_AUDIENCE,
+  googleRtdnServiceAccountEmail: env().GOOGLE_RTDN_SERVICE_ACCOUNT_EMAIL,
   appleSharedSecret: env().APPLE_IAP_SHARED_SECRET,
   appleUseSandbox: env().APPLE_IAP_USE_SANDBOX,
   razorpayKeySecret: env().RAZORPAY_KEY_SECRET,

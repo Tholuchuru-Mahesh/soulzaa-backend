@@ -83,6 +83,9 @@ enum WalletTxnReason {
   GIFT_REFUND
   ADMIN_CREDIT
   ADMIN_DEBIT
+  /// Coins reversed because Play voided the purchase that created them. Kept
+  /// distinct from ADMIN_DEBIT so refund losses are separable in reporting.
+  PURCHASE_REVERSAL
   TREASURE_BOX
   GAME_STAKE
   GAME_PAYOUT

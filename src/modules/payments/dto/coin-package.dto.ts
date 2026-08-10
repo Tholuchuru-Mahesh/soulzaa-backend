@@ -1,6 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Matches,
+  Min,
+} from 'class-validator';
 
 export class CreateCoinPackageDto {
   @ApiProperty({ description: 'Package unique code (e.g. PKG_100_COINS)' })
@@ -52,6 +61,17 @@ export class CreateCoinPackageDto {
   @IsOptional()
   platform?: string = 'ALL';
 
+  @ApiPropertyOptional({
+    description: 'Google Play product ID (lowercase a-z, 0-9, _ and . only)',
+    example: 'in_gold_100',
+  })
+  @IsString()
+  @Matches(/^[a-z0-9][a-z0-9_.]*$/, {
+    message: 'googleProductId must be lowercase and contain only a-z, 0-9, _ and .',
+  })
+  @IsOptional()
+  googleProductId?: string;
+
   @ApiPropertyOptional({ description: 'Active status toggle', default: true })
   @IsBoolean()
   @IsOptional()
@@ -90,6 +110,17 @@ export class UpdateCoinPackageDto {
   @Min(0.01)
   @IsOptional()
   priceAmount?: number;
+
+  @ApiPropertyOptional({
+    description: 'Google Play product ID (lowercase a-z, 0-9, _ and . only)',
+    example: 'in_gold_100',
+  })
+  @IsString()
+  @Matches(/^[a-z0-9][a-z0-9_.]*$/, {
+    message: 'googleProductId must be lowercase and contain only a-z, 0-9, _ and .',
+  })
+  @IsOptional()
+  googleProductId?: string;
 
   @ApiPropertyOptional({ description: 'Active status toggle' })
   @IsBoolean()

@@ -101,7 +101,7 @@ export class CoinPurchaseController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('orders/:id')
-  async getOrderDetails(@Param('id') id: string) {
-    return this.queryService.getOrderDetails(id);
+  async getOrderDetails(@Param('id') id: string, @CurrentUser('id') userId: string) {
+    return this.queryService.getOrderDetails(id, userId);
   }
 }
