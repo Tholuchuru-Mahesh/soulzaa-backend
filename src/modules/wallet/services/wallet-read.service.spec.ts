@@ -20,7 +20,7 @@ describe('WalletReadService', () => {
         { reason: WalletTxnReason.PK_REWARD, total: 40n },
       ]);
     const wallet = {
-      getBalance: jest.fn().mockResolvedValue({ gold: 500, free: 0, earnings: 100 }),
+      getBalance: jest.fn().mockResolvedValue({ gold: 500, game: 0, diamond: 100 }),
     };
     const svc = new WalletReadService(repo as never, wallet as never);
 
@@ -33,7 +33,7 @@ describe('WalletReadService', () => {
       1,
       'u1',
       [WalletTxnReason.GIFT_RECEIVE],
-      WalletCurrency.EARNINGS,
+      WalletCurrency.DIAMOND,
     );
     expect(repo.sumByReason).toHaveBeenNthCalledWith(
       2,

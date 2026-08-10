@@ -1,5 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import {
+  PLATFORM_CONFIG,
+  type IPlatformConfiguration,
+} from 'src/modules/platform-configuration/interfaces/platform-configuration.interface';
 import {
   CreateCoinPackageDto,
   PackageQueryDto,
@@ -25,7 +29,32 @@ export class CoinPackageService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: PurchaseAuditService,
+    @Inject(PLATFORM_CONFIG) private readonly platformConfig: IPlatformConfiguration,
   ) {}
+
+  /**
+   * Tax percentage applied to a storefront, from Super Admin configuration.
+   *
+   * Server-side because tax is an economy value (PRD §12, §36) and a rate baked
+   * into a shipped app cannot be corrected without a release — which is exactly
+   * where it used to live, as a `const _gstRate = 0.18` in the Flutter buy
+   * screen alongside a hardcoded "GST only applies to INR" rule.
+   *
+   * Resolution order is country-specific, then platform-wide, then none. The
+   * fallback is 0, not a guessed 18: showing a tax the platform never
+   * configured overstates what the user is about to be charged, and a wrong
+   * total on the payment screen reads as a bait-and-switch.
+   */
+  private async resolveTaxRatePercent(country?: string | null): Promise<number> {
+    const keys = country ? [`payments.tax_rate_percent.${country.toUpperCase()}`] : [];
+    keys.push('payments.tax_rate_percent');
+
+    for (const key of keys) {
+      const value = await this.platformConfig.get<unknown>(key);
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+    }
+    return 0;
+  }
 
   /**
    * Resolves the storefront country for a caller from their normalised location.
@@ -83,11 +112,24 @@ export class CoinPackageService {
       orderBy: [{ sortOrder: 'asc' }, { coins: 'asc' }],
     });
 
+    // Resolved once per distinct storefront rather than per row: the catalogue
+    // is small, but every lookup is a cache/DB round trip.
+    const taxByCountry = new Map<string, number>();
+    for (const p of packages) {
+      const key = (p.country ?? '').toUpperCase();
+      if (!taxByCountry.has(key)) {
+        taxByCountry.set(key, await this.resolveTaxRatePercent(p.country));
+      }
+    }
+
     return packages.map((p) => ({
       ...p,
       coins: p.coins.toString(),
       bonusCoins: p.bonusCoins.toString(),
       priceAmount: Number(p.priceAmount),
+      /// Percentage (e.g. 18 for 18%), not a fraction. The client renders this
+      /// as-is and must not apply a rate of its own.
+      taxRatePercent: taxByCountry.get((p.country ?? '').toUpperCase()) ?? 0,
     }));
   }
 

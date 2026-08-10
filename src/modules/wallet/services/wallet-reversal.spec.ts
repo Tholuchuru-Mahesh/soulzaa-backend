@@ -13,8 +13,8 @@ describe('WalletTransactionService.reverseWallet', () => {
     status: WalletStatus.ACTIVE,
     availableBalance: 10n,
     goldBalance: 10n,
-    freeBalance: 0n,
-    earningsBalance: 0n,
+    gameBalance: 0n,
+    diamondBalance: 0n,
   };
 
   const build = (wallet: any = WALLET) => {

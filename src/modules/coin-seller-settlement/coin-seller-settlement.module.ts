@@ -3,6 +3,7 @@ import { PlatformConfigurationModule } from 'src/modules/platform-configuration/
 import { TreasuryModule } from 'src/modules/treasury/treasury.module';
 import { WalletModule } from 'src/modules/wallet/wallet.module';
 import { CoinSellerSettlementController } from './controllers/coin-seller-settlement.controller';
+import { CoinSellerInventoryController } from './controllers/coin-seller-inventory.controller';
 import {
   CoinSellerAuditService,
   CoinSellerCommissionService,
@@ -14,17 +15,21 @@ import {
   CoinSellerSettlementService,
   CoinSellerStatisticsService,
   CoinSellerValidationService,
+  CoinSellerInventoryService,
+  CoinSellerUserSaleService,
 } from './services';
 
 @Global()
 @Module({
   imports: [PlatformConfigurationModule, TreasuryModule, WalletModule],
-  controllers: [CoinSellerSettlementController],
+  controllers: [CoinSellerSettlementController, CoinSellerInventoryController],
   providers: [
     CoinSellerConfigurationService,
     CoinSellerCommissionService,
     CoinSellerRelationshipService,
     CoinSellerValidationService,
+    CoinSellerInventoryService,
+    CoinSellerUserSaleService,
     CoinSellerSettlementService,
     CoinSellerHistoryService,
     CoinSellerAuditService,
@@ -37,6 +42,8 @@ import {
     CoinSellerCommissionService,
     CoinSellerRelationshipService,
     CoinSellerValidationService,
+    CoinSellerInventoryService,
+    CoinSellerUserSaleService,
     CoinSellerSettlementService,
     CoinSellerHistoryService,
     CoinSellerAuditService,

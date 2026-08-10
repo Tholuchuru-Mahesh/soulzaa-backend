@@ -827,6 +827,30 @@ export const DEFAULT_PERMISSIONS = [
     displayName: 'Manage Seller Commission Configuration',
     description: 'Can configure coin seller commission percentages and limits',
   },
+  {
+    code: 'coin_seller.inventory.purchase',
+    module: 'coin_seller',
+    action: 'manage',
+    category: 'COIN_SELLER',
+    displayName: 'Purchase Inventory',
+    description: 'Can purchase coin inventory from the platform',
+  },
+  {
+    code: 'coin_seller.inventory.sell',
+    module: 'coin_seller',
+    action: 'manage',
+    category: 'COIN_SELLER',
+    displayName: 'Sell Inventory',
+    description: 'Can sell coin inventory to users',
+  },
+  {
+    code: 'coin_seller.inventory.approve',
+    module: 'coin_seller',
+    action: 'manage',
+    category: 'COIN_SELLER',
+    displayName: 'Approve Inventory Purchase',
+    description: 'Can approve coin seller inventory purchase orders',
+  },
 
   // Withdrawal Engine (Phase 10)
   {
@@ -1586,6 +1610,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'coin_seller.settlement.view',
     'coin_seller.settlement.history.view',
     'coin_seller.settlement.audit.view',
+    'coin_seller.settlement.configuration.manage',
+    'coin_seller.inventory.approve',
     // Room & stream moderation
     'room.create',
     'room.update',
@@ -1804,6 +1830,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'mobile.partner.view',
     'coin_seller.settlement.view',
     'coin_seller.settlement.history.view',
+    'coin_seller.inventory.purchase',
+    'coin_seller.inventory.sell',
   ],
 
   /** Creator. Runs rooms and streams; earnings are read through self-scoped routes. */

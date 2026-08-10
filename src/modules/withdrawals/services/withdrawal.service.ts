@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { WalletCurrency } from '@prisma/client';
+import { WalletCurrency, WalletTxnReason, WithdrawalStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import {
@@ -52,9 +52,9 @@ export class WithdrawalService {
       // 2. Reserve / Hold funds by debiting EARNINGS currency via IWalletService
       const holdRes = await this.walletService.debit({
         userId,
-        currency: WalletCurrency.EARNINGS,
+        currency: WalletCurrency.DIAMOND,
         amount: Number(amountCoins),
-        reason: 'WITHDRAWAL' as any,
+        reason: WalletTxnReason.DIAMOND_WITHDRAWAL_RESERVE,
         idempotencyKey: `withdrawal-hold:${reqId}`,
         referenceType: 'withdrawal_request',
         referenceId: reqId,
@@ -72,7 +72,7 @@ export class WithdrawalService {
           netPayoutAmountCoins,
           payoutMethod,
           payoutDetails: payoutDetails ? JSON.parse(JSON.stringify(payoutDetails)) : undefined,
-          status: 'PENDING',
+          status: WithdrawalStatus.PENDING,
           holdTxnId,
         },
       });
@@ -83,7 +83,7 @@ export class WithdrawalService {
           requestId: request.id,
           userId,
           fromStatus: 'NONE',
-          toStatus: 'PENDING',
+          toStatus: WithdrawalStatus.PENDING,
           actorId: userId,
         },
       });

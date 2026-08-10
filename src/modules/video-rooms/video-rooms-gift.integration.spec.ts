@@ -349,30 +349,30 @@ describe('VR-10 gift engine (integration)', () => {
     harness = build();
   });
 
-  it('single-receiver send: one debit, one 100% EARNINGS credit, one ledger row, one job', async () => {
+  it('single-receiver send: one debit, one 100% DIAMOND credit, one ledger row, one job', async () => {
     const view = await send(VideoRoomGiftTarget.SINGLE, { receiverId: 'u1' });
 
     expect(harness.walletMoves.filter((m) => m.kind === 'debit')).toHaveLength(1);
     // Soulzaa settlement rule 2: a received gift always credits the receiver
-    // EARNINGS with 100% of gift value, inside the send transaction. The
+    // DIAMOND with 100% of gift value, inside the send transaction. The
     // revenue engine records that movement; it does not perform it.
     const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
     expect(credits).toHaveLength(1);
-    expect(credits[0]).toMatchObject({ currency: WalletCurrency.EARNINGS, amount: 100 });
+    expect(credits[0]).toMatchObject({ currency: WalletCurrency.DIAMOND, amount: 100 });
     expect(harness.ledger).toHaveLength(1);
     expect(harness.enqueued).toHaveLength(1);
     expect(view.transactions).toHaveLength(1);
   });
 
-  it('SEAT_ALL debits once for N, credits each receiver (100% EARNINGS), writes N rows sharing a batchId', async () => {
+  it('SEAT_ALL debits once for N, credits each receiver (100% DIAMOND), writes N rows sharing a batchId', async () => {
     const view = await send();
 
     const debits = harness.walletMoves.filter((m) => m.kind === 'debit');
     const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
     expect(debits).toHaveLength(1);
     expect(debits[0].amount).toBe(200); // 100 x 1 x 2 receivers
-    expect(credits).toHaveLength(2); // one 100% EARNINGS credit per receiver
-    expect(credits.every((c) => c.currency === WalletCurrency.EARNINGS)).toBe(true);
+    expect(credits).toHaveLength(2); // one 100% DIAMOND credit per receiver
+    expect(credits.every((c) => c.currency === WalletCurrency.DIAMOND)).toBe(true);
 
     expect(harness.ledger).toHaveLength(2);
     const batchIds = harness.ledger.map((r) => (r.metadata as { batchId: string }).batchId);
@@ -380,14 +380,14 @@ describe('VR-10 gift engine (integration)', () => {
     expect(view.totalCoinValue).toBe(200);
   });
 
-  it('credits 100% EARNINGS for video-room gifts to each receiver wallet', async () => {
+  it('credits 100% DIAMOND for video-room gifts to each receiver wallet', async () => {
     await send();
     const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
     expect(credits).toHaveLength(2);
-    // 100% of the per-receiver gift value, in EARNINGS — not a share of it.
+    // 100% of the per-receiver gift value, in DIAMOND — not a share of it.
     expect(credits).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ currency: WalletCurrency.EARNINGS, amount: 100 }),
+        expect.objectContaining({ currency: WalletCurrency.DIAMOND, amount: 100 }),
       ]),
     );
   });
@@ -395,7 +395,7 @@ describe('VR-10 gift engine (integration)', () => {
   it('credits no GOLD cashback when the gift value is at or below the threshold', async () => {
     await send();
     // Settlement rule 3: GOLD cashback is credited only above 1,000 coins.
-    // This gift is 100, so EARNINGS moves but the available balance does not.
+    // This gift is 100, so DIAMOND moves but the available balance does not.
     const gold = harness.walletMoves.filter(
       (m) => m.kind === 'credit' && m.currency === WalletCurrency.GOLD,
     );
@@ -404,7 +404,7 @@ describe('VR-10 gift engine (integration)', () => {
 
   it('records the full gift value as creator earnings on the ledger row', async () => {
     await send();
-    // The handler economics (100% EARNINGS) reach the ledger, and the wallet
+    // The handler economics (100% DIAMOND) reach the ledger, and the wallet
     // movement that backs them happened once per receiver.
     expect(harness.ledger[0].creatorEarnings).toBe(100n);
     expect(harness.ledger[0].totalCoinValue).toBe(100n);

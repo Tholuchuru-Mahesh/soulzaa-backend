@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PaymentProvider, PurchaseOrderStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { QueueJobRegistry } from 'src/infra/queue/workers/queue-job.registry';
+import { PLATFORM_CONFIG } from 'src/modules/platform-configuration/interfaces/platform-configuration.interface';
 import { CoinEconomyService } from 'src/modules/treasury/services/coin-economy.service';
 import { FinancialPolicyService } from 'src/modules/treasury/services/financial-policy.service';
 import { WalletTransactionService } from 'src/modules/wallet/services/wallet-transaction.service';
@@ -79,6 +80,7 @@ describe('Phase 4: Coin Purchase & Payment Infrastructure', () => {
         PaymentProviderFactory,
         PurchaseAuditService,
         CoinPackageService,
+        { provide: PLATFORM_CONFIG, useValue: { get: jest.fn().mockResolvedValue(undefined) } },
         PurchaseOrderService,
         ReceiptVerificationService,
         PurchaseQueryService,

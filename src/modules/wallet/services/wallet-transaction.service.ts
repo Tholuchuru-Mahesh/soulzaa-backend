@@ -73,11 +73,11 @@ export class WalletTransactionService {
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },
         data: {
-          availableBalance: { increment: amountBig },
+          availableBalance: dto.currency === WalletCurrency.GOLD ? { increment: amountBig } : undefined,
           goldBalance: dto.currency === WalletCurrency.GOLD ? { increment: amountBig } : undefined,
-          freeBalance: dto.currency === WalletCurrency.FREE ? { increment: amountBig } : undefined,
-          earningsBalance:
-            dto.currency === WalletCurrency.EARNINGS ? { increment: amountBig } : undefined,
+          gameBalance: dto.currency === WalletCurrency.GAME ? { increment: amountBig } : undefined,
+          diamondBalance:
+            dto.currency === WalletCurrency.DIAMOND ? { increment: amountBig } : undefined,
           version: { increment: 1 },
         },
       });
@@ -170,12 +170,12 @@ export class WalletTransactionService {
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },
         data: {
-          availableBalance: { decrement: amountBig },
+          availableBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
           totalSpent: { increment: amountBig },
           goldBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
-          freeBalance: dto.currency === WalletCurrency.FREE ? { decrement: amountBig } : undefined,
-          earningsBalance:
-            dto.currency === WalletCurrency.EARNINGS ? { decrement: amountBig } : undefined,
+          gameBalance: dto.currency === WalletCurrency.GAME ? { decrement: amountBig } : undefined,
+          diamondBalance:
+            dto.currency === WalletCurrency.DIAMOND ? { decrement: amountBig } : undefined,
           version: { increment: 1 },
         },
       });
@@ -288,12 +288,12 @@ export class WalletTransactionService {
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },
         data: {
-          availableBalance: { decrement: amountBig },
+          availableBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
           totalSpent: { increment: amountBig },
           goldBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
-          freeBalance: dto.currency === WalletCurrency.FREE ? { decrement: amountBig } : undefined,
-          earningsBalance:
-            dto.currency === WalletCurrency.EARNINGS ? { decrement: amountBig } : undefined,
+          gameBalance: dto.currency === WalletCurrency.GAME ? { decrement: amountBig } : undefined,
+          diamondBalance:
+            dto.currency === WalletCurrency.DIAMOND ? { decrement: amountBig } : undefined,
           version: { increment: 1 },
         },
       });

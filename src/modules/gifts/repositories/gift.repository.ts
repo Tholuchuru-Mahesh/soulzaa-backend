@@ -107,6 +107,9 @@ export class GiftRepository {
       unitCoinValue: number;
       totalCoinValue: bigint;
       creatorEarnings: bigint;
+      cashbackAmount: bigint;
+      appliedEarningsPct: number;
+      appliedCashbackPct: number;
       luckyMultiplier: number;
       isLuckyWin: boolean;
       senderExp: number;

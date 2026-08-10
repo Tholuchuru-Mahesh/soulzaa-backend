@@ -3,10 +3,23 @@
 // Entities: Wallet, LedgerEntry, WalletTransaction, WalletReservation, WalletAudit
 // ============================================================
 
-/// Currencies held in a wallet. GOLD is purchased with real money; FREE is earned; EARNINGS is creator diamonds.
+/// Currencies held in a wallet.
+/// Three-currency model (PRD §2):
+///   GOLD    — premium spending currency (purchased with real money)
+///   DIAMOND — creator earnings currency (received via gifts; withdrawal-eligible)
+///   GAME    — free/casual-game currency (earned through tasks, login, events; non-withdrawable)
+///
+/// Legacy aliases kept for backward-compatibility with existing data rows:
+///   FREE     → deprecated alias for GAME
+///   EARNINGS → deprecated alias for DIAMOND
+/// Do NOT use FREE or EARNINGS in new code; use GAME / DIAMOND instead.
 enum WalletCurrency {
   GOLD
+  DIAMOND
+  GAME
+  /// @deprecated — use GAME instead. Kept so existing ledger rows remain valid.
   FREE
+  /// @deprecated — use DIAMOND instead. Kept so existing ledger rows remain valid.
   EARNINGS
 }
 
@@ -71,20 +84,27 @@ enum TransactionType {
   GAME_REWARD
 }
 
-/// Why a ledger entry was written (drives reporting/reconciliation)
+/// Why a ledger entry was written (drives reporting/reconciliation).
+/// Three-currency groupings:
+///   GOLD_*    — movements of Gold Coin (premium, purchasable)
+///   DIAMOND_* — movements of Diamond (creator earnings, withdrawal-eligible)
+///   GAME_*    — movements of Game Coin (free casual-game coin)
 enum WalletTxnReason {
+  // ── Gold Coin (GOLD) ─────────────────────────────────────────
   RECHARGE
+  /// Gold Coins credited by Coin Seller to user (PRD §19).
+  COIN_SELLER_CREDIT
+  COIN_SELLER_COMMISSION
   GIFT_SEND
   GIFT_RECEIVE
+  /// Gold Coin cashback earned by creator on gift receipt (PRD §5).
+  GIFT_CASHBACK
   HOST_EARNING
   AGENCY_COMMISSION
-  COIN_SELLER_COMMISSION
-  WITHDRAWAL
   GIFT_REFUND
   ADMIN_CREDIT
   ADMIN_DEBIT
-  /// Coins reversed because Play voided the purchase that created them. Kept
-  /// distinct from ADMIN_DEBIT so refund losses are separable in reporting.
+  /// Coins reversed because Play voided the purchase that created them.
   PURCHASE_REVERSAL
   TREASURE_BOX
   GAME_STAKE
@@ -109,17 +129,77 @@ enum WalletTxnReason {
   RESERVATION_HOLD
   RESERVATION_RELEASE
   RESERVATION_CONSUME
+
+  // ── Diamond (DIAMOND) ────────────────────────────────────────
+  /// Diamond earned by creator from a gift settlement (PRD §4).
+  DIAMOND_GIFT_EARNING
+  /// Diamond reserved when a withdrawal request is submitted (PRD §21).
+  DIAMOND_WITHDRAWAL_RESERVE
+  /// Diamond settled after withdrawal is completed (PRD §21).
+  DIAMOND_WITHDRAWAL_COMPLETED
+  /// Diamond returned if withdrawal is rejected or cancelled (PRD §21).
+  DIAMOND_WITHDRAWAL_REVERSED
+  /// Manual Diamond adjustment by Super Admin / Admin.
+  DIAMOND_ADJUSTMENT
+
+  // ── Game Coin (GAME) ─────────────────────────────────────────
+  /// Game Coins earned via daily login reward (PRD §6).
+  GAME_DAILY_LOGIN
+  /// Game Coins earned via daily task completion (PRD §6).
+  GAME_TASK_REWARD
+  /// Game Coins earned via in-platform event (PRD §6).
+  GAME_EVENT_REWARD
+  /// Game Coins earned via lucky spin (PRD §6).
+  GAME_SPIN_REWARD
+  /// Game Coins earned via achievement milestone (PRD §6).
+  GAME_ACHIEVEMENT_REWARD
+  /// Game Coins earned via promotional campaign (PRD §6).
+  GAME_PROMOTIONAL_REWARD
+  /// Game Coins staked as entry fee for a casual game.
+  GAME_COIN_STAKE
+  /// Game Coins paid out as win from a casual game.
+  GAME_COIN_WIN
+  /// Game Coins refunded when a casual game is cancelled.
+  GAME_COIN_REFUND
+
+  // ── Legacy (do not use in new code) ──────────────────────────
+  WITHDRAWAL
 }
 
 /// Wallet Account Entity. Balances are BigInt to scale to platform-wide lifetime volumes.
+///
+/// Three-currency model (PRD §7):
+///   goldBalance    — Gold Coin balance (premium, purchased with real money)
+///   diamondBalance — Diamond balance   (creator earnings; withdrawal-eligible)
+///   gameBalance    — Game Coin balance  (casual-game free coins; non-withdrawable)
+///
+/// Legacy columns kept for row-level backward compatibility:
+///   freeBalance     → deprecated alias for gameBalance
+///   earningsBalance → deprecated alias for diamondBalance
+///
+/// IMPORTANT: availableBalance is GOLD-only. It must never aggregate across currencies.
+/// Each currency's spendable quantity is its own sub-balance field (goldBalance /
+/// diamondBalance / gameBalance). Cross-currency aggregation is explicitly forbidden
+/// by the PRD. Do not re-introduce the gold+free sum that was here previously.
 model Wallet {
   id                      String       @id @default(uuid()) @db.Uuid
   userId                  String       @unique @db.Uuid
   type                    WalletType   @default(USER_WALLET)
   status                  WalletStatus @default(ACTIVE)
+
+  // ── Canonical three-currency balances ───────────────────────
   goldBalance             BigInt       @default(0)
+  diamondBalance          BigInt       @default(0)
+  gameBalance             BigInt       @default(0)
+
+  // ── Legacy deprecated columns (do NOT use in new code) ──────
+  /// @deprecated use gameBalance
   freeBalance             BigInt       @default(0)
+  /// @deprecated use diamondBalance
   earningsBalance         BigInt       @default(0)
+
+  // ── Operational fields ───────────────────────────────────────
+  /// Gold-only available balance (NOT an aggregate across currencies).
   availableBalance        BigInt       @default(0)
   reservedBalance         BigInt       @default(0)
   pendingBalance          BigInt       @default(0)

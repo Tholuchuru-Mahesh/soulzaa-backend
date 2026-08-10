@@ -27,7 +27,7 @@ export class WalletReadService {
 
   async getEarnings(userId: string): Promise<HostEarningsDto> {
     const [giftSums, goldSums, balances] = await Promise.all([
-      this.repo.sumByReason(userId, [WalletTxnReason.GIFT_RECEIVE], WalletCurrency.EARNINGS),
+      this.repo.sumByReason(userId, [WalletTxnReason.GIFT_RECEIVE], WalletCurrency.DIAMOND),
       this.repo.sumByReason(
         userId,
         [WalletTxnReason.TREASURE_BOX, WalletTxnReason.PK_REWARD],
@@ -45,8 +45,8 @@ export class WalletReadService {
     return {
       // totalEarned is a gross lifetime income tally across sources (nominal coins).
       totalEarned: gifts + treasure + pk,
-      // Only the EARNINGS wallet (gift diamonds) is withdrawable / settlement-ready.
-      settlementReady: balances.earnings,
+      // Only the DIAMOND wallet (gift diamonds) is withdrawable / settlement-ready.
+      settlementReady: balances.diamond,
       bySource: { gifts, treasure, pk },
     };
   }

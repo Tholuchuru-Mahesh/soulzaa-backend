@@ -171,6 +171,28 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultSettingSeed[] = [
     description: 'Gift value must exceed this many coins before cashback is credited',
   },
 
+  // Storefront tax. Resolved per country first, then this platform-wide
+  // fallback, then none — see CoinPackageService.resolveTaxRatePercent. Lives
+  // here rather than in the app because a rate baked into a shipped binary
+  // cannot be corrected without a release.
+  {
+    key: 'payments.tax_rate_percent.IN',
+    category: 'ECONOMY',
+    value: '18',
+    valueType: SettingValueType.NUMBER,
+    defaultValue: '18',
+    description: 'GST percent applied to Indian coin package prices (18% on digital services)',
+  },
+  {
+    key: 'payments.tax_rate_percent',
+    category: 'ECONOMY',
+    value: '0',
+    valueType: SettingValueType.NUMBER,
+    defaultValue: '0',
+    description:
+      'Fallback tax percent for storefronts with no country-specific rate. Zero means no tax line is shown at all.',
+  },
+
   // Host revenue distribution
   {
     key: 'host.revenue_percentage',

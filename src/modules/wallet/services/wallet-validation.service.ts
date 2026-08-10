@@ -57,10 +57,10 @@ export class WalletValidationService {
     const balance =
       currency === WalletCurrency.GOLD
         ? wallet.goldBalance
-        : currency === WalletCurrency.FREE
-          ? wallet.freeBalance
-          : currency === WalletCurrency.EARNINGS
-            ? wallet.earningsBalance
+        : currency === WalletCurrency.GAME
+          ? wallet.gameBalance
+          : currency === WalletCurrency.DIAMOND
+            ? wallet.diamondBalance
             : wallet.availableBalance;
     if (balance < requiredAmount) {
       const label = currency ? `${currency} ` : 'available ';

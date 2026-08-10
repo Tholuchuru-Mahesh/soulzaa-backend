@@ -27,9 +27,39 @@ export interface ApplyMovementInput {
 
 const BALANCE_FIELD: Record<WalletCurrency, keyof Wallet> = {
   GOLD: 'goldBalance',
+  DIAMOND: 'diamondBalance',
+  GAME: 'gameBalance',
   FREE: 'freeBalance',
   EARNINGS: 'earningsBalance',
 };
+
+/**
+ * Deprecated enum members that name the same real currency as their canonical
+ * partner. The three-currency migration renamed FREE→GAME and
+ * EARNINGS→DIAMOND but kept the old members so historical ledger rows stay
+ * valid (PRD §47, "historical records must never be destroyed").
+ */
+const CURRENCY_ALIASES: Partial<Record<WalletCurrency, WalletCurrency[]>> = {
+  GAME: [WalletCurrency.GAME, WalletCurrency.FREE],
+  FREE: [WalletCurrency.GAME, WalletCurrency.FREE],
+  DIAMOND: [WalletCurrency.DIAMOND, WalletCurrency.EARNINGS],
+  EARNINGS: [WalletCurrency.DIAMOND, WalletCurrency.EARNINGS],
+};
+
+/**
+ * Turns a requested currency into a ledger filter that also matches its legacy
+ * alias. Reading a single currency name as an equality filter would hide every
+ * pre-migration row: a user who earned diamonds before the rename would see an
+ * empty earnings history, and their totals would under-report.
+ *
+ * GOLD has no alias, so it stays a plain equality filter.
+ */
+function currencyFilter(
+  currency: WalletCurrency,
+): WalletCurrency | { in: WalletCurrency[] } {
+  const aliases = CURRENCY_ALIASES[currency];
+  return aliases ? { in: aliases } : currency;
+}
 
 @Injectable()
 export class WalletRepository {
@@ -95,7 +125,7 @@ export class WalletRepository {
       by: ['reason'],
       where: {
         walletId: wallet.id,
-        currency,
+        currency: currencyFilter(currency),
         type: WalletEntryType.CREDIT,
         reason: { in: reasons },
       },
@@ -134,7 +164,7 @@ export class WalletRepository {
     if (!wallet) return [[], 0];
     const where: Prisma.LedgerEntryWhereInput = {
       walletId: wallet.id,
-      ...(filters.currency ? { currency: filters.currency } : {}),
+      ...(filters.currency ? { currency: currencyFilter(filters.currency) } : {}),
       ...(filters.reason ? { reason: filters.reason } : {}),
     };
     return this.prisma.$transaction([

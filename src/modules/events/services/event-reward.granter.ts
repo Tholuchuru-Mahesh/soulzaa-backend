@@ -36,7 +36,7 @@ export class EventRewardGranter {
     for (const reward of rewards) {
       i += 1;
       if (reward.kind === 'COINS' && reward.coins && reward.coins > 0) {
-        const currency = reward.currency === 'GOLD' ? WalletCurrency.GOLD : WalletCurrency.FREE;
+        const currency = reward.currency === 'GOLD' ? WalletCurrency.GOLD : WalletCurrency.GAME;
         await this.wallet.credit({
           userId,
           currency,

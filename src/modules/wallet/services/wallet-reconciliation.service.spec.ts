@@ -31,7 +31,7 @@ describe('WalletReconciliationService', () => {
     d.repo.aggregateSignedByCurrency.mockResolvedValue([
       { currency: WalletCurrency.GOLD, credited: 100n, debited: 30n }, // ledger => 70
     ]);
-    d.repo.getWallet.mockResolvedValue({ goldBalance: 65n, freeBalance: 0n, earningsBalance: 0n }); // column => 65
+    d.repo.getWallet.mockResolvedValue({ goldBalance: 65n, gameBalance: 0n, diamondBalance: 0n }); // column => 65
     const svc = new WalletReconciliationService(
       d.repo as never,
       d.metrics as never,
@@ -53,9 +53,9 @@ describe('WalletReconciliationService', () => {
   it('reports zero drift when ledger matches the column', async () => {
     const d = deps();
     d.repo.aggregateSignedByCurrency.mockResolvedValue([
-      { currency: WalletCurrency.EARNINGS, credited: 50n, debited: 0n },
+      { currency: WalletCurrency.DIAMOND, credited: 50n, debited: 0n },
     ]);
-    d.repo.getWallet.mockResolvedValue({ goldBalance: 0n, freeBalance: 0n, earningsBalance: 50n });
+    d.repo.getWallet.mockResolvedValue({ goldBalance: 0n, gameBalance: 0n, diamondBalance: 50n });
     const svc = new WalletReconciliationService(
       d.repo as never,
       d.metrics as never,
@@ -64,7 +64,7 @@ describe('WalletReconciliationService', () => {
     );
 
     const report = await svc.reconcileUser('u1');
-    expect(report.perCurrency.find((c) => c.currency === WalletCurrency.EARNINGS)!.drift).toBe(0);
+    expect(report.perCurrency.find((c) => c.currency === WalletCurrency.DIAMOND)!.drift).toBe(0);
     expect(d.metrics.recordReconciliationDrift).not.toHaveBeenCalled();
   });
 
@@ -120,8 +120,8 @@ describe('WalletReconciliationService', () => {
     );
     d.repo.getWallet.mockImplementation(async (userId: string) =>
       userId === 'u1'
-        ? { goldBalance: 65n, freeBalance: 0n, earningsBalance: 0n }
-        : { goldBalance: 50n, freeBalance: 0n, earningsBalance: 0n },
+        ? { goldBalance: 65n, gameBalance: 0n, diamondBalance: 0n }
+        : { goldBalance: 50n, gameBalance: 0n, diamondBalance: 0n },
     );
     const svc = new WalletReconciliationService(
       d.repo as never,
@@ -153,7 +153,7 @@ describe('WalletReconciliationService', () => {
       .mockResolvedValueOnce(firstPage) // full page → loop continues
       .mockResolvedValueOnce(['last']); // short page → processed, then break
     d.repo.aggregateSignedByCurrency.mockResolvedValue([]); // all clean
-    d.repo.getWallet.mockResolvedValue({ goldBalance: 0n, freeBalance: 0n, earningsBalance: 0n });
+    d.repo.getWallet.mockResolvedValue({ goldBalance: 0n, gameBalance: 0n, diamondBalance: 0n });
     const svc = new WalletReconciliationService(
       d.repo as never,
       d.metrics as never,

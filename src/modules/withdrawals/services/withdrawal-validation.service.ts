@@ -46,15 +46,15 @@ export class WithdrawalValidationService {
       );
     }
 
-    // 4. Validate Eligible Earnings Balance (earningsBalance on Wallet)
+    // 4. Validate Eligible Earnings Balance (diamondBalance on Wallet)
     const wallet = await this.prisma.wallet.findUnique({
       where: { userId },
     });
-    const currentBalance = wallet ? wallet.earningsBalance : BigInt(0);
+    const currentBalance = wallet ? wallet.diamondBalance : BigInt(0);
 
     if (currentBalance < amountCoins) {
       throw new BadRequestException(
-        `Insufficient eligible earnings balance (${currentBalance} < ${amountCoins})`,
+        `Insufficient eligible diamond balance (${currentBalance} < ${amountCoins})`,
       );
     }
 
@@ -70,7 +70,7 @@ export class WithdrawalValidationService {
       },
       _sum: { amountCoins: true },
     });
-    const dailyTotal = (dailyAgg._sum.amountCoins ?? BigInt(0)) + amountCoins;
+    const dailyTotal = (dailyAgg?._sum?.amountCoins ?? BigInt(0)) + amountCoins;
     if (dailyTotal > BigInt(config.dailyLimitCoins)) {
       throw new BadRequestException(
         `Withdrawal request exceeds daily limit of ${config.dailyLimitCoins} coins`,

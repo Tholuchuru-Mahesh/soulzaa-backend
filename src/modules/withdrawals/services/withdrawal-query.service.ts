@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { WithdrawalStatus } from '@prisma/client';
 
 @Injectable()
 export class WithdrawalQueryService {
@@ -11,13 +12,13 @@ export class WithdrawalQueryService {
   async getGlobalSummary() {
     const [totalRequests, pendingCount, aggCompleted, aggPending] = await Promise.all([
       this.prisma.withdrawalRequest.count(),
-      this.prisma.withdrawalRequest.count({ where: { status: 'PENDING' } }),
+      this.prisma.withdrawalRequest.count({ where: { status: WithdrawalStatus.PENDING } }),
       this.prisma.withdrawalRequest.aggregate({
-        where: { status: 'COMPLETED' },
+        where: { status: WithdrawalStatus.COMPLETED },
         _sum: { amountCoins: true, netPayoutAmountCoins: true },
       }),
       this.prisma.withdrawalRequest.aggregate({
-        where: { status: { in: ['PENDING', 'UNDER_REVIEW', 'APPROVED', 'PROCESSING'] } },
+        where: { status: { in: [WithdrawalStatus.PENDING, WithdrawalStatus.UNDER_REVIEW, WithdrawalStatus.APPROVED, WithdrawalStatus.PROCESSING] } },
         _sum: { amountCoins: true },
       }),
     ]);
@@ -38,7 +39,7 @@ export class WithdrawalQueryService {
    */
   async getPendingReviewQueue(page = 1, limit = 20) {
     const skip = (page - 1) * limit;
-    const where = { status: { in: ['PENDING', 'UNDER_REVIEW'] } };
+    const where = { status: { in: [WithdrawalStatus.PENDING, WithdrawalStatus.UNDER_REVIEW] } };
 
     const [total, items] = await Promise.all([
       this.prisma.withdrawalRequest.count({ where }),

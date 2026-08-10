@@ -142,7 +142,16 @@ model GiftTransaction {
   comboTier           Int             @default(1)
   unitCoinValue       Int
   totalCoinValue      BigInt
+  /// Diamonds (DIAMOND) credited to the creator for this gift (PRD §4).
   creatorEarnings     BigInt
+  /// Gold Coins (GOLD) credited to the creator as cashback (PRD §5).
+  /// Zero when gift value is below the configured cashback threshold.
+  cashbackAmount      BigInt          @default(0)
+  /// Snapshot of the earningsPercent configuration value applied at settlement time.
+  /// Allows retroactive auditability even after Super Admin changes the rate (PRD §13).
+  appliedEarningsPct  Int?
+  /// Snapshot of the cashbackPercent configuration value applied at settlement time.
+  appliedCashbackPct  Int?
   luckyMultiplier     Int             @default(1)
   isLuckyWin          Boolean         @default(false)
   senderExp           Int             @default(0)

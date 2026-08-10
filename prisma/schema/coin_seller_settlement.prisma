@@ -1,7 +1,164 @@
 // ============================================================
 // Soulzaa — Enterprise Coin Seller Settlement Schema
-// Entities: CoinSellerRelationship, CoinSellerSettlement, CoinSellerCommission, CoinSellerHistory, CoinSellerAudit, CoinSellerStatistics, CoinSellerConfiguration
+// Entities:
+//   [Inventory model — PRD §16-§20]
+//   CoinSellerInventory            — tracks a seller's purchased/available/sold stock
+//   CoinSellerInventoryPurchaseOrder — seller purchases bulk inventory from platform
+//   CoinSellerUserSaleTransaction  — seller credits coins to a user (with country check)
+//   CoinSellerInventoryAudit       — append-only log for all inventory changes
+//   [Commission model — kept for backward compat]
+//   CoinSellerRelationship, CoinSellerSettlement, CoinSellerCommission, etc.
 // ============================================================
+
+// ── Coin Seller Inventory Model (PRD §16-§20) ─────────────────────────────────
+
+enum InventoryPurchaseStatus {
+  PENDING_PAYMENT
+  PAYMENT_VERIFIED
+  ADMIN_APPROVED
+  INVENTORY_CREDITED
+  FAILED
+  CANCELLED
+}
+
+enum CoinSaleStatus {
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+/// Tracks a Coin Seller's current inventory state (purchased from platform).
+/// All inventory originates from Soulzaa — a seller cannot create coins (PRD §17).
+/// Balances are maintained atomically via database transactions to prevent
+/// inventory from going negative (PRD §18).
+model CoinSellerInventory {
+  id                 String   @id @default(uuid()) @db.Uuid
+  sellerId           String   @unique @db.Uuid
+  /// Country the seller is authorized to sell in (PRD §20).
+  country            String
+  /// Total coins purchased from the platform (ever, lifetime).
+  purchasedTotal     BigInt   @default(0)
+  /// Coins available to sell right now.
+  availableBalance   BigInt   @default(0)
+  /// Coins currently reserved/held (e.g. during in-flight sale).
+  reservedBalance    BigInt   @default(0)
+  /// Coins already sold to users (lifetime).
+  soldTotal          BigInt   @default(0)
+  version            Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  purchaseOrders CoinSellerInventoryPurchaseOrder[]
+  userSales      CoinSellerUserSaleTransaction[]
+
+  @@index([sellerId])
+  @@index([country])
+  @@map("coin_seller_inventories")
+}
+
+/// A Coin Seller's purchase of bulk inventory from the Soulzaa platform (PRD §17).
+/// Inventory is never credited until payment is verified and (optionally) admin-approved.
+model CoinSellerInventoryPurchaseOrder {
+  id              String                  @id @default(uuid()) @db.Uuid
+  sellerId        String                  @db.Uuid
+  inventoryId     String                  @db.Uuid
+  /// Reference to the package tier (e.g. 100k / 250k / 500k / 1M coins).
+  packageCode     String
+  coinAmount      BigInt
+  priceAmount     Decimal                 @db.Decimal(14, 2)
+  priceCurrency   String                  @default("INR")
+  status          InventoryPurchaseStatus @default(PENDING_PAYMENT)
+  paymentProvider String?
+  providerTxnRef  String?
+  idempotencyKey  String                  @unique
+  approvedBy      String?                 @db.Uuid
+  approvedAt      DateTime?
+  creditedAt      DateTime?
+  walletTxnId     String?                 @db.Uuid
+  metadata        Json?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  inventory CoinSellerInventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
+
+  @@index([sellerId, createdAt])
+  @@index([status])
+  @@map("coin_seller_inventory_purchase_orders")
+}
+
+/// Immutable record of every coin sale from a Coin Seller to a user (PRD §19).
+/// Country restriction is enforced at service level before this record is created.
+model CoinSellerUserSaleTransaction {
+  id             String         @id @default(uuid()) @db.Uuid
+  sellerId       String         @db.Uuid
+  inventoryId    String         @db.Uuid
+  buyerId        String         @db.Uuid
+  coinAmount     BigInt
+  /// Country of both seller and buyer at the time of sale (must match — PRD §20).
+  sellerCountry  String
+  buyerCountry   String
+  status         CoinSaleStatus @default(COMPLETED)
+  idempotencyKey String         @unique
+  /// Wallet transaction ID for the buyer's Gold Coin credit.
+  buyerWalletTxnId String?      @db.Uuid
+  /// Seller inventory deduction was recorded atomically with this txn.
+  inventoryTxnRef  String?
+  paymentProofRef  String?
+  metadata         Json?
+  createdAt        DateTime     @default(now())
+
+  inventory CoinSellerInventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
+
+  @@index([sellerId, createdAt])
+  @@index([buyerId, createdAt])
+  @@index([status])
+  @@map("coin_seller_user_sale_transactions")
+}
+
+/// Append-only audit trail for all inventory changes (purchases, sales, adjustments).
+model CoinSellerInventoryAudit {
+  id              String   @id @default(uuid()) @db.Uuid
+  sellerId        String   @db.Uuid
+  inventoryId     String?  @db.Uuid
+  action          String   // e.g. INVENTORY_PURCHASED, INVENTORY_SOLD, INVENTORY_ADJUSTED
+  coinDelta       BigInt   @default(0)
+  balanceBefore   BigInt?
+  balanceAfter    BigInt?
+  referenceId     String?  @db.Uuid
+  referenceType   String?
+  actorId         String?  @db.Uuid
+  details         Json?
+  createdAt       DateTime @default(now())
+
+  @@index([sellerId, createdAt])
+  @@index([action])
+  @@map("coin_seller_inventory_audits")
+}
+
+// ── Coin Seller Inventory Packages (configurable by Super Admin, PRD §12) ─────
+
+/// Platform-defined inventory packages that Coin Sellers can purchase (PRD §17).
+/// All values are configurable by Super Admin — nothing is hardcoded.
+model CoinSellerInventoryPackage {
+  id           String   @id @default(uuid()) @db.Uuid
+  code         String   @unique
+  name         String
+  coinAmount   BigInt
+  priceAmount  Decimal  @db.Decimal(14, 2)
+  priceCurrency String  @default("INR")
+  isActive     Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdBy    String?  @db.Uuid
+  updatedBy    String?  @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("coin_seller_inventory_packages")
+}
+
+// ── Legacy Commission Model (preserved for existing data) ─────────────────────
+
 
 /// Active mapping relationship between Coin Seller and Buyer
 model CoinSellerRelationship {

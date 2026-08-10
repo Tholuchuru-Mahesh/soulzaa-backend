@@ -53,6 +53,8 @@ export class WalletService implements IWalletService {
           status: WalletStatus.ACTIVE,
           availableBalance: BigInt(0),
           goldBalance: BigInt(0),
+          diamondBalance: BigInt(0),
+          gameBalance: BigInt(0),
           freeBalance: BigInt(0),
           earningsBalance: BigInt(0),
         },
@@ -72,8 +74,8 @@ export class WalletService implements IWalletService {
     const wallet = await this.repo.getWallet(userId);
     return {
       gold: Number(wallet?.goldBalance ?? 0n),
-      free: Number(wallet?.freeBalance ?? 0n),
-      earnings: Number(wallet?.earningsBalance ?? 0n),
+      diamond: Number(wallet?.diamondBalance ?? 0n),
+      game: Number(wallet?.gameBalance ?? 0n),
     };
   }
 

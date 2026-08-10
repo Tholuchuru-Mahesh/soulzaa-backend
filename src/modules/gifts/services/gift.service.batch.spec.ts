@@ -168,7 +168,7 @@ describe('GiftService.sendGiftBatch (multi-receiver)', () => {
     await service.sendGiftBatch(SENDER, batchDto(['r1', 'r2', 'r3']));
     const amounts = wallet.credit.mock.calls.map((c) => c[0].amount);
     expect(amounts).toEqual([100, 100, 100]);
-    expect(wallet.credit.mock.calls[0][0].currency).toBe(WalletCurrency.EARNINGS);
+    expect(wallet.credit.mock.calls[0][0].currency).toBe(WalletCurrency.DIAMOND);
   });
 
   it('writes N ledger rows sharing one batchId, with per-leg ledger keys', async () => {

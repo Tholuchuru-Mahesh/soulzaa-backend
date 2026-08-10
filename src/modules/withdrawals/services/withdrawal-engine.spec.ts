@@ -157,12 +157,12 @@ describe('Phase 10: Enterprise Withdrawal Engine', () => {
       mockPrismaService.user.findUnique.mockResolvedValue({ id: 'u-1', status: 'ACTIVE' });
       mockPrismaService.wallet.findUnique.mockResolvedValue({
         userId: 'u-1',
-        earningsBalance: BigInt(2000),
+        diamondBalance: BigInt(2000),
       });
 
       await expect(
         validationService.validateWithdrawalRequest('u-1', BigInt(5000)),
-      ).rejects.toThrow('Insufficient eligible earnings balance');
+      ).rejects.toThrow('Insufficient eligible diamond balance');
     });
   });
 
@@ -172,7 +172,7 @@ describe('Phase 10: Enterprise Withdrawal Engine', () => {
       mockPrismaService.user.findUnique.mockResolvedValue({ id: 'u-1', status: 'ACTIVE' });
       mockPrismaService.wallet.findUnique.mockResolvedValue({
         userId: 'u-1',
-        earningsBalance: BigInt(10000),
+        diamondBalance: BigInt(10000),
       });
       mockPrismaService.withdrawalRequest.aggregate.mockResolvedValue({
         _sum: { amountCoins: BigInt(0) },
@@ -201,9 +201,9 @@ describe('Phase 10: Enterprise Withdrawal Engine', () => {
       expect(mockWalletService.debit).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'u-1',
-          currency: WalletCurrency.EARNINGS,
+          currency: WalletCurrency.DIAMOND,
           amount: 5000,
-          reason: 'WITHDRAWAL',
+          reason: 'DIAMOND_WITHDRAWAL_RESERVE',
         }),
       );
     });
@@ -235,9 +235,9 @@ describe('Phase 10: Enterprise Withdrawal Engine', () => {
       expect(mockWalletService.credit).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'u-1',
-          currency: WalletCurrency.EARNINGS,
+          currency: WalletCurrency.DIAMOND,
           amount: 5000,
-          reason: 'WITHDRAWAL',
+          reason: 'DIAMOND_WITHDRAWAL_REVERSED',
         }),
       );
     });

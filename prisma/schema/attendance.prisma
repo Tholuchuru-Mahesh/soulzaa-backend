@@ -9,7 +9,7 @@ model AttendanceLadderRung {
   id         String         @id @default(uuid()) @db.Uuid
   day        Int            @unique
   coins      Int
-  currency   WalletCurrency @default(FREE)
+  currency   WalletCurrency @default(GAME)
   expAmount  Int?
   cosmeticId String?        @db.Uuid
   createdAt  DateTime       @default(now())

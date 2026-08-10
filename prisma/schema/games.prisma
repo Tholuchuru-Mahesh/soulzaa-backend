@@ -39,8 +39,14 @@ enum GameCategory {
 }
 
 /// Currency a game stakes/pays out in (maps to WalletCurrency at the seam).
+/// GOLD  → premium games (Greedy Food, Roulette, Lucky Fruit, Phoenix vs Wolf, Flip, Jackpot)
+/// GAME  → casual games (Ludo, UNO, Carrom, Dominoes)
+/// FREE  → @deprecated alias for GAME; kept so historical game_transactions rows remain valid
 enum GameCurrency {
   GOLD
+  /// Canonical game coin currency (PRD §6). Use this in all new game definitions.
+  GAME
+  /// @deprecated — use GAME. Kept for historical row compatibility.
   FREE
 }
 

@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
-import { WalletCurrency } from '@prisma/client';
+import { WalletCurrency, WalletTxnReason, WithdrawalStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import {
@@ -42,7 +42,7 @@ export class WithdrawalExecutionService {
         throw new BadRequestException(`Withdrawal request '${requestId}' not found`);
       }
 
-      if (req.status !== 'APPROVED' && req.status !== 'PROCESSING') {
+      if (req.status !== WithdrawalStatus.APPROVED && req.status !== WithdrawalStatus.PROCESSING) {
         throw new BadRequestException(
           `Request must be APPROVED to execute payout (current: '${req.status}')`,
         );
@@ -51,7 +51,7 @@ export class WithdrawalExecutionService {
       // Transition to PROCESSING
       await this.prisma.withdrawalRequest.update({
         where: { id: requestId },
-        data: { status: 'PROCESSING' },
+        data: { status: WithdrawalStatus.PROCESSING },
       });
 
       await this.prisma.withdrawalHistory.create({
@@ -59,7 +59,7 @@ export class WithdrawalExecutionService {
           requestId,
           userId: req.userId,
           fromStatus: req.status,
-          toStatus: 'PROCESSING',
+          toStatus: WithdrawalStatus.PROCESSING,
         },
       });
 
@@ -72,7 +72,7 @@ export class WithdrawalExecutionService {
         await this.prisma.withdrawalRequest.update({
           where: { id: requestId },
           data: {
-            status: 'COMPLETED',
+            status: WithdrawalStatus.COMPLETED,
             payoutTxnId,
           },
         });
@@ -81,8 +81,8 @@ export class WithdrawalExecutionService {
           data: {
             requestId,
             userId: req.userId,
-            fromStatus: 'PROCESSING',
-            toStatus: 'COMPLETED',
+            fromStatus: WithdrawalStatus.PROCESSING,
+            toStatus: WithdrawalStatus.COMPLETED,
           },
         });
 
@@ -97,7 +97,7 @@ export class WithdrawalExecutionService {
 
         return {
           requestId,
-          status: 'COMPLETED',
+          status: WithdrawalStatus.COMPLETED,
           payoutTxnId,
         };
       } catch (err) {
@@ -108,9 +108,9 @@ export class WithdrawalExecutionService {
         // Refund reserved funds on failure
         await this.walletService.credit({
           userId: req.userId,
-          currency: WalletCurrency.EARNINGS,
+          currency: WalletCurrency.DIAMOND,
           amount: Number(req.amountCoins),
-          reason: 'WITHDRAWAL' as any,
+          reason: WalletTxnReason.DIAMOND_WITHDRAWAL_REVERSED,
           idempotencyKey: `withdrawal-failure-refund:${requestId}`,
           referenceType: 'withdrawal_failure',
           referenceId: requestId,
@@ -118,7 +118,7 @@ export class WithdrawalExecutionService {
 
         await this.prisma.withdrawalRequest.update({
           where: { id: requestId },
-          data: { status: 'FAILED' },
+          data: { status: WithdrawalStatus.FAILED },
         });
 
         await this.prisma.withdrawalFailure.create({
@@ -133,8 +133,8 @@ export class WithdrawalExecutionService {
           data: {
             requestId,
             userId: req.userId,
-            fromStatus: 'PROCESSING',
-            toStatus: 'FAILED',
+            fromStatus: WithdrawalStatus.PROCESSING,
+            toStatus: WithdrawalStatus.FAILED,
           },
         });
 
@@ -144,7 +144,7 @@ export class WithdrawalExecutionService {
 
         return {
           requestId,
-          status: 'FAILED',
+          status: WithdrawalStatus.FAILED,
           error: (err as Error).message,
         };
       }

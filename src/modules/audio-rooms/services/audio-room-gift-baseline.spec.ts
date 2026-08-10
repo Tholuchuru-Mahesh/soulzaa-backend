@@ -275,11 +275,11 @@ describe('AUDIO_ROOM gift baseline (VR-10 BC gate)', () => {
     expect(names).toContain('gift.refunded');
   });
 
-  it('writes creatorEarnings = 100n and credits 100% EARNINGS to receiver', async () => {
+  it('writes creatorEarnings = 100n and credits 100% DIAMOND to receiver', async () => {
     await service.sendGift(SENDER, dto());
     expect(m.repo.createTransaction.mock.calls[0][0].creatorEarnings).toBe(100n);
     const earningsCredits = m.wallet.credit.mock.calls.filter(
-      (c) => c[0].currency === WalletCurrency.EARNINGS,
+      (c) => c[0].currency === WalletCurrency.DIAMOND,
     );
     expect(earningsCredits).toHaveLength(1);
     expect(earningsCredits[0][0].amount).toBe(100);

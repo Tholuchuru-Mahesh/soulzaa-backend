@@ -2347,7 +2347,7 @@ export class GamesService {
     stake: bigint,
   ): Promise<void> {
     const balances = await this.wallet.getBalance(userId);
-    const available = currency === GameCurrency.GOLD ? balances.gold : balances.free;
+    const available = currency === GameCurrency.GOLD ? balances.gold : balances.game;
     if (BigInt(available) < stake) {
       throw new BusinessException(
         ERROR_CODES.INSUFFICIENT_BALANCE,
@@ -2386,7 +2386,11 @@ export class GamesService {
   }
 
   private walletCurrency(currency: GameCurrency): WalletCurrency {
-    return currency === GameCurrency.GOLD ? WalletCurrency.GOLD : WalletCurrency.FREE;
+    return currency === GameCurrency.GOLD
+      ? WalletCurrency.GOLD
+      : currency === GameCurrency.GAME
+        ? WalletCurrency.GAME
+        : WalletCurrency.FREE;
   }
 
   private isAdmin(actor: GameActor): boolean {

@@ -12,7 +12,7 @@ import type { RewardEntry } from '../constants/exp.constants';
 import type { LevelRewardSummary } from '../events/exp.events';
 
 /**
- * Grants level-up rewards: COINS credit the wallet (GOLD or FREE, idempotent),
+ * Grants level-up rewards: COINS credit the wallet (GOLD or GAME, idempotent),
  * COSMETIC grants a catalog cosmetic into the backpack (via COSMETICS_SERVICE).
  * Keyed by an idempotency prefix (the user+level) so a replayed level-up maps to
  * the same wallet/backpack rows.
@@ -34,7 +34,7 @@ export class ExpRewardGranter {
     for (const reward of rewards) {
       i += 1;
       if (reward.kind === 'COINS' && reward.coins && reward.coins > 0) {
-        const currency = reward.currency === 'GOLD' ? WalletCurrency.GOLD : WalletCurrency.FREE;
+        const currency = reward.currency === 'GOLD' ? WalletCurrency.GOLD : WalletCurrency.GAME;
         await this.wallet.credit({
           userId,
           currency,

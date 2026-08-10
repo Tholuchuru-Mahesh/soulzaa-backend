@@ -25,8 +25,13 @@ export interface ReconciliationReport {
   strandedSettlements: string[];
 }
 
-const COLUMN: Record<WalletCurrency, 'goldBalance' | 'freeBalance' | 'earningsBalance'> = {
+const COLUMN: Record<
+  WalletCurrency,
+  'goldBalance' | 'gameBalance' | 'diamondBalance' | 'freeBalance' | 'earningsBalance'
+> = {
   GOLD: 'goldBalance',
+  DIAMOND: 'diamondBalance',
+  GAME: 'gameBalance',
   FREE: 'freeBalance',
   EARNINGS: 'earningsBalance',
 };

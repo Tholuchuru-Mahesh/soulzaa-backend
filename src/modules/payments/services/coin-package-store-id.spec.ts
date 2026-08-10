@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { PLATFORM_CONFIG } from 'src/modules/platform-configuration/interfaces/platform-configuration.interface';
 import { CoinPackageService } from './coin-package.service';
 import { PurchaseAuditService } from './purchase-audit.service';
 
@@ -29,6 +30,7 @@ describe('CoinPackageService store product IDs', () => {
         CoinPackageService,
         PurchaseAuditService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: PLATFORM_CONFIG, useValue: { get: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = module.get(CoinPackageService);

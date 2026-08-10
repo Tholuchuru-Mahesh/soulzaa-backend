@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
-import { WalletCurrency } from '@prisma/client';
+import { WalletCurrency, WalletTxnReason, WithdrawalStatus } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
@@ -47,29 +47,29 @@ export class WithdrawalApprovalService {
         throw new BadRequestException(`Withdrawal request '${requestId}' not found`);
       }
 
-      if (['COMPLETED', 'REJECTED', 'CANCELLED', 'FAILED'].includes(req.status)) {
+      if ([WithdrawalStatus.COMPLETED, WithdrawalStatus.REJECTED, WithdrawalStatus.CANCELLED, WithdrawalStatus.FAILED].includes(req.status as any)) {
         throw new BadRequestException(`Cannot review request in terminal state '${req.status}'`);
       }
 
-      let newStatus = req.status;
+      let newStatus: WithdrawalStatus = req.status as any;
 
       if (action === 'APPROVE') {
-        newStatus = 'APPROVED';
+        newStatus = WithdrawalStatus.APPROVED;
       } else if (action === 'REJECT') {
-        newStatus = 'REJECTED';
+        newStatus = WithdrawalStatus.REJECTED;
       } else if (action === 'CANCEL') {
-        newStatus = 'CANCELLED';
+        newStatus = WithdrawalStatus.CANCELLED;
       } else if (action === 'UNDER_REVIEW') {
-        newStatus = 'UNDER_REVIEW';
+        newStatus = WithdrawalStatus.UNDER_REVIEW;
       }
 
       // If REJECTED or CANCELLED, refund reserved funds back to user EARNINGS balance
-      if (newStatus === 'REJECTED' || newStatus === 'CANCELLED') {
+      if (newStatus === WithdrawalStatus.REJECTED || newStatus === WithdrawalStatus.CANCELLED) {
         await this.walletService.credit({
           userId: req.userId,
-          currency: WalletCurrency.EARNINGS,
+          currency: WalletCurrency.DIAMOND,
           amount: Number(req.amountCoins),
-          reason: 'WITHDRAWAL' as any,
+          reason: WalletTxnReason.DIAMOND_WITHDRAWAL_REVERSED,
           idempotencyKey: `withdrawal-refund:${requestId}`,
           referenceType: 'withdrawal_rejection',
           referenceId: requestId,

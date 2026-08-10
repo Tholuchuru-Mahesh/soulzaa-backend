@@ -20,6 +20,9 @@ describe('CoinPackageService regional pricing', () => {
     service = new CoinPackageService(
       prisma as unknown as PrismaService,
       {} as unknown as PurchaseAuditService,
+      // No tax configured: this suite is about which rows are returned, not
+      // what they cost.
+      { get: jest.fn().mockResolvedValue(undefined) } as never,
     );
   });
 

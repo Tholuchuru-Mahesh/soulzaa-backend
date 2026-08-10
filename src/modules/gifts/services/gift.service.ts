@@ -304,7 +304,7 @@ export class GiftService {
             const creditResult = await this.wallet.credit(
               {
                 userId: receiverId,
-                currency: WalletCurrency.EARNINGS,
+                currency: WalletCurrency.DIAMOND,
                 amount: earningsNum,
                 reason: WalletTxnReason.GIFT_RECEIVE,
                 idempotencyKey: `gift-credit-earnings:${idempotencyKey}:${receiverId}`,
@@ -354,6 +354,9 @@ export class GiftService {
                 unitCoinValue: unit,
                 totalCoinValue: perReceiver,
                 creatorEarnings,
+                cashbackAmount: BigInt(availableBalanceCredited),
+                appliedEarningsPct: rules.earningsPercent,
+                appliedCashbackPct: rules.cashbackPercent,
                 luckyMultiplier: lucky.multiplier,
                 isLuckyWin: lucky.win,
                 senderExp,
@@ -366,7 +369,6 @@ export class GiftService {
                   batchId,
                   acceptedAmount: effects.acceptedAmount,
                   refundAmount: effects.refundAmount,
-                  availableBalanceCredited,
                 } as Prisma.InputJsonValue,
               },
               tx,

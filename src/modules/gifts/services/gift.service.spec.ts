@@ -196,9 +196,9 @@ describe('GiftService', () => {
         expect.objectContaining({ userId: SENDER.id, currency: 'GOLD', amount: 100 }),
         expect.anything(),
       );
-      // Universal Settlement Engine: Receiver EARNINGS credited 100% (100 coins)
+      // Universal Settlement Engine: Receiver DIAMOND credited 100% (100 coins)
       expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'EARNINGS', amount: 100 }),
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 100 }),
         expect.anything(),
       );
       // Because 100 <= 1000, Receiver Available Balance (GOLD) is NOT updated.
@@ -221,9 +221,9 @@ describe('GiftService', () => {
         expect.anything(),
       );
 
-      // Receiver EARNINGS credited 15,000 (100%)
+      // Receiver DIAMOND credited 15,000 (100%)
       expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'EARNINGS', amount: 15000 }),
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 15000 }),
         expect.anything(),
       );
 

@@ -8,8 +8,8 @@ const wallet = (over: Partial<Wallet>): Wallet =>
     id: 'w1',
     status: WalletStatus.ACTIVE,
     goldBalance: 0n,
-    freeBalance: 0n,
-    earningsBalance: 0n,
+    gameBalance: 0n,
+    diamondBalance: 0n,
     availableBalance: 0n,
     reservedBalance: 0n,
     pendingBalance: 0n,
@@ -21,22 +21,22 @@ describe('WalletValidationService.validateSufficientBalance (currency-scoped)', 
   // Pure method — irrelevant deps stubbed.
   const svc = new WalletValidationService({} as any, {} as any);
 
-  it('rejects a GOLD debit when only FREE coins are available', () => {
-    const w = wallet({ goldBalance: 0n, freeBalance: 100n, availableBalance: 100n });
+  it('rejects a GOLD debit when only GAME coins are available', () => {
+    const w = wallet({ goldBalance: 0n, gameBalance: 100n, availableBalance: 100n });
     expect(() => svc.validateSufficientBalance(w, 50n, WalletCurrency.GOLD)).toThrow(
       BadRequestException,
     );
   });
 
   it('allows a GOLD debit when goldBalance is sufficient', () => {
-    const w = wallet({ goldBalance: 100n, freeBalance: 0n, availableBalance: 100n });
+    const w = wallet({ goldBalance: 100n, gameBalance: 0n, availableBalance: 100n });
     expect(() => svc.validateSufficientBalance(w, 50n, WalletCurrency.GOLD)).not.toThrow();
   });
 
-  it('validates FREE and EARNINGS against their own sub-balances', () => {
-    const w = wallet({ freeBalance: 10n, earningsBalance: 5n, availableBalance: 15n });
-    expect(() => svc.validateSufficientBalance(w, 8n, WalletCurrency.FREE)).not.toThrow();
-    expect(() => svc.validateSufficientBalance(w, 8n, WalletCurrency.EARNINGS)).toThrow(
+  it('validates GAME and DIAMOND against their own sub-balances', () => {
+    const w = wallet({ gameBalance: 10n, diamondBalance: 5n, availableBalance: 15n });
+    expect(() => svc.validateSufficientBalance(w, 8n, WalletCurrency.GAME)).not.toThrow();
+    expect(() => svc.validateSufficientBalance(w, 8n, WalletCurrency.DIAMOND)).toThrow(
       BadRequestException,
     );
   });

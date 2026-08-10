@@ -12,8 +12,8 @@ export const WALLET_SERVICE = Symbol('WALLET_SERVICE');
 /** Snapshot of a wallet's three balances (Number-safe read model). */
 export interface WalletBalances {
   gold: number;
-  free: number;
-  earnings: number;
+  diamond: number;
+  game: number;
 }
 
 /** A single balance movement request. `idempotencyKey` makes it exactly-once. */

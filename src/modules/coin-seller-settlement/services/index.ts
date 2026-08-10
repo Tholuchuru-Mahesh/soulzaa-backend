@@ -2,6 +2,8 @@ export * from './coin-seller-configuration.service';
 export * from './coin-seller-commission.service';
 export * from './coin-seller-relationship.service';
 export * from './coin-seller-validation.service';
+export * from './coin-seller-inventory.service';
+export * from './coin-seller-user-sale.service';
 export * from './coin-seller-settlement.service';
 export * from './coin-seller-history.service';
 export * from './coin-seller-audit.service';

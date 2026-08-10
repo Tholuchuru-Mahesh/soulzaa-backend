@@ -12,12 +12,12 @@ export interface WalletBalanceProjection {
   lockedBalance: string;
   totalBalance: string;
   gold: number;
-  free: number;
-  earnings: number;
+  diamond: number;
+  game: number;
   currencyBreakdown: {
     gold: number;
-    free: number;
-    earnings: number;
+    diamond: number;
+    game: number;
   };
   version: number;
   updatedAt: Date;
@@ -37,9 +37,9 @@ export class BalanceService {
     const wallet = await this.walletService.getWalletById(walletId);
 
     const goldNum = Number(wallet.goldBalance);
-    const freeNum = Number(wallet.freeBalance);
-    const earningsNum = Number(wallet.earningsBalance);
-    const available = wallet.goldBalance + wallet.freeBalance;
+    const gameNum = Number(wallet.gameBalance);
+    const diamondNum = Number(wallet.diamondBalance);
+    const available = wallet.availableBalance;
     const total = available + wallet.reservedBalance + wallet.pendingBalance + wallet.lockedBalance;
 
     return {
@@ -51,12 +51,12 @@ export class BalanceService {
       lockedBalance: wallet.lockedBalance.toString(),
       totalBalance: total.toString(),
       gold: goldNum,
-      free: freeNum,
-      earnings: earningsNum,
+      game: gameNum,
+      diamond: diamondNum,
       currencyBreakdown: {
         gold: goldNum,
-        free: freeNum,
-        earnings: earningsNum,
+        game: gameNum,
+        diamond: diamondNum,
       },
       version: wallet.version,
       updatedAt: wallet.updatedAt,
