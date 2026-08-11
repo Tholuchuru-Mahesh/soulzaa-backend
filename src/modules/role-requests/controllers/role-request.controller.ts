@@ -1,13 +1,16 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Get,
   Param,
+  ParseEnumPipe,
   ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { RoleRequestType } from '@prisma/client';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
@@ -15,9 +18,11 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import {
   RejectRoleRequestDto,
+  ReviewDocumentDto,
   StageActionDto,
   SubmitRoleRequestDto,
 } from '../dto/role-request.dto';
+import { RoleRequestDocumentService } from '../services/role-request-document.service';
 import { RoleRequestService } from '../services/role-request.service';
 
 /**
@@ -33,7 +38,10 @@ import { RoleRequestService } from '../services/role-request.service';
 @UseGuards(JwtAuthGuard, RbacPermissionsGuard)
 @Controller('role-requests')
 export class RoleRequestController {
-  constructor(private readonly service: RoleRequestService) {}
+  constructor(
+    private readonly service: RoleRequestService,
+    private readonly documents: RoleRequestDocumentService,
+  ) {}
 
   @ApiOperation({ summary: 'Submit a role request' })
   @ApiResponse({ status: 201, description: 'Request filed with a reference' })
@@ -59,12 +67,66 @@ export class RoleRequestController {
     return this.service.queue(actorId, Number(limit) || 25, Number(offset) || 0);
   }
 
+  /**
+   * Declared before `:id` on purpose — Nest matches routes in declaration order,
+   * and `/role-requests/mine` would otherwise be swallowed by the UUID param
+   * route and fail validation.
+   *
+   * No permission decorator: this returns only the caller's own request, so
+   * gating it on `role_request.view` would lock applicants out of their own
+   * application status.
+   */
+  @ApiOperation({ summary: "The caller's own latest request of a type" })
+  @ApiQuery({ name: 'type', required: false, enum: RoleRequestType })
+  @ApiResponse({ status: 200, description: 'The request, or null if never applied' })
+  @Get('mine')
+  findMine(
+    @CurrentUser('id') userId: string,
+    @Query('type', new DefaultValuePipe(RoleRequestType.AGENCY), new ParseEnumPipe(RoleRequestType))
+    type: RoleRequestType,
+  ) {
+    return this.service.findMine(userId, type);
+  }
+
   @ApiOperation({ summary: 'A request with its full audit trail' })
   @ApiResponse({ status: 200, description: 'Request and ordered actions' })
   @RequirePermissions('role_request.view')
   @Get(':id')
   findById(@Param('id', ParseUUIDPipe) id: string) {
     return this.service.findById(id);
+  }
+
+  @ApiOperation({ summary: 'Documents attached to a request, with their check verdicts' })
+  @ApiResponse({ status: 200, description: 'Documents in slot order' })
+  @RequirePermissions('role_request.view')
+  @Get(':id/documents')
+  listDocuments(@Param('id', ParseUUIDPipe) id: string) {
+    return this.documents.listForRequest(id);
+  }
+
+  @ApiOperation({ summary: 'A short-lived link to open one document' })
+  @ApiResponse({ status: 200, description: 'Presigned download URL' })
+  @ApiResponse({ status: 403, description: 'Not a reviewer for this request territory' })
+  @RequirePermissions('role_request.view')
+  @Get('documents/:documentId/download')
+  documentDownloadUrl(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.documents.downloadUrl(documentId, actorId);
+  }
+
+  @ApiOperation({ summary: 'Accept or reject a single document' })
+  @ApiResponse({ status: 200, description: 'Document decision recorded' })
+  @ApiResponse({ status: 400, description: 'Rejection without a reason' })
+  @RequirePermissions('role_request.review')
+  @Post('documents/:documentId/review')
+  reviewDocument(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Body() dto: ReviewDocumentDto,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.documents.review(documentId, actorId, dto.status, dto.notes);
   }
 
   @ApiOperation({ summary: 'Advance to the next stage (approves at the final stage)' })

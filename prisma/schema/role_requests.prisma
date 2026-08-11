@@ -40,6 +40,34 @@ enum RoleRequestActionType {
   CANCEL
 }
 
+/// The document slots an applicant fills. Mirrors the upload screen one-for-one,
+/// so a slot the app offers always has somewhere to land.
+enum RoleRequestDocumentSlot {
+  AADHAAR
+  PAN
+  ADDRESS_PROOF
+  BUSINESS_PROOF
+  BANK_DETAILS
+  PROFILE_PHOTO
+}
+
+/// A reviewer's verdict on one document, independent of the request as a whole —
+/// a request can be sent back for a single unreadable page.
+enum RoleRequestDocumentStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+/// The automated pass that runs at submit time. It checks that a file is what it
+/// claims to be and has not been seen before; it does NOT judge authenticity.
+/// SUSPECT means "a human should look harder", never "this is forged".
+enum DocumentCheckVerdict {
+  PASSED
+  SUSPECT
+  FAILED
+}
+
 /// A live request for a role. One open request per (subject, type) is
 /// enforced by a partial unique index, so a concurrent double-submit
 /// cannot create two.
@@ -65,7 +93,8 @@ model RoleRequest {
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 
-  actions RoleRequestAction[]
+  actions   RoleRequestAction[]
+  documents RoleRequestDocument[]
 
   @@index([status, currentStage])
   @@index([regionId, status])
@@ -93,6 +122,45 @@ model RoleRequestAction {
   @@unique([requestId, sequence])
   @@index([requestId, actedAt])
   @@map("role_request_actions")
+}
+
+/// One uploaded document, tied to the slot it fills.
+///
+/// This is the source of truth for a request's documents. `RoleRequest.documentKeys`
+/// is kept as a flat mirror for older readers, but it cannot say which key is the
+/// PAN card and has nowhere to record a verdict, so nothing new should read it.
+model RoleRequestDocument {
+  id          String                  @id @default(uuid()) @db.Uuid
+  requestId   String                  @db.Uuid
+  slot        RoleRequestDocumentSlot
+  storageKey  String
+  filename    String
+  contentType String
+  sizeBytes   Int
+
+  /// SHA-256 of the stored bytes. Indexed but deliberately NOT unique: the same
+  /// scan legitimately fills two slots for one applicant (a bank statement that
+  /// doubles as address proof). Reuse across *different* applicants is what the
+  /// verifier flags, and that is a query, not a constraint.
+  checksum      String
+  checkVerdict  DocumentCheckVerdict
+  /// What the automated pass flagged, as a list of {code, detail} objects. Empty
+  /// on a clean PASSED document.
+  checkFindings Json?
+
+  status           RoleRequestDocumentStatus @default(PENDING)
+  reviewNotes      String?
+  reviewedByUserId String?                   @db.Uuid
+  reviewedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  request RoleRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, slot])
+  @@index([checksum])
+  @@map("role_request_documents")
 }
 
 /// Per-year counter backing the human-readable reference (RR-2026-000154).

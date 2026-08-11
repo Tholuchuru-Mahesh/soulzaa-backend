@@ -28,6 +28,7 @@ const MIME_EXT: Record<string, string> = {
   'audio/aac': 'aac',
   'audio/wav': 'wav',
   'audio/webm': 'weba',
+  'application/pdf': 'pdf',
 };
 
 /**

@@ -182,35 +182,35 @@ enum WalletTxnReason {
 /// diamondBalance / gameBalance). Cross-currency aggregation is explicitly forbidden
 /// by the PRD. Do not re-introduce the gold+free sum that was here previously.
 model Wallet {
-  id                      String       @id @default(uuid()) @db.Uuid
-  userId                  String       @unique @db.Uuid
-  type                    WalletType   @default(USER_WALLET)
-  status                  WalletStatus @default(ACTIVE)
+  id     String       @id @default(uuid()) @db.Uuid
+  userId String       @unique @db.Uuid
+  type   WalletType   @default(USER_WALLET)
+  status WalletStatus @default(ACTIVE)
 
   // ── Canonical three-currency balances ───────────────────────
-  goldBalance             BigInt       @default(0)
-  diamondBalance          BigInt       @default(0)
-  gameBalance             BigInt       @default(0)
+  goldBalance    BigInt @default(0)
+  diamondBalance BigInt @default(0)
+  gameBalance    BigInt @default(0)
 
   // ── Legacy deprecated columns (do NOT use in new code) ──────
   /// @deprecated use gameBalance
-  freeBalance             BigInt       @default(0)
+  freeBalance     BigInt @default(0)
   /// @deprecated use diamondBalance
-  earningsBalance         BigInt       @default(0)
+  earningsBalance BigInt @default(0)
 
   // ── Operational fields ───────────────────────────────────────
   /// Gold-only available balance (NOT an aggregate across currencies).
-  availableBalance        BigInt       @default(0)
-  reservedBalance         BigInt       @default(0)
-  pendingBalance          BigInt       @default(0)
-  lockedBalance           BigInt       @default(0)
-  totalRecharged          BigInt       @default(0)
-  totalGiftsSentValue     BigInt       @default(0)
-  totalGiftsReceivedValue BigInt       @default(0)
-  totalSpent              BigInt       @default(0)
-  version                 Int          @default(0)
-  createdAt               DateTime     @default(now())
-  updatedAt               DateTime     @updatedAt
+  availableBalance        BigInt   @default(0)
+  reservedBalance         BigInt   @default(0)
+  pendingBalance          BigInt   @default(0)
+  lockedBalance           BigInt   @default(0)
+  totalRecharged          BigInt   @default(0)
+  totalGiftsSentValue     BigInt   @default(0)
+  totalGiftsReceivedValue BigInt   @default(0)
+  totalSpent              BigInt   @default(0)
+  version                 Int      @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   ledgerEntries LedgerEntry[]
   reservations  WalletReservation[]

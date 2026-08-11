@@ -16,6 +16,11 @@ export const STORAGE_CATEGORIES = {
   CHAT_VOICE: 'chat-voice',
   CHAT_VIDEO: 'chat-videos',
   CHAT_FILE: 'chat-files',
+  // Identity documents backing a role request (Aadhaar, PAN, bank proof…).
+  // Never processed by the media worker: re-encoding a KYC scan destroys the
+  // evidence a reviewer is meant to judge, and thumbnails of an ID would leak
+  // the document through a derivative key with a laxer lifetime.
+  KYC_DOCUMENT: 'kyc-documents',
 } as const;
 
 export type MediaCategory = (typeof STORAGE_CATEGORIES)[keyof typeof STORAGE_CATEGORIES];
@@ -99,6 +104,14 @@ export const STORAGE_POLICIES: Record<MediaCategory, StoragePolicy> = {
       'text/plain',
     ],
     maxSizeBytes: 25 * MB,
+  },
+  // 5MB and JPG/PNG/PDF only — the same limits the mobile upload screen shows
+  // the applicant, so a file the UI accepts is never rejected by the API.
+  [STORAGE_CATEGORIES.KYC_DOCUMENT]: {
+    prefix: STORAGE_CATEGORIES.KYC_DOCUMENT,
+    isImage: false,
+    allowedMime: ['image/jpeg', 'image/png', 'application/pdf'],
+    maxSizeBytes: 5 * MB,
   },
 };
 

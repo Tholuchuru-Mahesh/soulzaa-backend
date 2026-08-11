@@ -32,21 +32,21 @@ enum CoinSaleStatus {
 /// Balances are maintained atomically via database transactions to prevent
 /// inventory from going negative (PRD §18).
 model CoinSellerInventory {
-  id                 String   @id @default(uuid()) @db.Uuid
-  sellerId           String   @unique @db.Uuid
+  id               String   @id @default(uuid()) @db.Uuid
+  sellerId         String   @unique @db.Uuid
   /// Country the seller is authorized to sell in (PRD §20).
-  country            String
+  country          String
   /// Total coins purchased from the platform (ever, lifetime).
-  purchasedTotal     BigInt   @default(0)
+  purchasedTotal   BigInt   @default(0)
   /// Coins available to sell right now.
-  availableBalance   BigInt   @default(0)
+  availableBalance BigInt   @default(0)
   /// Coins currently reserved/held (e.g. during in-flight sale).
-  reservedBalance    BigInt   @default(0)
+  reservedBalance  BigInt   @default(0)
   /// Coins already sold to users (lifetime).
-  soldTotal          BigInt   @default(0)
-  version            Int      @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  soldTotal        BigInt   @default(0)
+  version          Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   purchaseOrders CoinSellerInventoryPurchaseOrder[]
   userSales      CoinSellerUserSaleTransaction[]
@@ -89,23 +89,23 @@ model CoinSellerInventoryPurchaseOrder {
 /// Immutable record of every coin sale from a Coin Seller to a user (PRD §19).
 /// Country restriction is enforced at service level before this record is created.
 model CoinSellerUserSaleTransaction {
-  id             String         @id @default(uuid()) @db.Uuid
-  sellerId       String         @db.Uuid
-  inventoryId    String         @db.Uuid
-  buyerId        String         @db.Uuid
-  coinAmount     BigInt
+  id               String         @id @default(uuid()) @db.Uuid
+  sellerId         String         @db.Uuid
+  inventoryId      String         @db.Uuid
+  buyerId          String         @db.Uuid
+  coinAmount       BigInt
   /// Country of both seller and buyer at the time of sale (must match — PRD §20).
-  sellerCountry  String
-  buyerCountry   String
-  status         CoinSaleStatus @default(COMPLETED)
-  idempotencyKey String         @unique
+  sellerCountry    String
+  buyerCountry     String
+  status           CoinSaleStatus @default(COMPLETED)
+  idempotencyKey   String         @unique
   /// Wallet transaction ID for the buyer's Gold Coin credit.
-  buyerWalletTxnId String?      @db.Uuid
+  buyerWalletTxnId String?        @db.Uuid
   /// Seller inventory deduction was recorded atomically with this txn.
   inventoryTxnRef  String?
   paymentProofRef  String?
   metadata         Json?
-  createdAt        DateTime     @default(now())
+  createdAt        DateTime       @default(now())
 
   inventory CoinSellerInventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
 
@@ -117,18 +117,18 @@ model CoinSellerUserSaleTransaction {
 
 /// Append-only audit trail for all inventory changes (purchases, sales, adjustments).
 model CoinSellerInventoryAudit {
-  id              String   @id @default(uuid()) @db.Uuid
-  sellerId        String   @db.Uuid
-  inventoryId     String?  @db.Uuid
-  action          String   // e.g. INVENTORY_PURCHASED, INVENTORY_SOLD, INVENTORY_ADJUSTED
-  coinDelta       BigInt   @default(0)
-  balanceBefore   BigInt?
-  balanceAfter    BigInt?
-  referenceId     String?  @db.Uuid
-  referenceType   String?
-  actorId         String?  @db.Uuid
-  details         Json?
-  createdAt       DateTime @default(now())
+  id            String   @id @default(uuid()) @db.Uuid
+  sellerId      String   @db.Uuid
+  inventoryId   String?  @db.Uuid
+  action        String // e.g. INVENTORY_PURCHASED, INVENTORY_SOLD, INVENTORY_ADJUSTED
+  coinDelta     BigInt   @default(0)
+  balanceBefore BigInt?
+  balanceAfter  BigInt?
+  referenceId   String?  @db.Uuid
+  referenceType String?
+  actorId       String?  @db.Uuid
+  details       Json?
+  createdAt     DateTime @default(now())
 
   @@index([sellerId, createdAt])
   @@index([action])
@@ -140,25 +140,24 @@ model CoinSellerInventoryAudit {
 /// Platform-defined inventory packages that Coin Sellers can purchase (PRD §17).
 /// All values are configurable by Super Admin — nothing is hardcoded.
 model CoinSellerInventoryPackage {
-  id           String   @id @default(uuid()) @db.Uuid
-  code         String   @unique
-  name         String
-  coinAmount   BigInt
-  priceAmount  Decimal  @db.Decimal(14, 2)
-  priceCurrency String  @default("INR")
-  isActive     Boolean  @default(true)
-  sortOrder    Int      @default(0)
-  createdBy    String?  @db.Uuid
-  updatedBy    String?  @db.Uuid
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(uuid()) @db.Uuid
+  code          String   @unique
+  name          String
+  coinAmount    BigInt
+  priceAmount   Decimal  @db.Decimal(14, 2)
+  priceCurrency String   @default("INR")
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdBy     String?  @db.Uuid
+  updatedBy     String?  @db.Uuid
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([isActive])
   @@map("coin_seller_inventory_packages")
 }
 
 // ── Legacy Commission Model (preserved for existing data) ─────────────────────
-
 
 /// Active mapping relationship between Coin Seller and Buyer
 model CoinSellerRelationship {

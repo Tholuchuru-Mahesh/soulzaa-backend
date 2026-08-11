@@ -22,13 +22,19 @@ import {
   TERMINAL_STATUSES,
   nextStage,
 } from '../constants/role-request.constants';
+import {
+  RoleRequestDocumentService,
+  SubmittedDocumentInput,
+} from './role-request-document.service';
 import { RoleRequestRoutingService } from './role-request-routing.service';
 
 export interface SubmitRoleRequestInput {
   type: RoleRequestType;
   subjectUserId: string;
   formData?: Record<string, unknown>;
+  /** @deprecated Untyped mirror of `documents`; kept for older callers. */
   documentKeys?: string[];
+  documents?: SubmittedDocumentInput[];
 }
 
 export interface StageActionInput {
@@ -55,6 +61,7 @@ export class RoleRequestService {
     private readonly prisma: PrismaService,
     private readonly routing: RoleRequestRoutingService,
     private readonly roleService: RoleService,
+    private readonly documents: RoleRequestDocumentService,
   ) {}
 
   /**
@@ -64,10 +71,20 @@ export class RoleRequestService {
    * failure cannot burn a reference number, and the partial unique index — not an
    * application check — is what stops two concurrent submits creating two open
    * chains for the same person.
+   *
+   * Documents are validated and checked *before* the transaction opens: the pass
+   * downloads and hashes every file, and a rejected document must abort the
+   * submission without having burned a reference number.
    */
   async submit(input: SubmitRoleRequestInput, initiatedByUserId: string) {
     const geography = await this.routing.resolveGeography(input.subjectUserId);
     const stage = ENTRY_STAGE[input.type];
+
+    const prepared = await this.documents.prepare(
+      input.type,
+      input.subjectUserId,
+      input.documents ?? [],
+    );
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -91,7 +108,10 @@ export class RoleRequestService {
             currentStageEnteredAt: new Date(),
             pipelineVersion: PIPELINE_VERSION,
             formData: (input.formData ?? {}) as never,
-            documentKeys: input.documentKeys ?? [],
+            // Mirror of the typed `documents` rows below, for older readers.
+            documentKeys: prepared.length
+              ? prepared.map((d) => d.storageKey)
+              : (input.documentKeys ?? []),
             regionId: geography.regionId,
             stateId: geography.stateId,
             countryId: geography.countryId,
@@ -109,6 +129,12 @@ export class RoleRequestService {
             stageEnteredAt: request.currentStageEnteredAt!,
           },
         });
+
+        if (prepared.length > 0) {
+          await tx.roleRequestDocument.createMany({
+            data: this.documents.buildCreateData(request.id, prepared),
+          });
+        }
 
         return request;
       });
@@ -375,15 +401,64 @@ export class RoleRequestService {
     return { total, items };
   }
 
-  /** A request with its full, ordered audit trail. */
+  /** A request with its full, ordered audit trail and its documents. */
   async findById(requestId: string) {
     const request = await this.prisma.roleRequest.findUnique({
       where: { id: requestId },
-      include: { actions: { orderBy: { sequence: 'asc' } } },
+      include: {
+        actions: { orderBy: { sequence: 'asc' } },
+        documents: { orderBy: { slot: 'asc' } },
+      },
     });
     if (!request) {
       throw new NotFoundException(`Role request '${requestId}' not found`);
     }
     return request;
+  }
+
+  /**
+   * The applicant's own latest request of a type — what the mobile status screen
+   * polls. Returns null rather than 404 so a user who has never applied gets a
+   * clean "no application" state instead of an error.
+   *
+   * The document view is deliberately narrower than the reviewer's: the
+   * applicant sees which slots they filled and any rejection note written *for*
+   * them, but not `checkFindings`. Handing back "DUPLICATE_ACROSS_APPLICANTS"
+   * would tell someone gaming the system exactly which check caught them.
+   */
+  async findMine(subjectUserId: string, type: RoleRequestType) {
+    const request = await this.prisma.roleRequest.findFirst({
+      where: { subjectUserId, type },
+      orderBy: { submittedAt: 'desc' },
+      include: {
+        actions: { orderBy: { sequence: 'asc' } },
+        documents: { orderBy: { slot: 'asc' } },
+      },
+    });
+
+    if (!request) return null;
+
+    return {
+      id: request.id,
+      reference: request.reference,
+      type: request.type,
+      status: request.status,
+      currentStage: request.currentStage,
+      submittedAt: request.submittedAt,
+      decidedAt: request.decidedAt,
+      outcomeReason: request.outcomeReason,
+      documents: request.documents.map((document) => ({
+        id: document.id,
+        slot: document.slot,
+        filename: document.filename,
+        status: document.status,
+        reviewNotes: document.reviewNotes,
+      })),
+      timeline: request.actions.map((action) => ({
+        stage: action.stage,
+        action: action.action,
+        actedAt: action.actedAt,
+      })),
+    };
   }
 }

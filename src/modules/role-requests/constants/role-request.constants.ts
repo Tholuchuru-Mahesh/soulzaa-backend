@@ -1,4 +1,9 @@
-import { RoleRequestStage, RoleRequestStatus, RoleRequestType } from '@prisma/client';
+import {
+  RoleRequestDocumentSlot,
+  RoleRequestStage,
+  RoleRequestStatus,
+  RoleRequestType,
+} from '@prisma/client';
 
 /**
  * Current pipeline shape. Stamped onto every request at submit time so a request
@@ -39,6 +44,28 @@ export const GRANTED_ROLE: Record<RoleRequestType, string> = {
   [RoleRequestType.MODERATOR]: 'MODERATOR',
   [RoleRequestType.BUSINESS_DEVELOPMENT]: 'BUSINESS_DEVELOPMENT',
 };
+
+/**
+ * Documents each request type must supply before it can be filed.
+ *
+ * AGENCY mirrors the six slots on the mobile upload screen. The other types
+ * collect nothing yet — an empty list means "no documents required", not
+ * "documents not supported", so adding slots later is a one-line change here.
+ */
+export const REQUIRED_DOCUMENT_SLOTS: Record<RoleRequestType, readonly RoleRequestDocumentSlot[]> =
+  {
+    [RoleRequestType.AGENCY]: [
+      RoleRequestDocumentSlot.AADHAAR,
+      RoleRequestDocumentSlot.PAN,
+      RoleRequestDocumentSlot.ADDRESS_PROOF,
+      RoleRequestDocumentSlot.BUSINESS_PROOF,
+      RoleRequestDocumentSlot.BANK_DETAILS,
+      RoleRequestDocumentSlot.PROFILE_PHOTO,
+    ],
+    [RoleRequestType.COIN_SELLER]: [],
+    [RoleRequestType.MODERATOR]: [],
+    [RoleRequestType.BUSINESS_DEVELOPMENT]: [],
+  };
 
 /** The role permitted to act at each stage. */
 export const STAGE_REVIEWER_ROLE: Record<RoleRequestStage, string> = {

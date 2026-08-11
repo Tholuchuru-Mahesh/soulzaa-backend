@@ -1547,6 +1547,11 @@ const MEMBER_PERMISSIONS = [
   'referral.view',
   'notification.view',
   'withdrawal.request',
+  // Self-scoped: this files an application for yourself (agency, coin seller…).
+  // Reviewing and deciding those applications stay operational permissions —
+  // `role_request.view`/`review`/`decide` are deliberately not here, so a member
+  // can apply but cannot see or action anyone's queue, including their own.
+  'role_request.submit',
 ];
 
 /**
@@ -1579,7 +1584,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'user.role.assign',
     'user.location.view',
     'user.location.assign',
-    'role_request.submit',
+    // `role_request.submit` arrives via MEMBER_PERMISSIONS.
     'role_request.view',
     'role_request.review',
     'role_request.decide',

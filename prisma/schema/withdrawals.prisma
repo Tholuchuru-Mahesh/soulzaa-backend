@@ -65,7 +65,7 @@ model WithdrawalHistory {
   id         String           @id @default(uuid()) @db.Uuid
   requestId  String           @db.Uuid
   userId     String           @db.Uuid
-  fromStatus String           // String to allow 'NONE' for initial creation
+  fromStatus String // String to allow 'NONE' for initial creation
   toStatus   WithdrawalStatus
   actorId    String?          @db.Uuid
   createdAt  DateTime         @default(now())

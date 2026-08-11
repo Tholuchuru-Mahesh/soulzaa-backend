@@ -3,6 +3,7 @@ import { RoleRequestStage, RoleRequestStatus, RoleRequestType } from '@prisma/cl
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { RoleService } from 'src/modules/authorization/services/role.service';
 import { ENTRY_STAGE, nextStage } from '../constants/role-request.constants';
+import { RoleRequestDocumentService } from './role-request-document.service';
 import { RoleRequestRoutingService } from './role-request-routing.service';
 import { RoleRequestService } from './role-request.service';
 
@@ -42,6 +43,9 @@ describe('RoleRequestService', () => {
     queueFilter: jest.fn(),
   };
   const roleService = { assignRoleToUser: jest.fn() };
+  // These tests submit without documents, so `prepare` resolving empty is the
+  // whole of the contract they depend on.
+  const documents = { prepare: jest.fn(), buildCreateData: jest.fn() };
 
   const openRequest = (over: Record<string, unknown> = {}) => ({
     id: 'req-1',
@@ -60,6 +64,8 @@ describe('RoleRequestService', () => {
     jest.clearAllMocks();
     routing.resolveGeography.mockResolvedValue(KARNATAKA);
     routing.canActAtStage.mockResolvedValue(true);
+    documents.prepare.mockResolvedValue([]);
+    documents.buildCreateData.mockReturnValue([]);
     tx.roleRequestAction.findFirst.mockResolvedValue({ sequence: 1 });
     tx.roleRequest.update.mockImplementation(({ data }) =>
       Promise.resolve({ ...openRequest(), ...data }),
@@ -68,6 +74,7 @@ describe('RoleRequestService', () => {
       prisma as unknown as PrismaService,
       routing as unknown as RoleRequestRoutingService,
       roleService as unknown as RoleService,
+      documents as unknown as RoleRequestDocumentService,
     );
   });
 

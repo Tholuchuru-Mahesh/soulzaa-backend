@@ -46,12 +46,12 @@ model UserSession {
 /// Append-only audit of every session lifecycle event. Backs security
 /// review (hijack detection, admin force-logout) and device history.
 model SessionHistory {
-  id        String           @id @default(uuid()) @db.Uuid
-  sessionId String?          @db.Uuid
-  userId    String           @db.Uuid
-  event     SessionEventType
-  ip        String?
-  userAgent String?
+  id         String           @id @default(uuid()) @db.Uuid
+  sessionId  String?          @db.Uuid
+  userId     String           @db.Uuid
+  event      SessionEventType
+  ip         String?
+  userAgent  String?
   // Derived from `userAgent` and `ip` at write time so security review can filter
   // and group without re-parsing every row. All nullable: an unparseable
   // user-agent or an unconfigured geo-IP source must never fail a login.
@@ -59,8 +59,8 @@ model SessionHistory {
   os         String?
   deviceType String?
   country    String?
-  metadata  Json?
-  createdAt DateTime         @default(now())
+  metadata   Json?
+  createdAt  DateTime         @default(now())
 
   @@index([userId])
   @@index([sessionId])
