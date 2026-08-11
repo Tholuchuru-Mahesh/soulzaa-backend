@@ -182,6 +182,13 @@ export class VoiceSessionRepository {
     });
   }
 
+  /** A user's other ACTIVE sessions, outside the room they're currently entering. */
+  listOtherActiveSessions(userId: string, excludeRoomId: string): Promise<VoiceSession[]> {
+    return this.prisma.voiceSession.findMany({
+      where: { userId, status: 'ACTIVE', roomId: { not: excludeRoomId } },
+    });
+  }
+
   findStaleSessions(olderThan: Date, limit = 200): Promise<VoiceSession[]> {
     return this.prisma.voiceSession.findMany({
       where: { status: 'ACTIVE', lastHeartbeatAt: { lt: olderThan } },

@@ -459,6 +459,11 @@ model VoiceSession {
   @@unique([roomId, userId])
   @@index([roomId])
   @@index([status])
+  // A user can only be physically present in one room's voice channel at a
+  // time; joining a new room's voice session looks up the user's other
+  // ACTIVE sessions (across all rooms) to end them server-side. See
+  // VoiceService.endOtherActiveSessions.
+  @@index([userId, status])
   @@map("voice_sessions")
 }
 

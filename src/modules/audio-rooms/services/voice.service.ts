@@ -148,9 +148,49 @@ export class VoiceService implements IVoiceService {
       );
     }
 
+    // A user can only be physically present in one room's voice channel. Doing
+    // this here — server-side, on every successful entry — closes the gap a
+    // client that never called /voice/leave for its previous room leaves open:
+    // that other room stops treating this user as a live participant within
+    // one join round-trip instead of waiting out the heartbeat-timeout
+    // backstop, and its cached voice state/token privilege can no longer be
+    // read as "still a speaker there" once they are live somewhere else.
+    await this.endOtherActiveSessions(actor.id, roomId);
+
     const token = this.buildToken(actor.id, roomId, zegoRoomId, canPublish);
     const voiceState = await this.rebuildVoiceState(roomId);
     return { ...token, voiceState };
+  }
+
+  /** Ends every OTHER room's ACTIVE session this user still holds. */
+  private async endOtherActiveSessions(userId: string, currentRoomId: string): Promise<void> {
+    const stale = await this.voice.listOtherActiveSessions(userId, currentRoomId);
+    for (const session of stale) {
+      const durationSeconds = (Date.now() - session.joinedAt.getTime()) / 1000;
+      await this.voice.endSession(session.roomId, userId, durationSeconds);
+      await this.clearVoiceRuntime(session.roomId, userId);
+      await this.voice.appendVoiceSessionLog({
+        roomId: session.roomId,
+        userId,
+        action: VoiceSessionAction.LEFT,
+        metadata: {
+          durationSeconds: Math.floor(durationSeconds),
+          reason: 'switched_room',
+        },
+      });
+      const count = await this.voice.voiceCount(session.roomId);
+      await this.bus.publish(
+        new VoiceLeftEvent({
+          roomId: session.roomId,
+          userId,
+          durationSeconds: Math.floor(durationSeconds),
+          reason: 'left',
+          participantCount: count,
+        }),
+      );
+      await this.enqueueSessionAnalytics(session.roomId, session, Math.floor(durationSeconds));
+      await this.rebuildVoiceState(session.roomId);
+    }
   }
 
   async leave(actor: RoomActor, roomId: string): Promise<void> {

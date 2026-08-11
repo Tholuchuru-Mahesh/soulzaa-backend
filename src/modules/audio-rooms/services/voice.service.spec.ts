@@ -68,6 +68,7 @@ describe('VoiceService', () => {
       speakingMembers: jest.fn().mockResolvedValue([]),
       voiceCount: jest.fn().mockResolvedValue(1),
       listActiveSessions: jest.fn().mockResolvedValue([]),
+      listOtherActiveSessions: jest.fn().mockResolvedValue([]),
       appendVoiceSessionLog: jest.fn().mockResolvedValue(undefined),
       setCachedState: jest.fn().mockResolvedValue(undefined),
       getCachedState: jest.fn().mockResolvedValue(null),
@@ -159,6 +160,62 @@ describe('VoiceService', () => {
     it('requires membership', async () => {
       roomsSvc.assertMember.mockRejectedValue(new Error('not a member'));
       await expect(service.join(ACTOR, 'room-1', {})).rejects.toBeDefined();
+    });
+  });
+
+  /**
+   * Regression coverage for the cross-room audio leak: a user who becomes a
+   * speaker in room-0, never calls /voice/leave there (a stale client, a
+   * minimized/backgrounded session, a crash), and then joins room-1's voice
+   * channel as a listener. The backend must stop treating them as live in
+   * room-0 the moment room-1 confirms them, rather than relying on the client
+   * to have cleaned up or on the heartbeat-timeout backstop.
+   */
+  describe('cross-room session cleanup on join/reconnect', () => {
+    it('ends another room’s active session when joining a new room', async () => {
+      const stale = session({ id: 'sess-0', roomId: 'room-0', role: VoicePublishRole.PUBLISHER });
+      voice.listOtherActiveSessions.mockResolvedValue([stale]);
+
+      await service.join(ACTOR, 'room-1', {});
+
+      expect(voice.listOtherActiveSessions).toHaveBeenCalledWith(ACTOR.id, 'room-1');
+      expect(voice.endSession).toHaveBeenCalledWith('room-0', ACTOR.id, expect.any(Number));
+      expect(voice.removeVoicePresence).toHaveBeenCalledWith('room-0', ACTOR.id);
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.voice_left',
+          payload: expect.objectContaining({ roomId: 'room-0', userId: ACTOR.id }),
+        }),
+      );
+    });
+
+    it('ends every other stale session, not just one', async () => {
+      voice.listOtherActiveSessions.mockResolvedValue([
+        session({ id: 'sess-0', roomId: 'room-0' }),
+        session({ id: 'sess-2', roomId: 'room-2' }),
+      ]);
+
+      await service.join(ACTOR, 'room-1', {});
+
+      expect(voice.endSession).toHaveBeenCalledWith('room-0', ACTOR.id, expect.any(Number));
+      expect(voice.endSession).toHaveBeenCalledWith('room-2', ACTOR.id, expect.any(Number));
+    });
+
+    it('does nothing extra when the user holds no other active session', async () => {
+      await service.join(ACTOR, 'room-1', {});
+
+      expect(voice.endSession).not.toHaveBeenCalled();
+    });
+
+    it('also runs on reconnect, not just a fresh join', async () => {
+      voice.getActiveSession.mockResolvedValue(session());
+      voice.listOtherActiveSessions.mockResolvedValue([
+        session({ id: 'sess-0', roomId: 'room-0' }),
+      ]);
+
+      await service.reconnect(ACTOR, 'room-1');
+
+      expect(voice.endSession).toHaveBeenCalledWith('room-0', ACTOR.id, expect.any(Number));
     });
   });
 
