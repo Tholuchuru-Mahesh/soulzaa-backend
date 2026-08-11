@@ -126,4 +126,34 @@ export class PkBattleRepository {
       this.prisma.pkBattle.count({ where }),
     ]);
   }
+
+  /**
+   * Every battle a user has ever participated in, across all rooms, most
+   * recent first. No Prisma relation exists between PkParticipant and
+   * PkBattle (by design — same-module, id-referenced only), so this is a
+   * two-step fetch-then-join rather than a single query; battle counts per
+   * user are small (a room feature, not a hot-path table), so this stays
+   * cheap. Rows whose battle went missing (should not happen) are dropped.
+   */
+  async listParticipantBattles(
+    userId: string,
+  ): Promise<{ participant: PkParticipant; battle: PkBattle }[]> {
+    const participants = await this.prisma.pkParticipant.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (participants.length === 0) return [];
+
+    const battles = await this.prisma.pkBattle.findMany({
+      where: { id: { in: participants.map((p) => p.battleId) } },
+    });
+    const battleById = new Map(battles.map((b) => [b.id, b]));
+
+    return participants
+      .map((participant) => ({ participant, battle: battleById.get(participant.battleId) }))
+      .filter(
+        (row): row is { participant: PkParticipant; battle: PkBattle } =>
+          row.battle !== undefined,
+      );
+  }
 }

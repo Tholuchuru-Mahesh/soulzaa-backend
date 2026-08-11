@@ -25,6 +25,7 @@ import {
   USERS_SERVICE,
   type IUsersService,
 } from 'src/modules/users/interfaces/users.service.interface';
+import type { IPkBattleService } from '../interfaces/pk-battle.service.interface';
 import {
   PK_WINNER_BADGE_NAME,
   PK_WINS_LEADERBOARD_KEY,
@@ -59,7 +60,7 @@ const MANAGER_ROLES: ReadonlySet<RoomMemberRole> = new Set([
  * point, and the match is recorded. Contributions and rewards are immutable.
  */
 @Injectable()
-export class PkBattleService {
+export class PkBattleService implements IPkBattleService {
   private badgeCosmeticId: string | null = null;
 
   constructor(
@@ -383,6 +384,98 @@ export class PkBattleService {
       q.page,
       q.limit,
     );
+  }
+
+  /**
+   * Creator Center — PK History: every battle `userId` has ever fought, across
+   * all rooms (not just one). No Prisma-level filter/pagination is possible
+   * (see `listParticipantBattles`), so win/loss/draw filtering and paging
+   * happen in memory over the user's own battles — a bounded, non-hot-path set.
+   */
+  async historyForCreator(
+    userId: string,
+    q: { skip: number; limit: number; page: number; filter: 'all' | 'wins' | 'losses' | 'draws' },
+  ): Promise<Paginated<unknown>> {
+    const rows = await this.repo.listParticipantBattles(userId);
+    const filtered = rows.filter(({ participant, battle }) =>
+      this.matchesFilter(q.filter, participant.side, battle.result),
+    );
+    const total = filtered.length;
+    const page = filtered.slice(q.skip, q.skip + q.limit);
+
+    const items = await Promise.all(
+      page.map(({ participant, battle }) => this.creatorBattleView(userId, participant, battle)),
+    );
+    return buildPaginated(items, total, q.page, q.limit);
+  }
+
+  /** Detail for one of the caller's own battles; null if they didn't fight in it. */
+  async getCreatorBattleDetail(userId: string, battleId: string): Promise<unknown | null> {
+    const participant = await this.repo.findParticipant(battleId, userId);
+    if (!participant) return null;
+    const battle = await this.repo.getBattle(battleId);
+    if (!battle) return null;
+    return this.creatorBattleView(userId, participant, battle);
+  }
+
+  private matchesFilter(
+    filter: 'all' | 'wins' | 'losses' | 'draws',
+    side: PkSide,
+    result: PkResult | null,
+  ): boolean {
+    switch (filter) {
+      case 'all':
+        return true;
+      case 'draws':
+        return result === PkResult.DRAW;
+      case 'wins':
+        return result === side;
+      case 'losses':
+        return result !== null && result !== PkResult.DRAW && result !== side;
+    }
+  }
+
+  private async creatorBattleView(
+    userId: string,
+    participant: { id: string; side: PkSide; score: bigint },
+    battle: PkBattle,
+  ): Promise<unknown> {
+    const [room, allParticipants] = await Promise.all([
+      this.rooms.findRoomRow(battle.roomId),
+      this.repo.listParticipants(battle.id),
+    ]);
+    const opponents = allParticipants.filter((p) => p.side !== participant.side);
+    const opponentUsers = await Promise.all(opponents.map((o) => this.users.findById(o.userId)));
+
+    const result = this.myResult(participant.side, battle.result);
+
+    return {
+      battleId: battle.id,
+      roomId: battle.roomId,
+      roomName: room?.name ?? null,
+      opponents: opponents.map((o, i) => ({
+        userId: o.userId,
+        username: opponentUsers[i]?.username ?? null,
+        score: Number(o.score),
+      })),
+      startedAt: battle.startedAt,
+      completedAt: battle.completedAt,
+      durationSeconds: battle.durationSeconds,
+      status: battle.status,
+      mySide: participant.side,
+      myScore: Number(participant.score),
+      redScore: Number(battle.redScore),
+      blueScore: Number(battle.blueScore),
+      result: battle.result,
+      myResult: result,
+      giftContribution: Number(participant.score),
+    };
+  }
+
+  private myResult(side: PkSide, result: PkResult | null): 'WIN' | 'LOSS' | 'DRAW' | 'PENDING' {
+    if (result === null) return 'PENDING';
+    if (result === PkResult.DRAW) return 'DRAW';
+    return result === side ? 'WIN' : 'LOSS';
   }
 
   async leaderboard(limit: number): Promise<unknown[]> {

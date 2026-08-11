@@ -22,12 +22,15 @@ import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import { QueueService } from 'src/infra/queue/queue.service';
+
 import { CacheService } from 'src/infra/redis/cache.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import { safeEqualHex, sha256 } from 'src/modules/auth/services/hash.util';
 import { walletLockKey } from 'src/modules/wallet/constants/wallet.constants';
+
 import {
   PROFILE_SERVICE,
   type IProfileService,
@@ -161,6 +164,7 @@ export class GamesService {
 
   constructor(
     private readonly repo: GamesRepository,
+    private readonly prisma: PrismaService,
     private readonly locks: LockService,
     private readonly cache: CacheService,
     private readonly queue: QueueService,
@@ -169,6 +173,7 @@ export class GamesService {
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
     @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
   ) {}
+
 
   // ======================= Catalog =======================
 
@@ -2148,13 +2153,189 @@ export class GamesService {
       dto.skip,
       dto.limit,
     );
+    const parts = await this.prisma.gameParticipant.findMany({
+      where: { sessionId: { in: rows.map((r) => r.id) }, userId: actor.id },
+    });
+    const partMap = new Map<string, GameParticipant>(parts.map((p: GameParticipant) => [p.sessionId, p]));
     return buildPaginated(
-      rows.map((s) => this.sessionSummary(s)),
+      rows.map((s) => {
+        const p = partMap.get(s.id);
+        return {
+          ...this.sessionSummary(s),
+          participantStatus: p?.status ?? 'PLAYING',
+          isWinner: p?.isWinner ?? false,
+          payoutAmount: Number(p?.payoutAmount ?? 0),
+          stakeAmount: Number(p?.stake ?? s.stake),
+        };
+      }),
       total,
       dto.page,
       dto.limit,
     );
+
   }
+
+  async luckyRecords(actor: GameActor, dto: { page?: number; limit?: number; skip?: number }): Promise<Paginated<unknown>> {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 20;
+    const skip = dto.skip ?? (page - 1) * limit;
+
+    const [bets, totalBets] = await Promise.all([
+      this.prisma.casinoBet.findMany({
+        where: { userId: actor.id },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: { round: true },
+      }),
+      this.prisma.casinoBet.count({ where: { userId: actor.id } }),
+    ]);
+
+    const items = bets.map((b) => {
+      const gameName = b.game === 'GREEDY_FOOD' ? 'Greedy Food' : 'Lucky Fruit';
+      const betAmount = Number(b.betAmount);
+      const payoutAmount = Number(b.payoutAmount);
+      return {
+        id: b.id,
+        gameName,
+        gameCode: b.game,
+        luckyResult: b.round?.winningOutcome ? `${b.betItem} (Winning: ${b.round.winningOutcome})` : b.betItem,
+        coinsSpent: betAmount,
+        coinsWon: payoutAmount,
+        reward: payoutAmount,
+        status: b.status,
+        createdAt: b.createdAt,
+      };
+    });
+
+    return buildPaginated(items, totalBets, page, limit);
+  }
+
+  async jackpotRecords(actor: GameActor, dto: { page?: number; limit?: number; skip?: number }): Promise<Paginated<unknown>> {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 20;
+    const skip = dto.skip ?? (page - 1) * limit;
+
+    const [entries, total] = await Promise.all([
+      this.prisma.jackpotEntry.findMany({
+        where: { userId: actor.id },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: { jackpot: true },
+      }),
+      this.prisma.jackpotEntry.count({ where: { userId: actor.id } }),
+    ]);
+
+    const items = entries.map((e) => {
+      const entryFee = Number(e.entryFee);
+      const payoutAmount = Number(e.payoutAmount);
+      return {
+        id: e.id,
+        jackpotName: e.jackpot?.name ?? 'Jackpot',
+        jackpotCode: e.jackpot?.code ?? 'JACKPOT',
+        entryAmount: entryFee,
+        coinsContributed: entryFee,
+        payoutAmount,
+        reward: payoutAmount,
+        status: e.status,
+        result: e.status === 'WON' ? 'Won' : (e.status === 'LOST' ? 'Lost' : e.status),
+        createdAt: e.createdAt,
+      };
+    });
+
+    return buildPaginated(items, total, page, limit);
+  }
+
+  async myTournaments(actor: GameActor, dto: { page?: number; limit?: number; skip?: number }): Promise<Paginated<unknown>> {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 20;
+    const skip = dto.skip ?? (page - 1) * limit;
+
+    const [participants, total] = await Promise.all([
+      this.prisma.eventParticipant.findMany({
+        where: {
+          userId: actor.id,
+          event: { category: 'TOURNAMENT' },
+        },
+        orderBy: { joinedAt: 'desc' },
+        skip,
+        take: limit,
+        include: { event: true },
+      }),
+      this.prisma.eventParticipant.count({
+        where: {
+          userId: actor.id,
+          event: { category: 'TOURNAMENT' },
+        },
+      }),
+    ]);
+
+    const rewards = await this.prisma.eventReward.findMany({
+      where: {
+        userId: actor.id,
+        eventId: { in: participants.map((p) => p.eventId) },
+      },
+    });
+    const rewardMap = new Map(rewards.map((r) => [r.eventId, r]));
+
+    const items = participants.map((p, idx) => {
+      const rewardRow = rewardMap.get(p.eventId);
+      let rewardAmount = 0;
+      if (rewardRow?.rewardDefinition && typeof rewardRow.rewardDefinition === 'object') {
+        const def = rewardRow.rewardDefinition as Record<string, unknown>;
+        rewardAmount = Number(def.coins ?? def.amount ?? 0);
+      }
+      return {
+        id: p.id,
+        eventId: p.eventId,
+        tournamentName: p.event?.name ?? 'Tournament',
+        status: p.event?.status ?? 'COMPLETED',
+        participantStatus: p.status,
+        score: Number(p.score),
+        rank: idx + 1,
+        participantsCount: p.event?.maxParticipants ?? 100,
+        reward: rewardAmount,
+        entryFee: 0,
+        createdAt: p.joinedAt,
+      };
+    });
+
+    return buildPaginated(items, total, page, limit);
+  }
+
+  async listTournaments(dto: { page?: number; limit?: number; skip?: number }): Promise<Paginated<unknown>> {
+    const page = dto.page ?? 1;
+    const limit = dto.limit ?? 20;
+    const skip = dto.skip ?? (page - 1) * limit;
+
+    const [events, total] = await Promise.all([
+      this.prisma.eventDefinition.findMany({
+        where: { category: 'TOURNAMENT' },
+        orderBy: { startTime: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.eventDefinition.count({ where: { category: 'TOURNAMENT' } }),
+    ]);
+
+    const items = events.map((e) => ({
+      id: e.id,
+      code: e.code,
+      name: e.name,
+      description: e.description,
+      status: e.status,
+      startTime: e.startTime,
+      endTime: e.endTime,
+      maxParticipants: e.maxParticipants,
+    }));
+
+    return buildPaginated(items, total, page, limit);
+  }
+
+
+
+
 
   async leaderboard(limit: number): Promise<unknown[]> {
     const rows = await this.cache.top(GAME_WINS_LEADERBOARD_KEY, limit);

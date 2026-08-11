@@ -83,6 +83,20 @@ export class GiftLeaderboardService {
           ),
         );
       }
+      // FANS: cross-room by definition — this sender's gross gift value credited
+      // to this one receiver's own fan board (Creator Center — Top Fans). Gross
+      // coin value, per the "total gift coins sent to the creator" ranking rule.
+      writes.push(
+        this.repo.addLeaderboardScore(
+          LeaderboardBoard.FANS,
+          LeaderboardScope.CREATOR,
+          input.receiverId,
+          bucket,
+          input.senderId,
+          input.giftValue,
+          ttl,
+        ),
+      );
     }
     await Promise.all(writes);
   }
@@ -111,6 +125,43 @@ export class GiftLeaderboardService {
       username: users[i]?.username ?? null,
       score: r.score,
     }));
+  }
+
+  /** Creator Center — Top Fans: who has given this creator the most, ranked. */
+  async topFans(
+    creatorId: string,
+    period: LeaderboardPeriod,
+    limit: number,
+  ): Promise<{ userId: string; totalCoins: number; rank: number }[]> {
+    const bucket = this.bucket(period, new Date());
+    const rows = await this.repo.topLeaderboard(
+      LeaderboardBoard.FANS,
+      LeaderboardScope.CREATOR,
+      creatorId,
+      bucket,
+      limit,
+    );
+    return rows.map((r) => ({ userId: r.userId, totalCoins: r.score, rank: r.rank }));
+  }
+
+  /** Start of the current period window (UTC); null = all-time. Used to hydrate
+   *  count/lastGiftAt from Postgres consistently with the ZSET's own bucket. */
+  periodStart(period: LeaderboardPeriod, now = new Date()): Date | null {
+    switch (period) {
+      case LeaderboardPeriod.DAILY:
+        return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      case LeaderboardPeriod.WEEKLY: {
+        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        const dayNum = d.getUTCDay() === 0 ? 7 : d.getUTCDay();
+        d.setUTCDate(d.getUTCDate() - dayNum + 1);
+        return d;
+      }
+      case LeaderboardPeriod.MONTHLY:
+        return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      case LeaderboardPeriod.ALL_TIME:
+      default:
+        return null;
+    }
   }
 
   // ---- Period bucketing ----

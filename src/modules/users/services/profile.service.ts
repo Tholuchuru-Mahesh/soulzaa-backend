@@ -151,9 +151,10 @@ export class ProfileService implements IProfileService {
    * it is what stops a follow-notification tap from 404ing on a real user.
    */
   async getPublicProfile(identifier: string, viewerId?: string): Promise<ProfileView | null> {
-    const user = UUID_RE.test(identifier)
-      ? await this.users.findById(identifier)
-      : await this.users.findByUsername(identifier);
+    let user = await this.users.findByIdOrPrefix(identifier);
+    if (!user) {
+      user = await this.users.findByUsername(identifier);
+    }
     return this.gatedView(user, viewerId);
   }
 

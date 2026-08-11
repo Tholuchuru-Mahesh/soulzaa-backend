@@ -16,7 +16,9 @@ import { NotGuest } from 'src/common/decorators/not-guest.decorator';
 import { Public } from 'src/common/decorators/public.decorator';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
+import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
 import { CreateRoomDto } from '../dto/create-room.dto';
+
 import { JoinRoomDto } from '../dto/join-room.dto';
 import { ListRoomsDto } from '../dto/list-rooms.dto';
 import { TransferOwnershipDto } from '../dto/transfer-ownership.dto';
@@ -85,6 +87,57 @@ export class AudioRoomsController {
   myRoom(@CurrentUser() user: AuthenticatedUser) {
     return this.rooms.getMyRoom(this.actor(user));
   }
+
+  @Get('history')
+  @ApiOperation({ summary: "Get the caller's room participation history" })
+  history(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
+    return this.rooms.listRoomHistory(user.id, query);
+  }
+
+  @Get('favorites')
+  @ApiOperation({ summary: "Get the caller's favorite rooms" })
+  favorites(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
+    return this.rooms.listFavorites(user.id, query);
+  }
+
+  @Post(':id/favorite')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Add a room to caller favorites' })
+  addFavorite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+  ) {
+    return this.rooms.addFavorite(user.id, id);
+  }
+
+  @Delete(':id/favorite')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove a room from caller favorites' })
+  removeFavorite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+  ) {
+    return this.rooms.removeFavorite(user.id, id);
+  }
+
+  @Get(':id/favorite')
+  @ApiOperation({ summary: 'Check if caller has favorited a room' })
+  isFavorite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+  ) {
+    return this.rooms.isFavorite(user.id, id);
+  }
+
+  @Get('mic-history')
+  @ApiOperation({ summary: "Get the caller's mic seat session history" })
+  micHistory(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
+    return this.rooms.listMicHistory(user.id, query);
+  }
+
+
+
+
 
   @Get(':id')
   @ApiOperation({ summary: 'Get room detail + live participants' })

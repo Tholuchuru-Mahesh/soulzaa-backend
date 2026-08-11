@@ -312,6 +312,36 @@ export class GamesController {
     return this.games.history(this.actor(user), q);
   }
 
+  @Get('lucky-records')
+  @NotGuest()
+  @ApiOperation({ summary: 'My lucky game records' })
+  luckyRecords(@CurrentUser() user: AuthenticatedUser, @Query() q: PaginationQueryDto) {
+    return this.games.luckyRecords(this.actor(user), q);
+  }
+
+  @Get('jackpot-records')
+  @NotGuest()
+  @ApiOperation({ summary: 'My jackpot records' })
+  jackpotRecords(@CurrentUser() user: AuthenticatedUser, @Query() q: PaginationQueryDto) {
+    return this.games.jackpotRecords(this.actor(user), q);
+  }
+
+  @Get('tournaments')
+  @ApiOperation({ summary: 'List tournaments' })
+  tournaments(@Query() q: PaginationQueryDto) {
+    return this.games.listTournaments(q);
+  }
+
+  @Get('tournaments/my-history')
+  @NotGuest()
+  @ApiOperation({ summary: 'My tournament history' })
+  myTournaments(@CurrentUser() user: AuthenticatedUser, @Query() q: PaginationQueryDto) {
+    return this.games.myTournaments(this.actor(user), q);
+  }
+
+
+
+
   @Get('leaderboard')
   @ApiOperation({ summary: 'Global game wins leaderboard' })
   leaderboard(@Query() q: GameLeaderboardDto) {

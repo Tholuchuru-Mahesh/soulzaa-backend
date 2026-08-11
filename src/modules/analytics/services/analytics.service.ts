@@ -10,7 +10,10 @@ import {
   RoomEngagementView,
   RoomSpeakingView,
 } from '../dto/analytics.dto';
-import type { IAnalyticsService } from '../interfaces/analytics.service.interface';
+import type {
+  IAnalyticsService,
+  VisitorWindowEntry,
+} from '../interfaces/analytics.service.interface';
 import { AnalyticsRepository } from '../repositories/analytics.repository';
 
 // Constant for all-zero global reference UUID
@@ -74,6 +77,11 @@ export class AnalyticsService implements IAnalyticsService {
     });
 
     return buildPaginated(items, total, page, limit);
+  }
+
+  async getVisitorsInRange(roomId: string, start: Date, end: Date): Promise<VisitorWindowEntry[]> {
+    const rows = await this.repo.listVisitorsInRange(roomId, start, end);
+    return rows.map((r) => ({ userId: r.userId, joinedAt: r.joinedAt, leftAt: r.leftAt }));
   }
 
   async getAttendance(

@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WalletCurrency } from '@prisma/client';
 import { EVENT_BUS } from 'src/common/events';
@@ -239,6 +240,51 @@ describe('Phase 10: Enterprise Withdrawal Engine', () => {
           amount: 5000,
           reason: 'DIAMOND_WITHDRAWAL_REVERSED',
         }),
+      );
+    });
+
+    it('should reject a CANCEL by anyone other than the request owner', async () => {
+      mockPrismaService.withdrawalRequest.findUnique.mockResolvedValue({
+        id: 'wd-req-200',
+        userId: 'u-1',
+        amountCoins: BigInt(5000),
+        status: 'PENDING',
+        holdTxnId: 'w-hold-tx-200',
+      });
+
+      await expect(
+        approvalService.reviewWithdrawal({
+          requestId: 'wd-req-200',
+          reviewerId: 'someone-else',
+          action: 'CANCEL',
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockWalletService.credit).not.toHaveBeenCalled();
+    });
+
+    it('should allow the request owner to CANCEL their own withdrawal', async () => {
+      mockPrismaService.withdrawalRequest.findUnique.mockResolvedValue({
+        id: 'wd-req-201',
+        userId: 'u-1',
+        amountCoins: BigInt(5000),
+        status: 'PENDING',
+        holdTxnId: 'w-hold-tx-201',
+      });
+      mockPrismaService.withdrawalRequest.update.mockResolvedValue({});
+      mockPrismaService.withdrawalReview.create.mockResolvedValue({});
+      mockPrismaService.withdrawalHistory.create.mockResolvedValue({});
+      mockPrismaService.withdrawalStatistics.upsert.mockResolvedValue({});
+      mockPrismaService.withdrawalAudit.create.mockResolvedValue({});
+
+      const result = await approvalService.reviewWithdrawal({
+        requestId: 'wd-req-201',
+        reviewerId: 'u-1',
+        action: 'CANCEL',
+      });
+
+      expect(result.toStatus).toBe('CANCELLED');
+      expect(mockWalletService.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'u-1', reason: 'DIAMOND_WITHDRAWAL_REVERSED' }),
       );
     });
   });

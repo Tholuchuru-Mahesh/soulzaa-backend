@@ -1,4 +1,4 @@
-import type { Gift } from '@prisma/client';
+import type { Gift, GiftContextType } from '@prisma/client';
 
 /**
  * Public contract for the gifts module — the ONLY surface other modules
@@ -18,4 +18,28 @@ export interface IGiftsService {
 
   /** All enabled catalog gifts (ordered for display). */
   listActiveGifts(): Promise<Gift[]>;
+
+  /** Total gift coins received in a context (e.g. a room) within a time window. */
+  getContextCoinsInRange(
+    contextType: GiftContextType,
+    contextId: string,
+    start: Date,
+    end: Date,
+  ): Promise<bigint>;
+
+  /** Creator Center — Top Fans: who has given `creatorId` the most, ranked. */
+  getTopFans(
+    creatorId: string,
+    period: 'today' | 'week' | 'month' | 'all',
+    limit: number,
+  ): Promise<TopFanEntry[]>;
+}
+
+/** One ranked fan — identity (avatar/username/level) is hydrated by the caller. */
+export interface TopFanEntry {
+  rank: number;
+  userId: string;
+  totalCoins: number;
+  giftCount: number;
+  lastGiftAt: Date | null;
 }

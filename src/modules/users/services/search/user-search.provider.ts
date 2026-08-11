@@ -48,6 +48,23 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
   async search(query: string, opts: UserSearchOptions): Promise<Paginated<UserCard>> {
     const { page, limit, skip } = normalizePagination(opts);
     const q = query.trim();
+    const cleanHex = q.replace(/-/g, '');
+    const isHexLike = /^[0-9a-f]{8,36}$/i.test(cleanHex);
+
+    let idMatchedUsers: { id: string; username: string; fullName: string | null; country: string | null }[] = [];
+    if (isHexLike) {
+      const pattern = `${q.toLowerCase()}%`;
+      idMatchedUsers = await this.prisma.$queryRaw<
+        { id: string; username: string; fullName: string | null; country: string | null }[]
+      >`
+        SELECT id, username, "fullName", country
+        FROM users
+        WHERE id::text ILIKE ${pattern}
+          AND status = 'ACTIVE'
+          AND "deletedAt" IS NULL
+          ${opts.includeHidden ? Prisma.empty : Prisma.sql`AND "isHiddenAccount" = false`}
+      `;
+    }
 
     const where: Prisma.UserWhereInput = {
       status: 'ACTIVE',
@@ -61,17 +78,27 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
       ...(opts.excludeIds && opts.excludeIds.length > 0 ? { id: { notIn: opts.excludeIds } } : {}),
     };
 
-    const [rows, total] = await Promise.all([
+    const [usernameOrNameRows, totalCount] = await Promise.all([
       this.prisma.user.findMany({
         where,
         skip,
         take: limit,
-        // Exact username matches first, then most recent.
         orderBy: [{ username: 'asc' }],
         select: { id: true, username: true, fullName: true, country: true },
       }),
       this.prisma.user.count({ where }),
     ]);
+
+    const combinedMap = new Map<string, { id: string; username: string; fullName: string | null; country: string | null }>();
+    for (const u of idMatchedUsers) {
+      combinedMap.set(u.id, u);
+    }
+    for (const u of usernameOrNameRows) {
+      combinedMap.set(u.id, u);
+    }
+
+    const rows = Array.from(combinedMap.values()).slice(0, limit);
+    const total = Math.max(combinedMap.size, totalCount);
 
     const cards = await this.hydrate(rows);
     return buildPaginated(cards, total, page, limit);

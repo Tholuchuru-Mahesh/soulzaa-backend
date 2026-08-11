@@ -111,7 +111,7 @@ export class TransactionQueryService {
    */
   async getTransactionHistory(walletId: string, dto: TransactionQueryFilterDto) {
     const wallet = await this.walletService.getWalletById(walletId);
-    const { transactionType, page = 1, limit = 20 } = dto;
+    const { transactionType, currency, page = 1, limit = 20 } = dto;
     const skip = (page - 1) * limit;
 
     const where: any = {
@@ -120,6 +120,9 @@ export class TransactionQueryService {
 
     if (transactionType) {
       where.transactionType = transactionType.toUpperCase();
+    }
+    if (currency) {
+      where.currency = currency.toUpperCase();
     }
 
     const [total, txs] = await Promise.all([

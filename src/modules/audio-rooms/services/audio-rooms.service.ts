@@ -24,7 +24,9 @@ import {
   type IProfileService,
 } from 'src/modules/users/interfaces/profile.interface';
 import { ROOM_MIN_PARTICIPANTS } from '../constants/audio-room.constants';
+import type { PaginationQueryDto } from 'src/common/dto/pagination.dto';
 import type { CreateRoomDto } from '../dto/create-room.dto';
+
 import type { JoinRoomDto } from '../dto/join-room.dto';
 import type { ListRoomsDto } from '../dto/list-rooms.dto';
 import type { UpdateRoomDto } from '../dto/update-room.dto';
@@ -40,9 +42,18 @@ import {
   RoomStartedEvent,
   RoomUpdatedEvent,
 } from '../events/audio-room.events';
-import type { IAudioRoomsService, RoomView } from '../interfaces/audio-rooms.service.interface';
+import type {
+  IAudioRoomsService,
+  LiveSessionView,
+  MicHistoryView,
+  RoomHistoryView,
+  RoomView,
+} from '../interfaces/audio-rooms.service.interface';
+
+
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { AudioRoomsRepository, type UpdateRoomData } from '../repositories/audio-rooms.repository';
+import { LiveSessionRepository } from '../repositories/live-session.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
 import type { RoomPermission } from '../constants/room-permissions';
 import { AudioRoomSeatsService } from './audio-room-seats.service';
@@ -108,6 +119,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     private readonly permissions: RoomPermissionService,
     private readonly seatsService: AudioRoomSeatsService,
     private readonly moderation: ModerationRepository,
+    private readonly liveSessions: LiveSessionRepository,
     private readonly media: MediaUrlResolver,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
@@ -340,6 +352,16 @@ export class AudioRoomsService implements IAudioRoomsService {
     await this.repo.appendLog(roomId, actor.id, RoomLogAction.ENDED, {
       durationSeconds: Math.floor(durationSeconds),
     });
+    // Creator Center — Live History: close this broadcast's own session window
+    // (distinct from `durationSeconds` above, which is measured since the
+    // permanent room row was first created, not since this particular go-live).
+    const openSession = await this.liveSessions.getOpenSession(roomId);
+    if (openSession) {
+      const sessionDurationSeconds = Math.floor(
+        (Date.now() - openSession.startedAt.getTime()) / 1000,
+      );
+      await this.liveSessions.closeSession(openSession.id, new Date(), sessionDurationSeconds);
+    }
     await this.clearRoomRuntime(roomId);
     await this.bus.publish(
       new RoomEndedEvent({
@@ -379,6 +401,12 @@ export class AudioRoomsService implements IAudioRoomsService {
       ? await this.repo.updateRoom(roomId, { status: 'LIVE', endedAt: null }, actor.id)
       : room;
     await this.seatsService.onRoomOpened(roomId, updated.ownerId, restarted);
+
+    if (restarted) {
+      // Creator Center — Live History: a genuine OFFLINE→LIVE transition opens
+      // a new broadcast session; a redundant restart-while-LIVE does not.
+      await this.liveSessions.openSession(roomId, updated.ownerId);
+    }
 
     const view = await this.toView(updated);
     await this.repo.setCachedSnapshot(view, this.cacheTtl);
@@ -634,6 +662,164 @@ export class AudioRoomsService implements IAudioRoomsService {
   async getMyRoom(actor: RoomActor): Promise<RoomView | null> {
     const room = await this.repo.findOwnedRoom(actor.id);
     return room ? this.toView(room) : null;
+  }
+
+  /** The caller's room participation history (joined & hosted rooms). */
+  async listRoomHistory(
+    userId: string,
+    query: PaginationQueryDto,
+  ): Promise<Paginated<RoomHistoryView>> {
+    const { rows, total } = await this.repo.listUserRoomHistory(
+      userId,
+      query.skip,
+      query.limit,
+    );
+
+    const items = await Promise.all(
+      rows.map(async (m) => {
+        const room = await this.repo.findRoomRow(m.roomId);
+        const owner = room ? await this.users.findById(room.ownerId).catch(() => null) : null;
+        const durationSeconds = m.leftAt
+          ? Math.max(0, Math.floor((m.leftAt.getTime() - m.joinedAt.getTime()) / 1000))
+          : Math.max(0, Math.floor((Date.now() - m.joinedAt.getTime()) / 1000));
+        return {
+          id: m.id,
+          roomId: m.roomId,
+          roomName: room?.name ?? 'Audio Room',
+          roomImageKey: room?.imageKey ?? null,
+          roomImageUrl: room?.imageKey ? await this.media.resolve(room.imageKey) : null,
+          ownerId: room?.ownerId ?? '',
+          ownerName: owner?.username ?? 'Host',
+          role: m.role,
+          joinedAt: m.joinedAt,
+          leftAt: m.leftAt,
+          durationSeconds,
+          status: room?.status ?? 'ENDED',
+          participantCount: room ? await this.presence.roomMemberCount(room.id) : 0,
+        };
+      }),
+    );
+
+    return buildPaginated(items, total, query.page, query.limit);
+  }
+
+  // ======================= Favorites =======================
+
+  async addFavorite(userId: string, roomId: string): Promise<{ favorited: true }> {
+    const room = await this.repo.findRoomRow(roomId);
+    if (!room) throw this.roomNotFound();
+    await this.repo.addFavorite(userId, roomId);
+    return { favorited: true };
+  }
+
+  async removeFavorite(userId: string, roomId: string): Promise<{ favorited: false }> {
+    await this.repo.removeFavorite(userId, roomId);
+    return { favorited: false };
+  }
+
+  async isFavorite(userId: string, roomId: string): Promise<{ isFavorite: boolean }> {
+    const isFav = await this.repo.isFavorite(userId, roomId);
+    return { isFavorite: isFav };
+  }
+
+  async listFavorites(
+    userId: string,
+    query: PaginationQueryDto,
+  ): Promise<Paginated<RoomView>> {
+    const { rows, total } = await this.repo.listUserFavorites(
+      userId,
+      query.skip,
+      query.limit,
+    );
+
+    const roomViews = await Promise.all(
+      rows.map(async (fav) => {
+        const room = await this.repo.findRoomRow(fav.roomId);
+        return room ? this.toView(room) : null;
+      }),
+    );
+
+    const validViews = roomViews.filter((v): v is RoomView => v !== null);
+    return buildPaginated(validViews, total, query.page, query.limit);
+  }
+
+  // ======================= Mic Sessions =======================
+
+  /** The caller's mic seat session history. */
+  async listMicHistory(
+    userId: string,
+    query: PaginationQueryDto,
+  ): Promise<Paginated<MicHistoryView>> {
+    const { rows, total } = await this.repo.listUserMicHistory(
+      userId,
+      query.skip,
+      query.limit,
+    );
+
+    const items = await Promise.all(
+      rows.map(async (m) => {
+        const room = await this.repo.findRoomRow(m.roomId);
+        const owner = room ? await this.users.findById(room.ownerId).catch(() => null) : null;
+        const durationSeconds = m.durationSeconds ?? (
+          m.endedAt
+            ? Math.max(0, Math.floor((m.endedAt.getTime() - m.startedAt.getTime()) / 1000))
+            : Math.max(0, Math.floor((Date.now() - m.startedAt.getTime()) / 1000))
+        );
+        return {
+          id: m.id,
+          roomId: m.roomId,
+          roomName: room?.name ?? 'Audio Room',
+          roomImageKey: room?.imageKey ?? null,
+          roomImageUrl: room?.imageKey ? await this.media.resolve(room.imageKey) : null,
+          ownerId: room?.ownerId ?? '',
+          ownerName: owner?.username ?? 'Host',
+          seatIndex: m.seatIndex,
+          startedAt: m.startedAt,
+          endedAt: m.endedAt,
+          durationSeconds,
+          status: room?.status ?? 'ENDED',
+        };
+      }),
+    );
+
+    return buildPaginated(items, total, query.page, query.limit);
+  }
+
+
+
+
+  /** Creator Center — Live History: the caller's own past broadcast sessions. */
+  async listMyLiveSessions(
+    ownerId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ rows: LiveSessionView[]; total: number }> {
+    const [rows, total] = await this.liveSessions.listByOwner(ownerId, skip, take);
+    return { rows: rows.map((s) => this.toLiveSessionView(s)), total };
+  }
+
+  /** Creator Center — Live History detail; null if missing or not the caller's own. */
+  async getMyLiveSession(ownerId: string, sessionId: string): Promise<LiveSessionView | null> {
+    const session = await this.liveSessions.findByIdForOwner(ownerId, sessionId);
+    return session ? this.toLiveSessionView(session) : null;
+  }
+
+  private toLiveSessionView(s: {
+    id: string;
+    roomId: string;
+    startedAt: Date;
+    endedAt: Date | null;
+    durationSeconds: number | null;
+    status: string;
+  }): LiveSessionView {
+    return {
+      id: s.id,
+      roomId: s.roomId,
+      startedAt: s.startedAt,
+      endedAt: s.endedAt,
+      durationSeconds: s.durationSeconds,
+      status: s.status as LiveSessionView['status'],
+    };
   }
 
   async list(query: ListRoomsDto, actor: RoomActor): Promise<Paginated<RoomView>> {

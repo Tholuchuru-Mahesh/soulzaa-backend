@@ -138,6 +138,48 @@ export class GiftRepository {
     ]);
   }
 
+  /**
+   * Gift count + most-recent-gift timestamp per sender, for a set of senders
+   * gifting one receiver within a window — hydrates a leaderboard's ZSET rows
+   * (score/rank only) with the extra display fields Top Fans needs.
+   */
+  async fanStatsFor(
+    receiverId: string,
+    senderIds: string[],
+    since: Date | null,
+  ): Promise<Map<string, { count: number; lastGiftAt: Date }>> {
+    if (senderIds.length === 0) return new Map();
+    const rows = await this.prisma.giftTransaction.groupBy({
+      by: ['senderId'],
+      where: {
+        receiverId,
+        senderId: { in: senderIds },
+        ...(since ? { createdAt: { gte: since } } : {}),
+      },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    });
+    return new Map(
+      rows
+        .filter((r) => r._max.createdAt !== null)
+        .map((r) => [r.senderId, { count: r._count._all, lastGiftAt: r._max.createdAt! }]),
+    );
+  }
+
+  /** Total gift coins received in a context (e.g. a room) within a time window. */
+  async sumContextCoinsInRange(
+    contextType: GiftContextType,
+    contextId: string,
+    start: Date,
+    end: Date,
+  ): Promise<bigint> {
+    const result = await this.prisma.giftTransaction.aggregate({
+      where: { contextType, contextId, createdAt: { gte: start, lte: end } },
+      _sum: { totalCoinValue: true },
+    });
+    return result._sum.totalCoinValue ?? 0n;
+  }
+
   // ---- Redis: combo + rate limit ----
 
   /**

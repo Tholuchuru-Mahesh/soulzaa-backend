@@ -16,6 +16,26 @@ export class UsersRepository {
     return this.prisma.user.findFirst({ where: { id, deletedAt: null } });
   }
 
+  /** Lookup user by exact UUID or UUID prefix (e.g. 8-char short ID). */
+  async findByIdOrPrefix(identifier: string): Promise<User | null> {
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+    if (isFullUuid) {
+      return this.findById(identifier);
+    }
+    const clean = identifier.replace(/-/g, '').toLowerCase();
+    if (/^[0-9a-f]{8,36}$/i.test(clean)) {
+      const pattern = `${identifier.toLowerCase()}%`;
+      const matches = await this.prisma.$queryRaw<User[]>`
+        SELECT * FROM users
+        WHERE id::text ILIKE ${pattern}
+          AND "deletedAt" IS NULL
+        LIMIT 1
+      `;
+      return matches[0] ?? null;
+    }
+    return null;
+  }
+
   findByEmail(email: string): Promise<User | null> {
     return this.prisma.user.findFirst({ where: { email, deletedAt: null } });
   }

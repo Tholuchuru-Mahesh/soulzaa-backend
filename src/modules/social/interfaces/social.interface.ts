@@ -75,4 +75,6 @@ export interface ISocialService {
     skip: number,
     take: number,
   ): Promise<{ ids: string[]; total: number }>;
+  /** New followers gained by `userId` within a time window. */
+  countNewFollowers(userId: string, start: Date, end: Date): Promise<number>;
 }

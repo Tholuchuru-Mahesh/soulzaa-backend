@@ -40,6 +40,41 @@ export interface RoomView {
   endedAt: Date | null;
 }
 
+/** User's room participation history item. */
+export interface RoomHistoryView {
+  id: string;
+  roomId: string;
+  roomName: string;
+  roomImageKey: string | null;
+  roomImageUrl: string | null;
+  ownerId: string;
+  ownerName: string;
+  role: RoomMemberRole;
+  joinedAt: Date;
+  leftAt: Date | null;
+  durationSeconds: number;
+  status: RoomStatus;
+  participantCount: number;
+}
+
+/** User's microphone / speaker seat participation session item. */
+export interface MicHistoryView {
+  id: string;
+  roomId: string;
+  roomName: string;
+  roomImageKey: string | null;
+  roomImageUrl: string | null;
+  ownerId: string;
+  ownerName: string;
+  seatIndex: number | null;
+  startedAt: Date;
+  endedAt: Date | null;
+  durationSeconds: number;
+  status: RoomStatus;
+}
+
+
+
 export interface IAudioRoomsService {
   /** Full room read model, or null if not found / soft-deleted. */
   getRoom(roomId: string): Promise<RoomView | null>;
@@ -81,4 +116,26 @@ export interface IAudioRoomsService {
 
   /** Full stage snapshot: seats + queue + seat settings (read-through cache). */
   getStage(roomId: string): Promise<StageSnapshot>;
+
+  // ---- Live sessions (Creator Center — Live History) ----
+
+  /** Paginated broadcast sessions the caller has hosted (most recent first). */
+  listMyLiveSessions(
+    ownerId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ rows: LiveSessionView[]; total: number }>;
+
+  /** One of the caller's own sessions by id, or null if missing/not theirs. */
+  getMyLiveSession(ownerId: string, sessionId: string): Promise<LiveSessionView | null>;
+}
+
+/** A single "went live → ended" broadcast session. */
+export interface LiveSessionView {
+  id: string;
+  roomId: string;
+  startedAt: Date;
+  endedAt: Date | null;
+  durationSeconds: number | null;
+  status: 'LIVE' | 'ENDED';
 }

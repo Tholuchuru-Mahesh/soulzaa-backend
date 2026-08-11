@@ -1,4 +1,10 @@
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { WalletCurrency, WalletTxnReason, WithdrawalStatus } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
@@ -45,6 +51,15 @@ export class WithdrawalApprovalService {
 
       if (!req) {
         throw new BadRequestException(`Withdrawal request '${requestId}' not found`);
+      }
+
+      // Self-cancel (POST /withdrawals/:id/cancel) is gated only by the generic
+      // `withdrawal.request` permission every member holds — without this check
+      // any authenticated user could cancel *another* user's pending withdrawal
+      // by id. APPROVE/REJECT/UNDER_REVIEW go through the separate admin review
+      // endpoint (`withdrawal.approve`), so this only constrains CANCEL.
+      if (action === 'CANCEL' && req.userId !== reviewerId) {
+        throw new ForbiddenException('You may only cancel your own withdrawal request');
       }
 
       if (

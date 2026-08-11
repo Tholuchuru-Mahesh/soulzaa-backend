@@ -26,7 +26,9 @@ import {
 } from '../constants/games.constants';
 import type { GameLiveState } from './game-live-state';
 import { IEventBus } from 'src/common/events';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CacheService } from 'src/infra/redis/cache.service';
+
 import { LockService } from 'src/infra/redis/lock.service';
 import { QueueService } from 'src/infra/queue/queue.service';
 import type { IProfileService } from 'src/modules/users/interfaces/profile.interface';
@@ -228,8 +230,14 @@ describe('GamesService', () => {
     // Default: no identities resolved (empty map) — views degrade to null
     // displayName/avatar for tests that don't care about player identity.
     profiles = { resolvePublicIdentities: jest.fn().mockResolvedValue(new Map()) };
+    const prismaMock = {
+      gameParticipant: { findMany: jest.fn().mockResolvedValue([]) },
+      casinoBet: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+    };
+
     service = new GamesService(
       repo as unknown as GamesRepository,
+      prismaMock as unknown as PrismaService,
       locks as unknown as LockService,
       cache as unknown as CacheService,
       queue as unknown as QueueService,
@@ -238,6 +246,7 @@ describe('GamesService', () => {
       users as unknown as IUsersService,
       profiles as unknown as IProfileService,
     );
+
   });
 
   describe('createLobby', () => {

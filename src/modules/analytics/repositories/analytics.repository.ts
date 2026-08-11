@@ -126,6 +126,15 @@ export class AnalyticsRepository {
     ]);
   }
 
+  /** Every visitor row whose join fell within a time window (unbounded — for a
+   *  single live session's worth of visits, not a paginated listing). */
+  listVisitorsInRange(roomId: string, start: Date, end: Date): Promise<RoomVisitor[]> {
+    return this.prisma.roomVisitor.findMany({
+      where: { roomId, joinedAt: { gte: start, lte: end } },
+      orderBy: { joinedAt: 'asc' },
+    });
+  }
+
   // ---- Speaker Session Operations ----
 
   async createSpeakerSession(roomId: string, userId: string): Promise<SpeakerSession> {

@@ -8,6 +8,7 @@ import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import type { IUsersService } from 'src/modules/users/interfaces/users.service.interface';
 import type { IProfileService } from 'src/modules/users/interfaces/profile.interface';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
+import { LiveSessionRepository } from '../repositories/live-session.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
 import { AudioRoomSeatsService } from './audio-room-seats.service';
 import { AudioRoomsService, type RoomActor } from './audio-rooms.service';
@@ -49,6 +50,7 @@ describe('AudioRoomsService', () => {
   let permissions: Record<string, jest.Mock>;
   let seatsService: Record<string, jest.Mock>;
   let moderation: Record<string, jest.Mock>;
+  let liveSessions: Record<string, jest.Mock>;
   let media: Record<string, jest.Mock>;
   let bus: jest.Mocked<IEventBus>;
   let users: Record<string, jest.Mock>;
@@ -120,6 +122,13 @@ describe('AudioRoomsService', () => {
       findActiveBan: jest.fn().mockResolvedValue(null),
       addBanCache: jest.fn().mockResolvedValue(undefined),
     };
+    liveSessions = {
+      openSession: jest.fn().mockResolvedValue({ id: 'session-1' }),
+      getOpenSession: jest.fn().mockResolvedValue(null),
+      closeSession: jest.fn().mockResolvedValue(undefined),
+      listByOwner: jest.fn().mockResolvedValue([[], 0]),
+      findByIdForOwner: jest.fn().mockResolvedValue(null),
+    };
     // Mirrors the CDN-configured resolver: a stable `${base}/${key}` URL.
     media = {
       resolve: jest
@@ -150,6 +159,7 @@ describe('AudioRoomsService', () => {
       permissions as unknown as RoomPermissionService,
       seatsService as unknown as AudioRoomSeatsService,
       moderation as unknown as ModerationRepository,
+      liveSessions as unknown as LiveSessionRepository,
       media as unknown as MediaUrlResolver,
       bus,
       users as unknown as IUsersService,

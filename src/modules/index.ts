@@ -10,6 +10,7 @@ import { BackpackModule } from './backpack/backpack.module';
 import { CallsModule } from './calls/calls.module';
 import { CasinoModule } from './casino/casino.module';
 import { CosmeticsModule } from './cosmetics/cosmetics.module';
+import { CreatorCenterModule } from './creator-center/creator-center.module';
 import { ChatModule } from './chat/chat.module';
 import { DeviceModule } from './device/device.module';
 import { EventsModule } from './events/events.module';
@@ -112,4 +113,7 @@ export const DOMAIN_MODULES = [
   MobileWorkforceModule,
   MobilePartnerModule,
   RoleRequestsModule,
+  // Profile page's Creator Center — composes AudioRooms/Analytics/Gifts/Social,
+  // owns no data of its own.
+  CreatorCenterModule,
 ];

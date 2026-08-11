@@ -61,6 +61,13 @@ export class FollowRepository {
     return this.prisma.follow.count({ where: { followingId: userId } });
   }
 
+  /** New followers gained by `userId` within a time window. */
+  countFollowersInRange(userId: string, start: Date, end: Date): Promise<number> {
+    return this.prisma.follow.count({
+      where: { followingId: userId, createdAt: { gte: start, lte: end } },
+    });
+  }
+
   /** Most-followed users (by follower count), for the "popular" recommendation. */
   async topFollowed(limit: number): Promise<{ userId: string; count: number }[]> {
     const rows = await this.prisma.follow.groupBy({

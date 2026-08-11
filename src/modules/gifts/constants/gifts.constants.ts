@@ -17,12 +17,16 @@ export enum LeaderboardPeriod {
 export enum LeaderboardBoard {
   GIFTER = 'gifter',
   RECEIVER = 'receiver',
+  /** Ranks senders (fans) by coins given to one specific creator — see FANS scope. */
+  FANS = 'fans',
 }
 
-/** Leaderboard scope: platform-wide or a single room/context. */
+/** Leaderboard scope: platform-wide, a single room/context, or one creator's
+ *  own fans (Creator Center — Top Fans; always cross-room by definition). */
 export enum LeaderboardScope {
   GLOBAL = 'global',
   ROOM = 'room',
+  CREATOR = 'creator',
 }
 
 /**
@@ -49,7 +53,12 @@ export function giftLeaderboardKey(
   scopeId: string | null,
   bucket: string,
 ): string {
-  const scopePart = scope === LeaderboardScope.ROOM ? `room:{${scopeId}}` : 'global';
+  const scopePart =
+    scope === LeaderboardScope.ROOM
+      ? `room:{${scopeId}}`
+      : scope === LeaderboardScope.CREATOR
+        ? `creator:{${scopeId}}`
+        : 'global';
   return `gift:lb:${scopePart}:${board}:${bucket}`;
 }
 

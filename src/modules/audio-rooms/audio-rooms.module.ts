@@ -13,6 +13,7 @@ import { AudioRoomsAdminController } from './controllers/audio-rooms-admin.contr
 import { AUDIO_ROOMS_SERVICE } from './interfaces/audio-rooms.service.interface';
 import { AUDIO_ROOM_CHAT_SERVICE } from './interfaces/chat.service.interface';
 import { MODERATION_SERVICE } from './interfaces/moderation.service.interface';
+import { PK_BATTLE_SERVICE } from './interfaces/pk-battle.service.interface';
 import { VOICE_SERVICE } from './interfaces/voice.service.interface';
 import { AudioRoomSeatsListener } from './listeners/audio-room-seats.listener';
 import { AudioRoomSocketListener } from './listeners/audio-room-socket.listener';
@@ -33,6 +34,7 @@ import { VoiceSocketListener } from './listeners/voice-socket.listener';
 import { AudioRoomSeatsRepository } from './repositories/audio-room-seats.repository';
 import { AudioRoomsRepository } from './repositories/audio-rooms.repository';
 import { ChatRepository } from './repositories/chat.repository';
+import { LiveSessionRepository } from './repositories/live-session.repository';
 import { ModerationRepository } from './repositories/moderation.repository';
 import { PkBattleRepository } from './repositories/pk-battle.repository';
 import { PremiumSeatRepository } from './repositories/premium-seat.repository';
@@ -110,6 +112,7 @@ import { VoiceService } from './services/voice.service';
     PremiumSeatRepository,
     WatchPartyRepository,
     PkBattleRepository,
+    LiveSessionRepository,
     AudioRoomsService,
     AudioRoomSeatsService,
     // VR-10: registers the AUDIO_ROOM gift context on the shared registry.
@@ -148,7 +151,14 @@ import { VoiceService } from './services/voice.service';
     { provide: VOICE_SERVICE, useExisting: VoiceService },
     { provide: MODERATION_SERVICE, useExisting: ModerationService },
     { provide: AUDIO_ROOM_CHAT_SERVICE, useExisting: ChatService },
+    { provide: PK_BATTLE_SERVICE, useExisting: PkBattleService },
   ],
-  exports: [AUDIO_ROOMS_SERVICE, VOICE_SERVICE, MODERATION_SERVICE, AUDIO_ROOM_CHAT_SERVICE],
+  exports: [
+    AUDIO_ROOMS_SERVICE,
+    VOICE_SERVICE,
+    MODERATION_SERVICE,
+    AUDIO_ROOM_CHAT_SERVICE,
+    PK_BATTLE_SERVICE,
+  ],
 })
 export class AudioRoomsModule {}

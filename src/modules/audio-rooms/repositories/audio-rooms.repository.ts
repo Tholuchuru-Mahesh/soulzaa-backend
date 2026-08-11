@@ -5,7 +5,11 @@ import {
   RoomCategory,
   RoomLanguage,
   RoomLogAction,
+  MicSession,
+  RoomFavorite,
   RoomMember,
+
+
   RoomMemberRole,
   RoomStatus,
   RoomVisibility,
@@ -356,6 +360,125 @@ export class AudioRoomsRepository {
       data: { role, ...auditUpdate(actorId) },
     });
   }
+
+  async listUserRoomHistory(
+    userId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ rows: RoomMember[]; total: number }> {
+    const where = { userId };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.roomMember.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { updatedAt: 'desc' },
+      }),
+      this.prisma.roomMember.count({ where }),
+    ]);
+    return { rows, total };
+  }
+
+  // ---- Favorites ----
+
+  async addFavorite(userId: string, roomId: string): Promise<RoomFavorite> {
+    return this.prisma.roomFavorite.upsert({
+      where: { userId_roomId: { userId, roomId } },
+      create: { userId, roomId },
+      update: {},
+    });
+  }
+
+  async removeFavorite(userId: string, roomId: string): Promise<void> {
+    await this.prisma.roomFavorite.deleteMany({
+      where: { userId, roomId },
+    });
+  }
+
+  async isFavorite(userId: string, roomId: string): Promise<boolean> {
+    const fav = await this.prisma.roomFavorite.findUnique({
+      where: { userId_roomId: { userId, roomId } },
+    });
+    return fav !== null;
+  }
+
+  async listUserFavorites(
+    userId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ rows: RoomFavorite[]; total: number }> {
+    const where = { userId };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.roomFavorite.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.roomFavorite.count({ where }),
+    ]);
+    return { rows, total };
+  }
+
+  // ---- Mic Sessions ----
+
+  async startMicSession(
+    roomId: string,
+    userId: string,
+    seatIndex?: number,
+  ): Promise<MicSession> {
+    await this.endMicSession(roomId, userId);
+    return this.prisma.micSession.create({
+      data: {
+        roomId,
+        userId,
+        seatIndex: seatIndex ?? null,
+        status: 'ACTIVE',
+        startedAt: new Date(),
+      },
+    });
+  }
+
+  async endMicSession(roomId: string, userId: string): Promise<void> {
+    const active = await this.prisma.micSession.findFirst({
+      where: { roomId, userId, status: 'ACTIVE' },
+    });
+    if (active) {
+      const endedAt = new Date();
+      const durationSeconds = Math.max(
+        0,
+        Math.floor((endedAt.getTime() - active.startedAt.getTime()) / 1000),
+      );
+      await this.prisma.micSession.update({
+        where: { id: active.id },
+        data: {
+          status: 'ENDED',
+          endedAt,
+          durationSeconds,
+        },
+      });
+    }
+  }
+
+  async listUserMicHistory(
+    userId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ rows: MicSession[]; total: number }> {
+    const where = { userId };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.micSession.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { startedAt: 'desc' },
+      }),
+      this.prisma.micSession.count({ where }),
+    ]);
+    return { rows, total };
+  }
+
+
 
   listActiveMembers(roomId: string): Promise<RoomMember[]> {
     return this.prisma.roomMember.findMany({

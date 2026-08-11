@@ -386,6 +386,38 @@ model SeatHistory {
 }
 
 // ============================================================
+// Creator Center — Live Session Tracking
+// ============================================================
+
+enum RoomLiveSessionStatus {
+  LIVE
+  ENDED
+}
+
+/// One row per "went live → ended" cycle for a permanent room (AR-0 rooms are
+/// one-per-owner and never deleted, so a session is the only way to answer
+/// "what happened during THIS broadcast" for Creator Center's Live History).
+/// Visitor/gift/follower stats are computed at read time from existing
+/// analytics/gift/follow data over [startedAt, endedAt] rather than duplicated
+/// here — this row only owns the session's own lifecycle timestamps.
+model RoomLiveSession {
+  id              String                @id @default(uuid()) @db.Uuid
+  roomId          String                @db.Uuid
+  ownerId         String                @db.Uuid
+  status          RoomLiveSessionStatus @default(LIVE)
+  startedAt       DateTime              @default(now())
+  endedAt         DateTime?
+  durationSeconds Int?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@index([ownerId, startedAt])
+  @@index([roomId, startedAt])
+  @@index([status])
+  @@map("room_live_sessions")
+}
+
+// ============================================================
 // AR-2 — Voice Infrastructure (ZEGOCLOUD)
 // ============================================================
 
@@ -481,3 +513,45 @@ model VoiceSessionLog {
   @@index([action])
   @@map("voice_session_logs")
 }
+
+// ============================================================
+// Favorites & Mic Session Persistence
+// ============================================================
+
+/// Audio Room favorite relation (user_id + room_id).
+model RoomFavorite {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  roomId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@unique([userId, roomId])
+  @@index([userId])
+  @@index([roomId])
+  @@map("room_favorites")
+}
+
+enum MicSessionStatus {
+  ACTIVE
+  ENDED
+}
+
+/// Persistent record of microphone / speaker seat participation sessions.
+model MicSession {
+  id              String           @id @default(uuid()) @db.Uuid
+  roomId          String           @db.Uuid
+  userId          String           @db.Uuid
+  seatIndex       Int?
+  status          MicSessionStatus @default(ACTIVE)
+  startedAt       DateTime         @default(now())
+  endedAt         DateTime?
+  durationSeconds Int?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([userId, startedAt])
+  @@index([roomId, startedAt])
+  @@index([status])
+  @@map("mic_sessions")
+}
+

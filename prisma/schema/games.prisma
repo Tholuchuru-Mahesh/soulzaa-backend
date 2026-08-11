@@ -302,3 +302,54 @@ model GameEventLog {
   @@index([action, createdAt])
   @@map("game_event_logs")
 }
+
+enum JackpotStatus {
+  ACTIVE
+  SETTLED
+  CANCELLED
+}
+
+enum JackpotEntryStatus {
+  ENTERED
+  WON
+  LOST
+  REFUNDED
+}
+
+model Jackpot {
+  id             String        @id @default(uuid()) @db.Uuid
+  name           String
+  code           String
+  entryFee       BigInt        @default(500)
+  currentPool    BigInt        @default(0)
+  status         JackpotStatus @default(ACTIVE)
+  winningEntryId String?       @db.Uuid
+  winnerId       String?       @db.Uuid
+  rewardAmount   BigInt        @default(0)
+  createdAt      DateTime      @default(now())
+  settledAt      DateTime?
+
+  entries JackpotEntry[]
+
+  @@map("jackpots")
+}
+
+model JackpotEntry {
+  id           String             @id @default(uuid()) @db.Uuid
+  jackpotId    String             @db.Uuid
+  userId       String             @db.Uuid
+  entryFee     BigInt
+  status       JackpotEntryStatus @default(ENTERED)
+  payoutAmount BigInt             @default(0)
+  debitTxnId   String?            @db.Uuid
+  winTxnId     String?            @db.Uuid
+  createdAt    DateTime           @default(now())
+  settledAt    DateTime?
+
+  jackpot Jackpot @relation(fields: [jackpotId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([jackpotId])
+  @@map("jackpot_entries")
+}
+

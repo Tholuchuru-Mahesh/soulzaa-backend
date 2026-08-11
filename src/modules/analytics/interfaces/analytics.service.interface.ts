@@ -35,4 +35,16 @@ export interface IAnalyticsService {
 
   /** Get daily aggregated revenue report matching filters. */
   getRevenue(query: QueryRevenueDto): Promise<RevenueReportView[]>;
+
+  /** Raw visitor rows (userId, joinedAt, leftAt) for a room within a time window —
+   *  for callers computing their own derived stats (e.g. per-session unique
+   *  visitors / peak concurrency), not a paginated display listing. */
+  getVisitorsInRange(roomId: string, start: Date, end: Date): Promise<VisitorWindowEntry[]>;
+}
+
+/** A visitor's presence window, for peak-concurrency / uniqueness computation. */
+export interface VisitorWindowEntry {
+  userId: string;
+  joinedAt: Date;
+  leftAt: Date | null;
 }

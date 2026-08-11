@@ -76,6 +76,13 @@ export class TransactionQueryFilterDto {
   @IsOptional()
   transactionType?: string;
 
+  @ApiPropertyOptional({
+    description: 'Filter by Wallet Currency (GOLD, FREE, EARNINGS)',
+  })
+  @IsString()
+  @IsOptional()
+  currency?: string;
+
   @ApiPropertyOptional({ description: 'Page number (default 1)', default: 1 })
   @Type(() => Number)
   @IsInt()

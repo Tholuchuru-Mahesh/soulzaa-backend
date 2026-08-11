@@ -301,7 +301,7 @@ export class WalletTransactionService {
     // Narrowed to a `const` so the literal type survives capture inside the
     // `$transaction` closure below (TS does not carry parameter narrowing
     // across closure boundaries).
-    const reason = dto.reason;
+    const reason = dto.reason as WalletTxnReason;
 
     await this.validationService.validateEconomyStatus();
 

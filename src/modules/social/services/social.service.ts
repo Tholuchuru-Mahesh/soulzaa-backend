@@ -31,6 +31,10 @@ export class SocialService implements ISocialService {
     return this.follows.pageFollowerIds(userId, skip, take);
   }
 
+  countNewFollowers(userId: string, start: Date, end: Date): Promise<number> {
+    return this.follows.countFollowersInRange(userId, start, end);
+  }
+
   async presenceAudienceIds(userId: string): Promise<string[]> {
     const [friends, followers] = await Promise.all([
       this.friendIds(userId),

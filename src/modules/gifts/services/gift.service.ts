@@ -3,6 +3,7 @@ import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Gift,
+  GiftContextType,
   GiftTransaction,
   GiftType,
   Prisma,
@@ -36,6 +37,8 @@ import {
 } from 'src/modules/platform-configuration/interfaces/platform-configuration.interface';
 import { GiftContextRegistry } from './gift-context.registry';
 import { GiftLeaderboardService } from './gift-leaderboard.service';
+import { LeaderboardPeriod } from '../constants/gifts.constants';
+import type { TopFanEntry } from '../interfaces/gifts.service.interface';
 
 /**
  * A multi-receiver send. Same shape as SendGiftDto but with `receiverIds` in
@@ -83,6 +86,47 @@ export class GiftService {
     @Inject(PLATFORM_CONFIG) private readonly platformConfig: IPlatformConfiguration,
   ) {}
 
+  /** GIFTS_SERVICE surface: total gift coins received in a context within a window. */
+  getContextCoinsInRange(
+    contextType: GiftContextType,
+    contextId: string,
+    start: Date,
+    end: Date,
+  ): Promise<bigint> {
+    return this.repo.sumContextCoinsInRange(contextType, contextId, start, end);
+  }
+
+  /** GIFTS_SERVICE surface: ranked fans for one creator, with count/lastGiftAt. */
+  async getTopFans(
+    creatorId: string,
+    period: 'today' | 'week' | 'month' | 'all',
+    limit: number,
+  ): Promise<TopFanEntry[]> {
+    const mapped: Record<typeof period, LeaderboardPeriod> = {
+      today: LeaderboardPeriod.DAILY,
+      week: LeaderboardPeriod.WEEKLY,
+      month: LeaderboardPeriod.MONTHLY,
+      all: LeaderboardPeriod.ALL_TIME,
+    };
+    const lbPeriod = mapped[period];
+    const ranked = await this.leaderboards.topFans(creatorId, lbPeriod, limit);
+    if (ranked.length === 0) return [];
+
+    const since = this.leaderboards.periodStart(lbPeriod);
+    const stats = await this.repo.fanStatsFor(
+      creatorId,
+      ranked.map((r) => r.userId),
+      since,
+    );
+    return ranked.map((r) => ({
+      rank: r.rank,
+      userId: r.userId,
+      totalCoins: r.totalCoins,
+      giftCount: stats.get(r.userId)?.count ?? 0,
+      lastGiftAt: stats.get(r.userId)?.lastGiftAt ?? null,
+    }));
+  }
+
   /**
    * The Soulzaa gift settlement rule, read from platform configuration so a
    * Super Admin can retune it without a deploy:
@@ -104,8 +148,8 @@ export class GiftService {
     ]);
 
     return {
-      earningsPercent: typeof earningsPercent === 'number' ? earningsPercent : 100,
-      cashbackPercent: typeof cashbackPercent === 'number' ? cashbackPercent : 10,
+      earningsPercent: typeof earningsPercent === 'number' ? earningsPercent : 10,
+      cashbackPercent: typeof cashbackPercent === 'number' ? cashbackPercent : 0,
       cashbackThreshold: typeof cashbackThreshold === 'number' ? cashbackThreshold : 1000,
     };
   }
@@ -225,11 +269,14 @@ export class GiftService {
     const perReceiverNum = Number(perReceiver);
     const totalNum = perReceiverNum * receiverIds.length;
 
-    // Rule 2: earnings share of the gift value.
-    const earningsNum = Math.floor((perReceiverNum * rules.earningsPercent) / 100);
+    // Rule 2: earnings share of the gift value — applicable ONLY when gift value is > 1000.
+    const earningsNum =
+      perReceiverNum > 1000
+        ? Math.floor((perReceiverNum * rules.earningsPercent) / 100)
+        : 0;
     const creatorEarnings = BigInt(earningsNum);
 
-    // Rule 3: cashback, gated on the threshold.
+    // Rule 3: cashback (disabled / set to 0).
     const availableBalanceCredited =
       perReceiverNum > rules.cashbackThreshold
         ? Math.floor((perReceiverNum * rules.cashbackPercent) / 100)
