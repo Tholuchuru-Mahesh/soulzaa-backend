@@ -22,7 +22,10 @@ import {
   type IPkBattleService,
   type PkHistoryFilter,
 } from 'src/modules/audio-rooms/interfaces/pk-battle.service.interface';
-import { SOCIAL_SERVICE, type ISocialService } from 'src/modules/social/interfaces/social.interface';
+import {
+  SOCIAL_SERVICE,
+  type ISocialService,
+} from 'src/modules/social/interfaces/social.interface';
 import {
   PROFILE_SERVICE,
   type IProfileService,

@@ -103,29 +103,20 @@ export class AudioRoomsController {
   @Post(':id/favorite')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Add a room to caller favorites' })
-  addFavorite(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id', ParseUuidPipe) id: string,
-  ) {
+  addFavorite(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.rooms.addFavorite(user.id, id);
   }
 
   @Delete(':id/favorite')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove a room from caller favorites' })
-  removeFavorite(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id', ParseUuidPipe) id: string,
-  ) {
+  removeFavorite(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.rooms.removeFavorite(user.id, id);
   }
 
   @Get(':id/favorite')
   @ApiOperation({ summary: 'Check if caller has favorited a room' })
-  isFavorite(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id', ParseUuidPipe) id: string,
-  ) {
+  isFavorite(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.rooms.isFavorite(user.id, id);
   }
 
@@ -134,10 +125,6 @@ export class AudioRoomsController {
   micHistory(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
     return this.rooms.listMicHistory(user.id, query);
   }
-
-
-
-
 
   @Get(':id')
   @ApiOperation({ summary: 'Get room detail + live participants' })

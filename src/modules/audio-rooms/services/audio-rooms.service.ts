@@ -50,7 +50,6 @@ import type {
   RoomView,
 } from '../interfaces/audio-rooms.service.interface';
 
-
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { AudioRoomsRepository, type UpdateRoomData } from '../repositories/audio-rooms.repository';
 import { LiveSessionRepository } from '../repositories/live-session.repository';
@@ -669,11 +668,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     userId: string,
     query: PaginationQueryDto,
   ): Promise<Paginated<RoomHistoryView>> {
-    const { rows, total } = await this.repo.listUserRoomHistory(
-      userId,
-      query.skip,
-      query.limit,
-    );
+    const { rows, total } = await this.repo.listUserRoomHistory(userId, query.skip, query.limit);
 
     const items = await Promise.all(
       rows.map(async (m) => {
@@ -722,15 +717,8 @@ export class AudioRoomsService implements IAudioRoomsService {
     return { isFavorite: isFav };
   }
 
-  async listFavorites(
-    userId: string,
-    query: PaginationQueryDto,
-  ): Promise<Paginated<RoomView>> {
-    const { rows, total } = await this.repo.listUserFavorites(
-      userId,
-      query.skip,
-      query.limit,
-    );
+  async listFavorites(userId: string, query: PaginationQueryDto): Promise<Paginated<RoomView>> {
+    const { rows, total } = await this.repo.listUserFavorites(userId, query.skip, query.limit);
 
     const roomViews = await Promise.all(
       rows.map(async (fav) => {
@@ -750,21 +738,17 @@ export class AudioRoomsService implements IAudioRoomsService {
     userId: string,
     query: PaginationQueryDto,
   ): Promise<Paginated<MicHistoryView>> {
-    const { rows, total } = await this.repo.listUserMicHistory(
-      userId,
-      query.skip,
-      query.limit,
-    );
+    const { rows, total } = await this.repo.listUserMicHistory(userId, query.skip, query.limit);
 
     const items = await Promise.all(
       rows.map(async (m) => {
         const room = await this.repo.findRoomRow(m.roomId);
         const owner = room ? await this.users.findById(room.ownerId).catch(() => null) : null;
-        const durationSeconds = m.durationSeconds ?? (
-          m.endedAt
+        const durationSeconds =
+          m.durationSeconds ??
+          (m.endedAt
             ? Math.max(0, Math.floor((m.endedAt.getTime() - m.startedAt.getTime()) / 1000))
-            : Math.max(0, Math.floor((Date.now() - m.startedAt.getTime()) / 1000))
-        );
+            : Math.max(0, Math.floor((Date.now() - m.startedAt.getTime()) / 1000)));
         return {
           id: m.id,
           roomId: m.roomId,
@@ -784,9 +768,6 @@ export class AudioRoomsService implements IAudioRoomsService {
 
     return buildPaginated(items, total, query.page, query.limit);
   }
-
-
-
 
   /** Creator Center — Live History: the caller's own past broadcast sessions. */
   async listMyLiveSessions(

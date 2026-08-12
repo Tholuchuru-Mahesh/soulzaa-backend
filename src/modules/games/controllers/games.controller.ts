@@ -339,9 +339,6 @@ export class GamesController {
     return this.games.myTournaments(this.actor(user), q);
   }
 
-
-
-
   @Get('leaderboard')
   @ApiOperation({ summary: 'Global game wins leaderboard' })
   leaderboard(@Query() q: GameLeaderboardDto) {

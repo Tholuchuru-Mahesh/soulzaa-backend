@@ -271,9 +271,7 @@ export class GiftService {
 
     // Rule 2: earnings share of the gift value — applicable ONLY when gift value is > 1000.
     const earningsNum =
-      perReceiverNum > 1000
-        ? Math.floor((perReceiverNum * rules.earningsPercent) / 100)
-        : 0;
+      perReceiverNum > 1000 ? Math.floor((perReceiverNum * rules.earningsPercent) / 100) : 0;
     const creatorEarnings = BigInt(earningsNum);
 
     // Rule 3: cashback (disabled / set to 0).

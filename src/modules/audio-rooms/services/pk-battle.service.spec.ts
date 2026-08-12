@@ -227,28 +227,60 @@ describe('PkBattleService', () => {
   });
 
   describe('historyForCreator (Creator Center — PK History)', () => {
-    function row(overrides: {
-      side?: PkSide;
-      result?: PkResult | null;
-      score?: bigint;
-    } = {}) {
+    function row(
+      overrides: {
+        side?: PkSide;
+        result?: PkResult | null;
+        score?: bigint;
+      } = {},
+    ) {
       return {
-        participant: { id: 'p1', battleId: 'battle-1', userId: A, side: overrides.side ?? PkSide.RED, score: overrides.score ?? 100n },
-        battle: battle({ status: PkStatus.COMPLETED, result: overrides.result ?? PkResult.RED, completedAt: new Date() }),
+        participant: {
+          id: 'p1',
+          battleId: 'battle-1',
+          userId: A,
+          side: overrides.side ?? PkSide.RED,
+          score: overrides.score ?? 100n,
+        },
+        battle: battle({
+          status: PkStatus.COMPLETED,
+          result: overrides.result ?? PkResult.RED,
+          completedAt: new Date(),
+        }),
       };
     }
 
-    it('filters to wins, losses, or draws relative to the caller\'s own side', async () => {
+    it("filters to wins, losses, or draws relative to the caller's own side", async () => {
       repo.listParticipantBattles.mockResolvedValue([
         row({ side: PkSide.RED, result: PkResult.RED }), // win
         row({ side: PkSide.RED, result: PkResult.BLUE }), // loss
         row({ side: PkSide.RED, result: PkResult.DRAW }), // draw
       ]);
 
-      const wins = await service.historyForCreator(A, { skip: 0, limit: 20, page: 1, filter: 'wins' });
-      const losses = await service.historyForCreator(A, { skip: 0, limit: 20, page: 1, filter: 'losses' });
-      const draws = await service.historyForCreator(A, { skip: 0, limit: 20, page: 1, filter: 'draws' });
-      const all = await service.historyForCreator(A, { skip: 0, limit: 20, page: 1, filter: 'all' });
+      const wins = await service.historyForCreator(A, {
+        skip: 0,
+        limit: 20,
+        page: 1,
+        filter: 'wins',
+      });
+      const losses = await service.historyForCreator(A, {
+        skip: 0,
+        limit: 20,
+        page: 1,
+        filter: 'losses',
+      });
+      const draws = await service.historyForCreator(A, {
+        skip: 0,
+        limit: 20,
+        page: 1,
+        filter: 'draws',
+      });
+      const all = await service.historyForCreator(A, {
+        skip: 0,
+        limit: 20,
+        page: 1,
+        filter: 'all',
+      });
 
       expect(wins.total).toBe(1);
       expect(losses.total).toBe(1);
@@ -264,15 +296,22 @@ describe('PkBattleService', () => {
       expect(repo.listParticipantBattles).toHaveBeenCalledWith(B);
     });
 
-    it('resolves opponent identity and reports the caller\'s own result label', async () => {
-      repo.listParticipantBattles.mockResolvedValue([row({ side: PkSide.RED, result: PkResult.RED })]);
+    it("resolves opponent identity and reports the caller's own result label", async () => {
+      repo.listParticipantBattles.mockResolvedValue([
+        row({ side: PkSide.RED, result: PkResult.RED }),
+      ]);
       repo.listParticipants.mockResolvedValue([
         { id: 'p1', userId: A, side: PkSide.RED, score: 100n },
         { id: 'p2', userId: B, side: PkSide.BLUE, score: 40n },
       ]);
       users.findById.mockResolvedValue({ id: B, username: 'bob' });
 
-      const result = await service.historyForCreator(A, { skip: 0, limit: 20, page: 1, filter: 'all' });
+      const result = await service.historyForCreator(A, {
+        skip: 0,
+        limit: 20,
+        page: 1,
+        filter: 'all',
+      });
 
       const entry = result.items[0] as {
         opponents: { userId: string; username: string | null }[];
@@ -293,10 +332,19 @@ describe('PkBattleService', () => {
     });
 
     it('returns the enriched detail when the caller did participate', async () => {
-      repo.findParticipant.mockResolvedValue({ id: 'p1', userId: A, side: PkSide.RED, score: 100n });
-      repo.getBattle.mockResolvedValue(battle({ status: PkStatus.COMPLETED, result: PkResult.RED }));
+      repo.findParticipant.mockResolvedValue({
+        id: 'p1',
+        userId: A,
+        side: PkSide.RED,
+        score: 100n,
+      });
+      repo.getBattle.mockResolvedValue(
+        battle({ status: PkStatus.COMPLETED, result: PkResult.RED }),
+      );
 
-      const detail = (await service.getCreatorBattleDetail(A, 'battle-1')) as { myResult: string } | null;
+      const detail = (await service.getCreatorBattleDetail(A, 'battle-1')) as {
+        myResult: string;
+      } | null;
 
       expect(detail?.myResult).toBe('WIN');
     });

@@ -51,7 +51,12 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
     const cleanHex = q.replace(/-/g, '');
     const isHexLike = /^[0-9a-f]{8,36}$/i.test(cleanHex);
 
-    let idMatchedUsers: { id: string; username: string; fullName: string | null; country: string | null }[] = [];
+    let idMatchedUsers: {
+      id: string;
+      username: string;
+      fullName: string | null;
+      country: string | null;
+    }[] = [];
     if (isHexLike) {
       const pattern = `${q.toLowerCase()}%`;
       idMatchedUsers = await this.prisma.$queryRaw<
@@ -89,7 +94,10 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
       this.prisma.user.count({ where }),
     ]);
 
-    const combinedMap = new Map<string, { id: string; username: string; fullName: string | null; country: string | null }>();
+    const combinedMap = new Map<
+      string,
+      { id: string; username: string; fullName: string | null; country: string | null }
+    >();
     for (const u of idMatchedUsers) {
       combinedMap.set(u.id, u);
     }

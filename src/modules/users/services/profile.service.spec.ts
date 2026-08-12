@@ -60,7 +60,9 @@ const emptyVerification = {
 } as never;
 
 describe('ProfileService', () => {
-  let users: jest.Mocked<Pick<UsersRepository, 'findById' | 'findByUsername' | 'update'>>;
+  let users: jest.Mocked<
+    Pick<UsersRepository, 'findById' | 'findByIdOrPrefix' | 'findByUsername' | 'update'>
+  >;
   let profiles: jest.Mocked<
     Pick<
       ProfileRepository,
@@ -83,7 +85,12 @@ describe('ProfileService', () => {
   let service: ProfileService;
 
   beforeEach(() => {
-    users = { findById: jest.fn(), findByUsername: jest.fn(), update: jest.fn() };
+    users = {
+      findById: jest.fn(),
+      findByIdOrPrefix: jest.fn(),
+      findByUsername: jest.fn(),
+      update: jest.fn(),
+    };
     profiles = {
       getProfile: jest.fn().mockResolvedValue(emptyProfile),
       getStatistics: jest.fn().mockResolvedValue(emptyStats),
@@ -199,16 +206,22 @@ describe('ProfileService', () => {
   describe('getPublicProfile (username or UUID)', () => {
     const UUID = 'f67cf300-6b54-48c5-82c5-1d854711c634';
 
+    // Id resolution (full UUID or short prefix) is the repository's job via
+    // findByIdOrPrefix; the service only falls back to username when that misses.
     it('resolves a UUID identifier by id (not username) — the deep-link path', async () => {
+      users.findByIdOrPrefix.mockResolvedValue(makeUser({ id: UUID }));
+      // Resolution and view-building are separate lookups: gatedView finishes
+      // by calling getProfileView(id), which reads through findById.
       users.findById.mockResolvedValue(makeUser({ id: UUID }));
       const view = await service.getPublicProfile(UUID, 'viewer');
-      expect(users.findById).toHaveBeenCalledWith(UUID);
+      expect(users.findByIdOrPrefix).toHaveBeenCalledWith(UUID);
       expect(users.findByUsername).not.toHaveBeenCalled();
       expect(privacy.check).toHaveBeenCalledWith('viewer', UUID, 'VIEW_PROFILE');
       expect(view?.username).toBe('aditya');
     });
 
     it('resolves a non-UUID identifier by username', async () => {
+      users.findByIdOrPrefix.mockResolvedValue(null);
       users.findByUsername.mockResolvedValue(makeUser());
       users.findById.mockResolvedValue(makeUser());
       const view = await service.getPublicProfile('aditya', 'viewer');
@@ -217,13 +230,14 @@ describe('ProfileService', () => {
     });
 
     it('returns null (→ 404) for an unknown id without leaking existence', async () => {
-      users.findById.mockResolvedValue(null);
+      users.findByIdOrPrefix.mockResolvedValue(null);
+      users.findByUsername.mockResolvedValue(null);
       expect(await service.getPublicProfile(UUID, 'viewer')).toBeNull();
       expect(privacy.check).not.toHaveBeenCalled();
     });
 
     it('honours the privacy gate for the by-id path', async () => {
-      users.findById.mockResolvedValue(makeUser({ id: UUID }));
+      users.findByIdOrPrefix.mockResolvedValue(makeUser({ id: UUID }));
       privacy.check.mockResolvedValue(false);
       expect(await service.getPublicProfile(UUID, 'viewer')).toBeNull();
     });

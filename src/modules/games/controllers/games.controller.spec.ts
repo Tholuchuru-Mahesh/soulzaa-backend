@@ -42,22 +42,34 @@ describe('GamesController', () => {
 
   it('calls history service method', async () => {
     await controller.history(mockUser, { page: 1, limit: 10, skip: 0 });
-    expect(service.history).toHaveBeenCalledWith({ id: 'usr-1', roles: ['USER'] }, { page: 1, limit: 10, skip: 0 });
+    expect(service.history).toHaveBeenCalledWith(
+      { id: 'usr-1', roles: ['USER'] },
+      { page: 1, limit: 10, skip: 0 },
+    );
   });
 
   it('calls luckyRecords service method', async () => {
     await controller.luckyRecords(mockUser, { page: 1, limit: 10, skip: 0 });
-    expect(service.luckyRecords).toHaveBeenCalledWith({ id: 'usr-1', roles: ['USER'] }, { page: 1, limit: 10, skip: 0 });
+    expect(service.luckyRecords).toHaveBeenCalledWith(
+      { id: 'usr-1', roles: ['USER'] },
+      { page: 1, limit: 10, skip: 0 },
+    );
   });
 
   it('calls jackpotRecords service method', async () => {
     await controller.jackpotRecords(mockUser, { page: 1, limit: 10, skip: 0 });
-    expect(service.jackpotRecords).toHaveBeenCalledWith({ id: 'usr-1', roles: ['USER'] }, { page: 1, limit: 10, skip: 0 });
+    expect(service.jackpotRecords).toHaveBeenCalledWith(
+      { id: 'usr-1', roles: ['USER'] },
+      { page: 1, limit: 10, skip: 0 },
+    );
   });
 
   it('calls myTournaments service method', async () => {
     await controller.myTournaments(mockUser, { page: 1, limit: 10, skip: 0 });
-    expect(service.myTournaments).toHaveBeenCalledWith({ id: 'usr-1', roles: ['USER'] }, { page: 1, limit: 10, skip: 0 });
+    expect(service.myTournaments).toHaveBeenCalledWith(
+      { id: 'usr-1', roles: ['USER'] },
+      { page: 1, limit: 10, skip: 0 },
+    );
   });
 
   it('calls listTournaments service method', async () => {

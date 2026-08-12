@@ -174,7 +174,6 @@ export class GamesService {
     @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
   ) {}
 
-
   // ======================= Catalog =======================
 
   async listCatalog(includeDisabled = false): Promise<unknown[]> {
@@ -2156,7 +2155,9 @@ export class GamesService {
     const parts = await this.prisma.gameParticipant.findMany({
       where: { sessionId: { in: rows.map((r) => r.id) }, userId: actor.id },
     });
-    const partMap = new Map<string, GameParticipant>(parts.map((p: GameParticipant) => [p.sessionId, p]));
+    const partMap = new Map<string, GameParticipant>(
+      parts.map((p: GameParticipant) => [p.sessionId, p]),
+    );
     return buildPaginated(
       rows.map((s) => {
         const p = partMap.get(s.id);
@@ -2172,10 +2173,12 @@ export class GamesService {
       dto.page,
       dto.limit,
     );
-
   }
 
-  async luckyRecords(actor: GameActor, dto: { page?: number; limit?: number; skip?: number }): Promise<Paginated<unknown>> {
+  async luckyRecords(
+    actor: GameActor,
+    dto: { page?: number; limit?: number; skip?: number },
+  ): Promise<Paginated<unknown>> {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
     const skip = dto.skip ?? (page - 1) * limit;
@@ -2199,7 +2202,9 @@ export class GamesService {
         id: b.id,
         gameName,
         gameCode: b.game,
-        luckyResult: b.round?.winningOutcome ? `${b.betItem} (Winning: ${b.round.winningOutcome})` : b.betItem,
+        luckyResult: b.round?.winningOutcome
+          ? `${b.betItem} (Winning: ${b.round.winningOutcome})`
+          : b.betItem,
         coinsSpent: betAmount,
         coinsWon: payoutAmount,
         reward: payoutAmount,
@@ -2211,7 +2216,10 @@ export class GamesService {
     return buildPaginated(items, totalBets, page, limit);
   }
 
-  async jackpotRecords(actor: GameActor, dto: { page?: number; limit?: number; skip?: number }): Promise<Paginated<unknown>> {
+  async jackpotRecords(
+    actor: GameActor,
+    dto: { page?: number; limit?: number; skip?: number },
+  ): Promise<Paginated<unknown>> {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
     const skip = dto.skip ?? (page - 1) * limit;
@@ -2239,7 +2247,7 @@ export class GamesService {
         payoutAmount,
         reward: payoutAmount,
         status: e.status,
-        result: e.status === 'WON' ? 'Won' : (e.status === 'LOST' ? 'Lost' : e.status),
+        result: e.status === 'WON' ? 'Won' : e.status === 'LOST' ? 'Lost' : e.status,
         createdAt: e.createdAt,
       };
     });
@@ -2247,7 +2255,10 @@ export class GamesService {
     return buildPaginated(items, total, page, limit);
   }
 
-  async myTournaments(actor: GameActor, dto: { page?: number; limit?: number; skip?: number }): Promise<Paginated<unknown>> {
+  async myTournaments(
+    actor: GameActor,
+    dto: { page?: number; limit?: number; skip?: number },
+  ): Promise<Paginated<unknown>> {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
     const skip = dto.skip ?? (page - 1) * limit;
@@ -2304,7 +2315,11 @@ export class GamesService {
     return buildPaginated(items, total, page, limit);
   }
 
-  async listTournaments(dto: { page?: number; limit?: number; skip?: number }): Promise<Paginated<unknown>> {
+  async listTournaments(dto: {
+    page?: number;
+    limit?: number;
+    skip?: number;
+  }): Promise<Paginated<unknown>> {
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 20;
     const skip = dto.skip ?? (page - 1) * limit;
@@ -2332,10 +2347,6 @@ export class GamesService {
 
     return buildPaginated(items, total, page, limit);
   }
-
-
-
-
 
   async leaderboard(limit: number): Promise<unknown[]> {
     const rows = await this.cache.top(GAME_WINS_LEADERBOARD_KEY, limit);

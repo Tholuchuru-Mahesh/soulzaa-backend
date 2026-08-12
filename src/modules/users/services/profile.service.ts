@@ -44,15 +44,15 @@ import {
   type UserSearchOptions,
 } from './search/user-search.provider';
 
-/** Username policy (mirrors registration): 4–20 chars, letters/digits/underscore. */
-const USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/;
-
 /**
- * Canonical UUID. A username can never match this (it forbids hyphens — see
- * USERNAME_RE), so the two identifier spaces are disjoint and the `/users/:x`
- * route can accept either without ambiguity.
+ * Username policy (mirrors registration): 4–20 chars, letters/digits/underscore.
+ *
+ * Forbidding hyphens is what keeps usernames and UUIDs disjoint, so the
+ * `/users/:x` route can accept either without ambiguity. The UUID half of that
+ * test lives in `UsersRepository.findByIdOrPrefix`, which also handles short-id
+ * prefixes.
  */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/;
 
 /** JSON-safe cached snapshot — stores media KEYS; URLs resolved per response. */
 interface CachedProfile {

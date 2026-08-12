@@ -18,7 +18,9 @@ export class UsersRepository {
 
   /** Lookup user by exact UUID or UUID prefix (e.g. 8-char short ID). */
   async findByIdOrPrefix(identifier: string): Promise<User | null> {
-    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+    const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      identifier,
+    );
     if (isFullUuid) {
       return this.findById(identifier);
     }

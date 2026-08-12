@@ -14,7 +14,6 @@ import { WithdrawalHistoryService } from 'src/modules/withdrawals/services/withd
 import { WithdrawalService } from 'src/modules/withdrawals/services/withdrawal.service';
 import { CreatorCenterService } from './creator-center.service';
 
-
 const OWNER_ID = 'owner-1';
 
 function session(overrides: Partial<LiveSessionView> = {}): LiveSessionView {
@@ -30,7 +29,9 @@ function session(overrides: Partial<LiveSessionView> = {}): LiveSessionView {
 }
 
 describe('CreatorCenterService', () => {
-  let rooms: jest.Mocked<Pick<IAudioRoomsService, 'listMyLiveSessions' | 'getMyLiveSession' | 'getRoom'>>;
+  let rooms: jest.Mocked<
+    Pick<IAudioRoomsService, 'listMyLiveSessions' | 'getMyLiveSession' | 'getRoom'>
+  >;
   let analytics: jest.Mocked<Pick<IAnalyticsService, 'getVisitorsInRange'>>;
   let gifts: jest.Mocked<Pick<IGiftsService, 'getContextCoinsInRange' | 'getTopFans'>>;
   let social: jest.Mocked<Pick<ISocialService, 'countNewFollowers'>>;
@@ -78,7 +79,6 @@ describe('CreatorCenterService', () => {
       {} as unknown as WithdrawalConfigurationService,
       {} as unknown as WithdrawalApprovalService,
     );
-
   });
 
   describe('getLiveHistory', () => {
@@ -126,7 +126,7 @@ describe('CreatorCenterService', () => {
   });
 
   describe('getLiveHistoryDetail', () => {
-    it('throws NOT_FOUND when the session does not exist or is not the caller\'s own', async () => {
+    it("throws NOT_FOUND when the session does not exist or is not the caller's own", async () => {
       rooms.getMyLiveSession.mockResolvedValue(null);
 
       await expect(service.getLiveHistoryDetail(OWNER_ID, 'not-mine')).rejects.toBeInstanceOf(
@@ -186,7 +186,13 @@ describe('CreatorCenterService', () => {
   describe('getTopFans', () => {
     it('hydrates ranked fan ids with profile cards', async () => {
       gifts.getTopFans.mockResolvedValue([
-        { rank: 1, userId: 'fan-1', totalCoins: 52500, giftCount: 12, lastGiftAt: new Date('2026-01-01') },
+        {
+          rank: 1,
+          userId: 'fan-1',
+          totalCoins: 52500,
+          giftCount: 12,
+          lastGiftAt: new Date('2026-01-01'),
+        },
       ]);
       profiles.getCards.mockResolvedValue([
         {

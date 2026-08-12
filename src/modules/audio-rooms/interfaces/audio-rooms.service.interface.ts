@@ -73,8 +73,6 @@ export interface MicHistoryView {
   status: RoomStatus;
 }
 
-
-
 export interface IAudioRoomsService {
   /** Full room read model, or null if not found / soft-deleted. */
   getRoom(roomId: string): Promise<RoomView | null>;

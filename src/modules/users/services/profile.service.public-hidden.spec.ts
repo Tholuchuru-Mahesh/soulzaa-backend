@@ -13,10 +13,13 @@ describe('ProfileService — public lookup of a hidden account', () => {
     target: { id: string; isHiddenAccount: boolean };
     viewerHidden: boolean;
   }) {
+    // The target resolves through findByIdOrPrefix; any *other* id reaching
+    // findById is the viewer-is-staff lookup, which answers with viewerHidden.
+    const byId = async (id: string) =>
+      id === opts.target.id ? opts.target : { id, isHiddenAccount: opts.viewerHidden };
     const users = {
-      findById: jest.fn(async (id: string) =>
-        id === opts.target.id ? opts.target : { id, isHiddenAccount: opts.viewerHidden },
-      ),
+      findById: jest.fn(byId),
+      findByIdOrPrefix: jest.fn(byId),
       findByUsername: jest.fn(async () => opts.target),
     };
     const privacy = { check: jest.fn().mockResolvedValue(true) };

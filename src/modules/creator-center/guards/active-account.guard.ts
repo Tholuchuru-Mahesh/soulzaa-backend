@@ -1,7 +1,10 @@
 import { CanActivate, ExecutionContext, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
-import { USERS_SERVICE, type IUsersService } from 'src/modules/users/interfaces/users.service.interface';
+import {
+  USERS_SERVICE,
+  type IUsersService,
+} from 'src/modules/users/interfaces/users.service.interface';
 
 /**
  * Defense-in-depth for Creator Center routes: re-checks the account's current

@@ -8,8 +8,6 @@ import {
   MicSession,
   RoomFavorite,
   RoomMember,
-
-
   RoomMemberRole,
   RoomStatus,
   RoomVisibility,
@@ -422,11 +420,7 @@ export class AudioRoomsRepository {
 
   // ---- Mic Sessions ----
 
-  async startMicSession(
-    roomId: string,
-    userId: string,
-    seatIndex?: number,
-  ): Promise<MicSession> {
+  async startMicSession(roomId: string, userId: string, seatIndex?: number): Promise<MicSession> {
     await this.endMicSession(roomId, userId);
     return this.prisma.micSession.create({
       data: {
@@ -477,8 +471,6 @@ export class AudioRoomsRepository {
     ]);
     return { rows, total };
   }
-
-
 
   listActiveMembers(roomId: string): Promise<RoomMember[]> {
     return this.prisma.roomMember.findMany({

@@ -232,7 +232,10 @@ describe('GamesService', () => {
     profiles = { resolvePublicIdentities: jest.fn().mockResolvedValue(new Map()) };
     const prismaMock = {
       gameParticipant: { findMany: jest.fn().mockResolvedValue([]) },
-      casinoBet: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+      casinoBet: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
     };
 
     service = new GamesService(
@@ -246,7 +249,6 @@ describe('GamesService', () => {
       users as unknown as IUsersService,
       profiles as unknown as IProfileService,
     );
-
   });
 
   describe('createLobby', () => {

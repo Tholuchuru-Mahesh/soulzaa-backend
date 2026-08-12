@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
@@ -32,7 +42,7 @@ export class CreatorCenterController {
   }
 
   @Get('live-history/:sessionId')
-  @ApiOperation({ summary: 'Detail for one of the caller\'s own broadcast sessions' })
+  @ApiOperation({ summary: "Detail for one of the caller's own broadcast sessions" })
   liveHistoryDetail(
     @CurrentUser() user: AuthenticatedUser,
     @Param('sessionId', ParseUuidPipe) sessionId: string,
@@ -69,7 +79,7 @@ export class CreatorCenterController {
 
   @Post('settlements')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Request a settlement (withdrawal) from the caller\'s own earnings' })
+  @ApiOperation({ summary: "Request a settlement (withdrawal) from the caller's own earnings" })
   requestSettlement(@CurrentUser() user: AuthenticatedUser, @Body() dto: RequestSettlementDto) {
     return this.creatorCenter.requestSettlement(user.id, dto);
   }
@@ -91,10 +101,7 @@ export class CreatorCenterController {
 
   @Get('settlements/:id')
   @ApiOperation({ summary: "Detail for one of the caller's own settlement requests" })
-  settlementDetail(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id', ParseUuidPipe) id: string,
-  ) {
+  settlementDetail(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.creatorCenter.getSettlementDetail(user.id, id);
   }
 

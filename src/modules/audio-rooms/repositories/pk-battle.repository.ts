@@ -152,8 +152,7 @@ export class PkBattleRepository {
     return participants
       .map((participant) => ({ participant, battle: battleById.get(participant.battleId) }))
       .filter(
-        (row): row is { participant: PkParticipant; battle: PkBattle } =>
-          row.battle !== undefined,
+        (row): row is { participant: PkParticipant; battle: PkBattle } => row.battle !== undefined,
       );
   }
 }
