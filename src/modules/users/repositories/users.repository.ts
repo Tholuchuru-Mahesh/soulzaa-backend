@@ -58,6 +58,13 @@ export class UsersRepository {
   /**
    * Create the identity row and its default profile/statistics/verification
    * rows in a single transaction, so a user always has a complete aggregate.
+   *
+   * That aggregate includes the RBAC assignment. `User.roles` is the legacy
+   * column and is used only for token claims; every permission check resolves
+   * through `user_roles`, so an account created without a row there passes
+   * authentication and then fails *every* permission-gated route with a 403 —
+   * gifting, families, VIP, withdrawals, role requests. Writing it here, in the
+   * same transaction, is what makes that state unrepresentable.
    */
   createWithProfile(data: Prisma.UserCreateInput): Promise<User> {
     return this.prisma.$transaction(async (tx) => {
@@ -65,6 +72,21 @@ export class UsersRepository {
       await tx.userProfile.create({ data: { userId: user.id } });
       await tx.userStatistics.create({ data: { userId: user.id } });
       await tx.userVerification.create({ data: { userId: user.id } });
+
+      // Read the roles back off the created row rather than the input: the
+      // column has a database default, so `data.roles` is undefined on an
+      // ordinary signup while the stored value is ['USER'].
+      const roles = await tx.role.findMany({
+        where: { name: { in: user.roles } },
+        select: { id: true },
+      });
+      if (roles.length > 0) {
+        await tx.userRole.createMany({
+          data: roles.map((role) => ({ userId: user.id, roleId: role.id })),
+          skipDuplicates: true,
+        });
+      }
+
       return user;
     });
   }

@@ -17,6 +17,11 @@ export class RbacSeederService implements OnApplicationBootstrap {
   async onApplicationBootstrap(): Promise<void> {
     try {
       await this.seedAll();
+      // Self-heal accounts that predate the RBAC assignment being written at
+      // registration. Without a `user_roles` row an account authenticates fine
+      // and then 403s on every permission-gated route, which is invisible until
+      // a user reports it. Runs after seedAll so the roles it maps to exist.
+      await this.backfillLegacyUserRoles();
     } catch (err) {
       this.logger.warn(`RBAC database seed skipped: ${(err as Error).message}`);
     }
