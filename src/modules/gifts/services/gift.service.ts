@@ -148,8 +148,8 @@ export class GiftService {
     ]);
 
     return {
-      earningsPercent: typeof earningsPercent === 'number' ? earningsPercent : 10,
-      cashbackPercent: typeof cashbackPercent === 'number' ? cashbackPercent : 0,
+      earningsPercent: typeof earningsPercent === 'number' ? earningsPercent : 100,
+      cashbackPercent: typeof cashbackPercent === 'number' ? cashbackPercent : 10,
       cashbackThreshold: typeof cashbackThreshold === 'number' ? cashbackThreshold : 1000,
     };
   }
@@ -269,9 +269,10 @@ export class GiftService {
     const perReceiverNum = Number(perReceiver);
     const totalNum = perReceiverNum * receiverIds.length;
 
-    // Rule 2: earnings share of the gift value — applicable ONLY when gift value is > 1000.
-    const earningsNum =
-      perReceiverNum > 1000 ? Math.floor((perReceiverNum * rules.earningsPercent) / 100) : 0;
+    // Rule 2: earnings share of the gift value. Unconditional — the `> 1000`
+    // threshold belongs to Rule 3 (cashback) alone. Gating earnings on it paid
+    // creators nothing at all for every gift of 1000 coins or less.
+    const earningsNum = Math.floor((perReceiverNum * rules.earningsPercent) / 100);
     const creatorEarnings = BigInt(earningsNum);
 
     // Rule 3: cashback (disabled / set to 0).

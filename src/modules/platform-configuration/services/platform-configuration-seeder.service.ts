@@ -149,17 +149,17 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultSettingSeed[] = [
   {
     key: 'gift.receiver_earnings_percentage',
     category: 'ECONOMY',
-    value: '10',
+    value: '100',
     valueType: SettingValueType.NUMBER,
-    defaultValue: '10',
+    defaultValue: '100',
     description: 'Percent of gift value credited to the receiver EARNINGS wallet',
   },
   {
     key: 'gift.receiver_cashback_percentage',
     category: 'ECONOMY',
-    value: '0',
+    value: '10',
     valueType: SettingValueType.NUMBER,
-    defaultValue: '0',
+    defaultValue: '10',
     description: 'Percent of gift value credited to the receiver GOLD wallet as cashback',
   },
   {
