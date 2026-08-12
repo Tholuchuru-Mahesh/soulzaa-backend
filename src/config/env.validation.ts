@@ -195,6 +195,17 @@ export const envSchema = z.object({
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(false),
   S3_PRESIGN_EXPIRY_SECONDS: z.coerce.number().int().positive().default(900),
 
+  // ---- KYC document verification (role request documents) ----
+  // Defaults to 'none': without a provider contract the pipeline runs local
+  // integrity checks only, exactly as it does today. Turning this on is what
+  // makes the API able to tell an Aadhaar card from a photograph of a dog.
+  KYC_PROVIDER: z.enum(['none', 'signzy', 'idfy']).default('none'),
+  KYC_PROVIDER_BASE_URL: optionalUrl,
+  KYC_PROVIDER_API_KEY: z.string().optional(),
+  // IDfy authenticates with an account id alongside the key; Signzy does not.
+  KYC_PROVIDER_ACCOUNT_ID: z.string().optional(),
+  KYC_PROVIDER_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+
   // ---- Agora (audio/video infrastructure) ----
   AGORA_APP_ID: z.string().optional(),
   AGORA_APP_CERTIFICATE: z.string().optional(),

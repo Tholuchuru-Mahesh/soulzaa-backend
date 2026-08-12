@@ -242,6 +242,14 @@ export const storageConfig = registerAs('storage', () => ({
   presignExpirySeconds: env().S3_PRESIGN_EXPIRY_SECONDS,
 }));
 
+export const kycConfig = registerAs('kyc', () => ({
+  provider: env().KYC_PROVIDER,
+  baseUrl: env().KYC_PROVIDER_BASE_URL,
+  apiKey: env().KYC_PROVIDER_API_KEY,
+  accountId: env().KYC_PROVIDER_ACCOUNT_ID,
+  timeoutMs: env().KYC_PROVIDER_TIMEOUT_MS,
+}));
+
 export const agoraConfig = registerAs('agora', () => ({
   appId: env().AGORA_APP_ID,
   appCertificate: env().AGORA_APP_CERTIFICATE,
@@ -525,6 +533,7 @@ export const configurations = [
   privacyConfig,
   socialConfig,
   storageConfig,
+  kycConfig,
   agoraConfig,
   zegoConfig,
   audioRoomConfig,
