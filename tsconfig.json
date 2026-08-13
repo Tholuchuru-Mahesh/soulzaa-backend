@@ -10,7 +10,15 @@
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
-    "preserveSymlinks": true,
+    // `preserveSymlinks` must stay off. pnpm links every package into
+    // node_modules/.pnpm and symlinks it to the top level; with the flag on,
+    // TypeScript refuses to follow those links and so never loads a package's
+    // *transitive* type dependencies. The result is that base interfaces
+    // silently vanish — Request loses .ip/.headers/.method, Response loses
+    // .status/.send, S3Client loses .send, JwtSignOptions loses expiresIn —
+    // and CI fails with ~50 "property does not exist" errors that do not
+    // reproduce on a developer machine whose node_modules has been hoisted by
+    // a stray npm install.
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,

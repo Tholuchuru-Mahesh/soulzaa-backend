@@ -6,9 +6,15 @@
 // expressed by file ownership.
 // ============================================================
 
+// No custom `output`. It previously pointed at `../../node_modules/.prisma/client`,
+// which is the wrong directory under pnpm: `@prisma/client` is a symlink into
+// node_modules/.pnpm, and it loads `.prisma/client` from beside its own real
+// location there — not from the top-level node_modules. `prisma generate` was
+// therefore writing a fresh client that TypeScript never read, leaving compiles
+// against a stale enum (a newly added PlatformRole such as CREATOR was missing
+// from every consumer). The default output is pnpm-aware; leave it alone.
 generator client {
   provider = "prisma-client-js"
-  output   = "../../node_modules/.prisma/client"
 }
 
 datasource db {
