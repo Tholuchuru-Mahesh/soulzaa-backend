@@ -144,6 +144,9 @@ function buildMocks(): Mocks {
       isRoomLive: jest.fn().mockResolvedValue(true),
       assertMember: jest.fn().mockResolvedValue(undefined),
       isMember: jest.fn().mockResolvedValue(true),
+      // The receiver check uses `hasEverBeenMember`, not `isMember`: someone who
+      // stepped out of a live room is still a valid gift recipient.
+      hasEverBeenMember: jest.fn().mockResolvedValue(true),
       getOwnerId: jest.fn().mockResolvedValue(HOST),
     },
     users: { findById: jest.fn().mockResolvedValue({ id: RECEIVER, username: 'bob' }) },
@@ -353,7 +356,7 @@ describe('AUDIO_ROOM gift baseline (VR-10 BC gate)', () => {
   });
 
   it('BC-11: a receiver outside the room is rejected before any money moves', async () => {
-    m.rooms.isMember.mockResolvedValue(false);
+    m.rooms.hasEverBeenMember.mockResolvedValue(false);
     await expect(service.sendGift(SENDER, dto())).rejects.toMatchObject({
       errorCode: 'GIFT_RECEIVER_INVALID',
     });
@@ -362,6 +365,12 @@ describe('AUDIO_ROOM gift baseline (VR-10 BC gate)', () => {
 
   it('BC-10: returns the persisted transaction to the caller', async () => {
     const res = await service.sendGift(SENDER, dto());
-    expect(res).toMatchObject({ id: 'gtxn-1', status: 'COMPLETED' });
+    // The service mints the transaction id and hands it to the repository, so
+    // the row that comes back carries that id — not one the repository invents.
+    // Asserting against the persisted value keeps this checking what it claims
+    // to (the caller receives the row that was stored) rather than pinning a
+    // literal the service no longer honours.
+    const persisted = m.repo.createTransaction.mock.calls[0][0];
+    expect(res).toMatchObject({ id: persisted.id, status: 'COMPLETED' });
   });
 });

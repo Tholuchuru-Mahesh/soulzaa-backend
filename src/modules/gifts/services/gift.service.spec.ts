@@ -122,6 +122,9 @@ describe('GiftService', () => {
       isRoomLive: jest.fn().mockResolvedValue(true),
       assertMember: jest.fn().mockResolvedValue(undefined),
       isMember: jest.fn().mockResolvedValue(true),
+      // The receiver check uses `hasEverBeenMember`, not `isMember`: someone who
+      // stepped out of a live room is still a valid gift recipient.
+      hasEverBeenMember: jest.fn().mockResolvedValue(true),
       getOwnerId: jest.fn().mockResolvedValue('owner-id'),
     };
     users = { findById: jest.fn().mockResolvedValue({ id: RECEIVER, username: 'bob' }) };
@@ -520,7 +523,7 @@ describe('GiftService', () => {
     });
 
     it('rejects when the receiver is not in the room', async () => {
-      rooms.isMember.mockResolvedValue(false);
+      rooms.hasEverBeenMember.mockResolvedValue(false);
       await expect(service.sendGift(SENDER, dto())).rejects.toMatchObject({
         errorCode: 'GIFT_RECEIVER_INVALID',
       });
