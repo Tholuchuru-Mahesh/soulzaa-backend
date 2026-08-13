@@ -1,2 +1,1 @@
-/** agencies dto — empty until the module is implemented. */
-export {};
+export * from './agency-growth-query.dto';

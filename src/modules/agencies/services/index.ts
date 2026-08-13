@@ -8,3 +8,5 @@ export * from './agency-audit.service';
 export * from './agency-statistics.service';
 export * from './agency-query.service';
 export * from './agency-event.service';
+export * from './agency-community.service';
+export * from './agency-dashboard.service';
