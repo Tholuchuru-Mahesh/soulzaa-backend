@@ -115,6 +115,8 @@ describe('ProfileService', () => {
       blockedIdsFor: jest.fn().mockResolvedValue([]),
     };
     const config = { get: () => CFG } as unknown as ConfigService;
+    const notifications = { push: jest.fn() };
+    const prisma = {};
     service = new ProfileService(
       users as unknown as UsersRepository,
       profiles as unknown as ProfileRepository,
@@ -124,6 +126,8 @@ describe('ProfileService', () => {
       search,
       bus,
       privacy as unknown as IPrivacyService,
+      notifications as any,
+      prisma as any,
       config,
     );
   });

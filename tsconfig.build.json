@@ -1,5 +1,8 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src"
+  },
   // prisma/ and scripts/ hold standalone .ts utilities. Compiling them widens
   // TypeScript's common source root to the repo root, which emits dist/src/main.js
   // instead of dist/main.js — the path both the Dockerfile CMD and start:prod use.
