@@ -1,0 +1,38 @@
+model ModeratorShift {
+  id              String          @id @default(uuid()) @db.Uuid
+  moderatorId     String          @db.Uuid
+  daysOfWeek      DayOfWeek[]
+  startHour       Int
+  startMinute     Int
+  endHour         Int
+  endMinute       Int
+  timezone        String          @default("UTC")
+  label           String?
+  isActive        Boolean         @default(true)
+  assignedBy      String          @db.Uuid
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  shift_overrides ShiftOverride[]
+
+  @@index([moderatorId, isActive])
+  @@map("moderator_shifts")
+}
+
+model ShiftOverride {
+  id               String         @id @default(uuid()) @db.Uuid
+  shiftId          String         @db.Uuid
+  moderatorId      String         @db.Uuid
+  overrideDate     DateTime       @db.Date
+  startHour        Int
+  startMinute      Int
+  endHour          Int
+  endMinute        Int
+  reason           String?
+  createdBy        String         @db.Uuid
+  createdAt        DateTime       @default(now())
+  moderator_shifts ModeratorShift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  @@unique([shiftId, overrideDate])
+  @@index([moderatorId, overrideDate])
+  @@map("shift_overrides")
+}

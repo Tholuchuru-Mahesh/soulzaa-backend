@@ -1,0 +1,118 @@
+model device_change_requests {
+  id                  String                    @id @db.Uuid
+  moderatorId         String                    @db.Uuid
+  oldDeviceId         String?                   @db.Uuid
+  newDeviceInfo       Json
+  reason              String?
+  status              DeviceChangeRequestStatus @default(PENDING)
+  managerReviewedBy   String?                   @db.Uuid
+  managerReviewedAt   DateTime?
+  managerReviewNote   String?
+  reviewedBy          String?                   @db.Uuid
+  reviewedAt          DateTime?
+  reviewNote          String?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime
+
+  @@index([moderatorId, status])
+  @@index([status])
+}
+
+model live_stream_moderation_actions {
+  id           String       @id @db.Uuid
+  streamId     String       @db.Uuid
+  moderatorId  String       @db.Uuid
+  targetUserId String       @db.Uuid
+  action       String
+  reason       String?
+  evidenceId   String?
+  createdAt    DateTime     @default(now())
+  live_streams live_streams @relation(fields: [streamId], references: [id], onDelete: Cascade)
+
+  @@index([moderatorId])
+  @@index([streamId])
+  @@index([targetUserId])
+}
+
+model live_streams {
+  id                             String                           @id @db.Uuid
+  hostId                         String                           @db.Uuid
+  title                          String?
+  description                    String?
+  regionId                       String?                          @db.Uuid
+  stateId                        String?                          @db.Uuid
+  countryId                      String?                          @db.Uuid
+  status                         LiveStreamStatus                 @default(ACTIVE)
+  viewerCount                    Int                              @default(0)
+  startedAt                      DateTime                         @default(now())
+  endedAt                        DateTime?
+  endedBy                        String?                          @db.Uuid
+  createdAt                      DateTime                         @default(now())
+  updatedAt                      DateTime
+  live_stream_moderation_actions live_stream_moderation_actions[]
+
+  @@index([countryId])
+  @@index([hostId])
+  @@index([regionId])
+  @@index([stateId])
+  @@index([status])
+}
+
+model moderator_task_assignments {
+  id               String         @id @db.Uuid
+  taskId           String         @db.Uuid
+  moderatorId      String         @db.Uuid
+  assignedBy       String         @db.Uuid
+  status           String         @default("PENDING")
+  dueAt            DateTime?
+  completedAt      DateTime?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime
+  task_definitions TaskDefinition @relation(fields: [taskId], references: [id])
+
+  @@unique([taskId, moderatorId])
+  @@index([assignedBy])
+  @@index([moderatorId, status])
+  @@index([status, dueAt])
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum DeviceChangeRequestStatus {
+  PENDING
+  MANAGER_REVIEWED
+  APPROVED
+  REJECTED
+}
+
+enum InvestigationStatus {
+  ACTIVE
+  COMPLETED
+  FAILED
+}
+
+enum LiveStreamStatus {
+  ACTIVE
+  ENDED
+  SUSPENDED
+}
+
+enum ModeratorWarningLevel {
+  LEVEL_1
+  LEVEL_2
+  LEVEL_3
+}
+
+enum ModeratorWarningStatus {
+  ACTIVE
+  RESOLVED
+}

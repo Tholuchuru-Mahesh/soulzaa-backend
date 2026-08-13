@@ -1,0 +1,28 @@
+model ModeratorDailyStats {
+  id                   String   @id @default(uuid()) @db.Uuid
+  moderatorId          String   @db.Uuid
+  dateKey              String
+  roomsVisited         Int      @default(0)
+  reportsReviewed      Int      @default(0)
+  reportsResolved      Int      @default(0)
+  reportsEscalated     Int      @default(0)
+  warningsIssued       Int      @default(0)
+  mutesIssued          Int      @default(0)
+  kicksIssued          Int      @default(0)
+  bansIssued           Int      @default(0)
+  falseModerationCount Int      @default(0)
+  avgResolutionMinutes Float    @default(0)
+  avgResponseTime      Float    @default(0)
+  performanceScore     Float    @default(0)
+  taskCompletionRate   Float    @default(0)
+  dailyTarget          Int      @default(20)
+  weeklyTarget         Int      @default(100)
+  monthlyTarget        Int      @default(400)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([moderatorId, dateKey])
+  @@index([dateKey])
+  @@index([moderatorId])
+  @@map("moderator_daily_stats")
+}

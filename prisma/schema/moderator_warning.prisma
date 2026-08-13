@@ -1,0 +1,19 @@
+model ModeratorWarningRecord {
+  id          String                 @id @default(uuid()) @db.Uuid
+  moderatorId String                 @db.Uuid
+  issuedBy    String                 @db.Uuid
+  level       ModeratorWarningLevel
+  reason      String
+  description String?
+  status      ModeratorWarningStatus @default(ACTIVE)
+  resolvedAt  DateTime?
+  resolvedBy  String?                @db.Uuid
+  resolution  String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@index([issuedBy])
+  @@index([level])
+  @@index([moderatorId, status])
+  @@map("moderator_warning_records")
+}

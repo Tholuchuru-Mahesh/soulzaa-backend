@@ -1,0 +1,26 @@
+model InvestigationRecording {
+  id              String              @id @default(uuid()) @db.Uuid
+  evidenceId      String              @unique
+  moderatorId     String              @db.Uuid
+  targetUserId    String              @db.Uuid
+  roomId          String?             @db.Uuid
+  liveStreamId    String?             @db.Uuid
+  regionId        String?             @db.Uuid
+  violationReason String
+  actionTaken     String?
+  evidencePayload Json?
+  status          InvestigationStatus @default(ACTIVE)
+  startedAt       DateTime            @default(now())
+  completedAt     DateTime?
+  durationSeconds Int?
+  recordingUrl    String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([moderatorId])
+  @@index([targetUserId])
+  @@index([liveStreamId])
+  @@index([roomId])
+  @@index([status])
+  @@map("investigation_recordings")
+}
