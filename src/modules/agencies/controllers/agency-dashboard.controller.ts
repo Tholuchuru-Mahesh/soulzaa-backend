@@ -37,7 +37,7 @@ export class AgencyDashboardController {
   }
 
   @Get('growth')
-  @ApiOperation({ summary: "Community growth series for the calling agency" })
+  @ApiOperation({ summary: 'Community growth series for the calling agency' })
   @ApiResponse({ status: 200, description: 'Daily member counts across the requested range' })
   getGrowth(@CurrentUser() user: AuthenticatedUser, @Query() query: AgencyGrowthQueryDto) {
     return this.dashboard.getGrowth(user.id, query.range);

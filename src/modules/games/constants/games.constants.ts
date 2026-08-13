@@ -98,9 +98,7 @@ export const GAME_TURN_RESYNC_PENDING_TTL_SECONDS = 60;
 export const gamePendingResultKey = (sessionId: string): string =>
   `game:pending-result:${sessionId}`;
 /** How long a reported result waits for corroboration before auto-settling. */
-export const GAME_RESULT_CONFIRM_SECONDS = Number(
-  process.env.GAME_RESULT_CONFIRM_SECONDS ?? 45,
-);
+export const GAME_RESULT_CONFIRM_SECONDS = Number(process.env.GAME_RESULT_CONFIRM_SECONDS ?? 45);
 /** Index ZSET (member=sessionId, score=expiresAt) — sweep due pending results without SCAN. */
 export const GAME_PENDING_RESULT_INDEX_KEY = 'game:pending-result:index';
 

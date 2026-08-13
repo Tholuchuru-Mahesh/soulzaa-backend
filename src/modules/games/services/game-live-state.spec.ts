@@ -82,7 +82,10 @@ describe('game-live-state', () => {
   describe('applyMove turn-hijack prevention', () => {
     it('ignores nextTurnPlayerId from a mover who does not hold the turn', () => {
       // u1 holds the turn; u2 tries to steal it via a crafted nextTurnPlayerId.
-      const next = applyMove(baseState(), frame('u2', { action: 'move_token', nextTurnPlayerId: 'u2' }));
+      const next = applyMove(
+        baseState(),
+        frame('u2', { action: 'move_token', nextTurnPlayerId: 'u2' }),
+      );
       expect(next.currentTurnUserId).toBe('u1');
     });
 

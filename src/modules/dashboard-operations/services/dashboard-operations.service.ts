@@ -59,7 +59,7 @@ export class DashboardOperationsService {
       newUsersToday,
       byStatus,
       roleRows,
-      recent
+      recent,
     ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.user.count({ where: { status: 'ACTIVE' } }),
@@ -81,9 +81,9 @@ export class DashboardOperationsService {
           locationCountry: {
             select: {
               code: true,
-              name: true
-            }
-          }
+              name: true,
+            },
+          },
         },
       }),
     ]);
@@ -117,7 +117,9 @@ export class DashboardOperationsService {
         createdAt: user.createdAt,
         country: user.locationCountry?.name || 'India',
         countryCode: user.locationCountry?.code || 'IN',
-        avatarUrl: profile?.avatarKey ? `https://cdn.soulzaa.com/avatars/${profile.avatarKey}` : null,
+        avatarUrl: profile?.avatarKey
+          ? `https://cdn.soulzaa.com/avatars/${profile.avatarKey}`
+          : null,
         vipLevel: stat?.vipLevel ?? 0,
         userLevel: stat?.level ?? 1,
         coinsBalance: Number(wallet?.goldBalance ?? 0n),

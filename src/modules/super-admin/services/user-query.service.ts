@@ -326,7 +326,8 @@ export class UserQueryService {
                 selfieUrl = (await this.media.resolve(data.selfieKey)) || '';
               }
             }
-          } catch (e) {
+          } catch {
+            // documentKey is not JSON — it is the storage key itself.
             selfieUrl = (await this.media.resolve(v.documentKey)) || '';
           }
         }
@@ -341,7 +342,7 @@ export class UserQueryService {
           submittedAt: v.submittedAt,
           status: v.status,
         };
-      })
+      }),
     );
 
     return result;

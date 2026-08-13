@@ -269,7 +269,7 @@ describe('AudioRoomGiftContextHandler.onSend (treasure + host reward + refund)',
     expect(wallet.credit).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 'receiver-1', // owner = receiver
-        amount: 10,           // 10% of accepted 100
+        amount: 10, // 10% of accepted 100
         reason: 'TREASURE_BOX',
         idempotencyKey: 'gift-host-reward:idem-1',
       }),

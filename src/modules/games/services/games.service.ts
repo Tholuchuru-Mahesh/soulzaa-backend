@@ -928,148 +928,148 @@ export class GamesService {
     return this.locks.withLock(
       gameSessionLockKey(session.id),
       async () => {
-      const fresh = await this.repo.getSession(session.id);
-      if (!fresh || fresh.status !== GameSessionStatus.ACTIVE) {
-        throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
-      }
-      if (await this.repo.getMatchResult(fresh.id)) {
-        throw this.conflict(ERROR_CODES.GAME_ALREADY_SETTLED, 'Session is already settled.');
-      }
+        const fresh = await this.repo.getSession(session.id);
+        if (!fresh || fresh.status !== GameSessionStatus.ACTIVE) {
+          throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
+        }
+        if (await this.repo.getMatchResult(fresh.id)) {
+          throw this.conflict(ERROR_CODES.GAME_ALREADY_SETTLED, 'Session is already settled.');
+        }
 
-      const participants = await this.repo.listParticipants(fresh.id);
-      const participantIds = new Set(participants.map((p) => p.userId));
-      const payoutMap = this.validateSettlement(fresh, participants, participantIds, input);
-      const payoutTotal = [...payoutMap.values()].reduce((a, b) => a + b, 0);
-      const rakeAmount = Number(fresh.potAmount) - payoutTotal;
+        const participants = await this.repo.listParticipants(fresh.id);
+        const participantIds = new Set(participants.map((p) => p.userId));
+        const payoutMap = this.validateSettlement(fresh, participants, participantIds, input);
+        const payoutTotal = [...payoutMap.values()].reduce((a, b) => a + b, 0);
+        const rakeAmount = Number(fresh.potAmount) - payoutTotal;
 
-      // Credit winners + record the ledger + close out every participant + flip
-      // the session to COMPLETED as ONE atomic DB transaction (idempotency keys
-      // still make a safe-to-retry replay of the credit itself a no-op): a crash
-      // or error partway through must never leave a half-settled session — one
-      // that's already paid a winner but never reached COMPLETED — since a retry
-      // could then re-attempt the ledger insert and collide with its own
-      // unique idempotency key. Wallet locks are acquired up front (sorted, to
-      // avoid deadlock) because passing `tx` into wallet.credit makes it join
-      // this transaction instead of taking its own internal per-user lock.
-      const creditedUserIds = [...payoutMap.entries()]
-        .filter(([, amount]) => amount > 0)
-        .map(([userId]) => userId);
-      await this.withWalletLocks(creditedUserIds, () =>
-        this.repo.runInTransaction(async (tx) => {
-          for (const p of participants) {
-            const payout = payoutMap.get(p.userId) ?? 0;
-            const isWinner = input.winners.includes(p.userId);
-            let payoutTxnId: string | null = null;
-            if (payout > 0) {
-              const credit = await this.wallet.credit(
+        // Credit winners + record the ledger + close out every participant + flip
+        // the session to COMPLETED as ONE atomic DB transaction (idempotency keys
+        // still make a safe-to-retry replay of the credit itself a no-op): a crash
+        // or error partway through must never leave a half-settled session — one
+        // that's already paid a winner but never reached COMPLETED — since a retry
+        // could then re-attempt the ledger insert and collide with its own
+        // unique idempotency key. Wallet locks are acquired up front (sorted, to
+        // avoid deadlock) because passing `tx` into wallet.credit makes it join
+        // this transaction instead of taking its own internal per-user lock.
+        const creditedUserIds = [...payoutMap.entries()]
+          .filter(([, amount]) => amount > 0)
+          .map(([userId]) => userId);
+        await this.withWalletLocks(creditedUserIds, () =>
+          this.repo.runInTransaction(async (tx) => {
+            for (const p of participants) {
+              const payout = payoutMap.get(p.userId) ?? 0;
+              const isWinner = input.winners.includes(p.userId);
+              let payoutTxnId: string | null = null;
+              if (payout > 0) {
+                const credit = await this.wallet.credit(
+                  {
+                    userId: p.userId,
+                    currency: this.walletCurrency(fresh.currency),
+                    amount: payout,
+                    reason: WalletTxnReason.GAME_PAYOUT,
+                    idempotencyKey: `game-payout:${fresh.id}:${p.userId}`,
+                    referenceType: 'game_session',
+                    referenceId: fresh.id,
+                    metadata: { gameCode: fresh.code },
+                    actorId: p.userId,
+                  },
+                  tx,
+                );
+                payoutTxnId = credit.transactionId;
+                await this.repo.createTransaction(
+                  {
+                    sessionId: fresh.id,
+                    participantId: p.id,
+                    userId: p.userId,
+                    type: GameTxnType.PAYOUT,
+                    currency: fresh.currency,
+                    amount: BigInt(payout),
+                    walletTxnId: credit.transactionId,
+                    idempotencyKey: `game-payout:${fresh.id}:${p.userId}`,
+                  },
+                  tx,
+                );
+              }
+              await this.repo.updateParticipant(
+                p.id,
                 {
-                  userId: p.userId,
-                  currency: this.walletCurrency(fresh.currency),
-                  amount: payout,
-                  reason: WalletTxnReason.GAME_PAYOUT,
-                  idempotencyKey: `game-payout:${fresh.id}:${p.userId}`,
-                  referenceType: 'game_session',
-                  referenceId: fresh.id,
-                  metadata: { gameCode: fresh.code },
-                  actorId: p.userId,
-                },
-                tx,
-              );
-              payoutTxnId = credit.transactionId;
-              await this.repo.createTransaction(
-                {
-                  sessionId: fresh.id,
-                  participantId: p.id,
-                  userId: p.userId,
-                  type: GameTxnType.PAYOUT,
-                  currency: fresh.currency,
-                  amount: BigInt(payout),
-                  walletTxnId: credit.transactionId,
-                  idempotencyKey: `game-payout:${fresh.id}:${p.userId}`,
+                  status: isWinner ? GameParticipantStatus.WON : GameParticipantStatus.LOST,
+                  isWinner,
+                  payoutAmount: BigInt(payout),
+                  payoutTxnId,
+                  settledAt: new Date(),
                 },
                 tx,
               );
             }
-            await this.repo.updateParticipant(
-              p.id,
+
+            await this.repo.createMatchResult(
               {
-                status: isWinner ? GameParticipantStatus.WON : GameParticipantStatus.LOST,
-                isWinner,
-                payoutAmount: BigInt(payout),
-                payoutTxnId,
-                settledAt: new Date(),
+                sessionId: fresh.id,
+                definitionId: fresh.definitionId,
+                code: fresh.code,
+                potAmount: fresh.potAmount,
+                payoutTotal: BigInt(payoutTotal),
+                rakeAmount: BigInt(rakeAmount),
+                winners: input.winners,
+                resultData: input.resultData ?? {},
+                settledBy: input.settledBy ?? null,
               },
               tx,
             );
+            await this.repo.completeSession(fresh.id, input.settledBy ?? null, tx);
+          }),
+        );
+
+        await this.repo.logEvent({
+          sessionId: fresh.id,
+          action: 'session.settled',
+          detail: { payoutTotal, rakeAmount, winners: input.winners },
+        });
+
+        // Leaderboards: wins + winnings by currency.
+        for (const w of input.winners) await this.cache.addScore(GAME_WINS_LEADERBOARD_KEY, w, 1);
+        for (const [userId, amount] of payoutMap) {
+          if (amount > 0) {
+            await this.cache.addScore(gameWinningsLeaderboardKey(fresh.currency), userId, amount);
           }
-
-          await this.repo.createMatchResult(
-            {
-              sessionId: fresh.id,
-              definitionId: fresh.definitionId,
-              code: fresh.code,
-              potAmount: fresh.potAmount,
-              payoutTotal: BigInt(payoutTotal),
-              rakeAmount: BigInt(rakeAmount),
-              winners: input.winners,
-              resultData: input.resultData ?? {},
-              settledBy: input.settledBy ?? null,
-            },
-            tx,
-          );
-          await this.repo.completeSession(fresh.id, input.settledBy ?? null, tx);
-        }),
-      );
-
-      await this.repo.logEvent({
-        sessionId: fresh.id,
-        action: 'session.settled',
-        detail: { payoutTotal, rakeAmount, winners: input.winners },
-      });
-
-      // Leaderboards: wins + winnings by currency.
-      for (const w of input.winners) await this.cache.addScore(GAME_WINS_LEADERBOARD_KEY, w, 1);
-      for (const [userId, amount] of payoutMap) {
-        if (amount > 0) {
-          await this.cache.addScore(gameWinningsLeaderboardKey(fresh.currency), userId, amount);
         }
-      }
 
-      const payouts = [...payoutMap.entries()].map(([userId, amount]) => ({ userId, amount }));
-      await this.bus.publish(
-        new GameSettledEvent({
+        const payouts = [...payoutMap.entries()].map(([userId, amount]) => ({ userId, amount }));
+        await this.bus.publish(
+          new GameSettledEvent({
+            sessionId: fresh.id,
+            gameCode: fresh.code,
+            roomId: fresh.roomId,
+            currency: fresh.currency,
+            potAmount: Number(fresh.potAmount),
+            payoutTotal,
+            rakeAmount,
+            winners: input.winners,
+            payouts,
+            participants: participants.map((p) => p.userId),
+          }),
+        );
+        await this.enqueueBestEffort(QUEUE_NAMES.ANALYTICS_PROCESSING, 'game.settled', {
           sessionId: fresh.id,
           gameCode: fresh.code,
-          roomId: fresh.roomId,
-          currency: fresh.currency,
+          payoutTotal,
+          rakeAmount,
+        });
+        await this.enqueueBestEffort(QUEUE_NAMES.RANKING_PROCESSING, 'game.settled', {
+          sessionId: fresh.id,
+          winners: input.winners,
+        });
+
+        return {
+          sessionId: fresh.id,
+          gameCode: fresh.code,
           potAmount: Number(fresh.potAmount),
           payoutTotal,
           rakeAmount,
           winners: input.winners,
           payouts,
-          participants: participants.map((p) => p.userId),
-        }),
-      );
-      await this.enqueueBestEffort(QUEUE_NAMES.ANALYTICS_PROCESSING, 'game.settled', {
-        sessionId: fresh.id,
-        gameCode: fresh.code,
-        payoutTotal,
-        rakeAmount,
-      });
-      await this.enqueueBestEffort(QUEUE_NAMES.RANKING_PROCESSING, 'game.settled', {
-        sessionId: fresh.id,
-        winners: input.winners,
-      });
-
-      return {
-        sessionId: fresh.id,
-        gameCode: fresh.code,
-        potAmount: Number(fresh.potAmount),
-        payoutTotal,
-        rakeAmount,
-        winners: input.winners,
-        payouts,
-      };
+        };
       },
       { ttlMs: 30_000 },
     );
@@ -2238,7 +2238,9 @@ export class GamesService {
     try {
       await this.queue.enqueue(queueName, event, payload);
     } catch (err) {
-      this.logger.warn(`Telemetry enqueue failed (${queueName}/${event}): ${(err as Error).message}`);
+      this.logger.warn(
+        `Telemetry enqueue failed (${queueName}/${event}): ${(err as Error).message}`,
+      );
     }
   }
 
@@ -2797,9 +2799,7 @@ export class GamesService {
     );
     const participants = await this.repo.listParticipants(session.id);
     return initLiveState(
-      participants
-        .filter((p) => p.status === GameParticipantStatus.PLAYING)
-        .map((p) => p.userId),
+      participants.filter((p) => p.status === GameParticipantStatus.PLAYING).map((p) => p.userId),
       session.startedAt.getTime(),
       GAME_TURN_SECONDS,
     );

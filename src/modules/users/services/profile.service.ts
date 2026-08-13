@@ -10,7 +10,10 @@ import {
 } from '@prisma/client';
 import { CACHE_KEYS } from 'src/common/constants';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
-import { NOTIFICATION_SERVICE, type INotificationService } from 'src/modules/notification/interfaces/notification.interface';
+import {
+  NOTIFICATION_SERVICE,
+  type INotificationService,
+} from 'src/modules/notification/interfaces/notification.interface';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';

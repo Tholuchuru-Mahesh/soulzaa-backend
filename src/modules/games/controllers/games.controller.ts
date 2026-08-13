@@ -255,7 +255,8 @@ export class GamesController {
   @Get('sessions/:id/live')
   @NotGuest()
   @ApiOperation({
-    summary: 'Live board state (move log + turn) for reconnect/restore (participants or admins only)',
+    summary:
+      'Live board state (move log + turn) for reconnect/restore (participants or admins only)',
   })
   liveState(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.games.getLiveState(this.actor(user), id);
@@ -266,7 +267,7 @@ export class GamesController {
   @NotGuest()
   @ApiOperation({
     summary:
-      'Host reports the winner — held pending another participant\'s confirmation ' +
+      "Host reports the winner — held pending another participant's confirmation " +
       '(or auto-confirms if undisputed) before it settles from the escrowed pot',
   })
   reportResult(
@@ -284,7 +285,9 @@ export class GamesController {
   @Post('sessions/:id/confirm-result')
   @HttpCode(HttpStatus.OK)
   @NotGuest()
-  @ApiOperation({ summary: 'Corroborate the pending reported result — settles from the escrowed pot' })
+  @ApiOperation({
+    summary: 'Corroborate the pending reported result — settles from the escrowed pot',
+  })
   confirmResult(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.games.confirmMatchResult(this.actor(user), id);
   }
@@ -292,7 +295,9 @@ export class GamesController {
   @Post('sessions/:id/dispute-result')
   @HttpCode(HttpStatus.OK)
   @NotGuest()
-  @ApiOperation({ summary: 'Dispute the pending reported result — withholds settlement for admin review' })
+  @ApiOperation({
+    summary: 'Dispute the pending reported result — withholds settlement for admin review',
+  })
   disputeResult(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.games.disputeMatchResult(this.actor(user), id);
   }

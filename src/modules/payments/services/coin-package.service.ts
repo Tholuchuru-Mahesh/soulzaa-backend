@@ -53,7 +53,7 @@ export class CoinPackageService {
       try {
         const value = await this.platformConfig.get<unknown>(key);
         if (typeof value === 'number' && Number.isFinite(value)) return value;
-      } catch (err) {
+      } catch {
         // Ignore setting-not-found errors to continue to fallback key
       }
     }

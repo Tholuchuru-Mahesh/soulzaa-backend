@@ -291,7 +291,10 @@ export class RoleAssignmentService {
   /**
    * Revokes the Creator status (removes Creator role, deletes/resets UserVerification so they can apply from scratch).
    */
-  async revokeCreator(targetUserId: string, actorId: string): Promise<any> {
+  // `_actorId` is accepted but unused: callers pass the acting admin to match
+  // every other method on this service, and it is what an audit entry here
+  // would need. Renamed rather than dropped so the signature stays uniform.
+  async revokeCreator(targetUserId: string, _actorId: string): Promise<any> {
     const user = await this.prisma.user.findUnique({
       where: { id: targetUserId },
     });
