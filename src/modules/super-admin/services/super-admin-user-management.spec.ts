@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException } from '@nes
 import { Test, TestingModule } from '@nestjs/testing';
 import { AccountStatus, ScopeType } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { AuthorizationCacheService } from 'src/modules/authorization/services/authorization-cache.service';
 import { AuthorizationService } from 'src/modules/authorization/services/authorization.service';
@@ -96,6 +97,7 @@ describe('Super Admin Phase 2B: User & Role Management Services', () => {
         { provide: AuthorizationCacheService, useValue: mockAuthCacheService },
         { provide: CacheService, useValue: mockCacheService },
         { provide: RoleResolver, useValue: mockRoleResolver },
+        { provide: MediaUrlResolver, useValue: { resolveAvatarUrl: jest.fn() } },
         PolicyEngineService,
         RoleRankPolicyRule,
       ],

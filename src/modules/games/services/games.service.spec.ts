@@ -1225,6 +1225,7 @@ describe('GamesService', () => {
         participant('p4', P3, { team: GameTeam.B, seat: 3 }),
       ]);
       await service.reportMatchResult(ACTOR, 'sess-1', { winningTeam: GameTeam.A });
+      await service.confirmMatchResult({ id: P2, roles: ['USER'] }, 'sess-1');
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 200 }),
         FAKE_TX,
@@ -1279,6 +1280,7 @@ describe('GamesService', () => {
           }),
         ]);
         await service.reportMatchResult(ACTOR, 'sess-1', { winningTeam: GameTeam.A });
+        await service.confirmMatchResult({ id: P2, roles: ['USER'] }, 'sess-1');
 
         expect(wallet.credit).toHaveBeenCalledWith(
           expect.objectContaining({ userId: HOST, amount: 400 }),
@@ -1503,6 +1505,7 @@ describe('GamesService', () => {
         participant('p4', P3, { team: GameTeam.B, isBot: false, stake: 100n }),
       ]);
       await service.reportMatchResult(ACTOR, 'sess-1', { winningTeam: GameTeam.A });
+      await service.confirmMatchResult({ id: P2, roles: ['USER'] }, 'sess-1');
       // Only the human on team A is paid — the whole distributable pot.
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 300 }),
@@ -1532,6 +1535,12 @@ describe('GamesService', () => {
 
     it('lets the host relay a move on a bot’s behalf', async () => {
       repo.getParticipant.mockResolvedValue(participant('pb', BOT, { isBot: true }));
+      cache.get.mockResolvedValue({
+        isOver: false,
+        currentTurnUserId: BOT,
+        moves: [],
+        timeoutCounts: {},
+      });
       const res = (await service.relayMove(
         ACTOR,
         'sess-1',

@@ -88,6 +88,7 @@ export class AudioRoomGiftContextHandler implements IGiftContextHandler, OnModul
     // Use hasEverBeenMember instead of isMember: a member who has left the room
     // (e.g. the owner who stepped out without ending it) is still a valid gift
     // recipient while the room is LIVE. Gifts are blocked only when the room ends.
+    if (!this.rooms.hasEverBeenMember) { console.log('DEBUG_ROOMS_MOCK', this.rooms); }
     const receiverInRoom = await this.rooms.hasEverBeenMember(req.contextId, receiverId);
     const receiverExists = receiverInRoom && (await this.users.findById(receiverId));
     if (!receiverExists) {

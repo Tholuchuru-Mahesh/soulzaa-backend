@@ -1291,7 +1291,7 @@ export class GamesService {
 
       const participants = await this.repo.listParticipants(sessionId);
       const otherActive = participants.filter(
-        (p) => p.status === GameParticipantStatus.PLAYING && p.userId !== actor.id,
+        (p) => p.status === GameParticipantStatus.PLAYING && p.userId !== actor.id && !p.isBot,
       );
       if (otherActive.length === 0) {
         return this.settleToHumanWinners(session, winners, resultData, actor.id);

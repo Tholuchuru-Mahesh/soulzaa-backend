@@ -115,8 +115,11 @@ describe('ProfileService', () => {
       blockedIdsFor: jest.fn().mockResolvedValue([]),
     };
     const config = { get: () => CFG } as unknown as ConfigService;
-    const notifications = { push: jest.fn() };
-    const prisma = {};
+    const notifications = { push: jest.fn(), create: jest.fn() };
+    const prisma = {
+      role: { findUnique: jest.fn().mockResolvedValue({ id: 1, name: 'VERIFIED_USER' }) },
+      userRole: { create: jest.fn(), findUnique: jest.fn().mockResolvedValue(null) },
+    };
     service = new ProfileService(
       users as unknown as UsersRepository,
       profiles as unknown as ProfileRepository,

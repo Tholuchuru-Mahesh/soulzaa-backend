@@ -102,7 +102,7 @@ describe('game-live-state', () => {
     it('ignores an explicit nextTurnPlayerId that does not name a real seat', () => {
       const next = applyMove(
         baseState(),
-        frame('u1', { action: 'move_token', nextTurnPlayerId: 'not-a-real-seat' }),
+        frame('u1', { action: 'pass', nextTurnPlayerId: 'not-a-real-seat' }),
       );
       // Falls back to normal rotation instead of accepting the bogus id.
       expect(next.currentTurnUserId).toBe('u2');
