@@ -1,74 +1,13 @@
-// ============================================================
-// Treasure Boxes & Rocket Events (AR-6) — gift-driven room reward
-// events. Owned by the "treasure_boxes" module. Gift contributions
-// (from the gifts module's GiftSentEvent) drive progress; when a box
-// fills it auto-opens and distributes rewards to its Top-3 gifters;
-// rocket events accumulate contributions over a timed window then pay
-// out. Coin rewards go to the wallet, item rewards to the backpack.
-// Immutable contribution + reward ledgers. No cross-module relations.
-// ============================================================
-
-enum TreasureSessionStatus {
-  ACTIVE
-  COMPLETED
-  CANCELLED
-  // ---- VR-11 (video rooms only; the audio engine never writes these) ----
-  /// Ladder created but not started. Boxes stay PENDING so an in-flight gift
-  /// cannot fill a ladder the owner has not started.
-  DRAFT
-  /// Intake stopped by the owner. A box already UNLOCKING still completes —
-  /// its winners were claimed before the pause.
-  PAUSED
-  /// Ended early by the owner. Distinct from COMPLETED, which means the ladder
-  /// ran to its end; conflating them would make "how many ladders actually
-  /// finished?" unanswerable from the data.
-  CLOSED
-  /// Hidden from the current-state read, still readable via history/winners.
-  ARCHIVED
-}
-
-enum TreasureBoxStatus {
-  PENDING
-  ACTIVE
-  OPENED
-  // ---- VR-11: the unlock claim ticket. The audio engine never writes it. ----
-  /// Exactly one transaction wins the conditional ACTIVE -> UNLOCKING update
-  /// and is therefore the unique enqueuer of the unlock job.
-  UNLOCKING
-}
-
-/// VR-11: distribution lifecycle for retry/recovery. Defaults to DISTRIBUTED so
-/// every pre-existing and audio-written row stays semantically correct — a
-/// TreasureReward row has only ever been written after a successful payout. The
-/// video pipeline explicitly writes PENDING first, then flips it.
-enum TreasureRewardStatus {
-  PENDING
-  DISTRIBUTED
-  FAILED
-}
-
-enum RocketStatus {
-  ACTIVE
-  COMPLETED
-}
-
-/// The reward kind stored in a config reward entry / a distributed reward row.
-enum TreasureRewardKind {
-  COINS
-  BACKPACK_ITEM
-}
-
 /// Admin-managed config for each of the 5 sequential boxes. `threshold` is the
 /// gold-value of gift contributions required to open the box; `rewards` is a
 /// JSON array of `{ rank, kind, coins?, itemType?, itemName?, itemRefId? }` —
 /// one entry per Top-3 rank. Configurable per the PRD (thresholds + rewards).
 model TreasureBoxConfig {
-  id        String  @id @default(uuid()) @db.Uuid
-  level     Int     @unique
+  id        String   @id @default(uuid()) @db.Uuid
+  level     Int      @unique
   threshold BigInt
   rewards   Json
-  enabled   Boolean @default(true)
-
+  enabled   Boolean  @default(true)
   createdBy String?  @db.Uuid
   updatedBy String?  @db.Uuid
   createdAt DateTime @default(now())
@@ -134,32 +73,25 @@ model TreasureContribution {
 
 /// Immutable record of every reward distributed when a box opens.
 model TreasureReward {
-  id             String             @id @default(uuid()) @db.Uuid
-  sessionId      String             @db.Uuid
-  boxId          String             @db.Uuid
-  roomId         String             @db.Uuid
+  id             String               @id @default(uuid()) @db.Uuid
+  sessionId      String               @db.Uuid
+  boxId          String               @db.Uuid
+  roomId         String               @db.Uuid
   level          Int
-  userId         String             @db.Uuid
+  userId         String               @db.Uuid
   rank           Int
   kind           TreasureRewardKind
   coins          BigInt?
   itemType       String?
   itemName       String?
-  walletTxnId    String?            @db.Uuid
-  backpackItemId String?            @db.Uuid
-  createdAt      DateTime           @default(now())
-
-  // ---- VR-11: retry / recovery state. Additive and defaulted; the audio
-  // engine writes none of these and is unaffected. Deliberately NO unique
-  // constraint on (boxId, userId) — RewardDistributor legitimately emits one
-  // row per matching reward entry, so a rank configured with both coins and an
-  // item produces two rows and a constraint would crash an audio box-open
-  // inside a gift transaction.
-  status        TreasureRewardStatus @default(DISTRIBUTED)
-  attempts      Int                  @default(0)
-  lastError     String?
-  failureStage  String?
-  distributedAt DateTime?
+  walletTxnId    String?              @db.Uuid
+  backpackItemId String?              @db.Uuid
+  createdAt      DateTime             @default(now())
+  status         TreasureRewardStatus @default(DISTRIBUTED)
+  attempts       Int                  @default(0)
+  lastError      String?
+  failureStage   String?
+  distributedAt  DateTime?
 
   @@index([sessionId])
   @@index([userId])
@@ -169,17 +101,16 @@ model TreasureReward {
 /// Admin config for a rocket event, keyed by the premium gift that triggers it.
 /// `rewardPool` is a JSON array of `{ rank, kind, coins?, itemType?, itemName? }`.
 model RocketConfig {
-  id              String  @id @default(uuid()) @db.Uuid
-  triggerGiftId   String  @unique @db.Uuid
-  durationSeconds Int     @default(60)
-  priority        Int     @default(0)
+  id              String   @id @default(uuid()) @db.Uuid
+  triggerGiftId   String   @unique @db.Uuid
+  durationSeconds Int      @default(60)
+  priority        Int      @default(0)
   rewardPool      Json
-  enabled         Boolean @default(true)
-
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  enabled         Boolean  @default(true)
+  createdBy       String?  @db.Uuid
+  updatedBy       String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@map("rocket_configs")
 }
@@ -268,4 +199,52 @@ model TreasureAudit {
   @@index([boxId])
   @@index([createdAt])
   @@map("treasure_audits")
+}
+
+enum TreasureSessionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  /// Ladder created but not started. Boxes stay PENDING so an in-flight gift
+  /// cannot fill a ladder the owner has not started.
+  DRAFT
+  /// Intake stopped by the owner. A box already UNLOCKING still completes —
+  /// its winners were claimed before the pause.
+  PAUSED
+  /// Ended early by the owner. Distinct from COMPLETED, which means the ladder
+  /// ran to its end; conflating them would make "how many ladders actually
+  /// finished?" unanswerable from the data.
+  CLOSED
+  /// Hidden from the current-state read, still readable via history/winners.
+  ARCHIVED
+}
+
+enum TreasureBoxStatus {
+  PENDING
+  ACTIVE
+  OPENED
+  /// Exactly one transaction wins the conditional ACTIVE -> UNLOCKING update
+  /// and is therefore the unique enqueuer of the unlock job.
+  UNLOCKING
+}
+
+/// VR-11: distribution lifecycle for retry/recovery. Defaults to DISTRIBUTED so
+/// every pre-existing and audio-written row stays semantically correct — a
+/// TreasureReward row has only ever been written after a successful payout. The
+/// video pipeline explicitly writes PENDING first, then flips it.
+enum TreasureRewardStatus {
+  PENDING
+  DISTRIBUTED
+  FAILED
+}
+
+enum RocketStatus {
+  ACTIVE
+  COMPLETED
+}
+
+/// The reward kind stored in a config reward entry / a distributed reward row.
+enum TreasureRewardKind {
+  COINS
+  BACKPACK_ITEM
 }

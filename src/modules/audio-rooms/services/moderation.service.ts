@@ -46,6 +46,10 @@ import {
 } from '../repositories/moderation.repository';
 import { RoomPermissionService } from './room-permission.service';
 import { VoiceService } from './voice.service';
+import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
+import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
+import { AuditLogService } from 'src/modules/authorization/services/audit-log.service';
+import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
 
 /**
  * A Kick List row, hydrated with the display data the moderator UI needs: who was
@@ -83,6 +87,10 @@ export class ModerationService implements IModerationService {
     private readonly locks: LockService,
     private readonly queue: QueueService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    private readonly investigationRecording?: InvestigationRecordingService,
+    private readonly performanceStats?: ModeratorPerformanceService,
+    private readonly auditLog?: AuditLogService,
+    private readonly scopeService?: WorkforceScopeService,
   ) {}
 
   // ======================= Kick / restore (the Kick List) =======================
@@ -130,6 +138,31 @@ export class ModerationService implements IModerationService {
         reason: reason ?? null,
         metadata: { kickId: kick.id },
       });
+
+      // Hook InvestigationRecording & Performance KPI
+      if (this.investigationRecording) {
+        void this.investigationRecording.beginRecording({
+          moderatorId: actor.id,
+          targetUserId,
+          roomId,
+          violationReason: reason ?? 'Audio room kick',
+          evidencePayload: { roomId, action: 'KICK', kickId: kick.id },
+        }).then((rec) => {
+          if (rec) void this.investigationRecording?.completeRecording({ recordingId: rec.id, actionTaken: 'KICK' });
+        });
+      }
+      if (this.performanceStats) {
+        void this.performanceStats.recordAction(actor.id, 'KICK');
+      }
+      if (this.auditLog) {
+        void this.auditLog.logAction({
+          actorId: actor.id,
+          action: 'audio_room.kick',
+          resource: 'audio_room',
+          resourceId: roomId,
+          details: { targetUserId, reason: reason ?? null },
+        });
+      }
     });
     await this.bus.publish(
       new MemberKickedEvent({
@@ -225,6 +258,31 @@ export class ModerationService implements IModerationService {
         reason: dto.reason ?? null,
         metadata: { banId: ban.id, expiresAt: expiresAt?.toISOString() ?? null },
       });
+
+      if (this.investigationRecording) {
+        void this.investigationRecording.beginRecording({
+          moderatorId: actor.id,
+          targetUserId,
+          roomId,
+          violationReason: dto.reason ?? 'Audio room ban',
+          evidencePayload: { roomId, action: 'BAN', banId: ban.id },
+        }).then((rec) => {
+          if (rec) void this.investigationRecording?.completeRecording({ recordingId: rec.id, actionTaken: 'BAN' });
+        });
+      }
+      if (this.performanceStats) {
+        void this.performanceStats.recordAction(actor.id, 'BAN');
+      }
+      if (this.auditLog) {
+        void this.auditLog.logAction({
+          actorId: actor.id,
+          action: `audio_room.ban_${dto.type.toLowerCase()}`,
+          resource: 'audio_room',
+          resourceId: roomId,
+          details: { targetUserId, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
+        });
+      }
+
       await this.bus.publish(
         new MemberBannedEvent({
           roomId,
@@ -305,6 +363,18 @@ export class ModerationService implements IModerationService {
         reason: dto.reason ?? null,
         metadata: { muteId: mute.id, expiresAt: expiresAt?.toISOString() ?? null },
       });
+      if (this.auditLog) {
+        void this.auditLog.logAction({
+          actorId: actor.id,
+          action: `audio_room.mute_${dto.type.toLowerCase()}`,
+          resource: 'audio_room',
+          resourceId: roomId,
+          details: { targetUserId, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
+        });
+      }
+      if (this.performanceStats) {
+        void this.performanceStats.recordAction(actor.id, 'MUTE');
+      }
       await this.bus.publish(
         new MemberMutedEvent({
           roomId,
@@ -348,6 +418,18 @@ export class ModerationService implements IModerationService {
       action: ModerationActionType.WARN,
       reason,
     });
+    if (this.auditLog) {
+      void this.auditLog.logAction({
+        actorId: actor.id,
+        action: 'audio_room.warn',
+        resource: 'audio_room',
+        resourceId: roomId,
+        details: { targetUserId, reason },
+      });
+    }
+    if (this.performanceStats) {
+      void this.performanceStats.recordAction(actor.id, 'WARN');
+    }
     await this.bus.publish(
       new MemberWarnedEvent({ roomId, moderatorId: actor.id, targetUserId, reason }),
     );
@@ -433,8 +515,57 @@ export class ModerationService implements IModerationService {
       targetUserId: report.targetUserId,
       action: ModerationActionType.REPORT_REVIEWED,
       reason: dto.resolution ?? null,
-      metadata: { reportId, status: dto.status },
+      metadata: { reportId, status: dto.status, recommendedAction: dto.recommendedAction ?? null },
     });
+
+    if (dto.recommendedAction) {
+      const reason = dto.resolution ?? `Report action: ${dto.recommendedAction}`;
+      if (dto.recommendedAction === 'WARNING') {
+        await this.warn(actor, roomId, report.targetUserId, reason);
+      } else if (dto.recommendedAction === 'MUTE') {
+        await this.mute(actor, roomId, report.targetUserId, { type: ModerationMuteType.PERMANENT, reason });
+      } else if (dto.recommendedAction === 'KICK') {
+        await this.kick(actor, roomId, report.targetUserId, reason);
+      } else if (dto.recommendedAction === 'BAN') {
+        await this.ban(actor, roomId, report.targetUserId, { type: ModerationBanType.PERMANENT, reason });
+      }
+    }
+
+    if (this.performanceStats) {
+      await this.performanceStats.recordAction(actor.id, 'REPORT_ESCALATED' as any);
+    }
+  }
+
+  async escalateViolation(
+    actor: RoomActor,
+    roomId: string,
+    targetUserId: string,
+    reason: string,
+  ): Promise<void> {
+    await this.assertModerationPrereqs(roomId, actor, targetUserId);
+
+    await this.repo.appendAction({
+      roomId,
+      moderatorId: actor.id,
+      targetUserId,
+      action: ModerationActionType.REPORT_REVIEWED,
+      reason: `CRITICAL_ESCALATION: ${reason}`,
+      metadata: { escalated: true, targetUserId },
+    });
+
+    if (this.performanceStats) {
+      await this.performanceStats.recordAction(actor.id, 'REPORT_ESCALATED' as any);
+    }
+
+    if (this.auditLog) {
+      void this.auditLog.logAction({
+        actorId: actor.id,
+        action: 'audio_room.escalate_critical_violation',
+        resource: 'audio_room',
+        resourceId: roomId,
+        details: { targetUserId, reason },
+      });
+    }
   }
 
   // ======================= Notes =======================
@@ -789,6 +920,12 @@ export class ModerationService implements IModerationService {
     }
     await this.permissions.assertCanModerate(roomId, actor);
     await this.permissions.assertOutranks(roomId, actor, targetUserId);
+    if (this.scopeService) {
+      const room = await this.rooms.findRoomRow(roomId);
+      if (room) {
+        await this.scopeService.assertModeratorInScope(actor.id, null);
+      }
+    }
   }
 
   /** Remove a user from the room now: deactivate, drop presence, tear down voice. */

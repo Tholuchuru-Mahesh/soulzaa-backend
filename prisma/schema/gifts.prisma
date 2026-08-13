@@ -1,7 +1,143 @@
-// ============================================================
-// Soulzaa — Enterprise Gift Engine Schema
-// Entities: GiftCategoryEntity, Gift, GiftInventory, GiftAvailability, GiftTransaction, GiftAudit
-// ============================================================
+/// Catalog Category Entity
+model GiftCategoryEntity {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  iconUrl     String?
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("gift_categories")
+}
+
+/// The enterprise Gift catalog entity
+model Gift {
+  id                  String             @id @default(uuid()) @db.Uuid
+  name                String
+  category            GiftCategory       @default(CLASSIC)
+  type                GiftType           @default(STATIC)
+  coinValue           Int
+  thumbnailUrl        String?
+  animationUrl        String?
+  soundUrl            String?
+  minVipLevel         Int                @default(0)
+  comboEnabled        Boolean            @default(false)
+  comboWindowSeconds  Int                @default(10)
+  luckyMultipliers    Int[]              @default([])
+  luckyWinChanceBp    Int                @default(0)
+  festivalTag         String?
+  enabled             Boolean            @default(true)
+  sortOrder           Int                @default(0)
+  createdBy           String?            @db.Uuid
+  updatedBy           String?            @db.Uuid
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  activeFrom          DateTime?
+  activeUntil         DateTime?
+  code                String             @unique
+  countryRestriction  String[]           @default([])
+  description         String?
+  displayName         String?
+  lottieUrl           String?
+  mp4Url              String?
+  platformRestriction String[]           @default([])
+  popularity          Int                @default(0)
+  priority            Int                @default(0)
+  svgaUrl             String?
+  tags                String[]           @default([])
+  availabilities      GiftAvailability[]
+  inventories         GiftInventory[]
+
+  @@index([enabled, category])
+  @@index([type])
+  @@map("gifts")
+}
+
+/// User Gift Inventory / Backpack
+model GiftInventory {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  giftId    String   @db.Uuid
+  quantity  Int      @default(0)
+  updatedAt DateTime @updatedAt
+  gift      Gift     @relation(fields: [giftId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, giftId])
+  @@index([userId])
+  @@map("gift_inventories")
+}
+
+/// Gift Availability Controls per Region / Platform
+model GiftAvailability {
+  id          String  @id @default(uuid()) @db.Uuid
+  giftId      String  @db.Uuid
+  country     String  @default("GLOBAL")
+  platform    String  @default("ALL")
+  isAvailable Boolean @default(true)
+  gift        Gift    @relation(fields: [giftId], references: [id], onDelete: Cascade)
+
+  @@unique([giftId, country, platform])
+  @@map("gift_availabilities")
+}
+
+/// Immutable record of every gift transaction sent across all contexts
+model GiftTransaction {
+  id                  String          @id @default(uuid()) @db.Uuid
+  senderId            String          @db.Uuid
+  receiverId          String          @db.Uuid
+  giftId              String          @db.Uuid
+  giftType            GiftType        @default(STATIC)
+  contextType         GiftContextType @default(AUDIO_ROOM)
+  contextId           String          @db.Uuid
+  quantity            Int             @default(1)
+  comboTier           Int             @default(1)
+  unitCoinValue       Int
+  totalCoinValue      BigInt
+  /// Diamonds (DIAMOND) credited to the creator for this gift (PRD §4).
+  creatorEarnings     BigInt
+  luckyMultiplier     Int             @default(1)
+  isLuckyWin          Boolean         @default(false)
+  senderExp           Int             @default(0)
+  receiverExp         Int             @default(0)
+  status              GiftTxnStatus   @default(COMPLETED)
+  idempotencyKey      String          @unique
+  senderWalletTxnId   String?         @db.Uuid
+  receiverWalletTxnId String?         @db.Uuid
+  metadata            Json?
+  createdAt           DateTime        @default(now())
+  /// Snapshot of the cashbackPercent configuration value applied at settlement time.
+  appliedCashbackPct  Int?
+  /// Snapshot of the earningsPercent configuration value applied at settlement time.
+  /// Allows retroactive auditability even after Super Admin changes the rate (PRD §13).
+  appliedEarningsPct  Int?
+  /// Gold Coins (GOLD) credited to the creator as cashback (PRD §5).
+  /// Zero when gift value is below the configured cashback threshold.
+  cashbackAmount      BigInt          @default(0)
+
+  @@index([contextType, contextId, createdAt])
+  @@index([contextType, createdAt])
+  @@index([senderId, createdAt])
+  @@index([receiverId, createdAt])
+  @@index([giftId])
+  @@map("gift_transactions")
+}
+
+/// Operational Audit Log for Gift Events
+model GiftAudit {
+  id        String   @id @default(uuid()) @db.Uuid
+  giftId    String?  @db.Uuid
+  action    String
+  details   Json?
+  actorId   String?  @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([giftId])
+  @@index([createdAt])
+  @@map("gift_audits")
+}
 
 enum GiftType {
   STATIC
@@ -28,159 +164,15 @@ enum GiftContextType {
   AUDIO_ROOM
   VIDEO_ROOM
   LIVE_STREAM
+  PRIVATE_CHAT
   PK_BATTLE
   MULTI_HOST_BATTLE
-  PRIVATE_CHAT
   EVENT
   GAME
 }
 
 enum GiftTxnStatus {
   COMPLETED
-  FAILED
   REVERSED
-}
-
-/// Catalog Category Entity
-model GiftCategoryEntity {
-  id          String   @id @default(uuid()) @db.Uuid
-  code        String   @unique
-  name        String
-  description String?
-  iconUrl     String?
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("gift_categories")
-}
-
-/// The enterprise Gift catalog entity
-model Gift {
-  id                  String       @id @default(uuid()) @db.Uuid
-  code                String       @unique
-  name                String
-  displayName         String?
-  description         String?
-  category            GiftCategory @default(CLASSIC)
-  type                GiftType     @default(STATIC)
-  coinValue           Int
-  thumbnailUrl        String?
-  animationUrl        String?
-  lottieUrl           String?
-  svgaUrl             String?
-  mp4Url              String?
-  soundUrl            String?
-  priority            Int          @default(0)
-  popularity          Int          @default(0)
-  sortOrder           Int          @default(0)
-  tags                String[]     @default([])
-  minVipLevel         Int          @default(0)
-  comboEnabled        Boolean      @default(false)
-  comboWindowSeconds  Int          @default(10)
-  luckyMultipliers    Int[]        @default([])
-  luckyWinChanceBp    Int          @default(0)
-  festivalTag         String?
-  countryRestriction  String[]     @default([])
-  platformRestriction String[]     @default([])
-  activeFrom          DateTime?
-  activeUntil         DateTime?
-  enabled             Boolean      @default(true)
-  createdBy           String?      @db.Uuid
-  updatedBy           String?      @db.Uuid
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
-
-  inventories    GiftInventory[]
-  availabilities GiftAvailability[]
-
-  @@index([enabled, category])
-  @@index([type])
-  @@map("gifts")
-}
-
-/// User Gift Inventory / Backpack
-model GiftInventory {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  giftId    String   @db.Uuid
-  quantity  Int      @default(0)
-  updatedAt DateTime @updatedAt
-
-  gift Gift @relation(fields: [giftId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, giftId])
-  @@index([userId])
-  @@map("gift_inventories")
-}
-
-/// Gift Availability Controls per Region / Platform
-model GiftAvailability {
-  id          String  @id @default(uuid()) @db.Uuid
-  giftId      String  @db.Uuid
-  country     String  @default("GLOBAL")
-  platform    String  @default("ALL")
-  isAvailable Boolean @default(true)
-
-  gift Gift @relation(fields: [giftId], references: [id], onDelete: Cascade)
-
-  @@unique([giftId, country, platform])
-  @@map("gift_availabilities")
-}
-
-/// Immutable record of every gift transaction sent across all contexts
-model GiftTransaction {
-  id                  String          @id @default(uuid()) @db.Uuid
-  senderId            String          @db.Uuid
-  receiverId          String          @db.Uuid
-  giftId              String          @db.Uuid
-  giftType            GiftType        @default(STATIC)
-  contextType         GiftContextType @default(AUDIO_ROOM)
-  contextId           String          @db.Uuid
-  quantity            Int             @default(1)
-  comboTier           Int             @default(1)
-  unitCoinValue       Int
-  totalCoinValue      BigInt
-  /// Diamonds (DIAMOND) credited to the creator for this gift (PRD §4).
-  creatorEarnings     BigInt
-  /// Gold Coins (GOLD) credited to the creator as cashback (PRD §5).
-  /// Zero when gift value is below the configured cashback threshold.
-  cashbackAmount      BigInt          @default(0)
-  /// Snapshot of the earningsPercent configuration value applied at settlement time.
-  /// Allows retroactive auditability even after Super Admin changes the rate (PRD §13).
-  appliedEarningsPct  Int?
-  /// Snapshot of the cashbackPercent configuration value applied at settlement time.
-  appliedCashbackPct  Int?
-  luckyMultiplier     Int             @default(1)
-  isLuckyWin          Boolean         @default(false)
-  senderExp           Int             @default(0)
-  receiverExp         Int             @default(0)
-  status              GiftTxnStatus   @default(COMPLETED)
-  idempotencyKey      String          @unique
-  senderWalletTxnId   String?         @db.Uuid
-  receiverWalletTxnId String?         @db.Uuid
-  metadata            Json?
-  createdAt           DateTime        @default(now())
-
-  @@index([contextType, contextId, createdAt])
-  @@index([contextType, createdAt])
-  @@index([senderId, createdAt])
-  @@index([receiverId, createdAt])
-  @@index([giftId])
-  @@map("gift_transactions")
-}
-
-/// Operational Audit Log for Gift Events
-model GiftAudit {
-  id        String   @id @default(uuid()) @db.Uuid
-  giftId    String?  @db.Uuid
-  action    String
-  details   Json?
-  actorId   String?  @db.Uuid
-  createdAt DateTime @default(now())
-
-  @@index([giftId])
-  @@index([createdAt])
-  @@map("gift_audits")
+  FAILED
 }

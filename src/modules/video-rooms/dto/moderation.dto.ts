@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  VideoRoomBlockType,
   VideoRoomModerationMuteType,
   VideoRoomReportReason,
   VideoRoomReportStatus,
@@ -70,11 +71,22 @@ export class MuteVideoRoomUserDto {
   channels?: MuteChannel[];
 }
 
-/** Block a user from the room (durable blocklist; lasts until lifted). */
+/** Block a user from the room (durable blocklist; TEMPORARY or PERMANENT). */
 export class BlockVideoRoomUserDto {
   @ApiProperty({ description: 'The user to block.' })
   @IsUUID()
   userId!: string;
+
+  @ApiPropertyOptional({ enum: VideoRoomBlockType, default: VideoRoomBlockType.PERMANENT })
+  @IsOptional()
+  @IsEnum(VideoRoomBlockType)
+  type?: VideoRoomBlockType;
+
+  @ApiPropertyOptional({ minimum: 1, description: 'Required for a TEMPORARY block.' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  durationMinutes?: number;
 
   @ApiPropertyOptional({ maxLength: VIDEO_ROOM_MODERATION_REASON_MAX })
   @IsOptional()
@@ -216,6 +228,12 @@ export class ReviewReportDto {
   @IsString()
   @Length(0, VIDEO_ROOM_MODERATION_REASON_MAX)
   resolutionAction?: string;
+
+  @ApiPropertyOptional({ enum: ['WARNING', 'MUTE', 'KICK', 'BAN'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['WARNING', 'MUTE', 'KICK', 'BAN'])
+  recommendedAction?: 'WARNING' | 'MUTE' | 'KICK' | 'BAN';
 }
 
 /** Filters for paginated moderation listings (history, muted, blacklisted, warnings). */

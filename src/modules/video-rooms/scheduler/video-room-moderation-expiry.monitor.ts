@@ -6,12 +6,12 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, VideoRoomModerationActionType, VideoRoomMute } from '@prisma/client';
+import { Prisma, VideoRoomBlock, VideoRoomModerationActionType, VideoRoomMute } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { LockService } from 'src/infra/redis/lock.service';
 import { MODERATION_MONITOR_LOCK_KEY } from '../constants/video-room-moderation.constants';
 import type { MuteChannel } from '../dto/moderation.dto';
-import { UserUnmutedEvent } from '../events/video-room-moderation.events';
+import { UserUnblacklistedEvent, UserUnmutedEvent } from '../events/video-room-moderation.events';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
 
 /**
@@ -23,14 +23,9 @@ import { VideoRoomModerationRepository } from '../repositories/video-room-modera
 const EXPIRED_MUTE_CHANNELS: MuteChannel[] = ['chat'];
 
 /**
- * Reconciles expired temporary mutes (VR-16 Task 22): a `VideoRoomMute` row
- * created with an `expiresAt` (and its Redis mirror entry, which carries a
- * matching PX ttl) stays ACTIVE in the DB until this sweep lifts it, clears
- * the mirror, appends the audit row, and emits `UserUnmutedEvent`. Guarded by
- * a fleet-wide Redis lock so exactly one instance sweeps per tick — mirrors
- * the Audio Room's `ModerationExpiryMonitor` and this module's own
- * `VideoRoomSessionMonitor`. Blocks have no expiry (no ban/appeal concept in
- * Video Room moderation) so this monitor only ever touches mutes.
+ * Reconciles expired temporary mutes and blocks (VR-16 Task 22): a `VideoRoomMute` or
+ * `VideoRoomBlock` created with an `expiresAt` stays ACTIVE in the DB until this sweep lifts it,
+ * clears the mirror, appends the audit row, and emits un-action events.
  */
 @Injectable()
 export class VideoRoomModerationExpiryMonitor implements OnModuleInit, OnModuleDestroy {
@@ -91,6 +86,18 @@ export class VideoRoomModerationExpiryMonitor implements OnModuleInit, OnModuleD
         if (mutes.length > 0) {
           this.logger.debug(`Expired ${mutes.length} mute(s)`);
         }
+
+        const blocks = await this.repo.findExpiredBlocks(now);
+        for (const block of blocks) {
+          try {
+            await this.liftExpiredBlock(block);
+          } catch (err) {
+            this.logger.warn(`Failed to expire block ${block.id}: ${(err as Error).message}`);
+          }
+        }
+        if (blocks.length > 0) {
+          this.logger.debug(`Expired ${blocks.length} block(s)`);
+        }
       } finally {
         await release();
       }
@@ -119,6 +126,25 @@ export class VideoRoomModerationExpiryMonitor implements OnModuleInit, OnModuleD
         targetUserId: mute.userId,
         channels: EXPIRED_MUTE_CHANNELS,
         reason: 'expired',
+      }),
+    );
+  }
+
+  private async liftExpiredBlock(block: VideoRoomBlock): Promise<void> {
+    await this.repo.liftBlock(block.id, block.moderatorId);
+    await this.repo.removeBlockMirror(block.roomId, block.userId);
+    await this.repo.appendAction({
+      roomId: block.roomId,
+      moderatorId: block.moderatorId,
+      targetUserId: block.userId,
+      action: VideoRoomModerationActionType.UNBLOCK,
+      reason: 'expired',
+    });
+    await this.bus.publish(
+      new UserUnblacklistedEvent({
+        roomId: block.roomId,
+        moderatorId: block.moderatorId,
+        targetUserId: block.userId,
       }),
     );
   }

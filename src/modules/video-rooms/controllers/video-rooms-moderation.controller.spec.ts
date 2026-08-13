@@ -63,7 +63,15 @@ describe('VideoRoomsModerationController', () => {
     it('delegates blacklist with forwarded request metadata', async () => {
       const dto = { userId: 't1', reason: 'abuse' } as never;
       await subject.blacklist(user, ROOM, dto, META);
-      expect(moderation.blacklist).toHaveBeenCalledWith(expectedActor, ROOM, 't1', 'abuse', META);
+      expect(moderation.blacklist).toHaveBeenCalledWith(
+        expectedActor,
+        ROOM,
+        't1',
+        'abuse',
+        undefined,
+        undefined,
+        META,
+      );
     });
 
     it('delegates unblacklist with forwarded request metadata', async () => {

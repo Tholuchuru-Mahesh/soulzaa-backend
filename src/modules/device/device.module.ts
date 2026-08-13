@@ -12,6 +12,9 @@ import { ApnsPushProvider } from './services/push/providers/apns-push.provider';
 import { ConsolePushProvider } from './services/push/providers/console-push.provider';
 import { FcmPushProvider } from './services/push/providers/fcm-push.provider';
 
+import { ModeratorDeviceChangeController } from './controllers/moderator-device-change.controller';
+import { ModeratorDeviceBindingService } from './services/moderator-device-binding.service';
+
 /**
  * Device Management domain — the device registry, trust ledger and audit trail
  * (user_devices / trusted_devices / device_history), registration + suspicious-
@@ -25,7 +28,7 @@ import { FcmPushProvider } from './services/push/providers/fcm-push.provider';
 @Global()
 @Module({
   imports: [BullModule.registerQueue({ name: DEVICE_QUEUES.PUSH })],
-  controllers: [DeviceController],
+  controllers: [DeviceController, ModeratorDeviceChangeController],
   providers: [
     DeviceRepository,
     DeviceService,
@@ -35,8 +38,9 @@ import { FcmPushProvider } from './services/push/providers/fcm-push.provider';
     FcmPushProvider,
     ApnsPushProvider,
     PushProcessor,
+    ModeratorDeviceBindingService,
     { provide: DEVICE_SERVICE, useExisting: DeviceService },
   ],
-  exports: [DEVICE_SERVICE, DeviceRepository, PushDispatcher],
+  exports: [DEVICE_SERVICE, DeviceRepository, PushDispatcher, ModeratorDeviceBindingService],
 })
 export class DeviceModule {}

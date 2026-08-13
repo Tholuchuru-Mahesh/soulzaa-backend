@@ -356,12 +356,14 @@ describe('VideoRoomModerationService', () => {
       rooms.getMember.mockResolvedValue(null);
       await subject.blacklist(ACTOR, ROOM.id, TARGET, 'abuse');
 
-      expect(moderationRepo.createBlock).toHaveBeenCalledWith({
-        roomId: ROOM.id,
-        userId: TARGET,
-        moderatorId: ACTOR.id,
-        reason: 'abuse',
-      });
+      expect(moderationRepo.createBlock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roomId: ROOM.id,
+          userId: TARGET,
+          moderatorId: ACTOR.id,
+          reason: 'abuse',
+        }),
+      );
       expect(moderationRepo.addBlockMirror).toHaveBeenCalledWith(ROOM.id, TARGET);
       expect(rooms.deactivateMember).not.toHaveBeenCalled();
       expect(sockets.disconnectUserInNamespace).not.toHaveBeenCalled();

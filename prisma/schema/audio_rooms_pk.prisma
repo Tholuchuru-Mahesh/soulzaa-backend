@@ -1,35 +1,3 @@
-// ============================================================
-// Audio Room PK Battles (AR-10) — 1v1 and Team gift-score battles.
-// Owned by the "audio_rooms" module. Two sides (RED/BLUE) accumulate
-// score from gifts sent to their participants (from GiftSentEvent)
-// while the timer runs; at expiry the higher side wins, winners get a
-// badge (backpack) + a PK ranking point, and the match is recorded.
-// Immutable contribution + reward ledgers. No cross-module relations.
-// ============================================================
-
-enum PkMode {
-  ONE_VS_ONE
-  TEAM
-}
-
-enum PkSide {
-  RED
-  BLUE
-}
-
-enum PkStatus {
-  ACTIVE
-  COMPLETED
-  CANCELLED
-}
-
-/// Battle outcome. RED/BLUE = that side won; DRAW = equal score.
-enum PkResult {
-  RED
-  BLUE
-  DRAW
-}
-
 /// A PK battle in a room. `redScore`/`blueScore` accumulate contributed gift
 /// value; at `endsAt` the expiry monitor completes it. At most one ACTIVE battle
 /// per room, enforced in the service.
@@ -98,4 +66,27 @@ model PkReward {
   @@index([battleId])
   @@index([userId])
   @@map("pk_rewards")
+}
+
+enum PkMode {
+  ONE_VS_ONE
+  TEAM
+}
+
+enum PkSide {
+  RED
+  BLUE
+}
+
+enum PkStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+/// Battle outcome. RED/BLUE = that side won; DRAW = equal score.
+enum PkResult {
+  RED
+  BLUE
+  DRAW
 }

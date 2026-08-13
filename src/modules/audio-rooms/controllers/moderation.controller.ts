@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { NotGuest } from 'src/common/decorators/not-guest.decorator';
@@ -18,6 +18,9 @@ import {
 } from '../dto/moderation.dto';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { ModerationService } from '../services/moderation.service';
+
+import { ShiftActiveGuard } from 'src/modules/moderator-shift/guards/shift-active.guard';
+import { SuspendedGuard } from 'src/modules/moderator-warning/guards/suspended.guard';
 
 /**
  * AR-3 moderation REST surface (base `rooms/:id/moderation/...`). JWT-guarded
@@ -39,6 +42,7 @@ export class ModerationController {
   // ---- Actions on a target user ----
 
   @Post(':id/moderation/kick/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Kick a user from the room' })
   async kick(
@@ -64,6 +68,7 @@ export class ModerationController {
   }
 
   @Post(':id/moderation/ban/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Ban a user (temporary or permanent)' })
   ban(
@@ -88,6 +93,7 @@ export class ModerationController {
   }
 
   @Post(':id/moderation/mute/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Mute a member (temporary or permanent)' })
   mute(
@@ -112,6 +118,7 @@ export class ModerationController {
   }
 
   @Post(':id/moderation/warn/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Warn a user' })
   async warn(
@@ -122,6 +129,19 @@ export class ModerationController {
   ) {
     await this.moderation.warn(this.actor(user), id, userId, dto.reason);
     return { warned: true };
+  }
+
+  @Post(':id/moderation/escalate')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Escalate critical violation in audio room to managers/admins' })
+  async escalate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: { targetUserId: string; reason: string },
+  ) {
+    await this.moderation.escalateViolation(this.actor(user), id, dto.targetUserId, dto.reason);
+    return { escalated: true };
   }
 
   // ---- Reports ----

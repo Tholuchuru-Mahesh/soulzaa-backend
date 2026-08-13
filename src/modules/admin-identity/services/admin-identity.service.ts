@@ -13,10 +13,9 @@ import type { IAdminIdentityService } from '../interfaces/admin-identity.interfa
 /**
  * Roles whose holders must never surface to ordinary users.
  *
- * MODERATOR and the other workforce roles are deliberately absent: they operate
- * in public and are meant to be seen. Only Admin and Super Admin are hidden.
+ * Super Admin, Admin, and Moderator are hidden internal platform staff.
  */
-export const HIDDEN_ROLES = ['SUPER_ADMIN', 'ADMIN'] as const;
+export const HIDDEN_ROLES = ['SUPER_ADMIN', 'ADMIN', 'MODERATOR'] as const;
 
 const HIDDEN_ROLE_SET: ReadonlySet<string> = new Set<string>(HIDDEN_ROLES);
 

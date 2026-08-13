@@ -2,7 +2,10 @@ import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { SocketManager } from 'src/infra/socket/socket.manager';
 import { VIDEO_ROOM_NAMESPACE } from '../constants/video-room.constants';
-import { VIDEO_ROOM_MODERATION_SOCKET_EVENTS } from '../constants/video-room-moderation.constants';
+import {
+  SYSTEM_MODERATOR_ID,
+  VIDEO_ROOM_MODERATION_SOCKET_EVENTS,
+} from '../constants/video-room-moderation.constants';
 import {
   VIDEO_ROOM_MODERATION_EVENTS,
   type ReportReviewedEvent,
@@ -38,26 +41,46 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
 
   onModuleInit(): void {
     this.bus.subscribe<UserKickedEvent>(VIDEO_ROOM_MODERATION_EVENTS.KICKED, (e) =>
-      this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_KICKED, e.payload),
+      this.room(
+        e.payload.roomId,
+        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_KICKED,
+        this.anonymize(e.payload),
+      ),
     );
     this.bus.subscribe<UserBlacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.BLACKLISTED, (e) =>
-      this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED, e.payload),
+      this.room(
+        e.payload.roomId,
+        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED,
+        this.anonymize(e.payload),
+      ),
     );
     this.bus.subscribe<UserUnblacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.UNBLACKLISTED, (e) =>
       this.room(
         e.payload.roomId,
         VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNBLACKLISTED,
-        e.payload,
+        this.anonymize(e.payload),
       ),
     );
     this.bus.subscribe<UserMutedEvent>(VIDEO_ROOM_MODERATION_EVENTS.MUTED, (e) =>
-      this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_MUTED, e.payload),
+      this.room(
+        e.payload.roomId,
+        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_MUTED,
+        this.anonymize(e.payload),
+      ),
     );
     this.bus.subscribe<UserUnmutedEvent>(VIDEO_ROOM_MODERATION_EVENTS.UNMUTED, (e) =>
-      this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNMUTED, e.payload),
+      this.room(
+        e.payload.roomId,
+        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNMUTED,
+        this.anonymize(e.payload),
+      ),
     );
     this.bus.subscribe<UserWarnedEvent>(VIDEO_ROOM_MODERATION_EVENTS.WARNED, (e) =>
-      this.user(e.payload.targetUserId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_WARNED, e.payload),
+      this.user(
+        e.payload.targetUserId,
+        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_WARNED,
+        this.anonymize(e.payload),
+      ),
     );
     this.bus.subscribe<UserForceDisconnectedEvent>(
       VIDEO_ROOM_MODERATION_EVENTS.FORCE_DISCONNECTED,
@@ -65,7 +88,7 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
         this.room(
           e.payload.roomId,
           VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED,
-          e.payload,
+          this.anonymize(e.payload),
         ),
     );
     this.bus.subscribe<UserReportedEvent>(VIDEO_ROOM_MODERATION_EVENTS.REPORTED, (e) =>
@@ -89,6 +112,16 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
           e.payload,
         ),
     );
+  }
+
+  private anonymize<T extends { moderatorId: string }>(
+    payload: T,
+  ): T & { systemMessage: string } {
+    return {
+      ...payload,
+      moderatorId: SYSTEM_MODERATOR_ID,
+      systemMessage: 'A moderator took action on this user for violating community guidelines.',
+    };
   }
 
   private room(roomId: string, event: string, payload: unknown): void {

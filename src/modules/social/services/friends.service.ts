@@ -335,16 +335,18 @@ export class FriendsService {
   }
 
   private async resolveTarget(userId?: string, username?: string): Promise<string> {
-    if (userId) return userId;
-    if (username) {
-      const user = await this.users.findByUsername(username);
-      if (user) return user.id;
+    let user = userId ? await this.users.findById(userId) : null;
+    if (!user && username) {
+      user = await this.users.findByUsername(username);
     }
-    throw new BusinessException(
-      ERROR_CODES.NOT_FOUND,
-      'Provide a valid userId or username',
-      HttpStatus.NOT_FOUND,
-    );
+    if (!user || user.isHiddenAccount) {
+      throw new BusinessException(
+        ERROR_CODES.NOT_FOUND,
+        'User not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return user.id;
   }
 
   private notFound(): BusinessException {

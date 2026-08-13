@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GeographicScopeResolver } from 'src/modules/authorization/services/geographic-scope-resolver.service';
 import { RoleResolver } from 'src/modules/authorization/services/role-resolver.service';
@@ -115,5 +115,31 @@ export class WorkforceScopeService {
     }
 
     return { isUnrestricted: false, predicates };
+  }
+
+  /**
+   * Asserts that a moderator is authorized to operate in the given target region.
+   * Throws ForbiddenException if the target region is outside the moderator's assigned scope.
+   */
+  async assertModeratorInScope(moderatorId: string, regionId: string | null): Promise<void> {
+    if (!regionId) return; // Target has no region specified — permit (safety valve)
+    if (await this.isUnrestricted(moderatorId)) return;
+
+    const filter = await this.userScopeFilter(moderatorId);
+    // If filter is empty object {}, user is unrestricted
+    if (!('OR' in filter)) return;
+
+    // Check if any OR clause in filter matches regionId
+    const clauses = filter.OR;
+    const isMatched = clauses.some((clause) => clause.regionId === regionId);
+
+    if (!isMatched) {
+      this.logger.warn(
+        `Moderator ${moderatorId} attempted operation outside assigned region scope (target region: ${regionId})`,
+      );
+      throw new ForbiddenException(
+        'You are not authorized to perform moderation in this region.',
+      );
+    }
   }
 }

@@ -1,16 +1,10 @@
-// ============================================================
-// Soulzaa — Enterprise Events Engine Schema (Phase 16)
-// Owned by the "enterprise-events" module.
-// Append-only, no modifications to frozen schemas.
-// ============================================================
-
 /// Enterprise Platform Event Definition
 model EventDefinition {
-  id                 String    @id @default(uuid()) @db.Uuid
-  code               String    @unique
+  id                 String              @id @default(uuid()) @db.Uuid
+  code               String              @unique
   name               String
   description        String?
-  category           String // AUDIO_ROOM | VIDEO_ROOM | GIFT | FAMILY | VIP | TOURNAMENT | PK_COMPETITION | GAME | FESTIVAL | SEASON | REFERRAL_CAMPAIGN | CREATOR_CAMPAIGN | OFFICIAL_CAMPAIGN | AGENCY_CAMPAIGN | MODERATOR_CAMPAIGN | PLATFORM_CHALLENGE | CUSTOM
+  category           String
   banner             String?
   thumbnail          String?
   startTime          DateTime
@@ -20,26 +14,22 @@ model EventDefinition {
   participationRules Json?
   eligibilityRules   Json?
   rewardDefinition   Json?
-  maxParticipants    Int       @default(1000)
-  visibility         String    @default("PUBLIC") // PUBLIC | HIDDEN | PRIVATE | VIP_ONLY
+  maxParticipants    Int                 @default(1000)
+  visibility         String              @default("PUBLIC")
   country            String?
   region             String?
-  // Normalised geography — read by eligibility and routing. The strings above
-  // are display labels only.
-  countryId          String?   @db.Uuid
-  regionId           String?   @db.Uuid
   season             String?
-  priority           Int       @default(0)
-  status             String    @default("DRAFT") // DRAFT | SCHEDULED | REGISTRATION_OPEN | REGISTRATION_CLOSED | ACTIVE | PAUSED | COMPLETED | CANCELLED | ARCHIVED
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-
-  scopeCountry Country? @relation("EventScopeCountry", fields: [countryId], references: [id], onDelete: SetNull)
-  scopeRegion  Region?  @relation("EventScopeRegion", fields: [regionId], references: [id], onDelete: SetNull)
-
-  registrations EventRegistration[]
-  participants  EventParticipant[]
-  rewards       EventReward[]
+  priority           Int                 @default(0)
+  status             String              @default("DRAFT")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  countryId          String?             @db.Uuid
+  regionId           String?             @db.Uuid
+  scopeCountry       Country?            @relation("EventScopeCountry", fields: [countryId], references: [id])
+  scopeRegion        Region?             @relation("EventScopeRegion", fields: [regionId], references: [id])
+  participants       EventParticipant[]
+  registrations      EventRegistration[]
+  rewards            EventReward[]
 
   @@index([category])
   @@index([status])
@@ -52,13 +42,12 @@ model EventDefinition {
 
 /// User Event Registration
 model EventRegistration {
-  id           String   @id @default(uuid()) @db.Uuid
-  eventId      String   @db.Uuid
-  userId       String   @db.Uuid
-  registeredAt DateTime @default(now())
-  status       String   @default("REGISTERED") // REGISTERED | CANCELLED
-
-  event EventDefinition @relation(fields: [eventId], references: [id])
+  id           String          @id @default(uuid()) @db.Uuid
+  eventId      String          @db.Uuid
+  userId       String          @db.Uuid
+  registeredAt DateTime        @default(now())
+  status       String          @default("REGISTERED")
+  event        EventDefinition @relation(fields: [eventId], references: [id])
 
   @@unique([eventId, userId])
   @@index([userId])
@@ -68,16 +57,15 @@ model EventRegistration {
 
 /// Active Event Participant
 model EventParticipant {
-  id          String    @id @default(uuid()) @db.Uuid
-  eventId     String    @db.Uuid
-  userId      String    @db.Uuid
-  joinedAt    DateTime  @default(now())
+  id          String          @id @default(uuid()) @db.Uuid
+  eventId     String          @db.Uuid
+  userId      String          @db.Uuid
+  joinedAt    DateTime        @default(now())
   completedAt DateTime?
-  status      String    @default("PARTICIPATING") // CHECKED_IN | PARTICIPATING | COMPLETED | DISQUALIFIED
-  score       BigInt    @default(0)
+  status      String          @default("PARTICIPATING")
+  score       BigInt          @default(0)
   metadata    Json?
-
-  event EventDefinition @relation(fields: [eventId], references: [id])
+  event       EventDefinition @relation(fields: [eventId], references: [id])
 
   @@unique([eventId, userId])
   @@index([eventId, status])
@@ -87,14 +75,13 @@ model EventParticipant {
 
 /// Event Reward Record (Dispatched via Domain Events)
 model EventReward {
-  id               String    @id @default(uuid()) @db.Uuid
-  eventId          String    @db.Uuid
-  userId           String    @db.Uuid
+  id               String          @id @default(uuid()) @db.Uuid
+  eventId          String          @db.Uuid
+  userId           String          @db.Uuid
   rewardDefinition Json
-  dispatched       Boolean   @default(false)
+  dispatched       Boolean         @default(false)
   dispatchedAt     DateTime?
-
-  event EventDefinition @relation(fields: [eventId], references: [id])
+  event            EventDefinition @relation(fields: [eventId], references: [id])
 
   @@index([eventId])
   @@index([userId])

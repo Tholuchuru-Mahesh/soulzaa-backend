@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
+import { NotificationModule } from 'src/modules/notification/notification.module';
 import { TaskController } from './controllers/task.controller';
 import { MissionProgressService } from './services/mission-progress.service';
 import { MissionService } from './services/mission.service';
@@ -14,10 +15,11 @@ import { TaskService } from './services/task.service';
 import { TaskStatisticsService } from './services/task-statistics.service';
 import { TaskValidationService } from './services/task-validation.service';
 import { TaskProgressionListener } from './listeners/task-progression.listener';
+import { ModeratorTaskAssignmentService } from './services/moderator-task-assignment.service';
 
 @Global()
 @Module({
-  imports: [PlatformConfigurationModule],
+  imports: [PlatformConfigurationModule, NotificationModule],
   controllers: [TaskController],
   providers: [
     // Phase 17: Enterprise Tasks & Missions Engine Services
@@ -34,6 +36,7 @@ import { TaskProgressionListener } from './listeners/task-progression.listener';
     TaskService,
     MissionService,
     TaskQueryService,
+    ModeratorTaskAssignmentService,
   ],
   exports: [
     TaskConfigurationService,
@@ -48,6 +51,7 @@ import { TaskProgressionListener } from './listeners/task-progression.listener';
     TaskService,
     MissionService,
     TaskQueryService,
+    ModeratorTaskAssignmentService,
   ],
 })
 export class TasksModule {}

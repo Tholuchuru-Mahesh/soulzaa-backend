@@ -1,11 +1,291 @@
-// ============================================================
-// Chat — 1:1 conversations, direct messages, receipts & requests.
-// Owned by the "chat" module. Authoritative store for private messaging.
-// No cross-module relations — users, rooms and uploads are referenced by
-// id and coordinated via the event bus / service tokens (PRIVACY_SERVICE
-// gates who may message whom; PROFILE_SERVICE hydrates participant cards).
-// Relations WITHIN this module are modelled normally (see lucky_packets).
-// ============================================================
+/// A private conversation. DIRECT conversations are uniquely keyed by
+/// `pairKey` — the two participant ids sorted and joined ("a:b") — so opening
+/// a chat is idempotent regardless of who initiates.
+///
+/// Chat requests are modelled as an *unaccepted conversation* rather than a
+/// separate table: when the sender is not yet connected to the recipient,
+/// `requestedBy` is set and `acceptedAt` stays null. The recipient sees it
+/// under Requests, not Chats, and messages flow into it normally — accepting
+/// is a single column write, with no dual-write or row migration.
+///
+/// `lastMessage*` is denormalised so the conversation list renders from one
+/// indexed read with no per-row message join.
+model Conversation {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  type               ConversationType          @default(DIRECT)
+  /// Sorted "userA:userB" for DIRECT — enforces one conversation per pair.
+  pairKey            String                    @unique
+  createdBy          String                    @db.Uuid
+  /// Set while the conversation is a pending chat request; null once accepted.
+  requestedBy        String?                   @db.Uuid
+  acceptedAt         DateTime?
+  lastMessageId      String?                   @db.Uuid
+  lastMessageAt      DateTime?
+  lastMessagePreview String?
+  lastMessageType    DirectMessageType?
+  lastMessageSender  String?                   @db.Uuid
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  /// The message pinned to the top of the thread, shown as a banner. Shared: both
+  /// participants see it, and either may pin — unlike a star, which is private.
+  /// Referenced by id with no FK, exactly like `lastMessageId`: chat's own
+  /// denormalised pointers stay pointers, so deleting a message can never cascade
+  /// a conversation row away.
+  ///
+  /// NOT to be confused with `ConversationParticipant.isPinned`, which pins the
+  /// *conversation* to the top of the Chats list. Different feature, different row.
+  pinnedMessageId    String?                   @db.Uuid
+  pinnedBy           String?                   @db.Uuid
+  pinnedAt           DateTime?
+  participants       ConversationParticipant[]
+  messages           DirectMessage[]
+
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+/// A user's membership in a conversation, and every per-user piece of state
+/// that must survive a reinstall and sync across devices: read/delivery
+/// watermarks, unread count, pin/archive/mute, and the multi-device draft.
+///
+/// Read receipts use a **watermark**, not one row per message per reader:
+/// `lastReadMessageAt` is the high-water mark, so a message counts as read when
+/// `message.createdAt <= peer.lastReadMessageAt`. This keeps receipts O(1) per
+/// conversation instead of O(messages x participants) — the difference between
+/// a table that scales and one that doesn't.
+///
+/// `clearedAt` implements "delete for me": history before it is hidden from
+/// this user only, without touching the peer's copy.
+model ConversationParticipant {
+  id                     String       @id @default(uuid()) @db.Uuid
+  conversationId         String       @db.Uuid
+  userId                 String       @db.Uuid
+  lastReadMessageId      String?      @db.Uuid
+  lastReadMessageAt      DateTime?
+  lastDeliveredMessageId String?      @db.Uuid
+  lastDeliveredMessageAt DateTime?
+  unreadCount            Int          @default(0)
+  isPinned               Boolean      @default(false)
+  isArchived             Boolean      @default(false)
+  isMuted                Boolean      @default(false)
+  mutedUntil             DateTime?
+  /// Composer draft, synced across this user's devices. Null = no draft.
+  draft                  String?
+  draftAt                DateTime?
+  /// "Delete for me" cut-off — messages older than this are hidden from this user.
+  clearedAt              DateTime?
+  joinedAt               DateTime     @default(now())
+  leftAt                 DateTime?
+  isFavorite             Boolean      @default(false)
+  /// "Mark as unread" — a deliberate user action, kept separate from the read
+  /// watermark on purpose. Rewinding the watermark would un-blue-tick the peer's
+  /// message, telling them a lie: this user *did* read it, they just want the
+  /// badge back. So the badge is flagged here and the receipt is left alone.
+  manualUnread           Boolean      @default(false)
+  /// Per-user chat wallpaper: a preset id, or an S3 key for a custom upload.
+  /// Synced across the owner's devices by the existing settings event — a
+  /// wallpaper that resets on reinstall reads as a bug, not a feature.
+  wallpaper              String?
+  /// Bumped by every write to this row — watermarks, unread, mute/pin/archive,
+  /// draft, wallpaper. This is what makes the row deltable: `GET /chat/sync?since=`
+  /// finds per-user state that changed while a device was offline, which
+  /// `Conversation.updatedAt` cannot see (settings and receipts never touch the
+  /// conversation row).
+  updatedAt              DateTime     @updatedAt
+  conversation           Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId, isArchived, leftAt])
+  @@index([userId, isPinned])
+  @@index([userId, isFavorite])
+  @@index([userId, updatedAt])
+  @@map("conversation_participants")
+}
+
+/// A single direct message. `clientId` is the sender-generated id behind
+/// optimistic UI: it is unique per conversation, so a retried send after a
+/// flaky network resolves to the same row instead of duplicating the message.
+/// Soft-deleted (`isDeleted`) so the peer's history stays consistent.
+model DirectMessage {
+  id             String              @id @default(uuid()) @db.Uuid
+  conversationId String              @db.Uuid
+  senderId       String              @db.Uuid
+  type           DirectMessageType   @default(TEXT)
+  content        String
+  /// Sender-generated idempotency key — makes send-retry safe.
+  clientId       String
+  replyToId      String?             @db.Uuid
+  isDeleted      Boolean             @default(false)
+  deletedAt      DateTime?
+  editedAt       DateTime?
+  createdAt      DateTime            @default(now())
+  /// Payload for the rich types, shaped by `type`: GIFT → `{giftId, name, iconUrl,
+  /// coins}`, PROFILE_SHARE → `{userId, username}`, ROOM_INVITE → `{roomId, title}`,
+  /// CALL_LOG → `{callType, durationSeconds, outcome}`. Referenced by id only —
+  /// chat never owns another domain's data, it just points at it.
+  metadata       Json?
+  /// Open Graph metadata for the first URL in the body, resolved asynchronously
+  /// after the message is sent. Null when the body carries no link — which is the
+  /// overwhelming majority of messages, so this costs nothing on the hot path.
+  linkPreviewId  String?             @db.Uuid
+  /// The single column `GET /chat/sync?since=` pages on. Bumped on create, edit and
+  /// soft-delete by Prisma, and *deliberately* bumped by hand when a reaction is
+  /// added or removed (see `MessageRepository.touch`) — a reaction lives in its own
+  /// table, so without that the removal of one would be invisible to a delta (the
+  /// row is gone; there is nothing left to timestamp). Touching the parent makes the
+  /// message the unit of change, and `MessageView` already carries the collapsed
+  /// reactions, so one delta row re-states the whole truth about that message.
+  updatedAt      DateTime            @updatedAt
+  conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  linkPreview    LinkPreview?        @relation(fields: [linkPreviewId], references: [id])
+  hiddenBy       HiddenMessage[]
+  attachments    MessageAttachment[]
+  reactions      MessageReaction[]
+  starredBy      StarredMessage[]
+
+  @@unique([conversationId, clientId])
+  @@index([conversationId, createdAt])
+  @@index([conversationId, updatedAt])
+  @@index([senderId])
+  @@index([linkPreviewId])
+  @@map("direct_messages")
+}
+
+/// A message a user has starred. Private to that user — the peer is never told,
+/// so the fan-out is addressed to the owner's devices only (multi-device sync),
+/// exactly like a draft or a pin/archive setting.
+///
+/// `conversationId` is denormalised so "list my starred messages", optionally
+/// scoped to one chat, is a single indexed read with no join back to the message
+/// table just to order or filter.
+model StarredMessage {
+  id             String        @id @default(uuid()) @db.Uuid
+  messageId      String        @db.Uuid
+  userId         String        @db.Uuid
+  conversationId String        @db.Uuid
+  createdAt      DateTime      @default(now())
+  message        DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, conversationId, createdAt(sort: Desc)])
+  @@map("starred_messages")
+}
+
+/// "Delete for me" at message granularity. `ConversationParticipant.clearedAt`
+/// already hides everything before a cut-off; this hides a single message for a
+/// single user without touching the peer's copy.
+///
+/// There is no un-hide, and no tombstone: the message simply ceases to exist for
+/// this user. That is what separates it from delete-for-everyone, which leaves an
+/// `isDeleted` marker both sides can see.
+model HiddenMessage {
+  id             String        @id @default(uuid()) @db.Uuid
+  messageId      String        @db.Uuid
+  userId         String        @db.Uuid
+  conversationId String        @db.Uuid
+  createdAt      DateTime      @default(now())
+  message        DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, conversationId])
+  @@index([userId, createdAt])
+  @@map("hidden_messages")
+}
+
+/// Cached Open Graph metadata for a URL, keyed by a hash of the normalised URL so
+/// a link shared a thousand times is scraped once for the whole platform.
+///
+/// FAILED is cached too — a dead link must not be re-fetched on every render.
+model LinkPreview {
+  id          String            @id @default(uuid()) @db.Uuid
+  /// SHA-256 of the normalised URL. Hashed because a raw URL is too long to index.
+  urlHash     String            @unique
+  url         String
+  title       String?
+  description String?
+  siteName    String?
+  /// S3 key of the thumbnail *we re-hosted*, never a remote URL: hotlinking would
+  /// leak every reader's IP to the link's origin and rot when the origin does.
+  imageKey    String?
+  imageWidth  Int?
+  imageHeight Int?
+  status      LinkPreviewStatus @default(PENDING)
+  fetchedAt   DateTime?
+  /// Re-scrape after this instant. A confidently stale title is worse than none.
+  expiresAt   DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  messages    DirectMessage[]
+
+  @@index([expiresAt])
+  @@map("link_previews")
+}
+
+/// Media carried by a message. `storageKey` is the S3 object key produced by
+/// the shared presign/confirm flow (infra/storage) — never a raw URL, so the
+/// CDN host stays swappable. `waveform` holds the peak samples a voice note
+/// renders from; `durationMs` covers voice and video.
+model MessageAttachment {
+  id           String         @id @default(uuid()) @db.Uuid
+  messageId    String         @db.Uuid
+  type         AttachmentType
+  storageKey   String
+  thumbnailKey String?
+  mimeType     String
+  sizeBytes    Int
+  /// Voice/video length in milliseconds.
+  durationMs   Int?
+  width        Int?
+  height       Int?
+  /// Normalised 0-100 peaks for voice-note rendering.
+  waveform     Int[]
+  /// Original filename, shown for FILE attachments.
+  filename     String?
+  createdAt    DateTime       @default(now())
+  message      DirectMessage  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("message_attachments")
+}
+
+/// A report against a conversation or a specific message in it. Mirrors the
+/// room-chat `ChatReport` (AR-4) so moderation tooling sees one consistent shape,
+/// but scoped to DMs. `messageId` is optional: a user may report the whole
+/// conversation (harassment) or one message.
+model DirectMessageReport {
+  id             String             @id @default(uuid()) @db.Uuid
+  conversationId String             @db.Uuid
+  messageId      String?            @db.Uuid
+  reporterId     String             @db.Uuid
+  targetUserId   String             @db.Uuid
+  reason         ReportReason
+  description    String?
+  status         ChatReportStatusDm @default(PENDING)
+  reviewedBy     String?            @db.Uuid
+  reviewedAt     DateTime?
+  createdAt      DateTime           @default(now())
+
+  @@index([status, createdAt])
+  @@index([targetUserId])
+  @@index([conversationId])
+  @@map("direct_message_reports")
+}
+
+/// An emoji reaction. One row per (message, user, emoji) — a user may react
+/// with several distinct emojis but never twice with the same one.
+model MessageReaction {
+  id        String        @id @default(uuid()) @db.Uuid
+  messageId String        @db.Uuid
+  userId    String        @db.Uuid
+  emoji     String
+  createdAt DateTime      @default(now())
+  message   DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("message_reactions")
+}
 
 enum ConversationType {
   DIRECT
@@ -43,325 +323,8 @@ enum ChatReportStatusDm {
   DISMISSED
 }
 
-/// A private conversation. DIRECT conversations are uniquely keyed by
-/// `pairKey` — the two participant ids sorted and joined ("a:b") — so opening
-/// a chat is idempotent regardless of who initiates.
-///
-/// Chat requests are modelled as an *unaccepted conversation* rather than a
-/// separate table: when the sender is not yet connected to the recipient,
-/// `requestedBy` is set and `acceptedAt` stays null. The recipient sees it
-/// under Requests, not Chats, and messages flow into it normally — accepting
-/// is a single column write, with no dual-write or row migration.
-///
-/// `lastMessage*` is denormalised so the conversation list renders from one
-/// indexed read with no per-row message join.
-model Conversation {
-  id        String           @id @default(uuid()) @db.Uuid
-  type      ConversationType @default(DIRECT)
-  /// Sorted "userA:userB" for DIRECT — enforces one conversation per pair.
-  pairKey   String           @unique
-  createdBy String           @db.Uuid
-
-  /// Set while the conversation is a pending chat request; null once accepted.
-  requestedBy String?   @db.Uuid
-  acceptedAt  DateTime?
-
-  // ---- Denormalised list preview ----
-  lastMessageId      String?            @db.Uuid
-  lastMessageAt      DateTime?
-  lastMessagePreview String?
-  lastMessageType    DirectMessageType?
-  lastMessageSender  String?            @db.Uuid
-
-  /// The message pinned to the top of the thread, shown as a banner. Shared: both
-  /// participants see it, and either may pin — unlike a star, which is private.
-  /// Referenced by id with no FK, exactly like `lastMessageId`: chat's own
-  /// denormalised pointers stay pointers, so deleting a message can never cascade
-  /// a conversation row away.
-  ///
-  /// NOT to be confused with `ConversationParticipant.isPinned`, which pins the
-  /// *conversation* to the top of the Chats list. Different feature, different row.
-  pinnedMessageId String?   @db.Uuid
-  pinnedBy        String?   @db.Uuid
-  pinnedAt        DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  participants ConversationParticipant[]
-  messages     DirectMessage[]
-
-  @@index([lastMessageAt])
-  @@map("conversations")
-}
-
-/// A user's membership in a conversation, and every per-user piece of state
-/// that must survive a reinstall and sync across devices: read/delivery
-/// watermarks, unread count, pin/archive/mute, and the multi-device draft.
-///
-/// Read receipts use a **watermark**, not one row per message per reader:
-/// `lastReadMessageAt` is the high-water mark, so a message counts as read when
-/// `message.createdAt <= peer.lastReadMessageAt`. This keeps receipts O(1) per
-/// conversation instead of O(messages x participants) — the difference between
-/// a table that scales and one that doesn't.
-///
-/// `clearedAt` implements "delete for me": history before it is hidden from
-/// this user only, without touching the peer's copy.
-model ConversationParticipant {
-  id             String @id @default(uuid()) @db.Uuid
-  conversationId String @db.Uuid
-  userId         String @db.Uuid
-
-  // ---- Watermarks ----
-  lastReadMessageId      String?   @db.Uuid
-  lastReadMessageAt      DateTime?
-  lastDeliveredMessageId String?   @db.Uuid
-  lastDeliveredMessageAt DateTime?
-  unreadCount            Int       @default(0)
-
-  // ---- Per-user conversation settings (multi-device synced) ----
-  isPinned   Boolean   @default(false)
-  isArchived Boolean   @default(false)
-  isFavorite Boolean   @default(false)
-  isMuted    Boolean   @default(false)
-  mutedUntil DateTime?
-  /// Composer draft, synced across this user's devices. Null = no draft.
-  draft      String?
-  draftAt    DateTime?
-
-  /// "Mark as unread" — a deliberate user action, kept separate from the read
-  /// watermark on purpose. Rewinding the watermark would un-blue-tick the peer's
-  /// message, telling them a lie: this user *did* read it, they just want the
-  /// badge back. So the badge is flagged here and the receipt is left alone.
-  manualUnread Boolean @default(false)
-
-  /// "Delete for me" cut-off — messages older than this are hidden from this user.
-  clearedAt DateTime?
-
-  /// Per-user chat wallpaper: a preset id, or an S3 key for a custom upload.
-  /// Synced across the owner's devices by the existing settings event — a
-  /// wallpaper that resets on reinstall reads as a bug, not a feature.
-  wallpaper String?
-
-  joinedAt DateTime  @default(now())
-  leftAt   DateTime?
-
-  /// Bumped by every write to this row — watermarks, unread, mute/pin/archive,
-  /// draft, wallpaper. This is what makes the row deltable: `GET /chat/sync?since=`
-  /// finds per-user state that changed while a device was offline, which
-  /// `Conversation.updatedAt` cannot see (settings and receipts never touch the
-  /// conversation row).
-  updatedAt DateTime @updatedAt
-
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@unique([conversationId, userId])
-  @@index([userId, isArchived, leftAt])
-  @@index([userId, isPinned])
-  @@index([userId, isFavorite])
-  @@index([userId, updatedAt])
-  @@map("conversation_participants")
-}
-
-/// A single direct message. `clientId` is the sender-generated id behind
-/// optimistic UI: it is unique per conversation, so a retried send after a
-/// flaky network resolves to the same row instead of duplicating the message.
-/// Soft-deleted (`isDeleted`) so the peer's history stays consistent.
-model DirectMessage {
-  id             String            @id @default(uuid()) @db.Uuid
-  conversationId String            @db.Uuid
-  senderId       String            @db.Uuid
-  type           DirectMessageType @default(TEXT)
-  content        String
-  /// Sender-generated idempotency key — makes send-retry safe.
-  clientId       String
-  replyToId      String?           @db.Uuid
-
-  /// Payload for the rich types, shaped by `type`: GIFT → `{giftId, name, iconUrl,
-  /// coins}`, PROFILE_SHARE → `{userId, username}`, ROOM_INVITE → `{roomId, title}`,
-  /// CALL_LOG → `{callType, durationSeconds, outcome}`. Referenced by id only —
-  /// chat never owns another domain's data, it just points at it.
-  metadata Json?
-
-  isDeleted Boolean   @default(false)
-  deletedAt DateTime?
-  editedAt  DateTime?
-  createdAt DateTime  @default(now())
-
-  /// The single column `GET /chat/sync?since=` pages on. Bumped on create, edit and
-  /// soft-delete by Prisma, and *deliberately* bumped by hand when a reaction is
-  /// added or removed (see `MessageRepository.touch`) — a reaction lives in its own
-  /// table, so without that the removal of one would be invisible to a delta (the
-  /// row is gone; there is nothing left to timestamp). Touching the parent makes the
-  /// message the unit of change, and `MessageView` already carries the collapsed
-  /// reactions, so one delta row re-states the whole truth about that message.
-  updatedAt DateTime @updatedAt
-
-  /// Open Graph metadata for the first URL in the body, resolved asynchronously
-  /// after the message is sent. Null when the body carries no link — which is the
-  /// overwhelming majority of messages, so this costs nothing on the hot path.
-  linkPreviewId String?      @db.Uuid
-  linkPreview   LinkPreview? @relation(fields: [linkPreviewId], references: [id], onDelete: SetNull)
-
-  conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  attachments  MessageAttachment[]
-  reactions    MessageReaction[]
-  starredBy    StarredMessage[]
-  hiddenBy     HiddenMessage[]
-
-  @@unique([conversationId, clientId])
-  @@index([conversationId, createdAt])
-  @@index([conversationId, updatedAt])
-  @@index([senderId])
-  @@index([linkPreviewId])
-  @@map("direct_messages")
-}
-
-/// A message a user has starred. Private to that user — the peer is never told,
-/// so the fan-out is addressed to the owner's devices only (multi-device sync),
-/// exactly like a draft or a pin/archive setting.
-///
-/// `conversationId` is denormalised so "list my starred messages", optionally
-/// scoped to one chat, is a single indexed read with no join back to the message
-/// table just to order or filter.
-model StarredMessage {
-  id             String   @id @default(uuid()) @db.Uuid
-  messageId      String   @db.Uuid
-  userId         String   @db.Uuid
-  conversationId String   @db.Uuid
-  createdAt      DateTime @default(now())
-
-  message DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, userId])
-  @@index([userId, createdAt(sort: Desc)])
-  @@index([userId, conversationId, createdAt(sort: Desc)])
-  @@map("starred_messages")
-}
-
-/// "Delete for me" at message granularity. `ConversationParticipant.clearedAt`
-/// already hides everything before a cut-off; this hides a single message for a
-/// single user without touching the peer's copy.
-///
-/// There is no un-hide, and no tombstone: the message simply ceases to exist for
-/// this user. That is what separates it from delete-for-everyone, which leaves an
-/// `isDeleted` marker both sides can see.
-model HiddenMessage {
-  id             String   @id @default(uuid()) @db.Uuid
-  messageId      String   @db.Uuid
-  userId         String   @db.Uuid
-  conversationId String   @db.Uuid
-  createdAt      DateTime @default(now())
-
-  message DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, userId])
-  @@index([userId, conversationId])
-  /// Delta support: "which messages did I hide while this device was offline".
-  /// A hide leaves no tombstone on the message, so the hide row *is* the event.
-  @@index([userId, createdAt])
-  @@map("hidden_messages")
-}
-
 enum LinkPreviewStatus {
   PENDING
   READY
   FAILED
-}
-
-/// Cached Open Graph metadata for a URL, keyed by a hash of the normalised URL so
-/// a link shared a thousand times is scraped once for the whole platform.
-///
-/// FAILED is cached too — a dead link must not be re-fetched on every render.
-model LinkPreview {
-  id          String            @id @default(uuid()) @db.Uuid
-  /// SHA-256 of the normalised URL. Hashed because a raw URL is too long to index.
-  urlHash     String            @unique
-  url         String
-  title       String?
-  description String?
-  siteName    String?
-  /// S3 key of the thumbnail *we re-hosted*, never a remote URL: hotlinking would
-  /// leak every reader's IP to the link's origin and rot when the origin does.
-  imageKey    String?
-  imageWidth  Int?
-  imageHeight Int?
-  status      LinkPreviewStatus @default(PENDING)
-  fetchedAt   DateTime?
-  /// Re-scrape after this instant. A confidently stale title is worse than none.
-  expiresAt   DateTime?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-
-  messages DirectMessage[]
-
-  @@index([expiresAt])
-  @@map("link_previews")
-}
-
-/// Media carried by a message. `storageKey` is the S3 object key produced by
-/// the shared presign/confirm flow (infra/storage) — never a raw URL, so the
-/// CDN host stays swappable. `waveform` holds the peak samples a voice note
-/// renders from; `durationMs` covers voice and video.
-model MessageAttachment {
-  id           String         @id @default(uuid()) @db.Uuid
-  messageId    String         @db.Uuid
-  type         AttachmentType
-  storageKey   String
-  thumbnailKey String?
-  mimeType     String
-  sizeBytes    Int
-  /// Voice/video length in milliseconds.
-  durationMs   Int?
-  width        Int?
-  height       Int?
-  /// Normalised 0-100 peaks for voice-note rendering.
-  waveform     Int[]
-  /// Original filename, shown for FILE attachments.
-  filename     String?
-  createdAt    DateTime       @default(now())
-
-  message DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@index([messageId])
-  @@map("message_attachments")
-}
-
-/// A report against a conversation or a specific message in it. Mirrors the
-/// room-chat `ChatReport` (AR-4) so moderation tooling sees one consistent shape,
-/// but scoped to DMs. `messageId` is optional: a user may report the whole
-/// conversation (harassment) or one message.
-model DirectMessageReport {
-  id             String             @id @default(uuid()) @db.Uuid
-  conversationId String             @db.Uuid
-  messageId      String?            @db.Uuid
-  reporterId     String             @db.Uuid
-  targetUserId   String             @db.Uuid
-  reason         ReportReason
-  description    String?
-  status         ChatReportStatusDm @default(PENDING)
-  reviewedBy     String?            @db.Uuid
-  reviewedAt     DateTime?
-  createdAt      DateTime           @default(now())
-
-  @@index([status, createdAt])
-  @@index([targetUserId])
-  @@index([conversationId])
-  @@map("direct_message_reports")
-}
-
-/// An emoji reaction. One row per (message, user, emoji) — a user may react
-/// with several distinct emojis but never twice with the same one.
-model MessageReaction {
-  id        String   @id @default(uuid()) @db.Uuid
-  messageId String   @db.Uuid
-  userId    String   @db.Uuid
-  emoji     String
-  createdAt DateTime @default(now())
-
-  message DirectMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, userId, emoji])
-  @@index([messageId])
-  @@map("message_reactions")
 }

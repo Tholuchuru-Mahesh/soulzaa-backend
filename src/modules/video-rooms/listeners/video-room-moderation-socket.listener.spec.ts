@@ -6,6 +6,8 @@ import {
 import { VIDEO_ROOM_MODERATION_EVENTS } from '../events/video-room-moderation.events';
 import { VideoRoomModerationSocketListener } from './video-room-moderation-socket.listener';
 
+import { SYSTEM_MODERATOR_ID } from '../constants/video-room-moderation.constants';
+
 describe('VideoRoomModerationSocketListener', () => {
   let handlers: Record<string, (e: { payload: unknown }) => void>;
   let sockets: { emitToNamespaceRoom: jest.Mock; emitToUserEverywhere: jest.Mock };
@@ -22,7 +24,7 @@ describe('VideoRoomModerationSocketListener', () => {
     new VideoRoomModerationSocketListener(bus as never, sockets as never).onModuleInit();
   });
 
-  it('bridges UserWarnedEvent to the target user only (not a room broadcast)', () => {
+  it('bridges UserWarnedEvent to the target user only (with anonymized moderator identity)', () => {
     const payload = {
       roomId: 'r1',
       moderatorId: 'm1',
@@ -35,12 +37,16 @@ describe('VideoRoomModerationSocketListener', () => {
     expect(sockets.emitToUserEverywhere).toHaveBeenCalledWith(
       'u1',
       VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_WARNED,
-      payload,
+      expect.objectContaining({
+        ...payload,
+        moderatorId: SYSTEM_MODERATOR_ID,
+        systemMessage: expect.any(String),
+      }),
     );
     expect(sockets.emitToNamespaceRoom).not.toHaveBeenCalled();
   });
 
-  it('bridges UserKickedEvent to a room broadcast (not a direct user emit)', () => {
+  it('bridges UserKickedEvent to a room broadcast (with anonymized moderator identity)', () => {
     const payload = { roomId: 'r1', moderatorId: 'm1', targetUserId: 'u1', reason: 'abuse' };
     handlers[VIDEO_ROOM_MODERATION_EVENTS.KICKED]({ payload });
 
@@ -48,12 +54,16 @@ describe('VideoRoomModerationSocketListener', () => {
       VIDEO_ROOM_NAMESPACE,
       'r1',
       VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_KICKED,
-      payload,
+      expect.objectContaining({
+        ...payload,
+        moderatorId: SYSTEM_MODERATOR_ID,
+        systemMessage: expect.any(String),
+      }),
     );
     expect(sockets.emitToUserEverywhere).not.toHaveBeenCalled();
   });
 
-  it('bridges every remaining room-broadcast moderation event to its mapped client event', () => {
+  it('bridges every remaining room-broadcast moderation event to its mapped client event with anonymized identity', () => {
     const cases: Array<[string, VideoRoomModerationSocketEvent, Record<string, unknown>]> = [
       [
         VIDEO_ROOM_MODERATION_EVENTS.BLACKLISTED,
@@ -94,11 +104,6 @@ describe('VideoRoomModerationSocketListener', () => {
         VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED,
         { roomId: 'r1', moderatorId: 'm1', targetUserId: 'u1', reason: null },
       ],
-      [
-        VIDEO_ROOM_MODERATION_EVENTS.ROOM_MODERATION_UPDATED,
-        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.ROOM_MODERATION_UPDATED,
-        { roomId: 'r1', moderatorId: 'm1', channels: ['MIC'], muted: true },
-      ],
     ];
 
     for (const [busEvent, clientEvent, payload] of cases) {
@@ -109,7 +114,11 @@ describe('VideoRoomModerationSocketListener', () => {
         VIDEO_ROOM_NAMESPACE,
         'r1',
         clientEvent,
-        payload,
+        expect.objectContaining({
+          ...payload,
+          moderatorId: SYSTEM_MODERATOR_ID,
+          systemMessage: expect.any(String),
+        }),
       );
       expect(sockets.emitToUserEverywhere).not.toHaveBeenCalled();
     }

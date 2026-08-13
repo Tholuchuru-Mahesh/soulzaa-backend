@@ -47,6 +47,68 @@ jobs:
         run: pnpm exec tsc --noEmit
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # 1b. Prisma Schema/Migration Drift
+  #
+  # `prisma generate` (run automatically by @prisma/client's postinstall hook,
+  # see .npmrc) only regenerates the client to match schema.prisma — it says
+  # nothing about whether that schema change was ever captured as a migration
+  # file. A model can be added straight to schema.prisma, compile and test
+  # cleanly everywhere, and still never exist in production, because
+  # `prisma migrate deploy` (the Dockerfile's startup command) only replays
+  # committed migration files, it does not diff the live schema. This job
+  # catches that gap by diffing the migrations directory against the schema
+  # datamodel directly, with no dependency on the other jobs' DB state.
+  # ─────────────────────────────────────────────────────────────────────────────
+  prisma-drift:
+    name: Prisma Schema/Migration Drift
+    runs-on: ubuntu-latest
+    services:
+      shadow-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: soulzaa
+          POSTGRES_PASSWORD: soulzaa
+          POSTGRES_DB: soulzaa_shadow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U soulzaa"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # version is read automatically from package.json#packageManager
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "dir=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.dir }}
+          key: pnpm-v2-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-v2-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fail if schema.prisma has changes not captured in a migration
+        run: |
+          pnpm exec prisma migrate diff \
+            --from-migrations ./prisma/schema/migrations \
+            --to-schema-datamodel ./prisma/schema \
+            --shadow-database-url "postgresql://soulzaa:soulzaa@localhost:5432/soulzaa_shadow" \
+            --exit-code \
+          || (echo "::error::schema.prisma has changes with no matching migration file. Run 'pnpm prisma:migrate' locally and commit the generated migration." && exit 1)
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # 2. Unit Tests
   # ─────────────────────────────────────────────────────────────────────────────
   test:
@@ -109,7 +171,7 @@ jobs:
   build:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
-    needs: [test, security-scan]
+    needs: [test, security-scan, prisma-drift]
     if: github.event_name == 'push'
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}

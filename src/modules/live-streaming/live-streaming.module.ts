@@ -1,11 +1,29 @@
 import { Module } from '@nestjs/common';
+import { PrismaModule } from 'src/infra/prisma/prisma.module';
+import { InvestigationRecordingModule } from 'src/modules/investigation-recording/investigation-recording.module';
+import { ModeratorPerformanceModule } from 'src/modules/moderator-performance/moderator-performance.module';
+import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shift.module';
+import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-warning.module';
+import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
+import { LiveStreamController } from './controllers/live-stream.controller';
+import { LiveStreamService } from './services/live-stream.service';
 
 /**
- * Live Streaming domain — streams, participants, PK battles, goals.
- *
- * Phase 0 placeholder — no controllers/providers yet. When implemented, this
- * module owns its Prisma models (its file under prisma/schema/), its DTOs, and
- * communicates with other domains only via the EVENT_BUS.
+ * Live Streaming domain — streams, participants, moderation.
+ * Phase 1 implementation with live stream lifecycle & moderation tools.
  */
-@Module({})
+@Module({
+  imports: [
+    PrismaModule,
+    InvestigationRecordingModule,
+    ModeratorPerformanceModule,
+    ModeratorShiftModule,
+    ModeratorWarningModule,
+    MobileWorkforceModule,
+  ],
+  controllers: [LiveStreamController],
+  providers: [LiveStreamService],
+  exports: [LiveStreamService],
+})
 export class LiveStreamingModule {}
+

@@ -1,6 +1,1 @@
-// ============================================================
-// Live Streaming — streams, participants, PK battles, goals
-// Owned by the "live_streaming" module. Add models/enums here as the module
-// is implemented. No cross-module relations by default — reference
-// other domains by id and coordinate via the event bus.
-// ============================================================
+

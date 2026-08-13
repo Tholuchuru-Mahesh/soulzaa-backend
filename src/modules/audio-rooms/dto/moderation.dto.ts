@@ -4,6 +4,7 @@ import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -109,6 +110,12 @@ export class ReviewReportDto {
   @IsString()
   @MaxLength(MOD_REASON_MAX)
   resolution?: string;
+
+  @ApiPropertyOptional({ enum: ['WARNING', 'MUTE', 'KICK', 'BAN'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['WARNING', 'MUTE', 'KICK', 'BAN'])
+  recommendedAction?: 'WARNING' | 'MUTE' | 'KICK' | 'BAN';
 }
 
 /** Add a moderator note about a user. */

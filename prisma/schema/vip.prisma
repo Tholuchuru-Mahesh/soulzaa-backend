@@ -1,8 +1,3 @@
-// ============================================================
-// Soulzaa — Enterprise VIP Membership Engine Schema
-// Entities: VipTier, VipMembership, VipSubscription, VipBenefit, VipReward, VipHistory, VipAudit, VipStatistics, VipConfiguration
-// ============================================================
-
 /// VIP Tier Definition
 model VipTier {
   id                String   @id @default(uuid()) @db.Uuid

@@ -1,10 +1,44 @@
-// ============================================================
-// Casino (house-banked games: Greedy Food, Lucky Fruit) — separate from
-// the escrow-based `games` models: payouts are server-funded (stake ×
-// multiplier), not pot redistributions. See
-// docs/superpowers/specs/2026-07-16-greedy-food-lucky-fruit-casino-design.md
-// §5.5-5.6. Currency is GOLD only.
-// ============================================================
+model CasinoRound {
+  id             String            @id @default(uuid()) @db.Uuid
+  game           CasinoGame
+  status         CasinoRoundStatus @default(BETTING)
+  winningOutcome String?
+  createdAt      DateTime          @default(now())
+  settledAt      DateTime?
+  roundNumber    Int               @default(1)
+  bets           CasinoBet[]
+
+  @@index([game, status])
+  @@map("casino_rounds")
+}
+
+model CasinoBet {
+  id           String          @id @default(uuid()) @db.Uuid
+  roundId      String          @db.Uuid
+  userId       String          @db.Uuid
+  game         CasinoGame
+  betItem      String
+  betAmount    BigInt
+  /// Per-tap client-supplied id. Faithful stacking means every tap on an
+  /// item is its OWN bet row (unlike a per-item wallet key, which collapsed
+  /// repeat taps into one debit) — this is the row-level idempotency anchor:
+  /// a replay of the same tap (same roundId+userId+clientBetId) must return
+  /// the existing row rather than create a duplicate, while a genuinely new
+  /// tap (new clientBetId) on the SAME item creates a second, stacked row.
+  clientBetId  String
+  status       CasinoBetStatus @default(PLACED)
+  payoutAmount BigInt          @default(0)
+  betTxnId     String?
+  winTxnId     String?
+  createdAt    DateTime        @default(now())
+  settledAt    DateTime?
+  round        CasinoRound     @relation(fields: [roundId], references: [id])
+
+  @@unique([roundId, userId, clientBetId])
+  @@index([userId, game, status])
+  @@index([roundId])
+  @@map("casino_bets")
+}
 
 /// House-banked casino games (Greedy Food, Lucky Fruit). Separate from the
 /// escrow-based `games` models: payouts are server-funded (stake × multiplier),
@@ -26,46 +60,4 @@ enum CasinoBetStatus {
   WON
   LOST
   REFUNDED
-}
-
-model CasinoRound {
-  id             String            @id @default(uuid()) @db.Uuid
-  game           CasinoGame
-  roundNumber    Int               @default(1)
-  status         CasinoRoundStatus @default(BETTING)
-  winningOutcome String?
-  createdAt      DateTime          @default(now())
-  settledAt      DateTime?
-  bets           CasinoBet[]
-
-  @@index([game, status])
-  @@map("casino_rounds")
-}
-
-model CasinoBet {
-  id           String          @id @default(uuid()) @db.Uuid
-  roundId      String          @db.Uuid
-  round        CasinoRound     @relation(fields: [roundId], references: [id])
-  userId       String          @db.Uuid
-  game         CasinoGame
-  betItem      String
-  betAmount    BigInt
-  /// Per-tap client-supplied id. Faithful stacking means every tap on an
-  /// item is its OWN bet row (unlike a per-item wallet key, which collapsed
-  /// repeat taps into one debit) — this is the row-level idempotency anchor:
-  /// a replay of the same tap (same roundId+userId+clientBetId) must return
-  /// the existing row rather than create a duplicate, while a genuinely new
-  /// tap (new clientBetId) on the SAME item creates a second, stacked row.
-  clientBetId  String
-  status       CasinoBetStatus @default(PLACED)
-  payoutAmount BigInt          @default(0)
-  betTxnId     String?
-  winTxnId     String?
-  createdAt    DateTime        @default(now())
-  settledAt    DateTime?
-
-  @@unique([roundId, userId, clientBetId])
-  @@index([userId, game, status])
-  @@index([roundId])
-  @@map("casino_bets")
 }

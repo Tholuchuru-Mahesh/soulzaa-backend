@@ -1,18 +1,3 @@
-// ============================================================
-// Privacy & Safety — settings, blocking, preferences
-// Owned by the "privacy" module. Authoritative store for per-user
-// visibility/permission levels, the block list, and general
-// preferences. Checks are cached in Redis; other domains consult
-// PRIVACY_SERVICE. No cross-module relations.
-// ============================================================
-
-enum PrivacyLevel {
-  EVERYONE
-  FRIENDS_ONLY
-  FOLLOWERS_ONLY
-  NOBODY
-}
-
 /// Per-user visibility + permission levels. One row per user, created
 /// on first read (ensureDefaults) — everything defaults to EVERYONE.
 model PrivacySettings {
@@ -23,9 +8,8 @@ model PrivacySettings {
   callPermission          PrivacyLevel @default(EVERYONE)
   messagePermission       PrivacyLevel @default(EVERYONE)
   friendRequestPermission PrivacyLevel @default(EVERYONE)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
 
   @@map("privacy_settings")
 }
@@ -47,14 +31,20 @@ model BlockedUser {
 /// General per-user preferences (non-privacy toggles). Distinct from
 /// privacy_settings; grows as features land.
 model UserPreferences {
-  userId       String  @id @db.Uuid
-  searchable   Boolean @default(true)
-  showActivity Boolean @default(true)
-  readReceipts Boolean @default(true)
-  allowTagging Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  userId       String   @id @db.Uuid
+  searchable   Boolean  @default(true)
+  showActivity Boolean  @default(true)
+  readReceipts Boolean  @default(true)
+  allowTagging Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@map("user_preferences")
+}
+
+enum PrivacyLevel {
+  EVERYONE
+  FRIENDS_ONLY
+  FOLLOWERS_ONLY
+  NOBODY
 }

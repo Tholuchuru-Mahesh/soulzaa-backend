@@ -55,6 +55,10 @@ import { DashboardModerationModule } from './dashboard-moderation/dashboard-mode
 import { MobileWorkforceModule } from './mobile-workforce/mobile-workforce.module';
 import { MobilePartnerModule } from './mobile-partner/mobile-partner.module';
 import { RoleRequestsModule } from './role-requests/role-requests.module';
+import { ModeratorShiftModule } from './moderator-shift/moderator-shift.module';
+import { InvestigationRecordingModule } from './investigation-recording/investigation-recording.module';
+import { ModeratorWarningModule } from './moderator-warning/moderator-warning.module';
+import { ModeratorPerformanceModule } from './moderator-performance/moderator-performance.module';
 
 export const DOMAIN_MODULES = [
   TreasuryModule,
@@ -116,4 +120,9 @@ export const DOMAIN_MODULES = [
   // Profile page's Creator Center — composes AudioRooms/Analytics/Gifts/Social,
   // owns no data of its own.
   CreatorCenterModule,
+  // Moderator Workforce & Investigation Engine Modules
+  ModeratorShiftModule,
+  InvestigationRecordingModule,
+  ModeratorWarningModule,
+  ModeratorPerformanceModule,
 ];

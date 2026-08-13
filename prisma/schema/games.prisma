@@ -1,97 +1,3 @@
-// ============================================================
-// Games (AR-11) — game platform backend: catalog, lobbies, sessions,
-// participants, immutable economy ledger, settlement results, audit log.
-//
-// This owns the *platform* around games (matchmaking lobbies, entry-stake
-// escrow, trusted result settlement, anti-cheat validation, history, audit).
-// Per-game rule engines (who wins UNO / dice rolls / slot reels) are NOT
-// modelled here — a trusted game engine submits results through the
-// settlement seam. Currency mapping (PRD Vol.3 §16): premium games spend
-// GOLD, casual games spend FREE.
-//
-// No cross-module relations — other domains are referenced by id and
-// coordinated via the EVENT_BUS. Wallet movements link back by walletTxnId.
-// ============================================================
-
-/// The eight games originally defined by the PRD. Only LUDO and CARROM are
-/// active in the catalog today (GAME_CATALOG_SEED) — GREEDY, ROULETTE, SLOTS,
-/// JACKPOT, UNO and DOMINO were removed as dead code (never shipped a real
-/// engine); their GameDefinition rows were disabled, not deleted, and these
-/// enum values are kept (dropping them needs a migration and risks historical
-/// game_sessions/game_transactions rows that still reference them).
-enum GameCode {
-  GREEDY
-  ROULETTE
-  SLOTS
-  JACKPOT
-  UNO
-  LUDO
-  CARROM
-  DOMINO
-  GREEDY_FOOD
-  LUCKY_FRUIT
-}
-
-/// Premium games spend Gold Coins; casual games spend Free Coins.
-enum GameCategory {
-  PREMIUM
-  CASUAL
-}
-
-/// Currency a game stakes/pays out in (maps to WalletCurrency at the seam).
-/// GOLD  → premium games (Greedy Food, Roulette, Lucky Fruit, Phoenix vs Wolf, Flip, Jackpot)
-/// GAME  → casual games (Ludo, UNO, Carrom, Dominoes)
-/// FREE  → @deprecated alias for GAME; kept so historical game_transactions rows remain valid
-enum GameCurrency {
-  GOLD
-  /// Canonical game coin currency (PRD §6). Use this in all new game definitions.
-  GAME
-  /// @deprecated — use GAME. Kept for historical row compatibility.
-  FREE
-}
-
-enum GameLobbyStatus {
-  OPEN
-  STARTED
-  CANCELLED
-  EXPIRED
-}
-
-enum GameSessionStatus {
-  ACTIVE
-  COMPLETED
-  CANCELLED
-  ABORTED
-}
-
-enum GameParticipantStatus {
-  PLAYING
-  WON
-  LOST
-  DREW
-  REFUNDED
-}
-
-enum GameTxnType {
-  STAKE
-  PAYOUT
-  REFUND
-}
-
-/// Lobby/session play mode. CLASSIC = 1..maxPlayers free-for-all (existing
-/// behavior); TEAM_2V2 = exactly four players split into two teams of two.
-enum GameMode {
-  CLASSIC
-  TEAM_2V2
-}
-
-/// Team a participant belongs to in a TEAM_2V2 match. Engines read teams
-/// positionally (Team A = seats {0,2}, Team B = seats {1,3}).
-enum GameTeam {
-  A
-  B
-}
-
 /// Immutable catalog entry — admin-configurable per PRD (stakes, players,
 /// enable/disable). Seeded idempotently on bootstrap.
 model GameDefinition {
@@ -129,16 +35,6 @@ model GameLobby {
   currency           GameCurrency
   stake              BigInt
   maxPlayers         Int
-  mode               GameMode        @default(CLASSIC)
-  carromMode         String?         @default("classic")
-  teamCoinAssignment String?         @default("team_a_white")
-  /// True for a lobby auto-formed by matchmaking — hidden from the public
-  /// browse and started near-atomically once every matched player is ready.
-  isMatchmade        Boolean         @default(false)
-  /// Private lobbies are join-by-code only — hidden from the public browse.
-  isPrivate          Boolean         @default(false)
-  /// Optional join gate (sha256 of the lobby password); null = no password.
-  passwordHash       String?
   status             GameLobbyStatus @default(OPEN)
   sessionId          String?         @db.Uuid
   createdAt          DateTime        @default(now())
@@ -148,6 +44,16 @@ model GameLobby {
   cancelledAt        DateTime?
   createdBy          String?         @db.Uuid
   updatedBy          String?         @db.Uuid
+  /// True for a lobby auto-formed by matchmaking — hidden from the public
+  /// browse and started near-atomically once every matched player is ready.
+  isMatchmade        Boolean         @default(false)
+  /// Private lobbies are join-by-code only — hidden from the public browse.
+  isPrivate          Boolean         @default(false)
+  mode               GameMode        @default(CLASSIC)
+  /// Optional join gate (sha256 of the lobby password); null = no password.
+  passwordHash       String?
+  carromMode         String?         @default("classic")
+  teamCoinAssignment String?         @default("team_a_white")
 
   @@index([status, expiresAt])
   @@index([definitionId, status])
@@ -162,15 +68,15 @@ model GameLobbyMember {
   /// Real user id, or a synthetic uuid for a bot seat (keeps the unique key + all
   /// userId-keyed logic working; wallet ops are skipped when isBot is true).
   userId   String    @db.Uuid
-  /// True for a host-added bot seat.
-  isBot    Boolean   @default(false)
+  joinedAt DateTime  @default(now())
   /// Display name / difficulty for a bot seat (client-interpreted).
   botName  String?
+  /// True for a host-added bot seat.
+  isBot    Boolean   @default(false)
   /// Chosen team in a TEAM_2V2 lobby (null until picked / auto-balanced at start).
   team     GameTeam?
   /// Player has signalled they are ready to start. Host can only start when all members are ready.
   isReady  Boolean   @default(false)
-  joinedAt DateTime  @default(now())
 
   @@unique([lobbyId, userId])
   @@index([lobbyId])
@@ -190,9 +96,6 @@ model GameSession {
   currency           GameCurrency
   stake              BigInt
   playerCount        Int
-  mode               GameMode          @default(CLASSIC)
-  carromMode         String?           @default("classic")
-  teamCoinAssignment String?           @default("team_a_white")
   potAmount          BigInt            @default(0)
   status             GameSessionStatus @default(ACTIVE)
   startedAt          DateTime          @default(now())
@@ -201,6 +104,9 @@ model GameSession {
   settledAt          DateTime?
   createdBy          String?           @db.Uuid
   updatedBy          String?           @db.Uuid
+  mode               GameMode          @default(CLASSIC)
+  carromMode         String?           @default("classic")
+  teamCoinAssignment String?           @default("team_a_white")
 
   @@index([status])
   @@index([definitionId, status])
@@ -216,13 +122,6 @@ model GameParticipant {
   sessionId    String                @db.Uuid
   definitionId String                @db.Uuid
   userId       String                @db.Uuid
-  /// Deterministic seat index (0-based). Drives live-state turn order and, in
-  /// TEAM_2V2, the positional team split (Team A = seats {0,2}, B = {1,3}).
-  seat         Int                   @default(0)
-  /// Frozen team at start for a TEAM_2V2 session (null in CLASSIC).
-  team         GameTeam?
-  /// True for a bot participant — escrow, payout and refund are skipped for it.
-  isBot        Boolean               @default(false)
   stake        BigInt
   stakeTxnId   String?               @db.Uuid
   status       GameParticipantStatus @default(PLAYING)
@@ -232,6 +131,13 @@ model GameParticipant {
   isWinner     Boolean               @default(false)
   joinedAt     DateTime              @default(now())
   settledAt    DateTime?
+  /// True for a bot participant — escrow, payout and refund are skipped for it.
+  isBot        Boolean               @default(false)
+  /// Deterministic seat index (0-based). Drives live-state turn order and, in
+  /// TEAM_2V2, the positional team split (Team A = seats {0,2}, B = {1,3}).
+  seat         Int                   @default(0)
+  /// Frozen team at start for a TEAM_2V2 session (null in CLASSIC).
+  team         GameTeam?
   /// When this participant's client last acknowledged the result screen for
   /// this session — set by `POST games/sessions/:id/ack-result`, called once
   /// the player dismisses the Match Result screen (live reveal or
@@ -303,33 +209,19 @@ model GameEventLog {
   @@map("game_event_logs")
 }
 
-enum JackpotStatus {
-  ACTIVE
-  SETTLED
-  CANCELLED
-}
-
-enum JackpotEntryStatus {
-  ENTERED
-  WON
-  LOST
-  REFUNDED
-}
-
 model Jackpot {
-  id             String        @id @default(uuid()) @db.Uuid
+  id             String         @id @default(uuid()) @db.Uuid
   name           String
   code           String
-  entryFee       BigInt        @default(500)
-  currentPool    BigInt        @default(0)
-  status         JackpotStatus @default(ACTIVE)
-  winningEntryId String?       @db.Uuid
-  winnerId       String?       @db.Uuid
-  rewardAmount   BigInt        @default(0)
-  createdAt      DateTime      @default(now())
+  entryFee       BigInt         @default(500)
+  currentPool    BigInt         @default(0)
+  status         JackpotStatus  @default(ACTIVE)
+  winningEntryId String?        @db.Uuid
+  winnerId       String?        @db.Uuid
+  rewardAmount   BigInt         @default(0)
+  createdAt      DateTime       @default(now())
   settledAt      DateTime?
-
-  entries JackpotEntry[]
+  entries        JackpotEntry[]
 
   @@map("jackpots")
 }
@@ -345,11 +237,101 @@ model JackpotEntry {
   winTxnId     String?            @db.Uuid
   createdAt    DateTime           @default(now())
   settledAt    DateTime?
-
-  jackpot Jackpot @relation(fields: [jackpotId], references: [id], onDelete: Cascade)
+  jackpot      Jackpot            @relation(fields: [jackpotId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([jackpotId])
   @@map("jackpot_entries")
 }
 
+/// The eight games originally defined by the PRD. Only LUDO and CARROM are
+/// active in the catalog today (GAME_CATALOG_SEED) — GREEDY, ROULETTE, SLOTS,
+/// JACKPOT, UNO and DOMINO were removed as dead code (never shipped a real
+/// engine); their GameDefinition rows were disabled, not deleted, and these
+/// enum values are kept (dropping them needs a migration and risks historical
+/// game_sessions/game_transactions rows that still reference them).
+enum GameCode {
+  GREEDY
+  ROULETTE
+  SLOTS
+  JACKPOT
+  UNO
+  LUDO
+  CARROM
+  DOMINO
+  GREEDY_FOOD
+  LUCKY_FRUIT
+}
+
+/// Premium games spend Gold Coins; casual games spend Free Coins.
+enum GameCategory {
+  PREMIUM
+  CASUAL
+}
+
+/// Currency a game stakes/pays out in (maps to WalletCurrency at the seam).
+/// GOLD  → premium games (Greedy Food, Roulette, Lucky Fruit, Phoenix vs Wolf, Flip, Jackpot)
+/// GAME  → casual games (Ludo, UNO, Carrom, Dominoes)
+/// FREE  → @deprecated alias for GAME; kept so historical game_transactions rows remain valid
+enum GameCurrency {
+  GOLD
+  /// @deprecated — use GAME. Kept for historical row compatibility.
+  FREE
+  /// Canonical game coin currency (PRD §6). Use this in all new game definitions.
+  GAME
+}
+
+enum GameLobbyStatus {
+  OPEN
+  STARTED
+  CANCELLED
+  EXPIRED
+}
+
+enum GameSessionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  ABORTED
+}
+
+enum GameParticipantStatus {
+  PLAYING
+  WON
+  LOST
+  DREW
+  REFUNDED
+}
+
+enum GameTxnType {
+  STAKE
+  PAYOUT
+  REFUND
+}
+
+/// Lobby/session play mode. CLASSIC = 1..maxPlayers free-for-all (existing
+/// behavior); TEAM_2V2 = exactly four players split into two teams of two.
+enum GameMode {
+  CLASSIC
+  TEAM_2V2
+}
+
+/// Team a participant belongs to in a TEAM_2V2 match. Engines read teams
+/// positionally (Team A = seats {0,2}, Team B = seats {1,3}).
+enum GameTeam {
+  A
+  B
+}
+
+enum JackpotStatus {
+  ACTIVE
+  SETTLED
+  CANCELLED
+}
+
+enum JackpotEntryStatus {
+  ENTERED
+  WON
+  LOST
+  REFUNDED
+}

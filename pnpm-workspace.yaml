@@ -32,6 +32,7 @@ allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
   '@scarf/scarf': true
+  '@swc/core': true
   msgpackr-extract: true
   prisma: true
   protobufjs: true
@@ -41,7 +42,9 @@ onlyBuiltDependencies:
   - '@prisma/client'
   - '@prisma/engines'
   - '@scarf/scarf'
+  - '@swc/core'
   - msgpackr-extract
   - prisma
   - protobufjs
   - sharp
+

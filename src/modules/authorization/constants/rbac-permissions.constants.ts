@@ -1509,6 +1509,25 @@ export const DEFAULT_PERMISSIONS = [
     displayName: 'View Dashboard Statistics',
     description: 'Can view dashboard usage and health statistics',
   },
+
+  // Moderator Workforce & Operational System Permissions
+  { code: 'moderator.shift.view', module: 'moderator_shift', action: 'view', category: 'SYSTEM', displayName: 'View Shift', description: 'View own or assigned shift' },
+  { code: 'moderator.shift.manage', module: 'moderator_shift', action: 'manage', category: 'SYSTEM', displayName: 'Manage Shift', description: 'Assign or edit moderator working shifts' },
+  { code: 'moderator.device.request', module: 'moderator_device', action: 'request', category: 'SYSTEM', displayName: 'Request Device Change', description: 'Submit request to replace bound physical device' },
+  { code: 'moderator.device.review', module: 'moderator_device', action: 'review', category: 'SYSTEM', displayName: 'Review Device Change', description: 'Approve or reject moderator device change requests' },
+  { code: 'investigation.recording.view', module: 'investigation_recording', action: 'view', category: 'SYSTEM', displayName: 'View Investigation Recording', description: 'View server-side evidence packages and audit recordings' },
+  { code: 'moderator.warning.issue', module: 'moderator_warning', action: 'issue', category: 'SYSTEM', displayName: 'Issue Moderator Warning', description: 'Issue internal warnings (Level 1-3) to moderators' },
+  { code: 'moderator.warning.view', module: 'moderator_warning', action: 'view', category: 'SYSTEM', displayName: 'View Moderator Warnings', description: 'View warning records across moderators' },
+  { code: 'moderator.warning.view.self', module: 'moderator_warning', action: 'view', category: 'SYSTEM', displayName: 'View Own Warnings', description: 'View own warning records' },
+  { code: 'moderator.warning.resolve', module: 'moderator_warning', action: 'resolve', category: 'SYSTEM', displayName: 'Resolve Warning', description: 'Resolve moderator warnings and restore access' },
+  { code: 'moderator.performance.view.self', module: 'moderator_performance', action: 'view', category: 'SYSTEM', displayName: 'View Own Performance', description: 'View own daily performance stats and score' },
+  { code: 'moderator.performance.view.all', module: 'moderator_performance', action: 'view', category: 'SYSTEM', displayName: 'View All Moderator Performance', description: 'View KPI performance summary across all moderators' },
+  { code: 'live.stream.create', module: 'live_stream', action: 'create', category: 'ROOM', displayName: 'Create Live Stream', description: 'Host creates a new live stream' },
+  { code: 'live.stream.view', module: 'live_stream', action: 'view', category: 'ROOM', displayName: 'View Live Stream', description: 'View active live stream details' },
+  { code: 'live.stream.manage', module: 'live_stream', action: 'manage', category: 'ROOM', displayName: 'Manage Live Stream', description: 'End or close a live stream' },
+  { code: 'live.stream.moderate', module: 'live_stream', action: 'moderate', category: 'ROOM', displayName: 'Moderate Live Stream', description: 'Warn, mute, kick, or ban users in a live stream' },
+  { code: 'task.assign.moderator', module: 'tasks', action: 'assign', category: 'TASK', displayName: 'Assign Task to Moderator', description: 'Official/Manager assigns operational tasks to moderators' },
+  { code: 'task.view.assigned', module: 'tasks', action: 'view', category: 'TASK', displayName: 'View Assigned Tasks', description: 'Moderator views and updates tasks assigned to them' },
 ];
 
 // Data-Driven Default Role Hierarchy Edges (parent -> child)
@@ -1703,6 +1722,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'notification.audit.view',
     'notification.statistics.view',
     'announcement.manage',
+    // Moderator Warnings (Task 18)
+    'moderator.warning.issue',
+    'moderator.warning.resolve',
     // Analytics, dashboard & audit (operational scope)
     'analytics.view',
     'analytics.manage',
@@ -1719,6 +1741,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'dashboard.audit.view',
     'dashboard.statistics.view',
     'audit.view',
+    // Investigation recordings (Task 30)
+    'investigation.recording.view',
   ],
 
   /**
@@ -1737,8 +1761,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'user.update',
     'user.list.view',
     'user.profile.view',
+    'moderator.device.review',
+    'moderator.warning.review',
     'workforce.list.view',
-    'workforce.detail.view',
+    // workforce.detail.view intentionally omitted — spec: Admin/Super Admin only (Task 36)
     'workforce.hierarchy.view',
     'workforce.assign',
     'workforce.transfer',
@@ -1758,7 +1784,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'ranking.view',
     'family.statistics.view',
     'notification.manage',
-    'audit.view',
+    // audit.view intentionally omitted — spec: Admin/Super Admin only (Task 29)
   ],
 
   /**
@@ -1777,7 +1803,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'user.profile.view',
     'organization.hierarchy.view',
     'workforce.list.view',
-    'workforce.detail.view',
+    // workforce.detail.view intentionally omitted — spec: Admin/Super Admin only (Task 36)
     'agency.settlement.view',
     'agency.settlement.history.view',
     'coin_seller.settlement.view',
@@ -1804,6 +1830,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'user.ban',
     'room.update',
     'room.mute',
+    'moderator.shift.view',
+    'moderator.device.request',
+    'moderator.warning.view.self',
+    'moderator.performance.view.self',
+    'live.stream.view',
+    'live.stream.moderate',
+    'task.view.assigned',
   ],
 
   /** Recruits agencies and hosts; approval stays with Admin. */

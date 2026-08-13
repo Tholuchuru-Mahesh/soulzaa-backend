@@ -1,8 +1,3 @@
-// ============================================================
-// Soulzaa — Treasury & Financial Core Governance Schema
-// Entities: TreasuryReserve, FinancialPolicy, TreasuryLog
-// ============================================================
-
 /// Global Treasury & Coin Supply Reserve tracking
 model TreasuryReserve {
   id                String   @id @default(uuid()) @db.Uuid

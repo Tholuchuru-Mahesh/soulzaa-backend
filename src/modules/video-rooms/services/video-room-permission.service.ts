@@ -83,8 +83,16 @@ export class VideoRoomPermissionService {
     };
   }
 
+  private static readonly MODERATOR_ALLOWED_PERMISSIONS = new Set<VideoRoomPermission>([
+    VideoRoomPermission.MUTE_USERS,
+    VideoRoomPermission.KICK_USERS,
+    VideoRoomPermission.BLOCK_USERS,
+    VideoRoomPermission.ROOM_MUTE,
+  ]);
+
   /**
-   * True if `actor` may exercise `permission` in `room` (platform admin bypasses).
+   * True if `actor` may exercise `permission` in `room` (platform admin bypasses,
+   * platform moderator bypasses moderation-specific permissions).
    * This is the instrumented entry point — the latency histogram and the
    * allowed/denied counters are recorded here rather than in `resolve`, so a
    * measurement reflects one *decision*, not one cache lookup.
@@ -95,9 +103,18 @@ export class VideoRoomPermissionService {
     permission: VideoRoomPermission,
   ): Promise<boolean> {
     const startedAt = Date.now();
-    const allowed = this.isPlatformAdmin(actor.roles)
-      ? true
-      : (await this.resolve(room, actor.id)).permissions.includes(permission);
+    let allowed = false;
+
+    if (this.isPlatformAdmin(actor.roles)) {
+      allowed = true;
+    } else if (
+      actor.roles?.includes(PlatformRole.MODERATOR) &&
+      VideoRoomPermissionService.MODERATOR_ALLOWED_PERMISSIONS.has(permission)
+    ) {
+      allowed = true;
+    } else {
+      allowed = (await this.resolve(room, actor.id)).permissions.includes(permission);
+    }
 
     this.metrics.observeAuthorization((Date.now() - startedAt) / 1000);
     this.metrics.incPermissionCheck(allowed ? 'allowed' : 'denied');
@@ -113,7 +130,12 @@ export class VideoRoomPermissionService {
   ): Promise<boolean> {
     if (this.isPlatformAdmin(actor.roles)) return true;
     const held = (await this.resolve(room, actor.id)).permissions;
-    return permissions.some((permission) => held.includes(permission));
+    const isModerator = actor.roles?.includes(PlatformRole.MODERATOR);
+    return permissions.some(
+      (permission) =>
+        held.includes(permission) ||
+        (isModerator && VideoRoomPermissionService.MODERATOR_ALLOWED_PERMISSIONS.has(permission)),
+    );
   }
 
   /** True if `actor` holds every one of `permissions`. */
@@ -124,7 +146,12 @@ export class VideoRoomPermissionService {
   ): Promise<boolean> {
     if (this.isPlatformAdmin(actor.roles)) return true;
     const held = (await this.resolve(room, actor.id)).permissions;
-    return permissions.every((permission) => held.includes(permission));
+    const isModerator = actor.roles?.includes(PlatformRole.MODERATOR);
+    return permissions.every(
+      (permission) =>
+        held.includes(permission) ||
+        (isModerator && VideoRoomPermissionService.MODERATOR_ALLOWED_PERMISSIONS.has(permission)),
+    );
   }
 
   /** True if `actor`'s effective in-room role is exactly `role`. */

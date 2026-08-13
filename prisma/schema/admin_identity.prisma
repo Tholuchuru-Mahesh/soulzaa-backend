@@ -1,13 +1,3 @@
-// ============================================================
-// Admin Identity — second-factor enrolment and device/IP trust
-// for hidden staff accounts. Owned by the "admin-identity" module.
-//
-// Deliberately separate from the session tables: staff second-factor
-// state must not be reachable through any user-facing session query,
-// and its lifecycle (enrol once, rotate rarely) differs from a session's.
-// No cross-module relations — userId is an opaque reference.
-// ============================================================
-
 /// TOTP enrolment for a staff account. One row per user; the secret is the
 /// shared key an authenticator app holds, so it is never returned by any read
 /// route after enrolment completes.

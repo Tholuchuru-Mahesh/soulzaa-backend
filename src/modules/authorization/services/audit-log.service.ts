@@ -12,6 +12,33 @@ export interface CreateAuditLogParams {
   ipAddress?: string;
   userAgent?: string;
   status?: string;
+  // Task 28 — extended audit context
+  targetUserId?: string;
+  roomId?: string;
+  region?: string;
+}
+
+/** Parse a browser name from a raw User-Agent string (best-effort). */
+function parseBrowser(ua?: string): string | null {
+  if (!ua) return null;
+  if (ua.includes('Edg/') || ua.includes('EdgA/')) return 'Edge';
+  if (ua.includes('OPR/') || ua.includes('Opera/')) return 'Opera';
+  if (ua.includes('Chrome/') && !ua.includes('Chromium/')) return 'Chrome';
+  if (ua.includes('Safari/') && !ua.includes('Chrome/')) return 'Safari';
+  if (ua.includes('Firefox/')) return 'Firefox';
+  if (ua.includes('MSIE') || ua.includes('Trident/')) return 'IE';
+  return null;
+}
+
+/** Parse an OS name from a raw User-Agent string (best-effort). */
+function parseOs(ua?: string): string | null {
+  if (!ua) return null;
+  if (/Android/i.test(ua)) return 'Android';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'iOS';
+  if (/Windows NT/i.test(ua)) return 'Windows';
+  if (/Macintosh/i.test(ua)) return 'macOS';
+  if (/Linux/i.test(ua)) return 'Linux';
+  return null;
 }
 
 @Injectable()
@@ -36,6 +63,11 @@ export class AuditLogService {
           ipAddress: params.ipAddress,
           userAgent: params.userAgent,
           status: params.status ?? 'SUCCESS',
+          targetUserId: params.targetUserId,
+          roomId: params.roomId,
+          region: params.region,
+          browser: parseBrowser(params.userAgent),
+          os: parseOs(params.userAgent),
         },
       });
     } catch (err) {
@@ -47,6 +79,7 @@ export class AuditLogService {
       return null;
     }
   }
+
 
   /**
    * Query audit log records with pagination and filters.

@@ -1,27 +1,3 @@
-// ============================================================
-// Video Rooms — VR-1: Generic event store, state snapshots, and
-// room announcements. Owned by the "video_rooms" module.
-//
-// Two append-only histories, kept distinct on purpose:
-//  • video_room_logs (VR-0) — the human-readable, enum-typed lifecycle
-//    AUDIT trail (CREATED/ENDED/LOCKED/…).
-//  • video_room_events (VR-1) — a free-form machine EVENT STREAM
-//    (eventType + payload + correlationId) for replay / recovery /
-//    downstream analytics, where the vocabulary is open-ended.
-//
-// video_room_snapshots serialise room state for crash/reconnect
-// recovery. No DB foreign keys — reference rooms/users by id (@@index).
-// ============================================================
-
-/// Why a snapshot was taken. PERIODIC = scheduled; PRE_SHUTDOWN = graceful drain;
-/// MANUAL = operator-triggered; RECOVERY = captured during a recovery flow.
-enum VideoRoomSnapshotReason {
-  PERIODIC
-  PRE_SHUTDOWN
-  MANUAL
-  RECOVERY
-}
-
 /// Append-only generic domain-event store. `eventType` is an open string (e.g.
 /// "seat.taken", "pk.started"), `payload` the event body, `referenceId` an optional
 /// related entity, `correlationId` groups events from one causal flow. Write-once —
@@ -60,13 +36,11 @@ model VideoRoomSnapshot {
 /// A room announcement (owner/admin broadcast). Editable and removable, so it
 /// carries the full audit block + soft delete (unlike the append-only histories).
 model VideoRoomAnnouncement {
-  id       String  @id @default(uuid()) @db.Uuid
-  roomId   String  @db.Uuid
-  authorId String  @db.Uuid
-  content  String
-  isPinned Boolean @default(false)
-
-  // ---- Audit ----
+  id        String    @id @default(uuid()) @db.Uuid
+  roomId    String    @db.Uuid
+  authorId  String    @db.Uuid
+  content   String
+  isPinned  Boolean   @default(false)
   createdBy String?   @db.Uuid
   updatedBy String?   @db.Uuid
   createdAt DateTime  @default(now())
@@ -75,4 +49,13 @@ model VideoRoomAnnouncement {
 
   @@index([roomId])
   @@map("video_room_announcements")
+}
+
+/// Why a snapshot was taken. PERIODIC = scheduled; PRE_SHUTDOWN = graceful drain;
+/// MANUAL = operator-triggered; RECOVERY = captured during a recovery flow.
+enum VideoRoomSnapshotReason {
+  PERIODIC
+  PRE_SHUTDOWN
+  MANUAL
+  RECOVERY
 }

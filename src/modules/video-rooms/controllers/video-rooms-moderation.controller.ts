@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
@@ -16,6 +17,8 @@ import { RequestMeta } from 'src/common/decorators/request-meta.decorator';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import type { RequestMetadata } from 'src/common/interfaces/request-metadata.interface';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
+import { ShiftActiveGuard } from 'src/modules/moderator-shift/guards/shift-active.guard';
+import { SuspendedGuard } from 'src/modules/moderator-warning/guards/suspended.guard';
 import {
   BlockVideoRoomUserDto,
   ForceDisconnectDto,
@@ -70,6 +73,7 @@ export class VideoRoomsModerationController {
   // ======================= Kick =======================
 
   @Post(':id/moderation/kick')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Kick one or more members from the room',
@@ -98,6 +102,7 @@ export class VideoRoomsModerationController {
   // ======================= Blacklist =======================
 
   @Post(':id/moderation/blacklist')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Durably blacklist a user from the room',
@@ -116,10 +121,19 @@ export class VideoRoomsModerationController {
     @Body() dto: BlockVideoRoomUserDto,
     @RequestMeta() meta: RequestMetadata,
   ) {
-    return this.moderation.blacklist(this.actor(user), roomId, dto.userId, dto.reason, meta);
+    return this.moderation.blacklist(
+      this.actor(user),
+      roomId,
+      dto.userId,
+      dto.reason,
+      dto.type,
+      dto.durationMinutes,
+      meta,
+    );
   }
 
   @Delete(':id/moderation/blacklist/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Lift a blacklist entry',
@@ -142,6 +156,7 @@ export class VideoRoomsModerationController {
   // ======================= Mute / unmute / mute-all =======================
 
   @Post(':id/moderation/mute')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Mute a member on one or both channels (chat/mic)',
@@ -168,6 +183,7 @@ export class VideoRoomsModerationController {
   }
 
   @Post(':id/moderation/unmute')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Lift a mute on one or both channels',
@@ -189,6 +205,7 @@ export class VideoRoomsModerationController {
   }
 
   @Post(':id/moderation/mute-all')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Mute the whole room (all non-elevated members) on one or both channels',
@@ -210,6 +227,7 @@ export class VideoRoomsModerationController {
   }
 
   @Post(':id/moderation/unmute-all')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Lift a whole-room mute on one or both channels',
@@ -234,6 +252,7 @@ export class VideoRoomsModerationController {
   // ======================= Warn / force-disconnect =======================
 
   @Post(':id/moderation/warn')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Issue a warning to a member',
@@ -261,7 +280,27 @@ export class VideoRoomsModerationController {
     );
   }
 
+  @Post(':id/moderation/escalate')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Escalate critical violation in video room to managers/admins' })
+  escalate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Body() dto: { targetUserId: string; reason: string },
+    @RequestMeta() meta: RequestMetadata,
+  ) {
+    return this.moderation.escalateViolation(
+      this.actor(user),
+      roomId,
+      dto.targetUserId,
+      dto.reason,
+      meta,
+    );
+  }
+
   @Post(':id/moderation/force-disconnect')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: "Forcibly disconnect a member's realtime session",

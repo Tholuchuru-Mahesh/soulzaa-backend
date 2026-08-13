@@ -1,10 +1,101 @@
-// ============================================================
-// Role requests — the approval chains that create staff. A request
-// travels Official → Manager → Admin (or Manager → Admin for
-// recommendations) and grants a role on approval. Owned by the
-// "role-requests" module. No cross-module relations: reference users
-// and organization rows by id.
-// ============================================================
+/// A live request for a role. One open request per (subject, type) is
+/// enforced by a partial unique index, so a concurrent double-submit
+/// cannot create two.
+model RoleRequest {
+  id                    String                @id @default(uuid()) @db.Uuid
+  reference             String                @unique
+  type                  RoleRequestType
+  subjectUserId         String                @db.Uuid
+  initiatedByUserId     String                @db.Uuid
+  status                RoleRequestStatus     @default(SUBMITTED)
+  currentStage          RoleRequestStage?
+  currentStageEnteredAt DateTime?
+  pipelineVersion       Int
+  formData              Json?
+  documentKeys          String[]
+  regionId              String                @db.Uuid
+  stateId               String?               @db.Uuid
+  countryId             String?               @db.Uuid
+  submittedAt           DateTime              @default(now())
+  decidedAt             DateTime?
+  decidedByUserId       String?               @db.Uuid
+  outcomeReason         String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  actions               RoleRequestAction[]
+  documents             RoleRequestDocument[]
+
+  @@index([status, currentStage])
+  @@index([regionId, status])
+  @@index([countryId, status])
+  @@index([subjectUserId, type])
+  @@map("role_requests")
+}
+
+/// Append-only record of every stage action. Never updated, never deleted.
+model RoleRequestAction {
+  id                String                @id @default(uuid()) @db.Uuid
+  requestId         String                @db.Uuid
+  sequence          Int
+  stage             RoleRequestStage
+  action            RoleRequestActionType
+  actorUserId       String                @db.Uuid
+  actorRole         String
+  notes             String?
+  checklistSnapshot Json?
+  stageEnteredAt    DateTime
+  actedAt           DateTime              @default(now())
+  request           RoleRequest           @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, sequence])
+  @@index([requestId, actedAt])
+  @@map("role_request_actions")
+}
+
+/// One uploaded document, tied to the slot it fills.
+///
+/// This is the source of truth for a request's documents. `RoleRequest.documentKeys`
+/// is kept as a flat mirror for older readers, but it cannot say which key is the
+/// PAN card and has nowhere to record a verdict, so nothing new should read it.
+model RoleRequestDocument {
+  id               String                    @id @default(uuid()) @db.Uuid
+  requestId        String                    @db.Uuid
+  slot             RoleRequestDocumentSlot
+  storageKey       String
+  filename         String
+  contentType      String
+  sizeBytes        Int
+  /// SHA-256 of the stored bytes. Indexed but deliberately NOT unique: the same
+  /// scan legitimately fills two slots for one applicant (a bank statement that
+  /// doubles as address proof). Reuse across *different* applicants is what the
+  /// verifier flags, and that is a query, not a constraint.
+  checksum         String
+  checkVerdict     DocumentCheckVerdict
+  /// What the automated pass flagged, as a list of {code, detail} objects. Empty
+  /// on a clean PASSED document.
+  checkFindings    Json?
+  status           RoleRequestDocumentStatus @default(PENDING)
+  reviewNotes      String?
+  reviewedByUserId String?                   @db.Uuid
+  reviewedAt       DateTime?
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  request          RoleRequest               @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, slot])
+  @@index([checksum])
+  @@map("role_request_documents")
+}
+
+/// Per-year counter backing the human-readable reference (RR-2026-000154).
+/// Incremented atomically inside the submitting transaction.
+model RoleRequestCounter {
+  year         Int      @id
+  lastSequence Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@map("role_request_counters")
+}
 
 enum RoleRequestType {
   AGENCY
@@ -66,109 +157,4 @@ enum DocumentCheckVerdict {
   PASSED
   SUSPECT
   FAILED
-}
-
-/// A live request for a role. One open request per (subject, type) is
-/// enforced by a partial unique index, so a concurrent double-submit
-/// cannot create two.
-model RoleRequest {
-  id                    String            @id @default(uuid()) @db.Uuid
-  reference             String            @unique
-  type                  RoleRequestType
-  subjectUserId         String            @db.Uuid
-  initiatedByUserId     String            @db.Uuid
-  status                RoleRequestStatus @default(SUBMITTED)
-  currentStage          RoleRequestStage?
-  currentStageEnteredAt DateTime?
-  pipelineVersion       Int
-  formData              Json?
-  documentKeys          String[]
-  regionId              String            @db.Uuid
-  stateId               String?           @db.Uuid
-  countryId             String?           @db.Uuid
-  submittedAt           DateTime          @default(now())
-  decidedAt             DateTime?
-  decidedByUserId       String?           @db.Uuid
-  outcomeReason         String?
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-
-  actions   RoleRequestAction[]
-  documents RoleRequestDocument[]
-
-  @@index([status, currentStage])
-  @@index([regionId, status])
-  @@index([countryId, status])
-  @@index([subjectUserId, type])
-  @@map("role_requests")
-}
-
-/// Append-only record of every stage action. Never updated, never deleted.
-model RoleRequestAction {
-  id                String                @id @default(uuid()) @db.Uuid
-  requestId         String                @db.Uuid
-  sequence          Int
-  stage             RoleRequestStage
-  action            RoleRequestActionType
-  actorUserId       String                @db.Uuid
-  actorRole         String
-  notes             String?
-  checklistSnapshot Json?
-  stageEnteredAt    DateTime
-  actedAt           DateTime              @default(now())
-
-  request RoleRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
-  @@unique([requestId, sequence])
-  @@index([requestId, actedAt])
-  @@map("role_request_actions")
-}
-
-/// One uploaded document, tied to the slot it fills.
-///
-/// This is the source of truth for a request's documents. `RoleRequest.documentKeys`
-/// is kept as a flat mirror for older readers, but it cannot say which key is the
-/// PAN card and has nowhere to record a verdict, so nothing new should read it.
-model RoleRequestDocument {
-  id          String                  @id @default(uuid()) @db.Uuid
-  requestId   String                  @db.Uuid
-  slot        RoleRequestDocumentSlot
-  storageKey  String
-  filename    String
-  contentType String
-  sizeBytes   Int
-
-  /// SHA-256 of the stored bytes. Indexed but deliberately NOT unique: the same
-  /// scan legitimately fills two slots for one applicant (a bank statement that
-  /// doubles as address proof). Reuse across *different* applicants is what the
-  /// verifier flags, and that is a query, not a constraint.
-  checksum      String
-  checkVerdict  DocumentCheckVerdict
-  /// What the automated pass flagged, as a list of {code, detail} objects. Empty
-  /// on a clean PASSED document.
-  checkFindings Json?
-
-  status           RoleRequestDocumentStatus @default(PENDING)
-  reviewNotes      String?
-  reviewedByUserId String?                   @db.Uuid
-  reviewedAt       DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  request RoleRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
-  @@unique([requestId, slot])
-  @@index([checksum])
-  @@map("role_request_documents")
-}
-
-/// Per-year counter backing the human-readable reference (RR-2026-000154).
-/// Incremented atomically inside the submitting transaction.
-model RoleRequestCounter {
-  year         Int      @id
-  lastSequence Int      @default(0)
-  updatedAt    DateTime @updatedAt
-
-  @@map("role_request_counters")
 }

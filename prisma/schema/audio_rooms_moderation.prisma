@@ -1,78 +1,3 @@
-// ============================================================
-// Audio Room Moderation (AR-3) — bans, mutes, reports, notes,
-// appeals, and the append-only moderation audit trail.
-// Owned by the "audio_rooms" module. No cross-module relations —
-// reference users/rooms by id. Live enforcement state (banned/muted
-// sets) is cached in Redis; these tables are the durable record.
-// ============================================================
-
-enum ModerationBanType {
-  TEMPORARY
-  PERMANENT
-}
-
-enum ModerationMuteType {
-  TEMPORARY
-  PERMANENT
-}
-
-/// Lifecycle of a ban/mute: ACTIVE until lifted (manually) or expired (TTL).
-enum ModerationStatus {
-  ACTIVE
-  LIFTED
-  EXPIRED
-}
-
-/// Report reasons (PRD §21 Reports & Blocking).
-enum ReportReason {
-  ABUSE
-  HARASSMENT
-  SPAM
-  FRAUD
-  FAKE_PROFILE
-  COPYRIGHT
-  ADULT_CONTENT
-  OTHER
-}
-
-enum ReportStatus {
-  PENDING
-  REVIEWED
-  DISMISSED
-  ACTIONED
-}
-
-enum AppealStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-/// Actions recorded in the append-only moderation_actions audit trail.
-enum ModerationActionType {
-  KICK
-  UNKICK
-  BAN_TEMPORARY
-  BAN_PERMANENT
-  UNBAN
-  MUTE_TEMPORARY
-  MUTE_PERMANENT
-  UNMUTE
-  WARN
-  REPORT_REVIEWED
-  NOTE_ADDED
-  APPEAL_SUBMITTED
-  APPEAL_APPROVED
-  APPEAL_REJECTED
-  // ---- Chat (AR-4) ----
-  CHAT_MESSAGE_DELETED
-  CHAT_WORD_MASKED
-  CHAT_WORD_REJECTED
-  CHAT_WORD_ESCALATED
-  CHAT_AUTO_MUTED
-  CHAT_AUTO_KICKED
-}
-
 /// A per-room kick — the durable "Kick List" a room's owner/admins manage. A
 /// kicked user is removed from the room AND barred from rejoining until a
 /// moderator restores them (status → LIFTED), which is what distinguishes a kick
@@ -88,12 +13,10 @@ model RoomKick {
   status      ModerationStatus @default(ACTIVE)
   liftedBy    String?          @db.Uuid
   liftedAt    DateTime?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdBy   String?          @db.Uuid
+  updatedBy   String?          @db.Uuid
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   @@index([roomId, status])
   @@index([userId, status])
@@ -114,12 +37,10 @@ model RoomBan {
   status      ModerationStatus  @default(ACTIVE)
   liftedBy    String?           @db.Uuid
   liftedAt    DateTime?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdBy   String?           @db.Uuid
+  updatedBy   String?           @db.Uuid
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   @@index([roomId, status])
   @@index([userId, status])
@@ -140,12 +61,10 @@ model RoomMute {
   status      ModerationStatus   @default(ACTIVE)
   liftedBy    String?            @db.Uuid
   liftedAt    DateTime?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdBy   String?            @db.Uuid
+  updatedBy   String?            @db.Uuid
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
   @@index([roomId, status])
   @@index([userId, status])
@@ -195,17 +114,18 @@ model RoomReport {
   reason           ReportReason
   description      String?
   status           ReportStatus @default(PENDING)
+  assigneeId       String?      @db.Uuid
+  assignedAt       DateTime?
   reviewedBy       String?      @db.Uuid
   reviewedAt       DateTime?
   resolutionAction String?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdBy        String?      @db.Uuid
+  updatedBy        String?      @db.Uuid
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   @@index([roomId, status])
+  @@index([assigneeId, status])
   @@index([targetUserId])
   @@index([reporterId])
   @@map("room_reports")
@@ -225,16 +145,85 @@ model RoomAppeal {
   reviewedBy   String?      @db.Uuid
   reviewedAt   DateTime?
   decisionNote String?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdBy    String?      @db.Uuid
+  updatedBy    String?      @db.Uuid
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@index([status])
   @@index([userId])
   @@index([banId])
   @@index([muteId])
   @@map("room_appeals")
+}
+
+enum ModerationBanType {
+  TEMPORARY
+  PERMANENT
+}
+
+enum ModerationMuteType {
+  TEMPORARY
+  PERMANENT
+}
+
+/// Lifecycle of a ban/mute: ACTIVE until lifted (manually) or expired (TTL).
+enum ModerationStatus {
+  ACTIVE
+  LIFTED
+  EXPIRED
+}
+
+/// Report reasons (PRD §21 Reports & Blocking).
+enum ReportReason {
+  ABUSE
+  HARASSMENT
+  SPAM
+  FRAUD
+  FAKE_PROFILE
+  COPYRIGHT
+  ADULT_CONTENT
+  HATE_SPEECH
+  BULLYING
+  THREATS
+  SEXUAL_CONTENT
+  INAPPROPRIATE_CONTENT
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+  ACTIONED
+}
+
+enum AppealStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Actions recorded in the append-only moderation_actions audit trail.
+enum ModerationActionType {
+  KICK
+  BAN_TEMPORARY
+  BAN_PERMANENT
+  UNBAN
+  MUTE_TEMPORARY
+  MUTE_PERMANENT
+  UNMUTE
+  WARN
+  REPORT_REVIEWED
+  NOTE_ADDED
+  APPEAL_SUBMITTED
+  APPEAL_APPROVED
+  APPEAL_REJECTED
+  CHAT_MESSAGE_DELETED
+  CHAT_WORD_MASKED
+  CHAT_WORD_REJECTED
+  CHAT_WORD_ESCALATED
+  CHAT_AUTO_MUTED
+  CHAT_AUTO_KICKED
+  UNKICK
 }

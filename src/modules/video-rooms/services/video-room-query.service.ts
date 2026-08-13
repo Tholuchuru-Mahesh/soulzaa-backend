@@ -130,7 +130,9 @@ export class VideoRoomQueryService {
 
   private isPrivileged(actor: RoomActor): boolean {
     return (
-      actor.roles.includes(PlatformRole.ADMIN) || actor.roles.includes(PlatformRole.SUPER_ADMIN)
+      actor.roles.includes(PlatformRole.ADMIN) ||
+      actor.roles.includes(PlatformRole.SUPER_ADMIN) ||
+      actor.roles.includes(PlatformRole.MODERATOR)
     );
   }
 

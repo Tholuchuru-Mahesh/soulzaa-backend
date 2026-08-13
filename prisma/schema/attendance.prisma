@@ -1,9 +1,3 @@
-// ============================================================
-// Attendance — daily login streak. A seeded 30-rung ladder, per-user
-// streak state, and an immutable claim log. Owned by the "attendance"
-// module. No cross-module relations: reference users by id.
-// ============================================================
-
 /// One day of the reward ladder. Seeded on bootstrap, tuned by operators.
 model AttendanceLadderRung {
   id         String         @id @default(uuid()) @db.Uuid

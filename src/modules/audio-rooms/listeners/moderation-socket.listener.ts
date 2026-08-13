@@ -2,6 +2,7 @@ import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { SocketManager } from 'src/infra/socket/socket.manager';
 import { AUDIO_ROOM_NAMESPACE, ROOM_SOCKET_EVENTS } from '../constants/audio-room.constants';
+import { SYSTEM_MODERATOR_ID } from '../constants/moderation.constants';
 import {
   AUDIO_ROOM_MODERATION_EVENTS,
   type AppealResolvedEvent,
@@ -32,29 +33,33 @@ export class ModerationSocketListener implements OnModuleInit {
 
   onModuleInit(): void {
     this.bus.subscribe<MemberKickedEvent>(AUDIO_ROOM_MODERATION_EVENTS.KICKED, (e) => {
-      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_KICKED, e.payload);
-      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_KICKED, e.payload);
+      const payload = this.anonymize(e.payload);
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_KICKED, payload);
+      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_KICKED, payload);
     });
     this.bus.subscribe<MemberUnkickedEvent>(AUDIO_ROOM_MODERATION_EVENTS.UNKICKED, (e) => {
-      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_UNKICKED, e.payload);
-      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_UNKICKED, e.payload);
+      const payload = this.anonymize(e.payload);
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_UNKICKED, payload);
+      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_UNKICKED, payload);
     });
     this.bus.subscribe<MemberBannedEvent>(AUDIO_ROOM_MODERATION_EVENTS.BANNED, (e) => {
-      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_BANNED, e.payload);
-      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_BANNED, e.payload);
+      const payload = this.anonymize(e.payload);
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_BANNED, payload);
+      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_BANNED, payload);
     });
     this.bus.subscribe<MemberUnbannedEvent>(AUDIO_ROOM_MODERATION_EVENTS.UNBANNED, (e) => {
-      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_UNBANNED, e.payload);
-      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_UNBANNED, e.payload);
+      const payload = this.anonymize(e.payload);
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_UNBANNED, payload);
+      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_UNBANNED, payload);
     });
     this.bus.subscribe<MemberMutedEvent>(AUDIO_ROOM_MODERATION_EVENTS.MUTED, (e) =>
-      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_MUTED, e.payload),
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_MUTED, this.anonymize(e.payload)),
     );
     this.bus.subscribe<MemberUnmutedEvent>(AUDIO_ROOM_MODERATION_EVENTS.UNMUTED, (e) =>
-      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_UNMUTED, e.payload),
+      this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_UNMUTED, this.anonymize(e.payload)),
     );
     this.bus.subscribe<MemberWarnedEvent>(AUDIO_ROOM_MODERATION_EVENTS.WARNED, (e) =>
-      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_WARNED, e.payload),
+      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_WARNED, this.anonymize(e.payload)),
     );
     this.bus.subscribe<MemberReportedEvent>(AUDIO_ROOM_MODERATION_EVENTS.REPORTED, (e) =>
       e.payload.recipientIds.forEach((id) =>
@@ -69,6 +74,16 @@ export class ModerationSocketListener implements OnModuleInit {
     this.bus.subscribe<AppealResolvedEvent>(AUDIO_ROOM_MODERATION_EVENTS.APPEAL_RESOLVED, (e) =>
       this.user(e.payload.userId, ROOM_SOCKET_EVENTS.APPEAL_RESOLVED, e.payload),
     );
+  }
+
+  private anonymize<T extends { moderatorId: string }>(
+    payload: T,
+  ): T & { systemMessage: string } {
+    return {
+      ...payload,
+      moderatorId: SYSTEM_MODERATOR_ID,
+      systemMessage: 'A moderator took action on this user for violating community guidelines.',
+    };
   }
 
   private room(roomId: string, event: string, payload: unknown): void {

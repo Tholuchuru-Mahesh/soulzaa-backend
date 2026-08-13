@@ -1,8 +1,3 @@
-// ============================================================
-// Soulzaa — Enterprise Level & Experience Engine Schema
-// Entities: UserLevel, LevelDefinition, ExperienceSource, ExperienceHistory, LevelStatistics, LevelAudit, LevelConfiguration
-// ============================================================
-
 /// User Level & EXP Aggregate
 model UserLevel {
   id           String   @id @default(uuid()) @db.Uuid

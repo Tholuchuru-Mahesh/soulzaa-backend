@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { currentTraceId } from 'src/infra/observability/trace.util';
+import { currentTraceId } from '../../infra/observability/trace.util';
 import type { ErrorCode } from '../exceptions/error-codes';
 import type { ErrorResponse } from '../interfaces/api-response.interface';
 

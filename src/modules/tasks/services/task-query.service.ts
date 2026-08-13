@@ -77,4 +77,38 @@ export class TaskQueryService {
       orderBy: [{ priority: 'desc' }, { name: 'asc' }],
     });
   }
+
+  /**
+   * Task 25 — Moderator assignment summary.
+   * Returns combined Assigned/Completed/Pending/Overdue counts and overdue percentage.
+   * Overdue = assignments past their dueAt without COMPLETED status.
+   */
+  async moderatorAssignmentSummary(moderatorId: string): Promise<{
+    assigned: number;
+    completed: number;
+    pending: number;
+    overdue: number;
+    overduePercentage: number;
+  }> {
+    const now = new Date();
+
+    const [assigned, completed, overdue] = await Promise.all([
+      this.prisma.moderator_task_assignments.count({ where: { moderatorId } }),
+      this.prisma.moderator_task_assignments.count({ where: { moderatorId, status: 'COMPLETED' } }),
+      // Overdue: dueAt in the past AND status not COMPLETED
+      this.prisma.moderator_task_assignments.count({
+        where: {
+          moderatorId,
+          dueAt: { lt: now },
+          status: { not: 'COMPLETED' },
+        },
+      }),
+    ]);
+
+    const pending = assigned - completed;
+    const overduePercentage = assigned > 0 ? Math.round((overdue / assigned) * 100) : 0;
+
+    return { assigned, completed, pending, overdue, overduePercentage };
+  }
 }
+

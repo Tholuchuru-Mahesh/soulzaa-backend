@@ -10,6 +10,10 @@ import { RoomAppearanceController } from './controllers/room-appearance.controll
 import { VoiceController } from './controllers/voice.controller';
 import { WatchPartyController } from './controllers/watch-party.controller';
 import { AudioRoomsAdminController } from './controllers/audio-rooms-admin.controller';
+import { InvestigationRecordingModule } from 'src/modules/investigation-recording/investigation-recording.module';
+import { ModeratorPerformanceModule } from 'src/modules/moderator-performance/moderator-performance.module';
+import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shift.module';
+import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-warning.module';
 import { AUDIO_ROOMS_SERVICE } from './interfaces/audio-rooms.service.interface';
 import { AUDIO_ROOM_CHAT_SERVICE } from './interfaces/chat.service.interface';
 import { MODERATION_SERVICE } from './interfaces/moderation.service.interface';
@@ -87,8 +91,17 @@ import { VoiceService } from './services/voice.service';
  * MODERATION_SERVICE by token without importing this module (cross-module access
  * only via `interfaces/` or EVENT_BUS).
  */
+import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
+
 @Global()
 @Module({
+  imports: [
+    InvestigationRecordingModule,
+    ModeratorPerformanceModule,
+    ModeratorShiftModule,
+    ModeratorWarningModule,
+    MobileWorkforceModule,
+  ],
   controllers: [
     AudioRoomsController,
     AudioRoomSeatsController,

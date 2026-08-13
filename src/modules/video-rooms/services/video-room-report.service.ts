@@ -35,6 +35,8 @@ import {
   type PermissionRoomRef,
 } from './video-room-permission.service';
 
+import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
+
 /**
  * Phase 16 reporting: a member (any active role, including audience/viewer —
  * gated by `@NotGuest` at the controller, not here) files a report against
@@ -60,6 +62,7 @@ export class VideoRoomReportService {
     private readonly metrics: VideoRoomModerationMetrics,
     @InjectQueue(VIDEO_ROOM_MODERATION_QUEUES.REPORT) private readonly queue: Queue,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    private readonly performanceStats?: ModeratorPerformanceService,
   ) {}
 
   /**
@@ -170,8 +173,15 @@ export class VideoRoomReportService {
       targetUserId: report.targetUserId,
       action: VideoRoomModerationActionType.REPORT_REVIEWED,
       reason: dto.resolutionAction ?? null,
-      metadata: this.auditMetadata({ reportId, status: dto.status }, requestMeta),
+      metadata: this.auditMetadata(
+        { reportId, status: dto.status, recommendedAction: dto.recommendedAction ?? null },
+        requestMeta,
+      ),
     });
+
+    if (this.performanceStats) {
+      await this.performanceStats.recordAction(actor.id, 'REPORT_ESCALATED' as any);
+    }
 
     await this.bus.publish(
       new ReportReviewedEvent({

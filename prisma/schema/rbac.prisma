@@ -1,49 +1,31 @@
-// ============================================================
-// Soulzaa — RBAC & Authorization Domain Schema
-// Entities: Role, Permission, RolePermission, UserRole,
-//           RoleHierarchy, Country, State, Region, RoleScope,
-//           AuditLog
-// ============================================================
-
-enum ScopeType {
-  GLOBAL
-  COUNTRY
-  STATE
-  REGION
-}
-
 /// Dynamic platform system roles (SUPER_ADMIN, ADMIN, etc.)
 model Role {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String   @unique
-  displayName String?
-  description String?
-  isSystem    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // ---- Relations ----
+  id                String           @id @default(uuid()) @db.Uuid
+  name              String           @unique
+  displayName       String?
+  description       String?
+  isSystem          Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  childHierarchies  RoleHierarchy[]  @relation("ChildRole")
+  parentHierarchies RoleHierarchy[]  @relation("ParentRole")
   rolePermissions   RolePermission[]
   userRoles         UserRole[]
-  parentHierarchies RoleHierarchy[]  @relation("ParentRole")
-  childHierarchies  RoleHierarchy[]  @relation("ChildRole")
 
   @@map("roles")
 }
 
 /// Granular platform permission (code format: `resource:action` or `module.action`)
 model Permission {
-  id          String   @id @default(uuid()) @db.Uuid
-  code        String   @unique
-  module      String
-  action      String
-  category    String   @default("SYSTEM")
-  displayName String?
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // ---- Relations ----
+  id              String           @id @default(uuid()) @db.Uuid
+  code            String           @unique
+  module          String
+  action          String
+  category        String           @default("SYSTEM")
+  displayName     String?
+  description     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
   rolePermissions RolePermission[]
 
   @@index([module])
@@ -53,13 +35,12 @@ model Permission {
 
 /// M:N Mapping between Role and Permission
 model RolePermission {
-  id           String   @id @default(uuid()) @db.Uuid
-  roleId       String   @db.Uuid
-  permissionId String   @db.Uuid
-  createdAt    DateTime @default(now())
-
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  id           String     @id @default(uuid()) @db.Uuid
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  createdAt    DateTime   @default(now())
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([roleId, permissionId])
   @@index([roleId])
@@ -69,15 +50,14 @@ model RolePermission {
 
 /// Assignment of a Role to a User account
 model UserRole {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @db.Uuid
-  roleId     String   @db.Uuid
-  assignedBy String?  @db.Uuid
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  role       Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  id         String      @id @default(uuid()) @db.Uuid
+  userId     String      @db.Uuid
+  roleId     String      @db.Uuid
+  assignedBy String?     @db.Uuid
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
   roleScopes RoleScope[]
+  role       Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, roleId])
   @@index([userId])
@@ -91,9 +71,8 @@ model RoleHierarchy {
   parentRoleId String   @db.Uuid
   childRoleId  String   @db.Uuid
   createdAt    DateTime @default(now())
-
-  parentRole Role @relation("ParentRole", fields: [parentRoleId], references: [id], onDelete: Cascade)
-  childRole  Role @relation("ChildRole", fields: [childRoleId], references: [id], onDelete: Cascade)
+  childRole    Role     @relation("ChildRole", fields: [childRoleId], references: [id], onDelete: Cascade)
+  parentRole   Role     @relation("ParentRole", fields: [parentRoleId], references: [id], onDelete: Cascade)
 
   @@unique([parentRoleId, childRoleId])
   @@index([parentRoleId])
@@ -103,19 +82,18 @@ model RoleHierarchy {
 
 /// Geographic Country entity
 model Country {
-  id          String   @id @default(uuid()) @db.Uuid
-  code        String   @unique
-  name        String
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  states         State[]
-  roleScopes     RoleScope[]
-  locatedUsers   User[]              @relation("UserLocationCountry")
-  scopedRankings RankingDefinition[] @relation("RankingScopeCountry")
+  id             String              @id @default(uuid()) @db.Uuid
+  code           String              @unique
+  name           String
+  description    String?
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
   scopedEvents   EventDefinition[]   @relation("EventScopeCountry")
+  scopedRankings RankingDefinition[] @relation("RankingScopeCountry")
+  roleScopes     RoleScope[]
+  states         State[]
+  locatedUsers   User[]              @relation("UserLocationCountry")
 
   @@index([isActive])
   @@map("countries")
@@ -123,18 +101,17 @@ model Country {
 
 /// Geographic State / Province entity
 model State {
-  id          String   @id @default(uuid()) @db.Uuid
-  countryId   String   @db.Uuid
-  code        String
-  name        String
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  country      Country     @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  id           String      @id @default(uuid()) @db.Uuid
+  countryId    String      @db.Uuid
+  code         String
+  name         String
+  description  String?
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
   regions      Region[]
   roleScopes   RoleScope[]
+  country      Country     @relation(fields: [countryId], references: [id], onDelete: Cascade)
   locatedUsers User[]      @relation("UserLocationState")
 
   @@unique([countryId, code])
@@ -145,20 +122,19 @@ model State {
 
 /// Geographic Region / District entity
 model Region {
-  id          String   @id @default(uuid()) @db.Uuid
-  stateId     String   @db.Uuid
-  code        String
-  name        String
-  description String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id             String              @id @default(uuid()) @db.Uuid
+  stateId        String              @db.Uuid
+  code           String
+  name           String
+  description    String?
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  scopedEvents   EventDefinition[]   @relation("EventScopeRegion")
+  scopedRankings RankingDefinition[] @relation("RankingScopeRegion")
   state          State               @relation(fields: [stateId], references: [id], onDelete: Cascade)
   roleScopes     RoleScope[]
   locatedUsers   User[]              @relation("UserLocationRegion")
-  scopedRankings RankingDefinition[] @relation("RankingScopeRegion")
-  scopedEvents   EventDefinition[]   @relation("EventScopeRegion")
 
   @@unique([stateId, code])
   @@index([stateId])
@@ -176,11 +152,10 @@ model RoleScope {
   regionId   String?   @db.Uuid
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
-
-  userRole UserRole @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
-  country  Country? @relation(fields: [countryId], references: [id], onDelete: SetNull)
-  state    State?   @relation(fields: [stateId], references: [id], onDelete: SetNull)
-  region   Region?  @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  country    Country?  @relation(fields: [countryId], references: [id])
+  region     Region?   @relation(fields: [regionId], references: [id])
+  state      State?    @relation(fields: [stateId], references: [id])
+  userRole   UserRole  @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
 
   @@index([userRoleId])
   @@index([scopeType])
@@ -189,21 +164,38 @@ model RoleScope {
 
 /// Audit logging entity for platform privileged operations
 model AuditLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  actorId    String   @db.Uuid
-  actorRole  String?
-  action     String
-  resource   String
-  resourceId String?
-  details    Json?
-  ipAddress  String?
-  userAgent  String?
-  status     String   @default("SUCCESS")
-  createdAt  DateTime @default(now())
+  id           String   @id @default(uuid()) @db.Uuid
+  actorId      String   @db.Uuid
+  actorRole    String?
+  action       String
+  resource     String
+  resourceId   String?
+  details      Json?
+  ipAddress    String?
+  userAgent    String?
+  status       String   @default("SUCCESS")
+  createdAt    DateTime @default(now())
+  evidenceId   String?
+  liveStreamId String?  @db.Uuid
+  targetUserId String?  @db.Uuid
+  roomId       String?  @db.Uuid
+  region       String?
+  browser      String?
+  os           String?
 
   @@index([actorId])
+  @@index([targetUserId])
+  @@index([roomId])
   @@index([action])
   @@index([resource, resourceId])
   @@index([createdAt])
+  @@index([evidenceId])
   @@map("audit_logs")
+}
+
+enum ScopeType {
+  GLOBAL
+  COUNTRY
+  STATE
+  REGION
 }

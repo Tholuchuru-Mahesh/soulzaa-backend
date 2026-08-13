@@ -1,14 +1,3 @@
-// ============================================================
-// Video Room Rankings (VR-13) — historical snapshots, materialised
-// leaderboards and the aggregation audit. Live ladders are Redis ZSETs
-// (`vrank:{scope|dimension}:period:dateKey`); this file is the durable record.
-//
-// No cross-module relations — other domains are referenced by id, matching
-// rankings.prisma and every other video_rooms_*.prisma file. `scope` is an
-// opaque string ('g', 'r:<uuid>', 'c:IN', 'y:<uuid>') rather than a set of
-// nullable FK columns, so adding a scope later is a constant, not a migration.
-// ============================================================
-
 /// One entity's position on one ladder at one period close. The per-user
 /// "my ranking history" read model.
 model VideoRoomRankingSnapshot {
@@ -35,10 +24,6 @@ model VideoRoomRankingSnapshot {
   @@unique([scope, dimension, period, dateKey, targetId])
   @@index([scope, dimension, period, dateKey, rank])
   @@index([targetId, dimension, period])
-  /// Serves the retention/prune sweep, which deletes by
-  /// `WHERE period = ? AND createdAt < ?` with no scope predicate —
-  /// scope is effectively unenumerable (per-room values), so every
-  /// other index here is useless to that query.
   @@index([period, createdAt])
   @@map("video_room_ranking_snapshots")
 }

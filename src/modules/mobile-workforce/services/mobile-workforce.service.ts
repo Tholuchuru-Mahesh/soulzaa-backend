@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { GeographicScopeResolver } from 'src/modules/authorization/services/geographic-scope-resolver.service';
 import { WorkforceScopeService } from './workforce-scope.service';
+import { ModeratorShiftService } from 'src/modules/moderator-shift/services/moderator-shift.service';
 
 /**
  * Mobile read models for the operational workforce — Country Manager, Official
@@ -20,6 +21,7 @@ export class MobileWorkforceService {
     private readonly prisma: PrismaService,
     private readonly scope: WorkforceScopeService,
     private readonly scopes: GeographicScopeResolver,
+    private readonly shiftService?: ModeratorShiftService,
   ) {}
 
   /** What geography am I responsible for? Drives the client's header and filters. */
@@ -62,9 +64,6 @@ export class MobileWorkforceService {
   async users(userId: string, query?: string, limit = 25, offset = 0) {
     const scopeWhere = await this.scope.userScopeFilter(userId);
 
-    // AND, not a spread: the scope filter is itself an `OR`, and spreading a
-    // search `OR` on top would replace it — silently letting a scoped official
-    // find users outside their territory.
     const where = {
       AND: [
         scopeWhere,
@@ -107,11 +106,6 @@ export class MobileWorkforceService {
 
   /**
    * Moderation queue for my scope.
-   *
-   * Reports carry no geography, so they are narrowed by the reporter's location
-   * — the closest honest proxy available. The reporter set is resolved through
-   * the same scope filter as every other query, so the queue and the user list
-   * can never disagree about who is in territory.
    */
   async moderationQueue(userId: string, limit = 25) {
     const scopeWhere = await this.scope.userScopeFilter(userId);
@@ -126,21 +120,54 @@ export class MobileWorkforceService {
       reporterFilter = { reporterId: { in: inScope.map((u) => u.id) } };
     }
 
-    const where = { status: 'PENDING' as const, ...reporterFilter };
+    return this.prisma.roomReport.findMany({
+      where: { status: 'PENDING', ...reporterFilter },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 100),
+    });
+  }
 
-    const [audioReports, videoReports] = await Promise.all([
-      this.prisma.roomReport.findMany({
-        where,
-        orderBy: { createdAt: 'asc' },
-        take: Math.min(limit, 100),
-      }),
-      this.prisma.videoRoomReport.findMany({
-        where,
-        orderBy: { createdAt: 'asc' },
-        take: Math.min(limit, 100),
-      }),
+  /**
+   * Moderator operational dashboard (Task 20).
+   * Includes shiftStatus nextShiftStartsInSeconds and active state.
+   */
+  async moderatorDashboard(userId: string) {
+    const [scope, summary, queue] = await Promise.all([
+      this.myScope(userId),
+      this.summary(userId),
+      this.moderationQueue(userId, 5),
     ]);
 
-    return { audioRoomReports: audioReports, videoRoomReports: videoReports };
+    // Shift info & countdown (Task 20)
+    let shift = await this.prisma.moderatorShift.findFirst({
+      where: { moderatorId: userId, isActive: true },
+    });
+    let nextShiftStartsInSeconds: number | null = null;
+    let shiftActive = false;
+
+    if (this.shiftService) {
+      const status = await this.shiftService.shiftStatus(userId);
+      shiftActive = status.isActive;
+      nextShiftStartsInSeconds = status.nextShiftStartsInSeconds;
+      if (status.shift) {
+        shift = status.shift as any;
+      }
+    }
+
+    // Today's stats
+    const dateKey = new Date().toISOString().slice(0, 10);
+    const todayStats = await this.prisma.moderatorDailyStats.findUnique({
+      where: { moderatorId_dateKey: { moderatorId: userId, dateKey } },
+    });
+
+    return {
+      scope,
+      populationSummary: summary,
+      shift: shift ?? null,
+      shiftActive,
+      nextShiftStartsInSeconds,
+      todayStats: todayStats ?? null,
+      pendingQueuePreview: queue,
+    };
   }
 }

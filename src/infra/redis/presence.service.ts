@@ -110,4 +110,44 @@ export class PresenceService {
   async userRooms(userId: string): Promise<string[]> {
     return this.client.smembers(this.userRoomsKey(userId));
   }
+
+  // ---- Live Stream Ephemeral Presence (Redis-only, Moderator Anonymous) ----
+
+  private liveStreamViewersKey(streamId: string): string {
+    return `presence:livestream:{${streamId}}:viewers`;
+  }
+
+  private liveStreamModeratorsKey(streamId: string): string {
+    return `presence:livestream:{${streamId}}:moderators`;
+  }
+
+  async joinLiveStream(streamId: string, userId: string, isModerator: boolean): Promise<void> {
+    if (isModerator) {
+      // Ephemeral invisible presence for moderators
+      await this.client.sadd(this.liveStreamModeratorsKey(streamId), userId);
+      await this.client.expire(this.liveStreamModeratorsKey(streamId), 86400);
+    } else {
+      // Public viewer presence
+      await this.client.sadd(this.liveStreamViewersKey(streamId), userId);
+      await this.client.expire(this.liveStreamViewersKey(streamId), 86400);
+    }
+  }
+
+  async leaveLiveStream(streamId: string, userId: string, isModerator: boolean): Promise<void> {
+    if (isModerator) {
+      await this.client.srem(this.liveStreamModeratorsKey(streamId), userId);
+    } else {
+      await this.client.srem(this.liveStreamViewersKey(streamId), userId);
+    }
+  }
+
+  /** Public viewer count — EXCLUDES moderators. */
+  async liveStreamViewerCount(streamId: string): Promise<number> {
+    return this.client.scard(this.liveStreamViewersKey(streamId));
+  }
+
+  /** Public viewer list — EXCLUDES moderators. */
+  async liveStreamViewers(streamId: string): Promise<string[]> {
+    return this.client.smembers(this.liveStreamViewersKey(streamId));
+  }
 }

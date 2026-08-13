@@ -1,42 +1,3 @@
-// ============================================================
-// Video Rooms — VR-9: room chat messages, pins, and read cursors.
-// Owned by the "video_rooms" module. No cross-module relations —
-// reference users/rooms/messages by id.
-//
-// Deliberately separate from audio_rooms_chat.prisma's RoomMessage:
-// that table has no edit trail, status, attachments, recall or read
-// cursor, and sharing it would put two domains on one hot index.
-// This mirrors the VideoRoom-does-not-reuse-AudioRoom split.
-//
-// Message STATUS is derived, never stored: SENDING/FAILED are
-// client-only, SENT/EDITED/DELETED/RECALLED come from the timestamp
-// columns, and DELIVERED/READ are per-recipient facts living in
-// video_room_chat_cursors. A status column could only drift.
-// ============================================================
-
-enum VideoRoomMessageType {
-  TEXT
-  EMOJI
-  GIF
-  IMAGE
-  VIDEO
-  VOICE
-  SYSTEM
-  ANNOUNCEMENT
-}
-
-/// Who may send in a room. Mutually exclusive states, so an enum rather
-/// than overlapping booleans (six booleans admit combinations that are
-/// nonsense). NORMAL = any active member; PARTICIPANTS_ONLY = seat
-/// holders + elevated roles; READ_ONLY = elevated roles only;
-/// ANNOUNCEMENT_ONLY = MANAGE_ANNOUNCEMENTS holders, ANNOUNCEMENT type only.
-enum VideoRoomChatMode {
-  NORMAL
-  PARTICIPANTS_ONLY
-  READ_ONLY
-  ANNOUNCEMENT_ONLY
-}
-
 /// A chat message. `senderId` is VIDEO_ROOM_SYSTEM_ACTOR_ID for SYSTEM rows.
 /// `metadata` carries announcementId (for ANNOUNCEMENT projections), the
 /// system-event kind (for SYSTEM rows), and the request audit context.
@@ -103,4 +64,27 @@ model VideoRoomChatCursor {
   @@id([roomId, userId])
   @@index([roomId, lastReadAt])
   @@map("video_room_chat_cursors")
+}
+
+enum VideoRoomMessageType {
+  TEXT
+  EMOJI
+  GIF
+  IMAGE
+  VIDEO
+  VOICE
+  SYSTEM
+  ANNOUNCEMENT
+}
+
+/// Who may send in a room. Mutually exclusive states, so an enum rather
+/// than overlapping booleans (six booleans admit combinations that are
+/// nonsense). NORMAL = any active member; PARTICIPANTS_ONLY = seat
+/// holders + elevated roles; READ_ONLY = elevated roles only;
+/// ANNOUNCEMENT_ONLY = MANAGE_ANNOUNCEMENTS holders, ANNOUNCEMENT type only.
+enum VideoRoomChatMode {
+  NORMAL
+  PARTICIPANTS_ONLY
+  READ_ONLY
+  ANNOUNCEMENT_ONLY
 }

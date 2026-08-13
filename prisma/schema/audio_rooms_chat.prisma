@@ -1,38 +1,3 @@
-// ============================================================
-// Audio Room Chat (AR-4) — messages, pins, chat reports, and the
-// severity-based blocked-word dictionary.
-// Owned by the "audio_rooms" module. No cross-module relations —
-// reference users/rooms/messages by id. Anti-abuse counters live in
-// Redis; these tables are the durable record. Reuses AR-3 ReportReason.
-// ============================================================
-
-enum ChatMessageType {
-  TEXT
-  EMOJI
-  GIF
-  ANNOUNCEMENT
-  SYSTEM
-}
-
-enum BlockedWordSeverity {
-  MILD
-  OFFENSIVE
-  CRITICAL
-}
-
-enum BlockedWordAction {
-  MASK
-  REJECT
-  ESCALATE
-}
-
-enum ChatReportStatus {
-  PENDING
-  REVIEWED
-  DISMISSED
-  ACTIONED
-}
-
 /// A chat message in a room. `content` is the final stored text (masked when a
 /// MILD blocked word matched). Content is never edited; moderation deletes are
 /// soft (`isDeleted`) so the audit trail is preserved. `mentions` holds the
@@ -86,12 +51,10 @@ model ChatReport {
   reviewedBy       String?          @db.Uuid
   reviewedAt       DateTime?
   resolutionAction String?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdBy        String?          @db.Uuid
+  updatedBy        String?          @db.Uuid
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   @@index([roomId, status])
   @@index([messageId])
@@ -105,22 +68,47 @@ model ChatReport {
 /// Multilingual via `language`. Loaded into an in-memory compiled cache by
 /// BlockedWordService so the chat hot path never queries the DB.
 model ChatBlockedWord {
-  id       String              @id @default(uuid()) @db.Uuid
-  pattern  String
-  isRegex  Boolean             @default(false)
-  language String              @default("en")
-  severity BlockedWordSeverity
-  action   BlockedWordAction
-  enabled  Boolean             @default(true)
-  notes    String?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String              @id @default(uuid()) @db.Uuid
+  pattern   String
+  isRegex   Boolean             @default(false)
+  language  String              @default("en")
+  severity  BlockedWordSeverity
+  action    BlockedWordAction
+  enabled   Boolean             @default(true)
+  notes     String?
+  createdBy String?             @db.Uuid
+  updatedBy String?             @db.Uuid
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
 
   @@index([enabled])
   @@index([language])
   @@map("chat_blocked_words")
+}
+
+enum ChatMessageType {
+  TEXT
+  EMOJI
+  GIF
+  ANNOUNCEMENT
+  SYSTEM
+}
+
+enum BlockedWordSeverity {
+  MILD
+  OFFENSIVE
+  CRITICAL
+}
+
+enum BlockedWordAction {
+  MASK
+  REJECT
+  ESCALATE
+}
+
+enum ChatReportStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+  ACTIONED
 }

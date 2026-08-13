@@ -26,6 +26,6 @@ import { AdminProvisioningService } from './services/admin-provisioning.service'
     AdminCredentialRepository,
     Admin2faService,
   ],
-  exports: [ADMIN_IDENTITY_SERVICE],
+  exports: [ADMIN_IDENTITY_SERVICE, Admin2faService],
 })
 export class AdminIdentityModule {}

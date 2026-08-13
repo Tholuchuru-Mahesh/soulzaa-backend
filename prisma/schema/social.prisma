@@ -1,44 +1,3 @@
-// ============================================================
-// Social Graph — friends, friend requests, follows, invitations,
-// presence, and interaction scoring.
-// Owned by the "social" module. Authoritative store for the social
-// graph; other domains consult it via RELATIONSHIP_SERVICE (privacy)
-// and SOCIAL_SERVICE. No cross-module relations — reference other
-// domains (users, rooms, games, families) by id.
-// ============================================================
-
-enum FriendRequestStatus {
-  PENDING
-  ACCEPTED
-  REJECTED
-  CANCELLED
-  EXPIRED
-}
-
-enum InvitationType {
-  AUDIO_ROOM
-  GAME
-  FAMILY
-  PK_BATTLE
-  EVENT
-}
-
-enum InvitationStatus {
-  PENDING
-  ACCEPTED
-  DECLINED
-  CANCELLED
-  EXPIRED
-}
-
-enum PresenceStatus {
-  OFFLINE
-  ONLINE
-  IN_ROOM
-  IN_GAME
-  IN_PK
-}
-
 /// A pending friend request. Directed (requester -> addressee) and
 /// expirable. Exactly one live row per ordered pair; the unique guard
 /// prevents duplicate outgoing requests. Reverse-direction requests are
@@ -149,4 +108,36 @@ model UserInteraction {
   @@unique([userId, peerId])
   @@index([userId, totalScore])
   @@map("user_interactions")
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum InvitationType {
+  AUDIO_ROOM
+  GAME
+  FAMILY
+  PK_BATTLE
+  EVENT
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
+enum PresenceStatus {
+  OFFLINE
+  ONLINE
+  IN_ROOM
+  IN_GAME
+  IN_PK
 }

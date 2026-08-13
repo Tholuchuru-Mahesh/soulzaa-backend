@@ -1,33 +1,3 @@
-// ============================================================
-// Backpack — the user inventory of earned non-coin rewards
-// (frames, themes, entrance effects, badges, decorations).
-// Owned by the "backpack" module. Rewards are granted by the
-// economy features (treasure boxes, rocket events, VIP, attendance)
-// via BACKPACK_SERVICE. No cross-module relations — reference users
-// and reward catalogs by id.
-// ============================================================
-
-/// The kind of cosmetic/utility a backpack item represents.
-enum BackpackItemType {
-  FRAME
-  THEME
-  ENTRANCE_EFFECT
-  BADGE
-  DECORATION
-  OTHER
-}
-
-/// Where an item came from (drives history + audit).
-enum BackpackItemSource {
-  TREASURE_BOX
-  ROCKET
-  GIFT
-  EVENT
-  ATTENDANCE
-  ADMIN
-  PURCHASE
-}
-
 /// One owned inventory item. Each grant is a distinct row keyed by a unique
 /// `grantKey` so awarding is idempotent (a replayed grant maps to the same row).
 /// Equippable types (frame/theme/entrance effect) toggle `equipped`; the service
@@ -67,4 +37,25 @@ model BackpackLog {
 
   @@index([userId, createdAt])
   @@map("backpack_logs")
+}
+
+/// The kind of cosmetic/utility a backpack item represents.
+enum BackpackItemType {
+  FRAME
+  THEME
+  ENTRANCE_EFFECT
+  BADGE
+  DECORATION
+  OTHER
+}
+
+/// Where an item came from (drives history + audit).
+enum BackpackItemSource {
+  TREASURE_BOX
+  ROCKET
+  GIFT
+  EVENT
+  ATTENDANCE
+  ADMIN
+  PURCHASE
 }

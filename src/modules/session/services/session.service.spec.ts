@@ -77,12 +77,14 @@ describe('SessionService', () => {
       getDeviceByIdentifier: jest.fn(),
     };
     const config = { get: () => CFG } as unknown as ConfigService;
+    const mockBinding = { assertSingleDevice: jest.fn().mockResolvedValue(undefined) };
     service = new SessionService(
       repo as unknown as SessionRepository,
       tokens as unknown as TokenService,
       cache as unknown as CacheService,
       bus,
       devices as unknown as IDeviceService,
+      mockBinding as any,
       // Telemetry is observational; a stub keeps these tests about session mechanics.
       new LoginTelemetryService(),
       config,

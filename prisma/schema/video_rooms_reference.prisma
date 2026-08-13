@@ -1,14 +1,3 @@
-// ============================================================
-// Video Rooms — VR-1: Seeded reference data (themes & backgrounds).
-// Owned by the "video_rooms" module. Same pattern as the shared
-// room_categories / room_languages: seeded, slug-keyed, referenced BY
-// VALUE from video_rooms.themeId / .backgroundId (no cross-table FK).
-// Admin-managed CRUD is deferred to the Admin phase; VR-1 seeds a
-// default set idempotently via VideoRoomReferenceSeederService.
-// Themes/backgrounds are video-specific (audio rooms use their own
-// appearance tables), so these are new — not a reuse of an existing table.
-// ============================================================
-
 /// A visual theme (color scheme / frame) a room owner can apply. `assetKey` is an
 /// S3 object key for the theme bundle; `previewKey` a thumbnail. `isPremium` gates
 /// it behind VIP/purchase (enforced in a later phase).

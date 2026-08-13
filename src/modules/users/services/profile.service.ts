@@ -182,16 +182,24 @@ export class ProfileService implements IProfileService {
   }
 
   /**
-   * Only staff can see staff — "Only Super Admin and Admin can identify Admin
-   * accounts". Resolved from the viewer's own hidden flag rather than a role
-   * lookup, which would mean importing the authorization module across a
-   * boundary the dependency rules forbid. Called only when the target is
-   * hidden, so ordinary lookups cost nothing extra.
+   * Only Admin/Super Admin can identify hidden staff accounts (Task 36).
+   * Restrict to ADMIN/SUPER_ADMIN specifically, excluding MODERATOR.
    */
   private async viewerIsStaff(viewerId?: string): Promise<boolean> {
     if (!viewerId) return false;
     const viewer = await this.users.findById(viewerId);
-    return viewer?.isHiddenAccount ?? false;
+    if (!viewer) return false;
+    const isLegacyAdmin = (viewer.roles ?? []).some(
+      (r) => r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
+    if (isLegacyAdmin) return true;
+    const rbacRoles = await this.prisma.userRole.findMany({
+      where: { userId: viewerId },
+      include: { role: true },
+    });
+    return rbacRoles.some(
+      (ur) => ur.role?.name === 'ADMIN' || ur.role?.name === 'SUPER_ADMIN',
+    );
   }
 
   async getStatistics(userId: string): Promise<StatisticsView | null> {
@@ -574,6 +582,7 @@ export class ProfileService implements IProfileService {
       this.media.resolve(snap.avatarKey),
       this.media.resolve(snap.coverKey),
     ]);
+    const isHidden = snap.isHiddenAccount ?? false;
     return {
       id: snap.id,
       username: snap.username,
@@ -587,11 +596,19 @@ export class ProfileService implements IProfileService {
       state: snap.state,
       city: snap.city,
       preferredLanguage: snap.preferredLanguage,
-      statistics: snap.statistics,
-      verification: snap.verification,
-      // Snapshots cached before this field existed deserialise as undefined;
-      // default to visible so a pre-existing cache entry cannot hide a real user.
-      isHiddenAccount: snap.isHiddenAccount ?? false,
+      // Task 35: Suppress cosmetic indicators (VIP, level, verification badges) for hidden staff accounts
+      statistics: isHidden
+        ? {
+            ...snap.statistics,
+            level: 1,
+            vipLevel: 0,
+            exp: 0,
+          }
+        : snap.statistics,
+      verification: isHidden
+        ? { verified: false, status: 'UNVERIFIED' as any, type: null }
+        : snap.verification,
+      isHiddenAccount: isHidden,
       createdAt: new Date(snap.createdAt),
     };
   }

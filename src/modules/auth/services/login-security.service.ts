@@ -1,6 +1,8 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SessionEventType } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CacheService } from 'src/infra/redis/cache.service';
 
 /**
@@ -16,6 +18,7 @@ export class LoginSecurityService {
 
   constructor(
     private readonly cache: CacheService,
+    private readonly prisma: PrismaService,
     config: ConfigService,
   ) {
     const sec = config.get('security', { infer: true })!;
@@ -44,16 +47,47 @@ export class LoginSecurityService {
 
   /**
    * Record a failed login. When attempts reach the max, set a lock key with TTL
-   * and reset the counter. The attempt window itself expires after the lock
-   * duration so counts don't accrue forever.
+   * and reset the counter. Also persists an append-only FAILED_LOGIN row in SessionHistory.
    */
-  async recordFailure(identifier: string): Promise<void> {
+  async recordFailure(
+    identifier: string,
+    details?: { userId?: string; ip?: string; userAgent?: string; reason?: string },
+  ): Promise<void> {
     const attempts = await this.cache.increment(this.attemptsKey(identifier), {
       ttlSeconds: this.lockSeconds,
     });
     if (attempts >= this.maxAttempts) {
       await this.cache.set(this.lockKey(identifier), true, this.lockSeconds);
       await this.cache.del(this.attemptsKey(identifier));
+    }
+
+    try {
+      let targetUserId = details?.userId;
+      if (!targetUserId) {
+        const u = await this.prisma.user.findFirst({
+          where: { OR: [{ email: identifier.toLowerCase() }, { mobile: identifier }] },
+          select: { id: true },
+        });
+        targetUserId = u?.id;
+      }
+
+      if (targetUserId) {
+        await this.prisma.sessionHistory.create({
+          data: {
+            userId: targetUserId,
+            event: SessionEventType.FAILED_LOGIN,
+            ip: details?.ip ?? null,
+            userAgent: details?.userAgent ?? null,
+            metadata: {
+              identifier,
+              reason: details?.reason ?? 'INVALID_CREDENTIALS',
+              attemptCount: attempts,
+            },
+          },
+        });
+      }
+    } catch {
+      // Best-effort audit logging
     }
   }
 

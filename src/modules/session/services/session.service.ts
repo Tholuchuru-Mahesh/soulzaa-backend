@@ -12,6 +12,7 @@ import {
   DEVICE_SERVICE,
   type IDeviceService,
 } from 'src/modules/device/interfaces/device.interface';
+import { ModeratorDeviceBindingService } from 'src/modules/device/services/moderator-device-binding.service';
 import {
   SessionCreatedEvent,
   SessionRefreshedEvent,
@@ -49,6 +50,7 @@ export class SessionService {
     private readonly cache: CacheService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(DEVICE_SERVICE) private readonly devices: IDeviceService,
+    private readonly deviceBinding: ModeratorDeviceBindingService,
     private readonly telemetry: LoginTelemetryService,
     config: ConfigService,
   ) {
@@ -72,6 +74,9 @@ export class SessionService {
   ): Promise<{ sessionId: string; tokens: AuthTokens }> {
     const sid = randomUUID();
     const { deviceId, platform, trusted } = await this.resolveDevice(claims.userId, ctx);
+    if (deviceId) {
+      await this.deviceBinding.assertSingleDevice(claims.userId, deviceId);
+    }
     const tv = await this.currentEpoch(claims.userId);
 
     const pair = await this.tokens.signPair({

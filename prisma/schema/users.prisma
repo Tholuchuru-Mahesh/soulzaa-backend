@@ -1,86 +1,37 @@
-// ============================================================
-// Users — identity / account record + profile aggregate
-// Owned by the "users" module. System of record for account
-// identity (users) plus the profile aggregate: user_profiles,
-// user_statistics, user_verification. No cross-module relations —
-// reference other domains by id and coordinate via the event bus.
-// ============================================================
-
-enum Gender {
-  MALE
-  FEMALE
-  OTHER
-}
-
-enum AccountStatus {
-  ACTIVE
-  INACTIVE
-  SUSPENDED
-  LOCKED
-  BANNED
-  DELETED
-}
-
-enum VerificationStatus {
-  NONE
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-enum VerificationType {
-  IDENTITY
-  CELEBRITY
-  OFFICIAL
-  CREATOR
-}
-
 /// The canonical account/identity row. Auth reads/writes this only
 /// through IUsersService (USERS_SERVICE) — never via Prisma directly.
 model User {
   id                String         @id @default(uuid()) @db.Uuid
   username          String         @unique
-  // Nullable: an account may onboard via a single method (mobile-only,
-  // or social-only). @unique still enforces "email unique" and
-  // "one mobile → one account" — Postgres allows multiple NULLs.
   email             String?        @unique
   mobile            String?        @unique
   fullName          String?
   gender            Gender?
   dateOfBirth       DateTime?      @db.Date
   country           String?
-  // Normalised location. `country` above stays as the free-text profile value
-  // (AttendanceService resolves a timezone from it); these three are the
-  // authoritative reference used for geographic scope filtering, eligibility
-  // and routing. Nullable because a user may not be normalised yet, or may sit
-  // above the granularity held — a country with no states has a null stateId.
-  countryId         String?        @db.Uuid
-  stateId           String?        @db.Uuid
-  regionId          String?        @db.Uuid
   preferredLanguage String?
   roles             PlatformRole[] @default([USER])
   isGuest           Boolean        @default(false)
   status            AccountStatus  @default(ACTIVE)
+  emailVerifiedAt   DateTime?
+  mobileVerifiedAt  DateTime?
+  createdBy         String?        @db.Uuid
+  updatedBy         String?        @db.Uuid
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
+  countryId         String?        @db.Uuid
+  stateId           String?        @db.Uuid
+  regionId          String?        @db.Uuid
   /// True for platform staff accounts that must never surface to ordinary
   /// users. Denormalised from the ADMIN / SUPER_ADMIN role assignment and
   /// written solely by the admin-identity module, so read paths can filter with
   /// no extra query and no cross-module dependency. Deliberately not derived
   /// from the legacy `roles` column below, which is being retired.
   isHiddenAccount   Boolean        @default(false)
-
-  emailVerifiedAt  DateTime?
-  mobileVerifiedAt DateTime?
-
-  // ---- Audit ----
-  createdBy String?   @db.Uuid
-  updatedBy String?   @db.Uuid
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  locationCountry Country? @relation("UserLocationCountry", fields: [countryId], references: [id], onDelete: SetNull)
-  locationState   State?   @relation("UserLocationState", fields: [stateId], references: [id], onDelete: SetNull)
-  locationRegion  Region?  @relation("UserLocationRegion", fields: [regionId], references: [id], onDelete: SetNull)
+  locationCountry   Country?       @relation("UserLocationCountry", fields: [countryId], references: [id])
+  locationRegion    Region?        @relation("UserLocationRegion", fields: [regionId], references: [id])
+  locationState     State?         @relation("UserLocationState", fields: [stateId], references: [id])
 
   @@index([status])
   @@index([isHiddenAccount])
@@ -145,4 +96,33 @@ model UserVerification {
   updatedAt       DateTime           @updatedAt
 
   @@map("user_verification")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DELETED
+  INACTIVE
+  LOCKED
+}
+
+enum VerificationStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VerificationType {
+  IDENTITY
+  CELEBRITY
+  OFFICIAL
+  CREATOR
 }

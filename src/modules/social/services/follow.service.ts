@@ -41,6 +41,14 @@ export class FollowService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    const targetProfile = await this.profile.getProfileView(targetId);
+    if (!targetProfile || targetProfile.isHiddenAccount) {
+      throw new BusinessException(
+        ERROR_CODES.NOT_FOUND,
+        'User not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
     if (await this.privacy.isBlockedEitherWay(followerId, targetId)) {
       throw new BusinessException(
         ERROR_CODES.USER_BLOCKED,

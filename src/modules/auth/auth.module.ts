@@ -25,9 +25,14 @@ import { SocialVerifierRegistry } from './services/social/social-verifier.regist
  * — only `interfaces/` and `events/` cross a module edge. Being global is the
  * only mechanism left that lets the exported token resolve.
  */
+import { StaffAuthController } from './controllers/staff-auth.controller';
+import { AdminIdentityModule } from 'src/modules/admin-identity/admin-identity.module';
+import { DeviceModule } from 'src/modules/device/device.module';
+
 @Global()
 @Module({
-  controllers: [AuthController],
+  imports: [AdminIdentityModule, DeviceModule],
+  controllers: [AuthController, StaffAuthController],
   providers: [
     AuthRepository,
     AuthService,

@@ -1,13 +1,131 @@
-// ============================================================
-// Video Rooms — VR-1: Moderation (mutes, blocks, and the
-// append-only moderation audit trail). Owned by the "video_rooms"
-// module. Mirrors the Audio-Room AR-3 moderation model, MINUS bans
-// (room ban is intentionally out of scope for the Video Room —
-// block covers the "bar from this room" need). No enforcement logic
-// here; live enforcement (active mute/block sets) is cached in Redis
-// in later phases. These tables are the durable record. No DB
-// foreign keys — reference rooms/users by id (@@index).
-// ============================================================
+/// A per-room member mute (independent of seat occupancy). PERMANENT + null
+/// `expiresAt` ⇒ "mute until manually removed". One ACTIVE mute per user/room
+/// (service-enforced under a lock). Redis mirrors the active set for the fast
+/// join-time gate in later phases.
+model VideoRoomMute {
+  id          String                      @id @default(uuid()) @db.Uuid
+  roomId      String                      @db.Uuid
+  userId      String                      @db.Uuid
+  moderatorId String                      @db.Uuid
+  type        VideoRoomModerationMuteType
+  reason      String?
+  expiresAt   DateTime?
+  status      VideoRoomModerationStatus   @default(ACTIVE)
+  liftedBy    String?                     @db.Uuid
+  liftedAt    DateTime?
+  createdBy   String?                     @db.Uuid
+  updatedBy   String?                     @db.Uuid
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+
+  @@index([roomId, status])
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("video_room_mutes")
+}
+
+/// A per-room block — the durable "blocklist" a room's owner/admins manage. A
+/// blocked user is removed from the room AND barred from rejoining until a
+/// moderator restores them (status → LIFTED). Unlike a ban there is no expiry:
+/// it lasts until lifted. At most one ACTIVE block per (roomId,userId),
+/// service-enforced under a lock. Redis mirrors the active set for the join gate.
+model VideoRoomBlock {
+  id          String                    @id @default(uuid()) @db.Uuid
+  roomId      String                    @db.Uuid
+  userId      String                    @db.Uuid
+  moderatorId String                    @db.Uuid
+  type        VideoRoomBlockType        @default(PERMANENT)
+  reason      String?
+  expiresAt   DateTime?
+  status      VideoRoomModerationStatus @default(ACTIVE)
+  liftedBy    String?                   @db.Uuid
+  liftedAt    DateTime?
+  createdBy   String?                   @db.Uuid
+  updatedBy   String?                   @db.Uuid
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@index([roomId, status])
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("video_room_blocks")
+}
+
+/// Append-only immutable audit of every moderator action (mute/unmute/block/
+/// unblock/kick/warn/role-grant/announcement). Write-once — the system of record
+/// for moderation review and compliance.
+model VideoRoomModerationAction {
+  id           String                        @id @default(uuid()) @db.Uuid
+  roomId       String                        @db.Uuid
+  moderatorId  String?                       @db.Uuid
+  targetUserId String?                       @db.Uuid
+  action       VideoRoomModerationActionType
+  reason       String?
+  metadata     Json?
+  createdAt    DateTime                      @default(now())
+
+  @@index([roomId])
+  @@index([action])
+  @@index([targetUserId])
+  @@map("video_room_moderation_actions")
+}
+
+/// A member-filed report against a user (and, optionally, a specific chat
+/// message) within a room. PENDING until a moderator reviews it; REVIEWED/
+/// DISMISSED/ACTIONED record the outcome. No DB foreign keys — reference
+/// rooms/users/messages by id (@@index).
+model VideoRoomReport {
+  id               String                @id @default(uuid()) @db.Uuid
+  roomId           String                @db.Uuid
+  reporterId       String                @db.Uuid
+  targetUserId     String                @db.Uuid
+  messageId        String?               @db.Uuid
+  reason           VideoRoomReportReason
+  description      String?
+  status           VideoRoomReportStatus @default(PENDING)
+  assigneeId       String?               @db.Uuid
+  assignedAt       DateTime?
+  reviewedBy       String?               @db.Uuid
+  reviewedAt       DateTime?
+  resolutionAction String?
+  createdBy        String?               @db.Uuid
+  updatedBy        String?               @db.Uuid
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@index([roomId, status])
+  @@index([assigneeId, status])
+  @@index([targetUserId])
+  @@index([reporterId])
+  @@map("video_room_reports")
+}
+
+/// A moderator-issued warning — recorded against a user/room independent of
+/// the append-only moderation action trail so warnings can be queried and
+/// (later) surfaced to the user on their own. No DB foreign keys — reference
+/// rooms/users by id (@@index).
+model VideoRoomWarning {
+  id          String   @id @default(uuid()) @db.Uuid
+  roomId      String   @db.Uuid
+  userId      String   @db.Uuid
+  moderatorId String   @db.Uuid
+  reason      String
+  metadata    Json?
+  createdBy   String?  @db.Uuid
+  updatedBy   String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([roomId, userId])
+  @@index([userId])
+  @@map("video_room_warnings")
+}
+
+/// TEMPORARY (has an expiry) vs PERMANENT (until manually lifted).
+enum VideoRoomBlockType {
+  TEMPORARY
+  PERMANENT
+}
 
 /// TEMPORARY (has an expiry) vs PERMANENT (until manually lifted).
 enum VideoRoomModerationMuteType {
@@ -36,7 +154,6 @@ enum VideoRoomModerationActionType {
   ROLE_REVOKED
   ANNOUNCEMENT_POSTED
   ANNOUNCEMENT_REMOVED
-  // ---- VR-16: Moderation Engine additions (additive only) ----
   FORCE_DISCONNECT
   REPORT_REVIEWED
   ROOM_MUTED
@@ -46,88 +163,6 @@ enum VideoRoomModerationActionType {
   AUTO_FLAGGED
 }
 
-/// A per-room member mute (independent of seat occupancy). PERMANENT + null
-/// `expiresAt` ⇒ "mute until manually removed". One ACTIVE mute per user/room
-/// (service-enforced under a lock). Redis mirrors the active set for the fast
-/// join-time gate in later phases.
-model VideoRoomMute {
-  id          String                      @id @default(uuid()) @db.Uuid
-  roomId      String                      @db.Uuid
-  userId      String                      @db.Uuid
-  moderatorId String                      @db.Uuid
-  type        VideoRoomModerationMuteType
-  reason      String?
-  expiresAt   DateTime?
-  status      VideoRoomModerationStatus   @default(ACTIVE)
-  liftedBy    String?                     @db.Uuid
-  liftedAt    DateTime?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([roomId, status])
-  @@index([userId, status])
-  @@index([status, expiresAt])
-  @@map("video_room_mutes")
-}
-
-/// A per-room block — the durable "blocklist" a room's owner/admins manage. A
-/// blocked user is removed from the room AND barred from rejoining until a
-/// moderator restores them (status → LIFTED). Unlike a ban there is no expiry:
-/// it lasts until lifted. At most one ACTIVE block per (roomId,userId),
-/// service-enforced under a lock. Redis mirrors the active set for the join gate.
-model VideoRoomBlock {
-  id          String                    @id @default(uuid()) @db.Uuid
-  roomId      String                    @db.Uuid
-  userId      String                    @db.Uuid
-  moderatorId String                    @db.Uuid
-  reason      String?
-  status      VideoRoomModerationStatus @default(ACTIVE)
-  liftedBy    String?                   @db.Uuid
-  liftedAt    DateTime?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([roomId, status])
-  @@index([userId, status])
-  @@map("video_room_blocks")
-}
-
-/// Append-only immutable audit of every moderator action (mute/unmute/block/
-/// unblock/kick/warn/role-grant/announcement). Write-once — the system of record
-/// for moderation review and compliance.
-model VideoRoomModerationAction {
-  id           String                        @id @default(uuid()) @db.Uuid
-  roomId       String                        @db.Uuid
-  moderatorId  String?                       @db.Uuid
-  targetUserId String?                       @db.Uuid
-  action       VideoRoomModerationActionType
-  reason       String?
-  metadata     Json?
-  createdAt    DateTime                      @default(now())
-
-  @@index([roomId])
-  @@index([action])
-  @@index([targetUserId])
-  @@map("video_room_moderation_actions")
-}
-
-// ============================================================
-// VR-16: Moderation Engine — user reports (message/user reports
-// filed by members, triaged by moderators) and warnings (a
-// lighter-weight moderator action than mute/block/kick, logged
-// separately from the append-only action trail so it can carry
-// its own review lifecycle). Additive only — no changes to the
-// tables/enums above.
-// ============================================================
-
 /// Why a report was filed.
 enum VideoRoomReportReason {
   USER
@@ -136,6 +171,11 @@ enum VideoRoomReportReason {
   HARASSMENT
   ABUSE
   FAKE_ACCOUNT
+  HATE_SPEECH
+  BULLYING
+  THREATS
+  SEXUAL_CONTENT
+  INAPPROPRIATE_CONTENT
   OTHER
 }
 
@@ -145,56 +185,4 @@ enum VideoRoomReportStatus {
   REVIEWED
   DISMISSED
   ACTIONED
-}
-
-/// A member-filed report against a user (and, optionally, a specific chat
-/// message) within a room. PENDING until a moderator reviews it; REVIEWED/
-/// DISMISSED/ACTIONED record the outcome. No DB foreign keys — reference
-/// rooms/users/messages by id (@@index).
-model VideoRoomReport {
-  id               String                @id @default(uuid()) @db.Uuid
-  roomId           String                @db.Uuid
-  reporterId       String                @db.Uuid
-  targetUserId     String                @db.Uuid
-  messageId        String?               @db.Uuid
-  reason           VideoRoomReportReason
-  description      String?
-  status           VideoRoomReportStatus @default(PENDING)
-  reviewedBy       String?               @db.Uuid
-  reviewedAt       DateTime?
-  resolutionAction String?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([roomId, status])
-  @@index([targetUserId])
-  @@index([reporterId])
-  @@map("video_room_reports")
-}
-
-/// A moderator-issued warning — recorded against a user/room independent of
-/// the append-only moderation action trail so warnings can be queried and
-/// (later) surfaced to the user on their own. No DB foreign keys — reference
-/// rooms/users by id (@@index).
-model VideoRoomWarning {
-  id          String @id @default(uuid()) @db.Uuid
-  roomId      String @db.Uuid
-  userId      String @db.Uuid
-  moderatorId String @db.Uuid
-  reason      String
-  metadata    Json?
-
-  // ---- Audit ----
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([roomId, userId])
-  @@index([userId])
-  @@map("video_room_warnings")
 }

@@ -59,4 +59,12 @@ export class MobileWorkforceController {
   moderationQueue(@CurrentUser('id') userId: string, @Query('limit') limit?: string) {
     return this.service.moderationQueue(userId, Number(limit) || 25);
   }
+
+  @ApiOperation({ summary: 'Complete Moderator Mobile Dashboard overview' })
+  @ApiResponse({ status: 200, description: 'Aggregated scope, shift, stats, and queue' })
+  @Get('me/dashboard')
+  moderatorDashboard(@CurrentUser('id') userId: string) {
+    return this.service.moderatorDashboard(userId);
+  }
 }
+

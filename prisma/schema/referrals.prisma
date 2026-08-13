@@ -1,29 +1,21 @@
-// ============================================================
-// Soulzaa — Enterprise Referral System Schema (Phase 18)
-// Owned by the "referrals" module.
-// Append-only, no modifications to frozen schemas.
-// ============================================================
-
 /// Referral Campaign Definition
 model ReferralCampaign {
-  id                 String    @id @default(uuid()) @db.Uuid
-  code               String    @unique
+  id                 String                 @id @default(uuid()) @db.Uuid
+  code               String                 @unique
   name               String
   description        String?
-  category           String // USER | VIP | CREATOR | AGENCY | SELLER | CAMPAIGN | EVENT | FAMILY | PROMOTIONAL | INVITE_LINK | QR_CODE | CUSTOM
+  category           String
   qualificationRules Json?
   rewardDefinition   Json?
-  maxUses            Int       @default(10000)
-  usesCount          Int       @default(0)
+  maxUses            Int                    @default(10000)
+  usesCount          Int                    @default(0)
   startTime          DateTime?
   endTime            DateTime?
-  status             String    @default("ACTIVE") // DRAFT | SCHEDULED | ACTIVE | PAUSED | COMPLETED | EXPIRED | CANCELLED | ARCHIVED
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  codes         ReferralCode[]
-  relationships ReferralRelationship[]
+  status             String                 @default("ACTIVE")
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  codes              ReferralCode[]
+  relationships      ReferralRelationship[]
 
   @@index([category])
   @@index([status])
@@ -32,20 +24,18 @@ model ReferralCampaign {
 
 /// Referral Code Instance
 model ReferralCode {
-  id         String    @id @default(uuid()) @db.Uuid
-  code       String    @unique
-  referrerId String    @db.Uuid
-  campaignId String?   @db.Uuid
-  inviteLink String?
-  qrCodeUrl  String?
-  maxUses    Int       @default(100)
-  usesCount  Int       @default(0)
-  expiresAt  DateTime?
-  status     String    @default("ACTIVE") // ACTIVE | EXPIRED | INACTIVE | CANCELLED
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id            String                 @id @default(uuid()) @db.Uuid
+  code          String                 @unique
+  referrerId    String                 @db.Uuid
+  campaignId    String?                @db.Uuid
+  inviteLink    String?
+  qrCodeUrl     String?
+  maxUses       Int                    @default(100)
+  usesCount     Int                    @default(0)
+  expiresAt     DateTime?
+  status        String                 @default("ACTIVE")
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
   campaign      ReferralCampaign?      @relation(fields: [campaignId], references: [id])
   relationships ReferralRelationship[]
 
@@ -57,24 +47,22 @@ model ReferralCode {
 
 /// Referrer-Referee Binding Relationship
 model ReferralRelationship {
-  id             String    @id @default(uuid()) @db.Uuid
-  referralCodeId String?   @db.Uuid
-  referrerId     String    @db.Uuid
-  refereeId      String    @unique @db.Uuid // One referee can only be referred once
-  campaignId     String?   @db.Uuid
-  referralType   String    @default("USER")
-  status         String    @default("REGISTERED") // CREATED | SHARED | REGISTERED | QUALIFIED | REWARDED | EXPIRED | REJECTED | CANCELLED
-  registeredAt   DateTime  @default(now())
+  id             String                  @id @default(uuid()) @db.Uuid
+  referralCodeId String?                 @db.Uuid
+  referrerId     String                  @db.Uuid
+  refereeId      String                  @unique @db.Uuid
+  campaignId     String?                 @db.Uuid
+  referralType   String                  @default("USER")
+  status         String                  @default("REGISTERED")
+  registeredAt   DateTime                @default(now())
   qualifiedAt    DateTime?
   rewardedAt     DateTime?
   expiresAt      DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  referralCode   ReferralCode?           @relation(fields: [referralCodeId], references: [id])
-  campaign       ReferralCampaign?       @relation(fields: [campaignId], references: [id])
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
   qualifications ReferralQualification[]
+  campaign       ReferralCampaign?       @relation(fields: [campaignId], references: [id])
+  referralCode   ReferralCode?           @relation(fields: [referralCodeId], references: [id])
   rewards        ReferralReward[]
 
   @@index([referrerId])
@@ -85,14 +73,13 @@ model ReferralRelationship {
 
 /// Qualification Evaluation Records
 model ReferralQualification {
-  id             String   @id @default(uuid()) @db.Uuid
-  relationshipId String   @db.Uuid
+  id             String               @id @default(uuid()) @db.Uuid
+  relationshipId String               @db.Uuid
   ruleName       String
-  passed         Boolean  @default(false)
+  passed         Boolean              @default(false)
   reasons        Json?
-  evaluatedAt    DateTime @default(now())
-
-  relationship ReferralRelationship @relation(fields: [relationshipId], references: [id])
+  evaluatedAt    DateTime             @default(now())
+  relationship   ReferralRelationship @relation(fields: [relationshipId], references: [id])
 
   @@index([relationshipId])
   @@map("referral_qualifications")
@@ -100,16 +87,15 @@ model ReferralQualification {
 
 /// Referral Reward Dispatch Log (Dispatched via Domain Events)
 model ReferralReward {
-  id               String    @id @default(uuid()) @db.Uuid
-  relationshipId   String    @db.Uuid
-  referrerId       String    @db.Uuid
-  refereeId        String    @db.Uuid
+  id               String               @id @default(uuid()) @db.Uuid
+  relationshipId   String               @db.Uuid
+  referrerId       String               @db.Uuid
+  refereeId        String               @db.Uuid
   rewardDefinition Json
-  dispatched       Boolean   @default(false)
+  dispatched       Boolean              @default(false)
   dispatchedAt     DateTime?
-  createdAt        DateTime  @default(now())
-
-  relationship ReferralRelationship @relation(fields: [relationshipId], references: [id])
+  createdAt        DateTime             @default(now())
+  relationship     ReferralRelationship @relation(fields: [relationshipId], references: [id])
 
   @@index([relationshipId])
   @@index([referrerId])

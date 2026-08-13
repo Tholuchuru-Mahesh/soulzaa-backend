@@ -1,5 +1,6 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
+import { InvestigationRecordingModule } from 'src/modules/investigation-recording/investigation-recording.module';
 import { VIDEO_ROOM_MODERATION_QUEUES } from './constants/video-room-moderation.constants';
 import { VIDEO_ROOM_QUEUES } from './constants/video-room.constants';
 import {
@@ -209,6 +210,11 @@ import { VideoRoomsAdminService } from './services/video-rooms-admin.service';
 import { VideoRoomIdentityCache } from './services/video-room-identity-cache.service';
 import { VideoRoomIdentityCacheListener } from './listeners/video-room-identity-cache.listener';
 
+import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
+import { ModeratorPerformanceModule } from 'src/modules/moderator-performance/moderator-performance.module';
+import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shift.module';
+import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-warning.module';
+
 /**
  * Video Rooms domain — VR-0: Enterprise Foundation.
  *
@@ -230,6 +236,11 @@ import { VideoRoomIdentityCacheListener } from './listeners/video-room-identity-
 @Global()
 @Module({
   imports: [
+    InvestigationRecordingModule,
+    MobileWorkforceModule,
+    ModeratorPerformanceModule,
+    ModeratorShiftModule,
+    ModeratorWarningModule,
     // Register the lean queue producers now; workers land with their phases.
     BullModule.registerQueue({ name: VIDEO_ROOM_QUEUES.MAIN }, { name: VIDEO_ROOM_QUEUES.CLEANUP }),
     // ---- VR-16 moderation engine: the 3 dedicated queues (Task 21) ----

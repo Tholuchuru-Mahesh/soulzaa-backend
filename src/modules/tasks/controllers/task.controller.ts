@@ -33,6 +33,7 @@ import { TaskQueryService } from '../services/task-query.service';
 import { TaskRewardService } from '../services/task-reward.service';
 import { TaskService } from '../services/task.service';
 import { TaskStatisticsService } from '../services/task-statistics.service';
+import { ModeratorTaskAssignmentService } from '../services/moderator-task-assignment.service';
 
 @ApiTags('Enterprise Tasks & Missions Engine')
 @ApiBearerAuth()
@@ -51,6 +52,7 @@ export class TaskController {
     private readonly auditService: TaskAuditService,
     private readonly queryService: TaskQueryService,
     private readonly configService: TaskConfigurationService,
+    private readonly moderatorAssignmentService: ModeratorTaskAssignmentService,
   ) {}
 
   // ─── Task & Mission Definitions ───────────────────────────────────────
@@ -251,4 +253,43 @@ export class TaskController {
   async setConfiguration(@Body() dto: UpdateTaskConfigurationDto, @CurrentUser() user: any) {
     return this.configService.setConfiguration(dto.key, dto.value, user?.id);
   }
+
+  // ─── Moderator Task Assignments ──────────────────────────────────────────
+
+  @Post(':id/assign-moderator/:moderatorId')
+  @RequirePermissions('task.assign.moderator')
+  @ApiOperation({ summary: 'Official or Manager assigns a task to a moderator' })
+  async assignToModerator(
+    @Param('id') taskId: string,
+    @Param('moderatorId') moderatorId: string,
+    @Body() dto: { dueAt?: string; notes?: string },
+    @CurrentUser() user: any,
+  ) {
+    return this.moderatorAssignmentService.assignTask({
+      taskId,
+      moderatorId,
+      assignedBy: user.id,
+      dueAt: dto.dueAt ? new Date(dto.dueAt) : undefined,
+      notes: dto.notes,
+    });
+  }
+
+  @Get('moderator/my-assignments')
+  @RequirePermissions('task.view.assigned')
+  @ApiOperation({ summary: 'Moderator fetches tasks assigned to them' })
+  async myAssignments(@CurrentUser() user: any, @Query('status') status?: string) {
+    return this.moderatorAssignmentService.getModeratorAssignments(user.id, status);
+  }
+
+  @Patch('moderator/assignments/:assignmentId')
+  @RequirePermissions('task.view.assigned')
+  @ApiOperation({ summary: 'Moderator updates assignment status (IN_PROGRESS / COMPLETED)' })
+  async updateAssignmentStatus(
+    @Param('assignmentId') assignmentId: string,
+    @Body() dto: { status: 'IN_PROGRESS' | 'COMPLETED' },
+    @CurrentUser() user: any,
+  ) {
+    return this.moderatorAssignmentService.updateAssignmentStatus(assignmentId, user.id, dto.status);
+  }
 }
+

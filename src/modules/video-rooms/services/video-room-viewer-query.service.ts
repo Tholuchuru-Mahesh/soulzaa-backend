@@ -33,10 +33,7 @@ export class VideoRoomViewerQueryService {
   }
 
   async countAudience(roomId: string): Promise<ViewerCountBreakdown> {
-    const [audience, presenceRows] = await Promise.all([
-      this.presence.audienceCount(roomId),
-      this.members.listPresence(roomId),
-    ]);
+    const presenceRows = await this.members.listPresence(roomId);
     let watching = 0,
       background = 0,
       reconnecting = 0;
@@ -46,7 +43,7 @@ export class VideoRoomViewerQueryService {
       else if (s === ViewerStatus.BACKGROUND) background++;
       else if (s === ViewerStatus.RECONNECTING) reconnecting++;
     }
-    return { audience, watching, background, reconnecting };
+    return { audience: presenceRows.length, watching, background, reconnecting };
   }
 
   async getMyViewer(userId: string, roomId: string) {

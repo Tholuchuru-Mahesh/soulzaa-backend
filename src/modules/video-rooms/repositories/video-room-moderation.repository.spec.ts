@@ -113,7 +113,7 @@ describe('VideoRoomModerationRepository', () => {
   it('findActiveBlock is the join-time gate (ACTIVE only)', async () => {
     await repo.findActiveBlock('r1', 'u1');
     expect(prisma.videoRoomBlock.findFirst).toHaveBeenCalledWith({
-      where: { roomId: 'r1', userId: 'u1', status: VideoRoomModerationStatus.ACTIVE },
+      where: expect.objectContaining({ roomId: 'r1', userId: 'u1', status: VideoRoomModerationStatus.ACTIVE }),
     });
   });
 
@@ -333,7 +333,7 @@ describe('VideoRoomModerationRepository', () => {
       prisma.videoRoomBlock.findFirst.mockResolvedValueOnce({ id: 'b1' });
       await expect(repo.isActivelyBlocked('r1', 'u1')).resolves.toBe(true);
       expect(prisma.videoRoomBlock.findFirst).toHaveBeenCalledWith({
-        where: { roomId: 'r1', userId: 'u1', status: VideoRoomModerationStatus.ACTIVE },
+        where: expect.objectContaining({ roomId: 'r1', userId: 'u1', status: VideoRoomModerationStatus.ACTIVE }),
       });
     });
 

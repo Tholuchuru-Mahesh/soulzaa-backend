@@ -1,38 +1,22 @@
-// ============================================================
-// VR-11 Treasure Box Engine (Video Rooms). Video-owned tables.
-//
-// TreasureSession / TreasureBox / TreasureContribution / TreasureReward are
-// SHARED with audio rooms and are safe to share because every audio query is
-// scoped by roomId / sessionId / boxId, and video room UUIDs never collide
-// with audio room UUIDs.
-//
-// TreasureBoxConfig is deliberately NOT shared: it is globally keyed by
-// `level @unique` and is read UNFILTERED by the audio engine
-// (treasure.repository.ts listEnabledConfigs), which then builds
-// `new Map(configs.map(c => [c.level, c]))`. Adding video rows there would
-// collide on level and silently hand audio rooms video thresholds.
-// ============================================================
-
 /// The video-room treasure ladder. Global (one ladder for all video rooms),
 /// mirroring how audio configures its own. Frozen into a session at create
 /// time so an admin edit cannot change the rules of a ladder in flight.
 model VideoRoomTreasureLevel {
-  id                String  @id @default(uuid()) @db.Uuid
-  level             Int     @unique
+  id                String   @id @default(uuid()) @db.Uuid
+  level             Int      @unique
   threshold         BigInt
-  enabled           Boolean @default(true)
-  poolStrategy      String  @default("PERCENTAGE")
-  poolPercentBps    Int     @default(1000)
+  enabled           Boolean  @default(true)
+  poolStrategy      String   @default("PERCENTAGE")
+  poolPercentBps    Int      @default(1000)
   poolFixedAmount   BigInt?
-  winnerAlgorithm   String  @default("RANDOM")
-  winnerCount       Int     @default(3)
-  minStaySeconds    Int     @default(120)
-  minActivityEvents Int     @default(0)
-
-  createdBy String?  @db.Uuid
-  updatedBy String?  @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  winnerAlgorithm   String   @default("RANDOM")
+  winnerCount       Int      @default(3)
+  minStaySeconds    Int      @default(120)
+  minActivityEvents Int      @default(0)
+  createdBy         String?  @db.Uuid
+  updatedBy         String?  @db.Uuid
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@map("video_room_treasure_levels")
 }
@@ -103,7 +87,6 @@ model TreasureWinner {
   @@unique([boxId, userId])
   @@index([roomId])
   @@index([userId])
-  /// VR-13: treasure-dimension recompute selects winners by selectedAt window.
   @@index([selectedAt])
   @@map("treasure_winners")
 }

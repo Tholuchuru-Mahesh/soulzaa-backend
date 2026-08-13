@@ -44,6 +44,8 @@ import { AuthRepository } from '../repositories/auth.repository';
 import { LoginSecurityService } from './login-security.service';
 import { FirebaseService } from './firebase.service';
 import { randomToken, sha256 } from './hash.util';
+import { Admin2faService } from 'src/modules/admin-identity/services/admin-2fa.service';
+import { ModeratorDeviceBindingService } from 'src/modules/device/services/moderator-device-binding.service';
 
 /**
  * Auth domain orchestrator. Owns the auth flows (register/login/refresh/logout/
@@ -69,6 +71,8 @@ export class AuthService implements IAuthService {
     private readonly firebaseService: FirebaseService,
     config: ConfigService,
     @Inject(ROLE_SOURCE) private readonly roleSource: IRoleSource,
+    private readonly admin2fa?: Admin2faService,
+    private readonly deviceBinding?: ModeratorDeviceBindingService,
   ) {
     this.resetTtlSeconds = Number(config.get('security', { infer: true })!.passwordResetTtlSeconds);
   }
@@ -116,10 +120,13 @@ export class AuthService implements IAuthService {
   // ---- Login ----
 
   async loginWithPassword(input: PasswordLoginCommand, ctx: AuthContext): Promise<AuthResult> {
-    const identifier = input.email.toLowerCase();
+    const identifier = (input.email || (input as any).username || '').toLowerCase();
     await this.security.assertNotLocked(identifier);
 
-    const user = await this.users.findByEmail(identifier);
+    let user = await this.users.findByEmail(identifier);
+    if (!user) {
+      user = await this.users.findByUsername(identifier);
+    }
     const credential = user ? await this.repo.getCredential(user.id) : null;
     const ok =
       user !== null &&
@@ -130,12 +137,125 @@ export class AuthService implements IAuthService {
       await this.security.recordFailure(identifier);
       throw new BusinessException(
         ERROR_CODES.INVALID_CREDENTIALS,
-        'Invalid email or password',
+        'Invalid credentials',
         HttpStatus.UNAUTHORIZED,
       );
     }
 
     this.assertActive(user);
+    await this.security.recordSuccess(identifier);
+    return this.issue(user, ctx, 'PASSWORD', false);
+  }
+
+  async staffLogin(
+    input: PasswordLoginCommand & { totpCode?: string; deviceIdentifier?: string },
+    ctx: AuthContext,
+  ): Promise<AuthResult> {
+    const identifier = (input.email || (input as any).username || '').toLowerCase();
+    await this.security.assertNotLocked(identifier);
+
+    let user = await this.users.findByEmail(identifier);
+    if (!user) {
+      user = await this.users.findByUsername(identifier);
+    }
+    const credential = user ? await this.repo.getCredential(user.id) : null;
+    const ok =
+      user !== null &&
+      credential?.passwordHash != null &&
+      (await this.passwords.verify(input.password, credential.passwordHash));
+
+    if (!ok || !user) {
+      await this.security.recordFailure(identifier, {
+        userId: user?.id,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        reason: 'INVALID_CREDENTIALS',
+      });
+      throw new BusinessException(
+        ERROR_CODES.INVALID_CREDENTIALS,
+        'Invalid credentials',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    this.assertActive(user);
+
+    // 1. Staff Role Assertion (Task 9)
+    const userRoles = await this.roleSource.getRoleNames(user.id);
+    const isStaff = userRoles.some((role: string) =>
+      [
+        'MODERATOR',
+        'ADMIN',
+        'SUPER_ADMIN',
+        'COUNTRY_MANAGER',
+        'STATE_MANAGER',
+        'REGIONAL_MANAGER',
+        'COIN_SELLER',
+        'AGENT',
+        'FINANCE_MANAGER',
+      ].includes(role),
+    );
+
+    if (!isStaff) {
+      await this.security.recordFailure(identifier, {
+        userId: user.id,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        reason: 'NOT_STAFF_ROLE',
+      });
+      throw new BusinessException(
+        ERROR_CODES.FORBIDDEN,
+        'Access denied: Staff portal is restricted to authorized staff personnel.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    // 2. 2FA TOTP Verification (Task 10)
+    if (this.admin2fa) {
+      const isEnrolled = await this.admin2fa.isEnrolled(user.id);
+      if (isEnrolled) {
+        if (!input.totpCode) {
+          await this.security.recordFailure(identifier, {
+            userId: user.id,
+            ip: ctx.ip,
+            userAgent: ctx.userAgent,
+            reason: '2FA_CODE_REQUIRED',
+          });
+          throw new BusinessException(
+            ERROR_CODES.UNAUTHORIZED,
+            'Two-factor authentication code is required',
+            HttpStatus.UNAUTHORIZED,
+          );
+        }
+        try {
+          await this.admin2fa.verify(user.id, input.totpCode);
+        } catch (err) {
+          await this.security.recordFailure(identifier, {
+            userId: user.id,
+            ip: ctx.ip,
+            userAgent: ctx.userAgent,
+            reason: '2FA_VERIFICATION_FAILED',
+          });
+          throw err;
+        }
+      }
+    }
+
+    // 3. Bound Device Verification (Task 11)
+    if (this.deviceBinding && input.deviceIdentifier) {
+      try {
+        await this.deviceBinding.assertSingleDevice(user.id, input.deviceIdentifier);
+      } catch (err) {
+        await this.security.recordFailure(identifier, {
+          userId: user.id,
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+          reason: 'UNBOUND_DEVICE',
+        });
+        throw err;
+      }
+    }
+
     await this.security.recordSuccess(identifier);
     return this.issue(user, ctx, 'PASSWORD', false);
   }

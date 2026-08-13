@@ -1,24 +1,17 @@
-// ============================================================
-// Soulzaa — Enterprise Tasks & Missions Engine Schema (Phase 17)
-// Owned by the "tasks" module.
-// Append-only, no modifications to frozen schemas.
-// ============================================================
-
 /// Mission Grouping Definition
 model MissionDefinition {
-  id                String   @id @default(uuid()) @db.Uuid
-  code              String   @unique
+  id                String            @id @default(uuid()) @db.Uuid
+  code              String            @unique
   name              String
   description       String?
-  category          String // DAILY_TASK | WEEKLY_MISSION | MONTHLY_MISSION | SEASON_MISSION | EVENT_MISSION | FAMILY_MISSION | VIP_MISSION | GIFT_MISSION | AUDIO_ROOM_MISSION | VIDEO_ROOM_MISSION | GAME_MISSION | REFERRAL_MISSION | CREATOR_MISSION | MODERATOR_MISSION | AGENCY_MISSION | OFFICIAL_MISSION | PLATFORM_CHALLENGE | CUSTOM
-  requiredTaskCount Int      @default(1)
+  category          String
+  requiredTaskCount Int               @default(1)
   rewardDefinition  Json?
-  status            String   @default("ACTIVE") // DRAFT | SCHEDULED | ACTIVE | PAUSED | COMPLETED | EXPIRED | CANCELLED | ARCHIVED
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  tasks             TaskDefinition[]
+  status            String            @default("ACTIVE")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
   missionProgresses MissionProgress[]
+  tasks             TaskDefinition[]
 
   @@index([category])
   @@index([status])
@@ -27,32 +20,31 @@ model MissionDefinition {
 
 /// Task Definition
 model TaskDefinition {
-  id               String    @id @default(uuid()) @db.Uuid
-  code             String    @unique
-  missionId        String?   @db.Uuid
-  name             String
-  description      String?
-  category         String
-  objective        String
-  requiredProgress Int       @default(1)
-  progressRules    Json? // JSON evaluation rule
-  completionRules  Json?
-  rewardDefinition Json?
-  visibility       String    @default("PUBLIC") // PUBLIC | PRIVATE | HIDDEN
-  priority         Int       @default(0)
-  difficulty       String    @default("EASY") // EASY | MEDIUM | HARD | EXPERT
-  startTime        DateTime?
-  endTime          DateTime?
-  repeatable       Boolean   @default(false)
-  resetPolicy      String    @default("DAILY") // NONE | DAILY | WEEKLY | MONTHLY | SEASONAL
-  maxCompletions   Int       @default(1)
-  status           String    @default("ACTIVE")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  mission        MissionDefinition? @relation(fields: [missionId], references: [id])
-  taskProgresses TaskProgress[]
+  id                         String                       @id @default(uuid()) @db.Uuid
+  code                       String                       @unique
+  missionId                  String?                      @db.Uuid
+  name                       String
+  description                String?
+  category                   String
+  objective                  String
+  requiredProgress           Int                          @default(1)
+  progressRules              Json?
+  completionRules            Json?
+  rewardDefinition           Json?
+  visibility                 String                       @default("PUBLIC")
+  priority                   Int                          @default(0)
+  difficulty                 String                       @default("EASY")
+  startTime                  DateTime?
+  endTime                    DateTime?
+  repeatable                 Boolean                      @default(false)
+  resetPolicy                String                       @default("DAILY")
+  maxCompletions             Int                          @default(1)
+  status                     String                       @default("ACTIVE")
+  createdAt                  DateTime                     @default(now())
+  updatedAt                  DateTime                     @updatedAt
+  moderator_task_assignments moderator_task_assignments[]
+  mission                    MissionDefinition?           @relation(fields: [missionId], references: [id])
+  taskProgresses             TaskProgress[]
 
   @@index([category])
   @@index([status])
@@ -63,20 +55,19 @@ model TaskDefinition {
 
 /// Per-User Task Progress Tracking
 model TaskProgress {
-  id               String    @id @default(uuid()) @db.Uuid
-  taskId           String    @db.Uuid
-  userId           String    @db.Uuid
-  currentProgress  Int       @default(0)
+  id               String         @id @default(uuid()) @db.Uuid
+  taskId           String         @db.Uuid
+  userId           String         @db.Uuid
+  currentProgress  Int            @default(0)
   requiredProgress Int
-  percentComplete  Float     @default(0)
-  isCompleted      Boolean   @default(false)
-  completionCount  Int       @default(0)
-  periodKey        String    @default("alltime")
+  percentComplete  Float          @default(0)
+  isCompleted      Boolean        @default(false)
+  completionCount  Int            @default(0)
+  periodKey        String         @default("alltime")
   completedAt      DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  task TaskDefinition @relation(fields: [taskId], references: [id])
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  task             TaskDefinition @relation(fields: [taskId], references: [id])
 
   @@unique([taskId, userId, periodKey])
   @@index([userId])
@@ -86,18 +77,17 @@ model TaskProgress {
 
 /// Per-User Mission Progress Tracking
 model MissionProgress {
-  id                 String    @id @default(uuid()) @db.Uuid
-  missionId          String    @db.Uuid
-  userId             String    @db.Uuid
-  completedTaskCount Int       @default(0)
+  id                 String            @id @default(uuid()) @db.Uuid
+  missionId          String            @db.Uuid
+  userId             String            @db.Uuid
+  completedTaskCount Int               @default(0)
   requiredTaskCount  Int
-  isCompleted        Boolean   @default(false)
-  rewardClaimed      Boolean   @default(false)
+  isCompleted        Boolean           @default(false)
+  rewardClaimed      Boolean           @default(false)
   completedAt        DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-
-  mission MissionDefinition @relation(fields: [missionId], references: [id])
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  mission            MissionDefinition @relation(fields: [missionId], references: [id])
 
   @@unique([missionId, userId])
   @@index([userId])

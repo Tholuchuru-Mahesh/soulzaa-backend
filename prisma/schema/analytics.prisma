@@ -1,9 +1,3 @@
-// ============================================================
-// Analytics — aggregated metrics & reporting tables
-// Owned by the "analytics" module.
-// No cross-module relations — reference other domains by id.
-// ============================================================
-
 model RoomActivity {
   id                   String   @id @default(uuid()) @db.Uuid
   roomId               String   @unique @db.Uuid
@@ -50,11 +44,11 @@ model SpeakerSession {
 
 model RevenueReport {
   id           String   @id @default(uuid()) @db.Uuid
-  dateKey      String // E.g., "20260707"
-  roomId       String   @db.Uuid // Use all-zero UUID for global/all rooms
-  userId       String   @db.Uuid // Use all-zero UUID for global/all users
-  giftCoins    BigInt   @default(0) // Total Gold Coins spent on gifts
-  creatorCoins BigInt   @default(0) // Total Gold Coins earned by creator
+  dateKey      String
+  roomId       String   @db.Uuid
+  userId       String   @db.Uuid
+  giftCoins    BigInt   @default(0)
+  creatorCoins BigInt   @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -62,14 +56,9 @@ model RevenueReport {
   @@map("revenue_reports")
 }
 
-// AR-13 rollup tables — materialized daily per room/creator by the analytics
-// rollup job from live Redis counters. Reads combine these (history) with the
-// live counters (today). Upserts overwrite with the day's counter snapshot, so
-// re-running the rollup for a day is idempotent.
-
 model RoomDailyStat {
   id               String   @id @default(uuid()) @db.Uuid
-  dateKey          String // YYYYMMDD
+  dateKey          String
   roomId           String   @db.Uuid
   joins            Int      @default(0)
   uniqueVisitors   Int      @default(0)
@@ -89,7 +78,7 @@ model RoomDailyStat {
 
 model CreatorDailyStat {
   id                 String   @id @default(uuid()) @db.Uuid
-  dateKey            String // YYYYMMDD
+  dateKey            String
   userId             String   @db.Uuid
   giftsReceivedCount Int      @default(0)
   giftCoinsReceived  BigInt   @default(0)
@@ -105,22 +94,16 @@ model CreatorDailyStat {
   @@map("creator_daily_stats")
 }
 
-// ============================================================
-// Phase 20: Enterprise Reports & Analytics Engine Models
-// ============================================================
-
 /// Analytics Report Record
 model AnalyticsReport {
-  id          String  @id @default(uuid()) @db.Uuid
+  id          String         @id @default(uuid()) @db.Uuid
   name        String
-  domain      String // PLATFORM | FINANCIAL | WALLET | REVENUE | GIFT | TREASURE_BOX | WITHDRAWAL | AGENCY | COIN_SELLER | FAMILY | VIP | LEVEL | ACHIEVEMENT | RANKING | EVENT | TASK | REFERRAL | NOTIFICATION | GROWTH | RETENTION | MODERATION
+  domain      String
   parameters  Json?
   data        Json?
-  generatedBy String? @db.Uuid
-
-  createdAt DateTime @default(now())
-
-  exports ReportExport[]
+  generatedBy String?        @db.Uuid
+  createdAt   DateTime       @default(now())
+  exports     ReportExport[]
 
   @@index([domain])
   @@index([createdAt])
@@ -151,28 +134,26 @@ model AnalyticsMetric {
 
 /// Configurable Dashboard Layouts
 model AnalyticsDashboard {
-  id          String  @id @default(uuid()) @db.Uuid
+  id          String   @id @default(uuid()) @db.Uuid
   name        String
   description String?
   layout      Json?
   metrics     Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@map("analytics_dashboards")
 }
 
 /// Dynamic aggregated statistics per period
 model AnalyticsStatistics {
-  id         String  @id @default(uuid()) @db.Uuid
-  period     String  @default("DAILY") // DAILY | WEEKLY | MONTHLY | YEARLY
+  id         String   @id @default(uuid()) @db.Uuid
+  period     String   @default("DAILY")
   dateKey    String
   metricType String
-  count      Int     @default(0)
-  amount     Decimal @default(0.0) @db.Decimal(20, 2)
-
-  updatedAt DateTime @updatedAt
+  count      Int      @default(0)
+  amount     Decimal  @default(0.0) @db.Decimal(20, 2)
+  updatedAt  DateTime @updatedAt
 
   @@unique([period, dateKey, metricType])
   @@map("analytics_statistics")
@@ -183,7 +164,7 @@ model AnalyticsAudit {
   id        String   @id @default(uuid()) @db.Uuid
   reportId  String?  @db.Uuid
   actorId   String?  @db.Uuid
-  action    String // REPORT_GENERATED | REPORT_EXPORTED | DASHBOARD_REFRESHED | ANALYTICS_CONFIGURATION_UPDATED
+  action    String
   details   Json?
   createdAt DateTime @default(now())
 
@@ -205,16 +186,14 @@ model AnalyticsConfiguration {
 
 /// Export requests registry
 model ReportExport {
-  id        String    @id @default(uuid()) @db.Uuid
-  reportId  String    @db.Uuid
-  format    String // CSV | EXCEL | PDF | JSON
+  id        String          @id @default(uuid()) @db.Uuid
+  reportId  String          @db.Uuid
+  format    String
   url       String?
-  status    String    @default("PENDING") // PENDING | COMPLETED | FAILED
+  status    String          @default("PENDING")
   expiresAt DateTime?
-
-  createdAt DateTime @default(now())
-
-  report AnalyticsReport @relation(fields: [reportId], references: [id])
+  createdAt DateTime        @default(now())
+  report    AnalyticsReport @relation(fields: [reportId], references: [id])
 
   @@index([reportId])
   @@map("report_exports")

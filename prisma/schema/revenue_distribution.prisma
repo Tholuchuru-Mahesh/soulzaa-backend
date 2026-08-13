@@ -1,8 +1,3 @@
-// ============================================================
-// Soulzaa — Enterprise Host Earnings & Revenue Distribution Schema
-// Entities: RevenueDistribution, HostEarnings, RevenueHistory, RevenueAudit, RevenueStatistics, RevenueConfiguration
-// ============================================================
-
 /// Immutable master record of every revenue calculation and host earnings payout
 model RevenueDistribution {
   id                    String   @id @default(uuid()) @db.Uuid

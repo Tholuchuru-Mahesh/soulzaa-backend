@@ -362,13 +362,12 @@ export class VideoRoomMemberService {
     };
   }
 
-  /** Live presence for the room's active members (derived per member). */
+  /** Live presence for the room's active members (derived per member, excluding hidden staff accounts). */
   async listPresence(roomId: string): Promise<VideoRoomPresenceView[]> {
     const rows = await this.repo.listActiveMembers(roomId, VIDEO_ROOM_MAX_PAGE_SIZE, 0);
-    return this.buildPresencePage(
-      roomId,
-      rows.map((m) => m.userId),
-    );
+    const identities = await this.identities.resolve(rows.map((m) => m.userId));
+    const visibleUserIds = rows.map((m) => m.userId).filter((id) => identities.has(id));
+    return this.buildPresencePage(roomId, visibleUserIds);
   }
 
   /** The caller's own live session in a room, or null. */

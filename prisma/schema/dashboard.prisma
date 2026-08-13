@@ -1,33 +1,26 @@
-// ============================================================
-// Phase 21: Enterprise Business Admin Dashboard Models
-// Owned by the "admin-dashboard" module.
-// ============================================================
-
 /// Dashboard Widget metadata and permissions
 model DashboardWidget {
-  id             String @id @default(uuid()) @db.Uuid
+  id             String   @id @default(uuid()) @db.Uuid
   name           String
-  type           String // CHART | NUMBER | TABLE | LIST | STATE
+  type           String
   metricKey      String
-  visibleToRoles Json? // Array of roles allowed to view
+  visibleToRoles Json?
   config         Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@map("dashboard_widgets")
 }
 
 /// User custom grid layout configuration
 model DashboardLayout {
-  id         String  @id @default(uuid()) @db.Uuid
-  userId     String  @db.Uuid
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
   name       String
-  isDefault  Boolean @default(false)
-  gridConfig Json? // Positions mapping configuration
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isDefault  Boolean  @default(false)
+  gridConfig Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@map("dashboard_layouts")
 }
@@ -35,14 +28,13 @@ model DashboardLayout {
 /// Operational and System Health Alerts
 model DashboardAlert {
   id         String    @id @default(uuid()) @db.Uuid
-  severity   String    @default("WARNING") // INFO | WARNING | ERROR | CRITICAL
+  severity   String    @default("WARNING")
   title      String
   message    String
-  source     String // DATABASE | REDIS | QUEUE | SOCKET | API
+  source     String
   resolved   Boolean   @default(false)
   resolvedAt DateTime?
-
-  createdAt DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@map("dashboard_alerts")
 }
@@ -61,7 +53,7 @@ model DashboardConfiguration {
 model DashboardAudit {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String?  @db.Uuid
-  action    String // DASHBOARD_VIEWED | DASHBOARD_WIDGET_UPDATED | DASHBOARD_LAYOUT_UPDATED | DASHBOARD_CONFIGURATION_UPDATED | DASHBOARD_EXPORT_GENERATED
+  action    String
   details   Json?
   createdAt DateTime @default(now())
 
@@ -72,14 +64,13 @@ model DashboardAudit {
 
 /// Dynamic aggregated statistics for dashboard queries
 model DashboardStatistics {
-  id              String @id @default(uuid()) @db.Uuid
-  period          String @default("DAILY") // DAILY | WEEKLY | MONTHLY
+  id              String   @id @default(uuid()) @db.Uuid
+  period          String   @default("DAILY")
   dateKey         String
-  widgetRefreshes Int    @default(0)
-  alertsRaised    Int    @default(0)
-  exportsCount    Int    @default(0)
-
-  updatedAt DateTime @updatedAt
+  widgetRefreshes Int      @default(0)
+  alertsRaised    Int      @default(0)
+  exportsCount    Int      @default(0)
+  updatedAt       DateTime @updatedAt
 
   @@unique([period, dateKey])
   @@map("dashboard_statistics")

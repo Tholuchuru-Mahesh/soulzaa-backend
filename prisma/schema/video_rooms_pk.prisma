@@ -1,58 +1,3 @@
-// ============================================================
-// VR-12 PK Battle Engine (Video Rooms). Video-OWNED tables.
-//
-// Deliberately NOT sharing the audio `pk_battles` family. The audio
-// PkBattleRepository.findExpired() selects `{ status: ACTIVE, endsAt <= now }`
-// with NO room-type discriminator, and PkExpiryMonitor sweeps it fleet-wide.
-// A video battle in that table would be completed by the AUDIO engine, granting
-// an audio badge, writing the shared PK_WINS leaderboard and broadcasting a
-// PkEndedEvent on the /audio-room namespace. Audio's PkStatus also has only
-// ACTIVE/COMPLETED/CANCELLED, so every VR-12 state would be unrepresentable.
-// Same hazard class as the TreasureBoxConfig note in video_rooms_treasure.prisma.
-// ============================================================
-
-enum VideoRoomPkStatus {
-  CREATED
-  INVITED
-  PENDING
-  ACCEPTED
-  COUNTDOWN
-  LIVE
-  PAUSED
-  RECOVERING
-  COMPLETED
-  CANCELLED
-  FAILED
-}
-
-/// ONE_VS_ONE and TEAM today. MULTI_HOST / CROSS_ROOM are additive later.
-enum VideoRoomPkMode {
-  ONE_VS_ONE
-  TEAM
-}
-
-/// Two sides today. GREEN/YELLOW are additive for multi-host PK — the schema
-/// needs no change because sides are ROWS in VideoRoomPkTeam, not columns.
-enum VideoRoomPkSide {
-  RED
-  BLUE
-}
-
-enum VideoRoomPkInvitationStatus {
-  SENT
-  DELIVERED
-  ACCEPTED
-  REJECTED
-  CANCELLED
-  EXPIRED
-}
-
-enum VideoRoomPkRewardKind {
-  WINNER
-  PARTICIPATION
-  BONUS
-}
-
 /// The aggregate root. Carries the full 11-state machine from invitation to a
 /// terminal state, so an audit row written at invite time can already carry the
 /// battle id.
@@ -66,33 +11,29 @@ enum VideoRoomPkRewardKind {
 /// scheduled end job so a stale pre-pause job settles against a sequence that no
 /// longer matches and becomes a no-op.
 model VideoRoomPkBattle {
-  id        String            @id @default(uuid()) @db.Uuid
-  roomId    String            @db.Uuid
-  mode      VideoRoomPkMode
-  status    VideoRoomPkStatus @default(CREATED)
-  createdBy String            @db.Uuid
-
+  id               String            @id @default(uuid()) @db.Uuid
+  roomId           String            @db.Uuid
+  mode             VideoRoomPkMode
+  status           VideoRoomPkStatus @default(CREATED)
+  createdBy        String            @db.Uuid
   countdownSeconds Int
   durationSeconds  Int
   startedAt        DateTime?
   endsAt           DateTime?
   pausedAt         DateTime?
-  totalPausedMs    Int       @default(0)
-  resumeSeq        Int       @default(0)
-
+  totalPausedMs    Int               @default(0)
+  resumeSeq        Int               @default(0)
   /// Frozen at create: which score strategies apply and at what rates.
-  scoringSnapshot Json
+  scoringSnapshot  Json
   /// Frozen at create: poolBps / winnerBps / participationBps / bonusBps.
-  rewardSnapshot  Json
-
-  winningTeamId String?   @db.Uuid
-  isDraw        Boolean   @default(false)
-  completedAt   DateTime?
-  cancelledAt   DateTime?
-  failureReason String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  rewardSnapshot   Json
+  winningTeamId    String?           @db.Uuid
+  isDraw           Boolean           @default(false)
+  completedAt      DateTime?
+  cancelledAt      DateTime?
+  failureReason    String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([roomId, status])
   @@index([status, endsAt])
@@ -231,4 +172,46 @@ model VideoRoomPkReward {
   @@index([battleId])
   @@index([userId])
   @@map("video_room_pk_rewards")
+}
+
+enum VideoRoomPkStatus {
+  CREATED
+  INVITED
+  PENDING
+  ACCEPTED
+  COUNTDOWN
+  LIVE
+  PAUSED
+  RECOVERING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+/// ONE_VS_ONE and TEAM today. MULTI_HOST / CROSS_ROOM are additive later.
+enum VideoRoomPkMode {
+  ONE_VS_ONE
+  TEAM
+}
+
+/// Two sides today. GREEN/YELLOW are additive for multi-host PK — the schema
+/// needs no change because sides are ROWS in VideoRoomPkTeam, not columns.
+enum VideoRoomPkSide {
+  RED
+  BLUE
+}
+
+enum VideoRoomPkInvitationStatus {
+  SENT
+  DELIVERED
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum VideoRoomPkRewardKind {
+  WINNER
+  PARTICIPATION
+  BONUS
 }

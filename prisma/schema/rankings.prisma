@@ -1,15 +1,9 @@
-// ============================================================
-// Rankings — leaderboard snapshots & config (live data in Redis ZSETs)
-// Owned by the "rankings" module.
-// No cross-module relations — reference other domains by id.
-// ============================================================
-
 model RankingSnapshot {
   id        String   @id @default(uuid()) @db.Uuid
-  type      String // E.g., "gifters", "receivers", "families", "streamers"
-  period    String // E.g., "daily", "weekly", "monthly"
-  dateKey   String // E.g., "20260707", "2026W28", "202607"
-  targetId  String   @db.Uuid // Reference to user_id or family_id
+  type      String
+  period    String
+  dateKey   String
+  targetId  String   @db.Uuid
   rank      Int
   score     BigInt
   createdAt DateTime @default(now())

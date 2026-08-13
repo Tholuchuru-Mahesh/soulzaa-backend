@@ -18,6 +18,8 @@ import type {
 import { SessionRepository } from '../repositories/session.repository';
 import { SessionService } from './session.service';
 
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+
 /**
  * User/multi-session policy layer and the public SESSION_SERVICE facade.
  * Enforces the concurrent-session limit on create, exposes session listing,
@@ -33,6 +35,7 @@ export class SessionManager implements ISessionService {
     private readonly repo: SessionRepository,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(DEVICE_SERVICE) private readonly devices: IDeviceService,
+    private readonly prisma: PrismaService,
     config: ConfigService,
   ) {
     this.maxConcurrent = Number(config.get('session', { infer: true })!.maxConcurrent);
@@ -132,16 +135,30 @@ export class SessionManager implements ISessionService {
   /**
    * Keep active sessions at or below the configured cap: before minting a new
    * one, evict the oldest sessions so the total (incl. the incoming session)
-   * never exceeds the limit.
+   * never exceeds the limit. Accounts holding MODERATOR role are capped at 1 (Task 38).
    */
   private async enforceConcurrentLimit(userId: string): Promise<void> {
     const active = await this.repo.listActiveSessions(userId); // ordered oldest → newest
-    const overBy = active.length - this.maxConcurrent + 1;
+    const limit = await this.getMaxConcurrentLimit(userId);
+    const overBy = active.length - limit + 1;
     if (overBy <= 0) return;
     const toEvict = active.slice(0, overBy);
     for (const s of toEvict) {
       await this.service.revokeSession(userId, s.id, 'concurrent');
     }
+  }
+
+  private async getMaxConcurrentLimit(userId: string): Promise<number> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { roles: true },
+    });
+    if ((user?.roles ?? []).some((r) => r === 'MODERATOR')) return 1;
+    const moderatorRole = await this.prisma.userRole.findFirst({
+      where: { userId, role: { name: 'MODERATOR' } },
+    });
+    if (moderatorRole) return 1;
+    return this.maxConcurrent;
   }
 
   private async assertOwnership(userId: string, sessionId: string) {

@@ -1,8 +1,3 @@
-// ============================================================
-// Soulzaa — Enterprise Agency Settlement Schema
-// Entities: AgencyRelationship, AgencySettlement, AgencyCommission, AgencyHistory, AgencyAudit, AgencyStatistics, AgencyConfiguration
-// ============================================================
-
 /// Active mapping relationship between Agency and Host
 model AgencyRelationship {
   id             String    @id @default(uuid()) @db.Uuid

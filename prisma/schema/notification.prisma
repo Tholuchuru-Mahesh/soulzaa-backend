@@ -1,92 +1,3 @@
-// ============================================================
-// Notification — notifications, notification preferences.
-// Owned by the "notification" module. No cross-module relations —
-// reference other domains by id and coordinate via the event bus.
-// The write path is driven by a listener subscribing to domain events
-// (e.g. SOCIAL_EVENTS.*); producers never touch these tables.
-// ============================================================
-
-enum NotificationType {
-  FRIEND_REQUEST
-  FRIEND_ACCEPTED
-  NEW_FOLLOWER
-  ROOM_INVITE
-  GAME_INVITE
-  FAMILY_INVITE
-  PK_INVITE
-  EVENT_INVITE
-  NEW_MESSAGE
-  CHAT_REQUEST
-  /// An inbound call that went unanswered. Durable on purpose: a missed call is
-  /// something the user has to be able to come back to, not a durable banner they may
-  /// have swiped away while driving.
-  MISSED_CALL
-  /// Someone sent this user a gift. Durable because it is worth money — a reward
-  /// the recipient can only see if they happened to be looking is not a reward.
-  GIFT_RECEIVED
-
-  // ---- VR-15: video-room notification types (append-only) ----
-  ROOM_STARTED
-  ROOM_CLOSED
-  ROOM_LOCKED
-  ROOM_UNLOCKED
-  SEAT_INVITE
-  SEAT_APPROVED
-  SEAT_REJECTED
-  VIEWER_PROMOTED
-  VIEWER_DEMOTED
-  TREASURE_UNLOCKED
-  TREASURE_REWARD
-  PK_ACCEPTED
-  PK_REJECTED
-  PK_STARTED
-  PK_ENDED
-  PK_WINNER
-  ANNOUNCEMENT
-  MENTION
-  SYSTEM
-
-  // ---- Role approval chain (append-only) ----
-  ROLE_REQUEST_UPDATE
-  ROLE_GRANTED
-
-  // ---- Wallet (append-only) ----
-  /// Coins bought. GIFT_RECEIVE movements are excluded from the wallet
-  /// producer — GIFT_RECEIVED already covers those, and notifying on both
-  /// would double-notify every gift on the platform.
-  RECHARGE_SUCCESS
-  WITHDRAWAL_APPROVED
-  WITHDRAWAL_REJECTED
-  REFUND_PROCESSED
-  /// An unexplained credit (admin adjustment, event/attendance reward).
-  COINS_RECEIVED
-  /// An unexplained debit. Admin adjustments only — a user spending their own
-  /// coins does not need to be told they spent their own coins.
-  COINS_DEDUCTED
-
-  // ---- Games ----
-  GAME_MATCH_FOUND
-  GAME_STARTED
-  GAME_WON
-  GAME_LOST
-  GAME_OPPONENT_LEFT
-
-  // ---- VIP ----
-  VIP_ACTIVATED
-  VIP_RENEWED
-  VIP_EXPIRING
-  VIP_EXPIRED
-
-  // ---- Family (invitations ride the existing FAMILY_INVITE) ----
-  FAMILY_MEMBER_JOINED
-  FAMILY_MEMBER_LEFT
-  FAMILY_REMOVED
-
-  // ---- Security (never preference-gated; see PUSH_CATEGORIES.SECURITY) ----
-  SECURITY_NEW_LOGIN
-  SECURITY_PASSWORD_CHANGED
-}
-
 /// A single in-app notification for `userId`, optionally caused by
 /// `actorId` (the other user) and pointing at an entity (room/request/
 /// invitation). `data` carries denormalised display fields resolved at
@@ -117,81 +28,63 @@ model Notification {
 /// not a notification the account owner gets to opt out of on the device that may
 /// be the attacker's.
 model NotificationPreference {
-  userId String @id @db.Uuid
-
+  userId             String    @id @db.Uuid
   /// Master switch. Off = no push of any category (except SECURITY).
-  pushEnabled Boolean @default(true)
-
-  // ---- Per-category switches ----
-  messageEvents Boolean @default(true)
-  callEvents    Boolean @default(true)
-  friendEvents  Boolean @default(true)
-  followEvents  Boolean @default(true)
-  inviteEvents  Boolean @default(true)
-  giftEvents    Boolean @default(true)
-  systemEvents  Boolean @default(true)
-
-  // ---- VR-15: video-room per-category switches (additive, default on) ----
-  roomEvents         Boolean @default(true)
-  seatEvents         Boolean @default(true)
-  treasureEvents     Boolean @default(true)
-  pkEvents           Boolean @default(true)
-  announcementEvents Boolean @default(true)
-
-  // ---- Domain producer categories (additive, default on) ----
-  /// Recharge, refund, withdrawal decision, admin balance adjustment.
-  walletEvents Boolean @default(true)
-  /// Match found and game settled. Lobby churn is never pushed.
-  gameEvents   Boolean @default(true)
-  vipEvents    Boolean @default(true)
-  /// Membership changes. Family invitations are gated by `inviteEvents`.
-  familyEvents Boolean @default(true)
-
-  // ---- Presentation ----
+  pushEnabled        Boolean   @default(true)
+  friendEvents       Boolean   @default(true)
+  followEvents       Boolean   @default(true)
+  inviteEvents       Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  messageEvents      Boolean   @default(true)
+  callEvents         Boolean   @default(true)
+  giftEvents         Boolean   @default(true)
+  systemEvents       Boolean   @default(true)
   /// Drives which Android channel the push is delivered on (channels own their
   /// sound/vibration on Android and are immutable once created, so the *server*
   /// selects the channel — flipping a client-side flag could not change an
   /// already-registered channel's behaviour).
-  sound     Boolean @default(true)
-  vibration Boolean @default(true)
-
+  sound              Boolean   @default(true)
+  vibration          Boolean   @default(true)
   /// Off = the push body is replaced with a generic string before it leaves the
   /// server. The preview never reaches the device, which is the only version of
   /// "hide preview" that is actually private — hiding it client-side still ships
   /// the message text to a lock screen.
-  showPreview Boolean @default(true)
-
+  showPreview        Boolean   @default(true)
   /// "Mute all until" — a snooze, distinct from `pushEnabled: false`, which is a
   /// permanent opt-out. Null = not snoozed.
-  mutedUntil DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  mutedUntil         DateTime?
+  roomEvents         Boolean   @default(true)
+  seatEvents         Boolean   @default(true)
+  treasureEvents     Boolean   @default(true)
+  pkEvents           Boolean   @default(true)
+  announcementEvents Boolean   @default(true)
+  /// Recharge, refund, withdrawal decision, admin balance adjustment.
+  walletEvents       Boolean   @default(true)
+  /// Match found and game settled. Lobby churn is never pushed.
+  gameEvents         Boolean   @default(true)
+  vipEvents          Boolean   @default(true)
+  /// Membership changes. Family invitations are gated by `inviteEvents`.
+  familyEvents       Boolean   @default(true)
 
   @@map("notification_preferences")
 }
 
-// ============================================================
-// Phase 19: Enterprise Notification Center Models
-// ============================================================
-
 /// Enterprise Notification Record
 model EnterpriseNotification {
-  id          String    @id @default(uuid()) @db.Uuid
-  recipientId String?   @db.Uuid // Null indicates a global announcement or broadcast
-  type        String // WALLET | GIFT | VIP | LEVEL_UP | ACHIEVEMENT_UNLOCK | BADGE_UNLOCK | RANKING_PROMOTION | EVENT_REMINDER | TASK_COMPLETION | MISSION_COMPLETION | REFERRAL_QUALIFIED | WITHDRAWAL_UPDATES | FAMILY_UPDATES | MODERATION_ALERT | ANNOUNCEMENT | SYSTEM
-  priority    String    @default("NORMAL") // LOW | NORMAL | HIGH | CRITICAL
+  id          String                @id @default(uuid()) @db.Uuid
+  recipientId String?               @db.Uuid
+  type        String
+  priority    String                @default("NORMAL")
   title       String?
   body        String?
   scheduledAt DateTime?
-  status      String    @default("PENDING") // PENDING | DISPATCHED | FAILED | CANCELLED
-  retryCount  Int       @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  inboxes   NotificationInbox[]
-  histories NotificationHistory[]
+  status      String                @default("PENDING")
+  retryCount  Int                   @default(0)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  histories   NotificationHistory[]
+  inboxes     NotificationInbox[]
 
   @@index([recipientId])
   @@index([status])
@@ -202,27 +95,25 @@ model EnterpriseNotification {
 
 /// Notification Template Definition
 model NotificationTemplate {
-  id            String @id @default(uuid()) @db.Uuid
-  code          String @unique
+  id            String   @id @default(uuid()) @db.Uuid
+  code          String   @unique
   titleTemplate String
   bodyTemplate  String
-  locale        String @default("en")
+  locale        String   @default("en")
   variables     Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@map("notification_templates")
 }
 
 /// User Notification Preference
 model EnterpriseNotificationPreference {
-  id      String  @id @default(uuid()) @db.Uuid
-  userId  String  @db.Uuid
-  type    String // WALLET | GIFT | VIP | etc.
-  channel String // IN_APP | PUSH | WEBSOCKET | EMAIL | SMS
-  enabled Boolean @default(true)
-
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  type      String
+  channel   String
+  enabled   Boolean  @default(true)
   updatedAt DateTime @updatedAt
 
   @@unique([userId, type, channel])
@@ -231,19 +122,17 @@ model EnterpriseNotificationPreference {
 
 /// In-App Inbox Notification Instance
 model NotificationInbox {
-  id             String    @id @default(uuid()) @db.Uuid
-  notificationId String    @db.Uuid
-  recipientId    String    @db.Uuid
+  id             String                 @id @default(uuid()) @db.Uuid
+  notificationId String                 @db.Uuid
+  recipientId    String                 @db.Uuid
   title          String
   body           String
-  read           Boolean   @default(false)
+  read           Boolean                @default(false)
   readAt         DateTime?
-  deleted        Boolean   @default(false)
+  deleted        Boolean                @default(false)
   deletedAt      DateTime?
-
-  createdAt DateTime @default(now())
-
-  notification EnterpriseNotification @relation(fields: [notificationId], references: [id])
+  createdAt      DateTime               @default(now())
+  notification   EnterpriseNotification @relation(fields: [notificationId], references: [id])
 
   @@index([recipientId])
   @@index([read])
@@ -253,15 +142,14 @@ model NotificationInbox {
 
 /// Dispatch/Delivery Channels History Log
 model NotificationHistory {
-  id             String   @id @default(uuid()) @db.Uuid
-  notificationId String   @db.Uuid
-  recipientId    String?  @db.Uuid
-  channel        String // IN_APP | PUSH | WEBSOCKET | EMAIL | SMS
-  status         String // SENT | FAILED
+  id             String                 @id @default(uuid()) @db.Uuid
+  notificationId String                 @db.Uuid
+  recipientId    String?                @db.Uuid
+  channel        String
+  status         String
   errorMessage   String?
-  dispatchedAt   DateTime @default(now())
-
-  notification EnterpriseNotification @relation(fields: [notificationId], references: [id])
+  dispatchedAt   DateTime               @default(now())
+  notification   EnterpriseNotification @relation(fields: [notificationId], references: [id])
 
   @@index([notificationId])
   @@index([recipientId])
@@ -270,15 +158,14 @@ model NotificationHistory {
 
 /// Pre-Aggregated Notification Statistics
 model NotificationStatistics {
-  id          String @id @default(uuid()) @db.Uuid
-  period      String @default("DAILY")
+  id          String   @id @default(uuid()) @db.Uuid
+  period      String   @default("DAILY")
   dateKey     String
   channel     String
-  sentCount   Int    @default(0)
-  readCount   Int    @default(0)
-  failedCount Int    @default(0)
-
-  updatedAt DateTime @updatedAt
+  sentCount   Int      @default(0)
+  readCount   Int      @default(0)
+  failedCount Int      @default(0)
+  updatedAt   DateTime @updatedAt
 
   @@unique([period, dateKey, channel])
   @@map("notification_statistics")
@@ -307,4 +194,83 @@ model NotificationConfiguration {
   updatedAt DateTime @updatedAt
 
   @@map("notification_configurations")
+}
+
+enum NotificationType {
+  FRIEND_REQUEST
+  FRIEND_ACCEPTED
+  NEW_FOLLOWER
+  ROOM_INVITE
+  GAME_INVITE
+  FAMILY_INVITE
+  PK_INVITE
+  EVENT_INVITE
+  NEW_MESSAGE
+  CHAT_REQUEST
+  /// An inbound call that went unanswered. Durable on purpose: a missed call is
+  /// something the user has to be able to come back to, not a durable banner they may
+  /// have swiped away while driving.
+  MISSED_CALL
+  /// Someone sent this user a gift. Durable because it is worth money — a reward
+  /// the recipient can only see if they happened to be looking is not a reward.
+  GIFT_RECEIVED
+  ROOM_STARTED
+  ROOM_CLOSED
+  ROOM_LOCKED
+  ROOM_UNLOCKED
+  SEAT_INVITE
+  SEAT_APPROVED
+  SEAT_REJECTED
+  VIEWER_PROMOTED
+  VIEWER_DEMOTED
+  TREASURE_UNLOCKED
+  TREASURE_REWARD
+  PK_ACCEPTED
+  PK_REJECTED
+  PK_STARTED
+  PK_ENDED
+  PK_WINNER
+  ANNOUNCEMENT
+  MENTION
+  SYSTEM
+  /// Coins bought. GIFT_RECEIVE movements are excluded from the wallet
+  /// producer — GIFT_RECEIVED already covers those, and notifying on both
+  /// would double-notify every gift on the platform.
+  RECHARGE_SUCCESS
+  WITHDRAWAL_APPROVED
+  WITHDRAWAL_REJECTED
+  REFUND_PROCESSED
+  /// An unexplained credit (admin adjustment, event/attendance reward).
+  COINS_RECEIVED
+  /// An unexplained debit. Admin adjustments only — a user spending their own
+  /// coins does not need to be told they spent their own coins.
+  COINS_DEDUCTED
+  GAME_MATCH_FOUND
+  GAME_STARTED
+  GAME_WON
+  GAME_LOST
+  GAME_OPPONENT_LEFT
+  VIP_ACTIVATED
+  VIP_RENEWED
+  VIP_EXPIRING
+  VIP_EXPIRED
+  FAMILY_MEMBER_JOINED
+  FAMILY_MEMBER_LEFT
+  FAMILY_REMOVED
+  SECURITY_NEW_LOGIN
+  SECURITY_PASSWORD_CHANGED
+  ROLE_REQUEST_UPDATE
+  ROLE_GRANTED
+  MODERATOR_SHIFT_STARTING
+  MODERATOR_SHIFT_ENDING
+  MODERATOR_TASK_ASSIGNED
+  MODERATOR_TASK_DUE_SOON
+  MODERATOR_WARNING_ISSUED
+  MODERATOR_HIGH_PRIORITY_REPORT
+  MODERATOR_REPORT_ASSIGNED
+  MODERATOR_EMERGENCY_REQUEST
+  MODERATOR_POLICY_UPDATE
+  MODERATOR_OFFICIAL_MESSAGE
+  MODERATOR_MANAGER_INSTRUCTION
+  MODERATOR_SYSTEM_ANNOUNCEMENT
 }

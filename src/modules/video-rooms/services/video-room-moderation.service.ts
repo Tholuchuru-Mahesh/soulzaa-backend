@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   Prisma,
   PlatformRole,
+  VideoRoomBlockType,
   VideoRoomChatMode,
   VideoRoomModerationActionType,
   VideoRoomModerationMuteType,
@@ -59,6 +60,10 @@ import {
   VideoRoomPermissionService,
   type PermissionRoomRef,
 } from './video-room-permission.service';
+import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
+import { AuditLogService } from 'src/modules/authorization/services/audit-log.service';
+import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
 
 /** Omitting `channels` on mute/unmute/muteAll/unmuteAll means "both" — see `MuteChannel`. */
 const DEFAULT_MUTE_CHANNELS: MuteChannel[] = ['chat', 'mic'];
@@ -98,6 +103,10 @@ export class VideoRoomModerationService {
     private readonly warningRepo: VideoRoomWarningRepository,
     private readonly reportService: VideoRoomReportService,
     private readonly config: ConfigService,
+    private readonly investigationRecording?: InvestigationRecordingService,
+    private readonly auditLog?: AuditLogService,
+    private readonly scopeService?: WorkforceScopeService,
+    private readonly performanceStats?: ModeratorPerformanceService,
   ) {}
 
   // ======================= Kick =======================
@@ -140,6 +149,27 @@ export class VideoRoomModerationService {
         reason: reason ?? null,
         metadata: this.auditMetadata(undefined, requestMeta),
       });
+
+      if (this.investigationRecording) {
+        void this.investigationRecording.beginRecording({
+          moderatorId: actor.id,
+          targetUserId,
+          roomId: ref.id,
+          violationReason: reason ?? 'Video room kick',
+          evidencePayload: { roomId: ref.id, action: 'KICK' },
+        }).then((rec) => {
+          if (rec) void this.investigationRecording?.completeRecording({ recordingId: rec.id, actionTaken: 'KICK' });
+        });
+      }
+      if (this.auditLog) {
+        void this.auditLog.logAction({
+          actorId: actor.id,
+          action: 'video_room.kick',
+          resource: 'video_room',
+          resourceId: ref.id,
+          details: { targetUserId, reason: reason ?? null },
+        });
+      }
     });
 
     await this.bus.publish(
@@ -197,6 +227,8 @@ export class VideoRoomModerationService {
     roomId: string,
     targetUserId: string,
     reason?: string,
+    type: VideoRoomBlockType = VideoRoomBlockType.PERMANENT,
+    durationMinutes?: number,
     requestMeta?: RequestMetadata,
   ): Promise<void> {
     const ref = await this.assertPrereqs(
@@ -205,6 +237,18 @@ export class VideoRoomModerationService {
       targetUserId,
       VideoRoomPermission.BLOCK_USERS,
     );
+
+    let expiresAt: Date | null = null;
+    if (type === VideoRoomBlockType.TEMPORARY) {
+      if (!durationMinutes || durationMinutes <= 0) {
+        throw new BlacklistException(
+          ERROR_CODES.VALIDATION_ERROR,
+          'A temporary blacklist requires a positive durationMinutes.',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      expiresAt = new Date(Date.now() + durationMinutes * 60_000);
+    }
 
     await this.locks.withLock(moderationLockKey(ref.id), async () => {
       const existing = await this.moderationRepo.findActiveBlock(ref.id, targetUserId);
@@ -219,7 +263,9 @@ export class VideoRoomModerationService {
         roomId: ref.id,
         userId: targetUserId,
         moderatorId: actor.id,
+        type,
         reason: reason ?? null,
+        expiresAt,
       });
       await this.moderationRepo.addBlockMirror(ref.id, targetUserId);
 
@@ -236,6 +282,27 @@ export class VideoRoomModerationService {
         reason: reason ?? null,
         metadata: this.auditMetadata({ blockId: block.id }, requestMeta),
       });
+
+      if (this.investigationRecording) {
+        void this.investigationRecording.beginRecording({
+          moderatorId: actor.id,
+          targetUserId,
+          roomId: ref.id,
+          violationReason: reason ?? 'Video room blacklist',
+          evidencePayload: { roomId: ref.id, action: 'BLOCK', blockId: block.id },
+        }).then((rec) => {
+          if (rec) void this.investigationRecording?.completeRecording({ recordingId: rec.id, actionTaken: 'BLOCK' });
+        });
+      }
+      if (this.auditLog) {
+        void this.auditLog.logAction({
+          actorId: actor.id,
+          action: 'video_room.blacklist',
+          resource: 'video_room',
+          resourceId: ref.id,
+          details: { targetUserId, reason: reason ?? null },
+        });
+      }
     });
 
     await this.bus.publish(
@@ -359,6 +426,27 @@ export class VideoRoomModerationService {
           requestMeta,
         ),
       });
+
+      if (this.investigationRecording) {
+        void this.investigationRecording.beginRecording({
+          moderatorId: actor.id,
+          targetUserId,
+          roomId: ref.id,
+          violationReason: dto.reason ?? 'Video room mute',
+          evidencePayload: { roomId: ref.id, action: 'MUTE', channels },
+        }).then((rec) => {
+          if (rec) void this.investigationRecording?.completeRecording({ recordingId: rec.id, actionTaken: 'MUTE' });
+        });
+      }
+      if (this.auditLog) {
+        void this.auditLog.logAction({
+          actorId: actor.id,
+          action: `video_room.mute_${dto.type.toLowerCase()}`,
+          resource: 'video_room',
+          resourceId: ref.id,
+          details: { targetUserId, channels, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
+        });
+      }
     });
 
     await this.bus.publish(
@@ -678,6 +766,15 @@ export class VideoRoomModerationService {
         reason,
         metadata: this.auditMetadata(metadata, requestMeta),
       });
+      if (this.auditLog) {
+        void this.auditLog.logAction({
+          actorId: actor.id,
+          action: 'video_room.warn',
+          resource: 'video_room',
+          resourceId: ref.id,
+          details: { targetUserId, reason },
+        });
+      }
     });
 
     await this.bus.publish(
@@ -726,6 +823,15 @@ export class VideoRoomModerationService {
         reason: reason ?? null,
         metadata: this.auditMetadata(undefined, requestMeta),
       });
+      if (this.auditLog) {
+        void this.auditLog.logAction({
+          actorId: actor.id,
+          action: 'video_room.force_disconnect',
+          resource: 'video_room',
+          resourceId: ref.id,
+          details: { targetUserId, reason: reason ?? null },
+        });
+      }
     });
 
     await this.bus.publish(
@@ -943,6 +1049,13 @@ export class VideoRoomModerationService {
     const ref = await this.requireRoom(roomId);
     await this.permissions.assertPermission(actor, ref, permission);
 
+    if (this.scopeService) {
+      const room = await this.rooms.findById(roomId);
+      if (room?.region) {
+        await this.scopeService.assertModeratorInScope(actor.id, room.region);
+      }
+    }
+
     if (!this.isPlatformStaff(actor)) {
       if (targetUserId === ref.ownerId) {
         throw new OwnerProtectionException();
@@ -1100,6 +1213,44 @@ export class VideoRoomModerationService {
    * worker/retry/dead-letter lane. Mirrors the Audio Room
    * `ModerationService.notifyUser` helper.
    */
+  async escalateViolation(
+    actor: RoomActor,
+    roomId: string,
+    targetUserId: string,
+    reason: string,
+    requestMeta?: RequestMetadata,
+  ): Promise<void> {
+    const ref = await this.assertPrereqs(
+      roomId,
+      actor,
+      targetUserId,
+      VideoRoomPermission.KICK_USERS,
+    );
+
+    await this.moderationRepo.appendAction({
+      roomId: ref.id,
+      moderatorId: actor.id,
+      targetUserId,
+      action: VideoRoomModerationActionType.REPORT_REVIEWED,
+      reason: `CRITICAL_ESCALATION: ${reason}`,
+      metadata: this.auditMetadata({ escalated: true, targetUserId }, requestMeta),
+    });
+
+    if (this.performanceStats) {
+      await this.performanceStats.recordAction(actor.id, 'REPORT_ESCALATED' as any);
+    }
+
+    if (this.auditLog) {
+      void this.auditLog.logAction({
+        actorId: actor.id,
+        action: 'video_room.escalate_critical_violation',
+        resource: 'video_room',
+        resourceId: ref.id,
+        details: { targetUserId, reason },
+      });
+    }
+  }
+
   private async notifyUser(
     userId: string,
     type: string,

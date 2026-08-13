@@ -1,18 +1,3 @@
-// ============================================================
-// Auth — credentials, providers, password resets
-// Owned by the "auth" module. The `users` identity row lives in the
-// users module; OTP lives in the otp module; sessions + devices live
-// in the session module. Login-attempt counters live in Redis; the
-// tables below are the durable system of record. No cross-module relations.
-// ============================================================
-
-enum AuthProviderType {
-  PASSWORD
-  MOBILE_OTP
-  GOOGLE
-  APPLE
-}
-
 /// Password material for email+password accounts. One row per user.
 /// passwordHash is null for OTP-only / social-only accounts.
 model UserCredential {
@@ -20,9 +5,8 @@ model UserCredential {
   userId            String    @unique @db.Uuid
   passwordHash      String?
   passwordUpdatedAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@map("user_credentials")
 }
@@ -36,9 +20,8 @@ model UserAuthProvider {
   provider       AuthProviderType
   providerUserId String?
   email          String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@unique([provider, providerUserId])
   @@index([userId])
@@ -57,4 +40,11 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+enum AuthProviderType {
+  PASSWORD
+  MOBILE_OTP
+  GOOGLE
+  APPLE
 }

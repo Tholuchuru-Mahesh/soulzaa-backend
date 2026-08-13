@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   Prisma,
   VideoRoomBlock,
+  VideoRoomBlockType,
   VideoRoomModerationActionType,
   VideoRoomModerationMuteType,
   VideoRoomModerationStatus,
@@ -25,7 +26,9 @@ export interface CreateBlockInput {
   roomId: string;
   userId: string;
   moderatorId: string;
+  type?: VideoRoomBlockType;
   reason?: string | null;
+  expiresAt?: Date | null;
 }
 
 export interface AppendModerationActionInput {
@@ -143,16 +146,42 @@ export class VideoRoomModerationRepository {
         roomId: input.roomId,
         userId: input.userId,
         moderatorId: input.moderatorId,
+        type: input.type ?? VideoRoomBlockType.PERMANENT,
         reason: input.reason ?? null,
+        expiresAt: input.expiresAt ?? null,
         ...auditCreate(input.moderatorId),
       },
     });
   }
 
-  /** A user's current ACTIVE block in a room, or null (the join-time gate). */
+  /** A user's current ACTIVE block in a room, or null (the join-time gate). Filter out expired temporary blocks. */
   async findActiveBlock(roomId: string, userId: string): Promise<VideoRoomBlock | null> {
+    const now = new Date();
     return this.prisma.videoRoomBlock.findFirst({
-      where: { roomId, userId, status: VideoRoomModerationStatus.ACTIVE },
+      where: {
+        roomId,
+        userId,
+        status: VideoRoomModerationStatus.ACTIVE,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+    });
+  }
+
+  /** Bulk-expire ACTIVE temporary blocks past their `expiresAt`. Returns the count. */
+  async expireBlocks(now: Date): Promise<number> {
+    const { count } = await this.prisma.videoRoomBlock.updateMany({
+      where: { status: VideoRoomModerationStatus.ACTIVE, expiresAt: { not: null, lt: now } },
+      data: { status: VideoRoomModerationStatus.EXPIRED },
+    });
+    return count;
+  }
+
+  /** ACTIVE blocks past their `expiresAt`. Feeds expiry monitor. */
+  findExpiredBlocks(now: Date, take = 200): Promise<VideoRoomBlock[]> {
+    return this.prisma.videoRoomBlock.findMany({
+      where: { status: VideoRoomModerationStatus.ACTIVE, expiresAt: { not: null, lt: now } },
+      take,
+      orderBy: { expiresAt: 'asc' },
     });
   }
 

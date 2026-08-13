@@ -1,28 +1,3 @@
-// ============================================================
-// Device — device registry, trust ledger, device audit
-// Owned by the "device" module. One row per physical device an
-// account logs in from; trust + verification + push-token state and
-// suspicious-login detection live here. The session module references
-// devices by id via DEVICE_SERVICE. No cross-module relations.
-// ============================================================
-
-enum DevicePlatform {
-  IOS
-  ANDROID
-  WEB
-}
-
-enum DeviceEventType {
-  REGISTERED
-  VERIFIED
-  REMOVED
-  TRUSTED
-  UNTRUSTED
-  SUSPICIOUS_LOGIN
-  PUSH_TOKEN_UPDATED
-  RENAMED
-}
-
 /// A physical device an account has logged in from. Upserted by
 /// (userId, deviceIdentifier) so repeated logins are idempotent.
 /// `trusted`/`verified` are fast flags; the trust ledger + audit trail
@@ -32,24 +7,21 @@ model UserDevice {
   userId           String         @db.Uuid
   deviceIdentifier String
   platform         DevicePlatform
-  deviceName       String?
-  deviceType       String?
-  osVersion        String?
-  appVersion       String?
   pushToken        String?
-  ipAddress        String?
-  country          String?
+  lastActiveAt     DateTime       @default(now()) @map("lastSeenAt")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
   trusted          Boolean        @default(false)
   trustedAt        DateTime?
+  appVersion       String?
+  country          String?
+  deletedAt        DateTime?
+  deviceName       String?
+  deviceType       String?
+  ipAddress        String?
+  osVersion        String?
   verified         Boolean        @default(false)
   verifiedAt       DateTime?
-  // Physical column kept as `lastSeenAt` (@map) so the rename is
-  // client-side only — no destructive column drop on migration.
-  lastActiveAt     DateTime       @default(now()) @map("lastSeenAt")
-  deletedAt        DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
   @@unique([userId, deviceIdentifier])
   @@index([userId])
@@ -87,4 +59,24 @@ model DeviceHistory {
   @@index([userId])
   @@index([deviceId])
   @@map("device_history")
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+enum DeviceEventType {
+  REGISTERED
+  VERIFIED
+  REMOVED
+  TRUSTED
+  UNTRUSTED
+  SUSPICIOUS_LOGIN
+  PUSH_TOKEN_UPDATED
+  RENAMED
+  CHANGE_REQUESTED
+  CHANGE_APPROVED
+  CHANGE_REJECTED
 }
