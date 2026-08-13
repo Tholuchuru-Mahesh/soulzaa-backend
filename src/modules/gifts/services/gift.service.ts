@@ -142,15 +142,19 @@ export class GiftService {
     cashbackThreshold: number;
   }> {
     const [earningsPercent, cashbackPercent, cashbackThreshold] = await Promise.all([
-      this.platformConfig.get<number>('gift.receiver_earnings_percentage'),
-      this.platformConfig.get<number>('gift.receiver_cashback_percentage'),
-      this.platformConfig.get<number>('gift.receiver_cashback_threshold'),
+      this.platformConfig.get<any>('gift.receiver_earnings_percentage').catch(() => 100),
+      this.platformConfig.get<any>('gift.receiver_cashback_percentage').catch(() => 10),
+      this.platformConfig.get<any>('gift.receiver_cashback_threshold').catch(() => 1000),
     ]);
 
+    const earnNum = earningsPercent != null ? Number(earningsPercent) : 100;
+    const cashNum = cashbackPercent != null ? Number(cashbackPercent) : 10;
+    const threshNum = cashbackThreshold != null ? Number(cashbackThreshold) : 1000;
+
     return {
-      earningsPercent: typeof earningsPercent === 'number' ? earningsPercent : 100,
-      cashbackPercent: typeof cashbackPercent === 'number' ? cashbackPercent : 10,
-      cashbackThreshold: typeof cashbackThreshold === 'number' ? cashbackThreshold : 1000,
+      earningsPercent: !isNaN(earnNum) && earnNum > 0 ? earnNum : 100,
+      cashbackPercent: !isNaN(cashNum) ? cashNum : 10,
+      cashbackThreshold: !isNaN(threshNum) ? threshNum : 1000,
     };
   }
 
@@ -268,17 +272,20 @@ export class GiftService {
     const perReceiver = BigInt(unit) * BigInt(dto.quantity) * BigInt(lucky.multiplier);
     const perReceiverNum = Number(perReceiver);
     const totalNum = perReceiverNum * receiverIds.length;
+    const originalGiftValue = perReceiverNum;
 
-    // Rule 2: earnings share of the gift value. Unconditional — the `> 1000`
-    // threshold belongs to Rule 3 (cashback) alone. Gating earnings on it paid
-    // creators nothing at all for every gift of 1000 coins or less.
-    const earningsNum = Math.floor((perReceiverNum * rules.earningsPercent) / 100);
+    // Rule 2: Receiver EARNINGS always receives 100% of the original gift value by default,
+    // or calculated via configured rules.earningsPercent unconditionally (cashback threshold is Rule 3).
+    const earningsNum =
+      rules.earningsPercent === 100
+        ? originalGiftValue
+        : Math.floor((originalGiftValue * rules.earningsPercent) / 100);
     const creatorEarnings = BigInt(earningsNum);
 
-    // Rule 3: cashback (disabled / set to 0).
+    // Rule 3: Receiver Available Balance (GOLD) receives 10% cashback ONLY IF originalGiftValue >= 1000.
     const availableBalanceCredited =
-      perReceiverNum > rules.cashbackThreshold
-        ? Math.floor((perReceiverNum * rules.cashbackPercent) / 100)
+      originalGiftValue >= rules.cashbackThreshold
+        ? Math.floor((originalGiftValue * rules.cashbackPercent) / 100)
         : 0;
 
     const senderExp = Math.floor(perReceiverNum * cfg.senderExpPerCoin);
@@ -389,6 +396,7 @@ export class GiftService {
           rows.push(
             await this.repo.createTransaction(
               {
+                id: isBatch ? randomUUID() : txnId,
                 senderId,
                 receiverId,
                 giftId: gift.id,

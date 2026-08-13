@@ -22,6 +22,7 @@ describe('AudioRoomGiftContextHandler', () => {
       isRoomLive: jest.fn().mockResolvedValue(true),
       assertMember: jest.fn().mockResolvedValue(undefined),
       isMember: jest.fn().mockResolvedValue(true),
+      hasEverBeenMember: jest.fn().mockResolvedValue(true),
       getOwnerId: jest.fn().mockResolvedValue('owner-id'),
     };
     users = { findById: jest.fn().mockResolvedValue({ id: 'receiver-1' }) };
@@ -55,20 +56,24 @@ describe('AudioRoomGiftContextHandler', () => {
     const selfReq = { ...REQ, receiverIds: ['sender-1'] };
 
     await expect(handler.validate(selfReq as never)).resolves.toBeUndefined();
-    // The sender is checked as a member once as the sender, once as the
-    // recipient — no branch treats the two ids being equal as special.
     expect(rooms.assertMember).toHaveBeenCalledWith('room-1', 'sender-1');
-    expect(rooms.isMember).toHaveBeenCalledWith('room-1', 'sender-1');
+    expect(rooms.hasEverBeenMember).toHaveBeenCalledWith('room-1', 'sender-1');
   });
 
-  it('rejects a self-gift from outside the room like any other send', async () => {
-    // Room membership still governs: leaving the room revokes self-gifting too.
-    rooms.isMember.mockResolvedValue(false);
+  it('accepts a gift sent to owner/receiver who has left the room as long as room is live', async () => {
+    rooms.isMember.mockResolvedValue(false); // receiver left room
+    rooms.hasEverBeenMember.mockResolvedValue(true);
+    users.findById.mockResolvedValue({ id: 'owner-id' });
+
+    const ownerReq = { ...REQ, receiverIds: ['owner-id'] };
+    await expect(handler.validate(ownerReq as never)).resolves.toBeUndefined();
+  });
+
+  it('rejects a self-gift from outside the room when sender is not in room', async () => {
+    rooms.assertMember.mockRejectedValue(new Error('NOT_ROOM_MEMBER'));
     const selfReq = { ...REQ, receiverIds: ['sender-1'] };
 
-    await expect(handler.validate(selfReq as never)).rejects.toMatchObject({
-      errorCode: ERROR_CODES.GIFT_RECEIVER_INVALID,
-    });
+    await expect(handler.validate(selfReq as never)).rejects.toThrow('NOT_ROOM_MEMBER');
   });
 
   it('rejects a self-gift into a dead room like any other send', async () => {
@@ -87,8 +92,8 @@ describe('AudioRoomGiftContextHandler', () => {
     });
   });
 
-  it('rejects a receiver who is not in the room', async () => {
-    rooms.isMember.mockResolvedValue(false);
+  it('rejects a receiver who has never been a member of the room', async () => {
+    rooms.hasEverBeenMember.mockResolvedValue(false);
     await expect(handler.validate(REQ as never)).rejects.toMatchObject({
       errorCode: ERROR_CODES.GIFT_RECEIVER_INVALID,
     });
@@ -254,6 +259,22 @@ describe('AudioRoomGiftContextHandler.onSend (treasure + host reward + refund)',
     rooms.getOwnerId.mockResolvedValue(null);
     await handler.onSend(TX, CTX as never);
     expect(wallet.credit).not.toHaveBeenCalled();
+  });
+
+  it('BC-4: still credits 10% host reward when the owner IS the receiver', async () => {
+    // owner-id === receiver-id: the owner is being gifted directly.
+    // The host reward must still fire — being the receiver does not cancel it.
+    rooms.getOwnerId.mockResolvedValue('receiver-1');
+    await handler.onSend(TX, CTX as never);
+    expect(wallet.credit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'receiver-1', // owner = receiver
+        amount: 10,           // 10% of accepted 100
+        reason: 'TREASURE_BOX',
+        idempotencyKey: 'gift-host-reward:idem-1',
+      }),
+      TX,
+    );
   });
 
   describe('High-Value Gift PK Battle Bonus', () => {

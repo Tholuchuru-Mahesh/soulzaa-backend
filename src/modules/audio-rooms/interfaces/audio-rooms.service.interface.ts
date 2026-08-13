@@ -86,6 +86,13 @@ export interface IAudioRoomsService {
   /** True when the user is an active member of the room. */
   isMember(roomId: string, userId: string): Promise<boolean>;
 
+  /**
+   * True when the user has ever joined this room (isActive may be false — they
+   * may have left). Use this for gift receiver validation: a member who stepped
+   * out should still be giftable while the room is LIVE.
+   */
+  hasEverBeenMember(roomId: string, userId: string): Promise<boolean>;
+
   /** The user's membership role, or null if not an active member. */
   getMemberRole(roomId: string, userId: string): Promise<RoomMemberRole | null>;
 

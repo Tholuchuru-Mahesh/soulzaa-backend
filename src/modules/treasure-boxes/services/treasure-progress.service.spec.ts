@@ -14,7 +14,7 @@ describe('TreasureProgressService — ranking vs progress', () => {
   let prisma: {
     treasureSession: { findFirst: jest.Mock; update: jest.Mock };
     treasureBox: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock; upsert: jest.Mock };
-    treasureContribution: { create: jest.Mock };
+    treasureContribution: { create: jest.Mock; findFirst: jest.Mock };
   };
   let locks: { withLock: jest.Mock };
   let boxService: { getOrCreateActiveSession: jest.Mock };
@@ -42,7 +42,10 @@ describe('TreasureProgressService — ranking vs progress', () => {
         update: jest.fn().mockResolvedValue({}),
         upsert: jest.fn().mockResolvedValue({}),
       },
-      treasureContribution: { create: jest.fn().mockResolvedValue({}) },
+      treasureContribution: {
+        create: jest.fn().mockResolvedValue({}),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     };
     locks = { withLock: jest.fn().mockImplementation((_key, cb) => cb()) };
     boxService = {
@@ -143,5 +146,19 @@ describe('TreasureProgressService — ranking vs progress', () => {
     await service.applyGiftProgress(ROOM, USER, BigInt(500));
 
     expect(prisma.treasureContribution.create).toHaveBeenCalled();
+  });
+
+  it('skips duplicate gift progress when giftTxnId already exists', async () => {
+    prisma.treasureContribution.findFirst.mockResolvedValueOnce({
+      id: 'existing-contrib-1',
+      sessionId: SESSION,
+      giftTxnId: 'gtxn-dup-1',
+    });
+
+    const result = await service.applyGiftProgress(ROOM, USER, BigInt(10_000), 'gtxn-dup-1');
+
+    expect(result.appliedAmount).toBe(BigInt(0));
+    expect(prisma.treasureBox.update).not.toHaveBeenCalled();
+    expect(prisma.treasureContribution.create).not.toHaveBeenCalled();
   });
 });

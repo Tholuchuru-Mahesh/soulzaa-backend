@@ -92,7 +92,7 @@ describe('GiftService', () => {
       comboTick: jest.fn().mockResolvedValue(1),
       createTransaction: jest.fn().mockImplementation((d) =>
         Promise.resolve({
-          id: 'gtxn-1',
+          id: d.id || 'gtxn-1',
           status: 'COMPLETED',
           ...d,
           totalCoinValue: d.totalCoinValue,
@@ -208,10 +208,10 @@ describe('GiftService', () => {
       );
       expect(repo.createTransaction).toHaveBeenCalled();
       expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'gift.sent' }));
-      expect(res.id).toBe('gtxn-1');
+      expect(res.id).toBeDefined();
     });
 
-    it('credits receiver 10% Available Balance (GOLD) when gift value > 1000', async () => {
+    it('credits receiver 10% Available Balance (GOLD) when gift value >= 1000', async () => {
       catalog.getGiftById.mockResolvedValue(gift({ coinValue: 15000 }));
       await service.sendGift(SENDER, dto());
 
@@ -234,6 +234,119 @@ describe('GiftService', () => {
       );
     });
 
+    it('correctly calculates 10,000 coin gift (Earnings: 10,000, Wallet: 1,000, Treasure: 10,000)', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 10000 }));
+      await service.sendGift(SENDER, dto());
+
+      // Receiver DIAMOND credited 10,000 (100%)
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 10000 }),
+        expect.anything(),
+      );
+
+      // Receiver GOLD credited 1,000 (10%)
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'GOLD', amount: 1000 }),
+        expect.anything(),
+      );
+
+      // Treasure contribution 10,000
+      expect(treasure.processTreasureContribution).toHaveBeenCalledWith(
+        expect.anything(),
+        ROOM,
+        SENDER.id,
+        RECEIVER,
+        10000,
+        expect.any(String),
+      );
+    });
+
+    it('correctly calculates 50,000 coin gift (Earnings: 50,000)', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 50000 }));
+      await service.sendGift(SENDER, dto());
+
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 50000 }),
+        expect.anything(),
+      );
+    });
+
+    it('correctly calculates 100,000 coin gift (Earnings: 100,000)', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 100000 }));
+      await service.sendGift(SENDER, dto());
+
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 100000 }),
+        expect.anything(),
+      );
+    });
+
+    it('correctly calculates 20,000 coin gift (Earnings: 20,000, Wallet: 2,000, Treasure: 20,000)', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 20000 }));
+      await service.sendGift(SENDER, dto());
+
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 20000 }),
+        expect.anything(),
+      );
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'GOLD', amount: 2000 }),
+        expect.anything(),
+      );
+      expect(treasure.processTreasureContribution).toHaveBeenCalledWith(
+        expect.anything(),
+        ROOM,
+        SENDER.id,
+        RECEIVER,
+        20000,
+        expect.any(String),
+      );
+    });
+
+    it('correctly calculates 1,000 coin gift (Earnings: 1,000, Wallet: 100, Treasure: 1,000)', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 1000 }));
+      await service.sendGift(SENDER, dto());
+
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 1000 }),
+        expect.anything(),
+      );
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'GOLD', amount: 100 }),
+        expect.anything(),
+      );
+      expect(treasure.processTreasureContribution).toHaveBeenCalledWith(
+        expect.anything(),
+        ROOM,
+        SENDER.id,
+        RECEIVER,
+        1000,
+        expect.any(String),
+      );
+    });
+
+    it('correctly calculates 500 coin gift (Earnings: 500, Wallet: 0, Treasure: 500)', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 500 }));
+      await service.sendGift(SENDER, dto());
+
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 500 }),
+        expect.anything(),
+      );
+      expect(wallet.credit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'GOLD' }),
+        expect.anything(),
+      );
+      expect(treasure.processTreasureContribution).toHaveBeenCalledWith(
+        expect.anything(),
+        ROOM,
+        SENDER.id,
+        RECEIVER,
+        500,
+        expect.any(String),
+      );
+    });
+
     it('honours the configured cashback rate and threshold', async () => {
       // The PRD requires economy values to be operator-configurable rather than
       // compiled in, so a Super Admin can retune cashback without a deploy.
@@ -253,7 +366,7 @@ describe('GiftService', () => {
       );
     });
 
-    it('pays no cashback when the gift sits on the configured threshold', async () => {
+    it('pays cashback when the gift meets the configured threshold (>= threshold)', async () => {
       platformConfig.get.mockImplementation(async (key: string) => {
         if (key === 'gift.receiver_cashback_threshold') return 500;
         return null;
@@ -262,15 +375,15 @@ describe('GiftService', () => {
 
       await service.sendGift(SENDER, dto());
 
-      expect(wallet.credit).not.toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'GOLD' }),
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'GOLD', amount: 50 }),
         expect.anything(),
       );
     });
 
     it('allows gifting yourself', async () => {
       const res = await service.sendGift(SENDER, dto({ receiverId: SENDER.id }));
-      expect(res.id).toBe('gtxn-1');
+      expect(res.id).toBeDefined();
     });
 
     it('takes the sender wallet lock ONCE on a self-gift instead of deadlocking on itself', async () => {
@@ -422,7 +535,7 @@ describe('GiftService', () => {
 
     it('supports private chat and other contexts via default fallback handler', async () => {
       const res = await service.sendGift(SENDER, dto({ contextType: 'PRIVATE_CHAT' as any }));
-      expect(res.id).toBe('gtxn-1');
+      expect(res.id).toBeDefined();
     });
 
     it('propagates INSUFFICIENT_BALANCE and does not persist', async () => {

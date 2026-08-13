@@ -62,6 +62,25 @@ export class TreasureProgressService {
 
     const lockKey = treasureRoomLockKey(roomId);
     return this.locks.withLock(lockKey, async () => {
+      // Idempotency check: if this gift transaction has already been recorded in treasure contributions, skip duplicate progress.
+      if (giftTxnId) {
+        const existingTx = await this.prisma.treasureContribution.findFirst({
+          where: { giftTxnId },
+        });
+        if (existingTx) {
+          this.logger.log(`Treasure: skipping duplicate gift progress for giftTxnId ${giftTxnId}`);
+          return {
+            sessionId: existingTx.sessionId,
+            roomId,
+            appliedAmount: BigInt(0),
+            refundAmount: BigInt(0),
+            completedBoxes: [],
+            activeBox: null,
+            sessionCompleted: false,
+          };
+        }
+      }
+
       // Guard: if today's treasure event is already COMPLETED, do not accept
       // any further gift contributions — return a no-op result immediately.
       const todayStart = new Date();

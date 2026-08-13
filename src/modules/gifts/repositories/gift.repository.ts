@@ -96,6 +96,7 @@ export class GiftRepository {
 
   createTransaction(
     data: {
+      id?: string;
       senderId: string;
       receiverId: string;
       giftId: string;

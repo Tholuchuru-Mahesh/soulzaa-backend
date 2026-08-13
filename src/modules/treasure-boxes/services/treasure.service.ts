@@ -235,7 +235,7 @@ export class TreasureService implements ITreasureBoxesService {
     senderId: string,
     receiverId: string,
     amount: number,
-    _giftTxnId: string,
+    giftTxnId: string,
   ): Promise<{
     acceptedAmount: number;
     refundAmount: number;
@@ -246,18 +246,29 @@ export class TreasureService implements ITreasureBoxesService {
   }> {
     const bigAmount = BigInt(amount);
     const events: any[] = [];
-    let postCommitCallback: (() => Promise<void>) | undefined;
+    const postCommitFns: (() => Promise<void>)[] = [];
+
+    // Idempotency check: if this gift transaction has already contributed to treasure box, skip duplicate processing
+    if (giftTxnId) {
+      const existingTx = await tx.treasureContribution.findFirst({
+        where: { giftTxnId },
+      });
+      if (existingTx) {
+        this.logger.log(`Treasure: skipping duplicate contribution for giftTxnId ${giftTxnId}`);
+        return { acceptedAmount: 0, refundAmount: 0, events: [] };
+      }
+    }
 
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
 
-    // 1. Find active session or auto-create today's session
+    // 1. Find active session or auto-create today's session inside transaction
     let session = await tx.treasureSession.findFirst({
       where: { roomId, status: TreasureSessionStatus.ACTIVE },
     });
 
     if (session && session.createdAt < todayStart) {
-      // Session from previous day -> finish it for daily reset
+      // Session from previous day -> finish it for daily reset (history preserved)
       await tx.treasureSession.update({
         where: { id: session.id },
         data: { status: TreasureSessionStatus.COMPLETED, completedAt: new Date() },
@@ -310,20 +321,18 @@ export class TreasureService implements ITreasureBoxesService {
       }
     }
 
-    if (!session) {
-      // If completed today or unable to start, normal gift with 0 refund
-      return {
-        acceptedAmount: amount,
-        refundAmount: 0,
-        events,
-      };
-    }
-
-    // Increment overall contribution counters in DB using tx client
+    // 2. Increment overall contribution counters in DB using tx client
     const roomTotal = await this.repo.incrementRoomContribution(roomId, bigAmount, tx);
     const receiverTotal = await this.repo.incrementUserContribution(receiverId, bigAmount, tx);
 
-    // Publish Contribution Counter update event (bridges to Socket.IO)
+    postCommitFns.push(async () => {
+      const roomRedisKey = `room:contribution_counter:${roomId}`;
+      const userRedisKey = `user:contribution_counter:${receiverId}`;
+      // Sync Redis to the DB total so the counter survives server restarts.
+      await this.cache.set(roomRedisKey, Number(roomTotal));
+      await this.cache.set(userRedisKey, Number(receiverTotal));
+    });
+
     events.push(
       new ContributionCounterUpdatedEvent({
         roomId,
@@ -333,11 +342,243 @@ export class TreasureService implements ITreasureBoxesService {
       }),
     );
 
+    if (!session) {
+      // If today's 5 boxes were already completed, normal gift processed with 0 refund
+      return {
+        acceptedAmount: amount,
+        refundAmount: 0,
+        events,
+        postCommit: async () => {
+          for (const fn of postCommitFns) await fn();
+        },
+      };
+    }
+
+    // 3. Process sequential multi-box progress, carry-forward, and overflow refund inside tx
+    let remainingAmount = bigAmount;
+    let acceptedAmount = 0n;
+    let refundAmount = 0n;
+
+    while (remainingAmount > 0n) {
+      const freshSession = await tx.treasureSession.findUnique({
+        where: { id: session.id },
+      });
+
+      if (!freshSession || freshSession.status !== TreasureSessionStatus.ACTIVE) {
+        refundAmount += remainingAmount;
+        remainingAmount = 0n;
+        break;
+      }
+
+      const currentBox = await tx.treasureBox.findUnique({
+        where: {
+          sessionId_level: {
+            sessionId: freshSession.id,
+            level: freshSession.currentLevel,
+          },
+        },
+      });
+
+      if (!currentBox || currentBox.status !== TreasureBoxStatus.ACTIVE) {
+        refundAmount += remainingAmount;
+        remainingAmount = 0n;
+        break;
+      }
+
+      const needed = currentBox.threshold - currentBox.progress;
+      if (needed <= 0n) {
+        // Box is already full!
+        if (currentBox.level >= TREASURE_BOX_COUNT) {
+          refundAmount += remainingAmount;
+          remainingAmount = 0n;
+          break;
+        } else {
+          // Advance to next box level
+          await tx.treasureSession.update({
+            where: { id: freshSession.id },
+            data: { currentLevel: freshSession.currentLevel + 1 },
+          });
+          await tx.treasureBox.update({
+            where: {
+              sessionId_level: {
+                sessionId: freshSession.id,
+                level: freshSession.currentLevel + 1,
+              },
+            },
+            data: { status: TreasureBoxStatus.ACTIVE },
+          });
+          continue;
+        }
+      }
+
+      const added = remainingAmount >= needed ? needed : remainingAmount;
+      acceptedAmount += added;
+      remainingAmount -= added;
+
+      // Immutable contribution record
+      await tx.treasureContribution.create({
+        data: {
+          boxId: currentBox.id,
+          sessionId: freshSession.id,
+          roomId,
+          userId: senderId,
+          amount: added,
+          giftTxnId,
+        },
+      });
+
+      // Increment box progress
+      const updatedBox = await tx.treasureBox.update({
+        where: { id: currentBox.id },
+        data: { progress: { increment: added } },
+      });
+
+      // Calculate current Top 3 gifters for this box
+      const topGroup = await tx.treasureContribution.groupBy({
+        by: ['userId'],
+        where: { boxId: currentBox.id },
+        _sum: { amount: true },
+        orderBy: { _sum: { amount: 'desc' } },
+        take: 3,
+      });
+
+      const topGifters: RankedContributor[] = topGroup.map((g, idx) => ({
+        rank: idx + 1,
+        userId: g.userId,
+        amount: Number(g._sum.amount ?? 0n),
+      }));
+
+      events.push(
+        new TreasureProgressEvent({
+          roomId,
+          sessionId: freshSession.id,
+          level: currentBox.level,
+          progress: Number(updatedBox.progress),
+          threshold: Number(updatedBox.threshold),
+          topGifters,
+        }),
+      );
+
+      // Box Completion check!
+      if (updatedBox.progress >= updatedBox.threshold) {
+        // Mark OPENED and snapshot Top 3 gifters into box JSON
+        await tx.treasureBox.update({
+          where: { id: currentBox.id },
+          data: {
+            status: TreasureBoxStatus.OPENED,
+            topGifters: topGifters as any,
+            openedAt: new Date(),
+          },
+        });
+
+        // Distribute rewards using existing RewardDistributor
+        const cfg = await tx.treasureBoxConfig.findUnique({
+          where: { level: currentBox.level },
+        });
+        const rewardEntries = (cfg?.rewards as unknown as RewardEntry[]) ?? [];
+
+        const distributed = await this.distributor.distribute(
+          {
+            recipients: topGifters.map((g) => ({ rank: g.rank, userId: g.userId })),
+            rewards: rewardEntries,
+            idempotencyPrefix: `treasure:${currentBox.id}`,
+            walletReason: WalletTxnReason.TREASURE_BOX,
+            backpackSource: BackpackItemSource.TREASURE_BOX,
+            referenceType: 'treasure_box',
+            referenceId: currentBox.id,
+          },
+          tx,
+        );
+
+        for (const d of distributed) {
+          await tx.treasureReward.create({
+            data: {
+              sessionId: freshSession.id,
+              boxId: currentBox.id,
+              roomId,
+              level: currentBox.level,
+              userId: d.userId,
+              rank: d.rank,
+              kind: d.kind,
+              coins: d.coins,
+              itemType: d.itemType,
+              itemName: d.itemName,
+              walletTxnId: d.walletTxnId,
+              backpackItemId: d.backpackItemId,
+            },
+          });
+        }
+
+        const summaries: RewardSummary[] = this.rewardSummaries(distributed);
+
+        events.push(
+          new TreasureBoxOpenedEvent({
+            roomId,
+            sessionId: freshSession.id,
+            level: currentBox.level,
+            topGifters,
+            rewards: summaries,
+            nextLevel: currentBox.level >= TREASURE_BOX_COUNT ? null : currentBox.level + 1,
+          }),
+        );
+
+        if (currentBox.level >= TREASURE_BOX_COUNT) {
+          // Box 5 finished -> complete session
+          await tx.treasureSession.update({
+            where: { id: freshSession.id },
+            data: { status: TreasureSessionStatus.COMPLETED, completedAt: new Date() },
+          });
+
+          events.push(
+            new TreasureSessionCompletedEvent({
+              roomId,
+              sessionId: freshSession.id,
+            }),
+          );
+
+          if (remainingAmount > 0n) {
+            refundAmount += remainingAmount;
+            remainingAmount = 0n;
+          }
+          break;
+        } else {
+          // Advance to next box level!
+          const nextLevel = currentBox.level + 1;
+          await tx.treasureSession.update({
+            where: { id: freshSession.id },
+            data: { currentLevel: nextLevel },
+          });
+          const nextBox = await tx.treasureBox.update({
+            where: {
+              sessionId_level: {
+                sessionId: freshSession.id,
+                level: nextLevel,
+              },
+            },
+            data: { status: TreasureBoxStatus.ACTIVE },
+          });
+
+          events.push(
+            new TreasureProgressEvent({
+              roomId,
+              sessionId: freshSession.id,
+              level: nextLevel,
+              progress: Number(nextBox.progress),
+              threshold: Number(nextBox.threshold),
+              topGifters: [],
+            }),
+          );
+        }
+      }
+    }
+
     return {
-      acceptedAmount: amount,
-      refundAmount: 0,
+      acceptedAmount: Number(acceptedAmount),
+      refundAmount: Number(refundAmount),
       events,
-      postCommit: postCommitCallback,
+      postCommit: async () => {
+        for (const fn of postCommitFns) await fn();
+      },
       level: session.currentLevel,
     };
   }
@@ -359,8 +600,9 @@ export class TreasureService implements ITreasureBoxesService {
 
     const roomRedisKey = `room:contribution_counter:${roomId}`;
     const userRedisKey = `user:contribution_counter:${receiverId}`;
-    await this.cache.increment(roomRedisKey, { by: amount });
-    await this.cache.increment(userRedisKey, { by: amount });
+    // Sync Redis to the DB total so the counter survives server restarts.
+    await this.cache.set(roomRedisKey, Number(roomTotal));
+    await this.cache.set(userRedisKey, Number(receiverTotal));
 
     // Publish Contribution Counter update event (bridges to Socket.IO)
     await this.bus.publish(

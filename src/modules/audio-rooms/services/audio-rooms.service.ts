@@ -877,6 +877,17 @@ export class AudioRoomsService implements IAudioRoomsService {
     return member?.isActive === true;
   }
 
+  /**
+   * True when the user has a room_member row for this room, regardless of
+   * whether they are currently active. Used for gift-receiver validation:
+   * a member who stepped out is still a legitimate recipient while the room
+   * is LIVE (e.g. the owner who left but did not end the room).
+   */
+  async hasEverBeenMember(roomId: string, userId: string): Promise<boolean> {
+    const member = await this.repo.getMember(roomId, userId);
+    return member !== null && member !== undefined;
+  }
+
   async getMemberRole(roomId: string, userId: string): Promise<RoomMemberRole | null> {
     // Effective role: room_roles grant → speaker seat → listener (AR-1).
     return this.permissions.getEffectiveRole(roomId, userId);

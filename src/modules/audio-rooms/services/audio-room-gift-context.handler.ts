@@ -85,12 +85,15 @@ export class AudioRoomGiftContextHandler implements IGiftContextHandler, OnModul
     await this.rooms.assertMember(req.contextId, req.senderId);
 
     const receiverId = req.receiverIds[0];
-    const receiverInRoom = await this.rooms.isMember(req.contextId, receiverId);
+    // Use hasEverBeenMember instead of isMember: a member who has left the room
+    // (e.g. the owner who stepped out without ending it) is still a valid gift
+    // recipient while the room is LIVE. Gifts are blocked only when the room ends.
+    const receiverInRoom = await this.rooms.hasEverBeenMember(req.contextId, receiverId);
     const receiverExists = receiverInRoom && (await this.users.findById(receiverId));
     if (!receiverExists) {
       throw new BusinessException(
         ERROR_CODES.GIFT_RECEIVER_INVALID,
-        'The recipient is not in this room.',
+        'The recipient is not a member of this room.',
         HttpStatus.BAD_REQUEST,
       );
     }
