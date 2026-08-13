@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CoinEconomyService } from 'src/modules/treasury/services/coin-economy.service';
+import { FinancialPolicyService } from 'src/modules/treasury/services/financial-policy.service';
 import { WithdrawalConfigurationService } from './withdrawal-configuration.service';
 
 @Injectable()
@@ -9,6 +10,7 @@ export class WithdrawalValidationService {
     private readonly prisma: PrismaService,
     private readonly coinEconomyService: CoinEconomyService,
     private readonly configService: WithdrawalConfigurationService,
+    private readonly policyService: FinancialPolicyService,
   ) {}
 
   /**
@@ -30,20 +32,39 @@ export class WithdrawalValidationService {
       throw new ForbiddenException('User account is not active for withdrawals');
     }
 
-    // 3. Dynamic Config Thresholds
+    // 3. Dynamic Config & Policy Thresholds
     const config = await this.configService.getWithdrawalConfig();
-    const minCoins = BigInt(config.minimumAmountCoins);
-    const maxCoins = BigInt(config.maximumAmountCoins);
+    try {
+      const minPolicy = await this.policyService.getPolicy('min_withdrawal_amount');
+      const maxPolicy = await this.policyService.getPolicy('max_withdrawal_amount');
+      const minCoins = BigInt(minPolicy.value);
+      const maxCoins = BigInt(maxPolicy.value);
 
-    if (amountCoins < minCoins) {
-      throw new BadRequestException(
-        `Withdrawal amount ${amountCoins} is below minimum ${minCoins} coins`,
-      );
-    }
-    if (amountCoins > maxCoins) {
-      throw new BadRequestException(
-        `Withdrawal amount ${amountCoins} exceeds maximum ${maxCoins} coins`,
-      );
+      if (amountCoins < minCoins) {
+        throw new BadRequestException(
+          `Withdrawal amount ${amountCoins} is below minimum policy limit of ${minCoins} coins`,
+        );
+      }
+      if (amountCoins > maxCoins) {
+        throw new BadRequestException(
+          `Withdrawal amount ${amountCoins} exceeds maximum policy cap of ${maxCoins} coins`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      const minCoins = BigInt(config.minimumAmountCoins);
+      const maxCoins = BigInt(config.maximumAmountCoins);
+
+      if (amountCoins < minCoins) {
+        throw new BadRequestException(
+          `Withdrawal amount ${amountCoins} is below minimum ${minCoins} coins`,
+        );
+      }
+      if (amountCoins > maxCoins) {
+        throw new BadRequestException(
+          `Withdrawal amount ${amountCoins} exceeds maximum ${maxCoins} coins`,
+        );
+      }
     }
 
     // 4. Validate Eligible Earnings Balance (diamondBalance on Wallet)

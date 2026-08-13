@@ -22,6 +22,7 @@ const PUBLICLY_SERVABLE_PREFIXES: readonly string[] = [
   STORAGE_CATEGORIES.PROFILE_IMAGE,
   STORAGE_CATEGORIES.ROOM_BACKGROUND,
   STORAGE_CATEGORIES.GIFT_ASSET,
+  STORAGE_CATEGORIES.COSMETIC_ASSET,
 ];
 
 /**
@@ -63,6 +64,9 @@ export class MediaUrlResolver {
 
   async resolve(key: string | null | undefined): Promise<string | null> {
     if (!key) return null;
+    if (key.startsWith('http://') || key.startsWith('https://') || key.startsWith('data:')) {
+      return key;
+    }
     if (this.publicBase && this.isPubliclyServable(key)) {
       return `${this.publicBase.replace(/\/$/, '')}/${key}`;
     }

@@ -21,7 +21,7 @@ export class TransactionQueryService {
 
     const where: any = {};
     if (userId?.trim()) {
-      where.userId = { contains: userId.trim(), mode: 'insensitive' };
+      where.userId = userId.trim();
     }
     if (type) {
       where.type = type.toUpperCase();
@@ -42,7 +42,7 @@ export class TransactionQueryService {
 
     const formattedItems = items.map((w) => ({
       ...w,
-      availableBalance: w.availableBalance.toString(),
+      availableBalance: (w.goldBalance - w.reservedBalance).toString(),
       reservedBalance: w.reservedBalance.toString(),
       pendingBalance: w.pendingBalance.toString(),
       lockedBalance: w.lockedBalance.toString(),

@@ -60,6 +60,7 @@ export interface ProfileView {
   preferredLanguage: string | null;
   statistics: StatisticsView;
   verification: VerificationView;
+  equippedFrameUrl?: string | null;
   /** True for platform staff accounts. Never rendered to ordinary users. */
   isHiddenAccount: boolean;
   createdAt: Date;
@@ -71,6 +72,7 @@ export interface UserCard {
   username: string;
   fullName: string | null;
   avatarUrl: string | null;
+  equippedFrameUrl?: string | null;
   verified: boolean;
   level: number;
   vipLevel: number;
@@ -82,12 +84,13 @@ export interface UserCard {
  * panels, video-room seat/request panels).
  *
  * The badge fields are optional so the original two-field consumers keep
- * compiling unchanged; `resolvePublicIdentities` always populates all six.
+ * compiling unchanged; `resolvePublicIdentities` always populates all seven.
  */
 export interface PublicIdentity {
   /** `fullName ?? username` — null only if neither exists. */
   displayName: string | null;
   avatarUrl: string | null;
+  equippedFrameUrl?: string | null;
   /** Raw handle, for surfaces that show @handle alongside the display name. */
   username?: string;
   /** `UserStatistics.level`; 1 when the row is absent. */

@@ -39,7 +39,7 @@ export class BalanceService {
     const goldNum = Number(wallet.goldBalance);
     const gameNum = Number(wallet.gameBalance);
     const diamondNum = Number(wallet.diamondBalance);
-    const available = wallet.availableBalance;
+    const available = wallet.goldBalance - wallet.reservedBalance;
     const total = available + wallet.reservedBalance + wallet.pendingBalance + wallet.lockedBalance;
 
     return {

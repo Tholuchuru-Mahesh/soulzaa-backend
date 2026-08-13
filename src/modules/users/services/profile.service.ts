@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { OnEvent } from '@nestjs/event-emitter';
 import {
   User,
   UserProfile,
@@ -20,6 +21,7 @@ import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { STORAGE_CATEGORIES } from 'src/infra/storage/storage.constants';
 import { UploadService } from 'src/infra/storage/upload.service';
+import { BACKPACK_EVENTS } from 'src/modules/backpack/events/backpack.events';
 import {
   PRIVACY_SERVICE,
   PrivacyAction,
@@ -222,6 +224,7 @@ export class ProfileService implements IProfileService {
           username: v.username,
           fullName: v.fullName,
           avatarUrl: v.avatarUrl,
+          equippedFrameUrl: v.equippedFrameUrl,
           verified: v.verification.verified,
           level: v.statistics.level,
           vipLevel: v.statistics.vipLevel,
@@ -268,6 +271,7 @@ export class ProfileService implements IProfileService {
           result.set(user.id, {
             displayName: user.fullName ?? user.username,
             avatarUrl: await this.media.resolve(avatarKey),
+            equippedFrameUrl: await this.resolveEquippedFrameUrl(user.id),
             username: user.username,
             level: stats?.level ?? 1,
             vipLevel: stats?.vipLevel ?? 0,
@@ -551,6 +555,19 @@ export class ProfileService implements IProfileService {
     await this.invalidate(userId);
   }
 
+  @OnEvent(BACKPACK_EVENTS.EQUIPPED)
+  @OnEvent(BACKPACK_EVENTS.UNEQUIPPED)
+  @OnEvent('backpack.item_equipped')
+  @OnEvent('backpack.item_unequipped')
+  @OnEvent('backpack.item.equipped')
+  @OnEvent('backpack.item.unequipped')
+  async handleBackpackEquipChange(payload: any): Promise<void> {
+    const userId = payload?.userId ?? payload?.data?.userId;
+    if (userId) {
+      await this.invalidate(userId);
+    }
+  }
+
   private buildSnapshot(
     user: User,
     profile: UserProfile,
@@ -577,10 +594,82 @@ export class ProfileService implements IProfileService {
     };
   }
 
+  private async resolveEquippedFrameUrl(userId: string): Promise<string | null> {
+    try {
+      const cosmeticId = '00000000-0000-0000-0000-000000000001';
+      const grantKey = `default-pink-frame:${userId}`;
+      const prisma = this.users['prisma'];
+
+      // 1. Ensure the Cosmetic catalog entry exists
+      await prisma.cosmetic.upsert({
+        where: { id: cosmeticId },
+        create: {
+          id: cosmeticId,
+          type: 'FRAME',
+          name: 'Default Pink Frame',
+          mediaUrl: 'default_pink_frame',
+          thumbnailUrl: 'default_pink_frame',
+          rarity: 'COMMON',
+          enabled: true,
+          price: 0,
+          isPremium: false,
+        },
+        update: {},
+      });
+
+      // 2. Ensure this user owns the default pink frame in their backpack
+      const exists = await prisma.backpackItem.count({
+        where: { grantKey },
+      });
+      if (exists === 0) {
+        const activeFrame = await prisma.backpackItem.findFirst({
+          where: { userId, type: 'FRAME', equipped: true },
+        });
+        await prisma.backpackItem.create({
+          data: {
+            userId,
+            type: 'FRAME',
+            refId: cosmeticId,
+            name: 'Default Pink Frame',
+            source: 'ADMIN',
+            quantity: 1,
+            equipped: activeFrame ? false : true, // Equip by default if no other active frame
+            transferable: false,
+            grantKey,
+            metadata: {
+              cosmeticId,
+              mediaUrl: 'default_pink_frame',
+              rarity: 'COMMON',
+            },
+          },
+        });
+      }
+
+      const item = await prisma.backpackItem.findFirst({
+        where: { userId, type: 'FRAME', equipped: true },
+      });
+      if (!item) return null;
+      let mediaUrl: string | null = null;
+      if (item.refId) {
+        const cosmetic = await prisma.cosmetic.findUnique({
+          where: { id: item.refId },
+        });
+        mediaUrl = cosmetic?.mediaUrl ?? null;
+      }
+      if (!mediaUrl) {
+        mediaUrl = (item.metadata as any)?.mediaUrl ?? null;
+      }
+      return this.media.resolve(mediaUrl);
+    } catch (_) {
+      return null;
+    }
+  }
+
   private async resolveView(snap: CachedProfile): Promise<ProfileView> {
-    const [avatarUrl, coverUrl] = await Promise.all([
+    const [avatarUrl, coverUrl, equippedFrameUrl] = await Promise.all([
       this.media.resolve(snap.avatarKey),
       this.media.resolve(snap.coverKey),
+      this.resolveEquippedFrameUrl(snap.id),
     ]);
     const isHidden = snap.isHiddenAccount ?? false;
     return {
@@ -590,6 +679,7 @@ export class ProfileService implements IProfileService {
       bio: snap.bio,
       avatarUrl,
       coverUrl,
+      equippedFrameUrl,
       gender: snap.gender,
       birthday: snap.birthday ? new Date(snap.birthday) : null,
       country: snap.country,

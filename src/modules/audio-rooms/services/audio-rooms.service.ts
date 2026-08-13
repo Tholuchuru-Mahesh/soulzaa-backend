@@ -80,6 +80,8 @@ export interface RoomParticipant {
   username: string | null;
   role: RoomMemberRole;
   joinedAt: Date;
+  avatarUrl?: string | null;
+  equippedFrameUrl?: string | null;
 }
 
 /**
@@ -629,28 +631,30 @@ export class AudioRoomsService implements IAudioRoomsService {
     if (!room) throw this.roomNotFound();
     const view = await this.toView(room);
     const members = await this.repo.listActiveMembers(roomId);
-    const participants = await Promise.all(
-      members.map(async (m) => {
-        const user = await this.users.findById(m.userId).catch(() => null);
-        return {
-          userId: m.userId,
-          username: user?.username ?? null,
-          role: m.role,
-          joinedAt: m.joinedAt,
-        };
-      }),
-    );
+    const ids = members.map((m) => m.userId);
+    const identities = await this.profiles.resolvePublicIdentities(ids);
+
+    const participants = members.map((m) => {
+      const identity = identities.get(m.userId);
+      return {
+        userId: m.userId,
+        username: identity?.username ?? null,
+        role: m.role,
+        joinedAt: m.joinedAt,
+        avatarUrl: identity?.avatarUrl ?? null,
+        equippedFrameUrl: identity?.equippedFrameUrl ?? null,
+      };
+    });
 
     // Get visible participants (first 3 active members sorted by joinedAt)
     const first3Members = members.slice(0, 3);
-    const ids = first3Members.map((m) => m.userId);
-    const identities = await this.profiles.resolvePublicIdentities(ids);
-    const visibleParticipants = ids.map((id) => {
-      const identity = identities.get(id);
+    const visibleParticipants = first3Members.map((m) => {
+      const identity = identities.get(m.userId);
       return {
-        userId: id,
+        userId: m.userId,
         username: identity?.displayName ?? '',
         profileImage: identity?.avatarUrl ?? null,
+        equippedFrameUrl: identity?.equippedFrameUrl ?? null,
       };
     });
 

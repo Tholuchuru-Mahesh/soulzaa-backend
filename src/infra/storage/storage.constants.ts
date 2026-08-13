@@ -7,6 +7,7 @@ export const STORAGE_CATEGORIES = {
   PROFILE_IMAGE: 'profile-images',
   ROOM_BACKGROUND: 'room-backgrounds',
   GIFT_ASSET: 'gift-assets',
+  COSMETIC_ASSET: 'cosmetic-assets',
   VIDEO: 'videos',
   THUMBNAIL: 'thumbnails',
   AUDIO: 'audio-assets',
@@ -52,7 +53,13 @@ export const STORAGE_POLICIES: Record<MediaCategory, StoragePolicy> = {
   [STORAGE_CATEGORIES.GIFT_ASSET]: {
     prefix: STORAGE_CATEGORIES.GIFT_ASSET,
     isImage: true,
-    allowedMime: [...IMAGE_MIME, 'image/gif'],
+    allowedMime: [...IMAGE_MIME, 'image/gif', 'image/svg+xml'],
+    maxSizeBytes: 10 * MB,
+  },
+  [STORAGE_CATEGORIES.COSMETIC_ASSET]: {
+    prefix: STORAGE_CATEGORIES.COSMETIC_ASSET,
+    isImage: true,
+    allowedMime: [...IMAGE_MIME, 'image/svg+xml', 'image/gif'],
     maxSizeBytes: 10 * MB,
   },
   [STORAGE_CATEGORIES.THUMBNAIL]: {

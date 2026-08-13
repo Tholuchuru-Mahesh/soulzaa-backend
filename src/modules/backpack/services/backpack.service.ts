@@ -22,6 +22,7 @@ import type {
   IBackpackService,
 } from '../interfaces/backpack.service.interface';
 import { BackpackRepository } from '../repositories/backpack.repository';
+import { PROFILE_SERVICE, IProfileService } from 'src/modules/users/interfaces/profile.interface';
 
 /**
  * The backpack: a user's inventory of earned non-coin rewards. Grants are
@@ -35,6 +36,7 @@ export class BackpackService implements IBackpackService {
     private readonly repo: BackpackRepository,
     private readonly locks: LockService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
   ) {}
 
   // ---- IBackpackService (cross-module grant seam) ----
@@ -130,10 +132,10 @@ export class BackpackService implements IBackpackService {
           HttpStatus.CONFLICT,
         );
       }
-      // One equipped item per type: unequip the rest first.
       await this.repo.unequipType(userId, item.type);
       await this.repo.setEquipped(itemId, true);
       await this.repo.log(userId, BACKPACK_ACTIONS.EQUIPPED, itemId, { type: item.type });
+      await this.profiles.invalidateProfile(userId);
       await this.bus.publish(new BackpackItemEquippedEvent({ userId, itemId, type: item.type }));
     });
   }
@@ -143,6 +145,7 @@ export class BackpackService implements IBackpackService {
       const item = await this.ownedItem(userId, itemId);
       await this.repo.setEquipped(itemId, false);
       await this.repo.log(userId, BACKPACK_ACTIONS.UNEQUIPPED, itemId, { type: item.type });
+      await this.profiles.invalidateProfile(userId);
       await this.bus.publish(new BackpackItemUnequippedEvent({ userId, itemId, type: item.type }));
     });
   }
@@ -176,6 +179,8 @@ export class BackpackService implements IBackpackService {
       await this.repo.log(toUserId, BACKPACK_ACTIONS.TRANSFERRED_IN, moved.id, {
         fromUserId: userId,
       });
+      await this.profiles.invalidateProfile(userId);
+      await this.profiles.invalidateProfile(toUserId);
       await this.bus.publish(
         new BackpackItemTransferredEvent({
           fromUserId: userId,

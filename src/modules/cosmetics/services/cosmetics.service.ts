@@ -1,8 +1,11 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { BackpackItemType, Cosmetic, CosmeticType, Prisma } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
+import { FrameProcessorService } from 'src/infra/storage/frame-processor.service';
+import { S3Service } from 'src/infra/storage/s3.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import {
   BACKPACK_SERVICE,
   type IBackpackService,
@@ -31,9 +34,14 @@ const TO_BACKPACK_TYPE: Record<CosmeticType, BackpackItemType> = {
  */
 @Injectable()
 export class CosmeticsService implements ICosmeticsService {
+  private readonly logger = new Logger(CosmeticsService.name);
+
   constructor(
     private readonly repo: CosmeticsRepository,
     @Inject(BACKPACK_SERVICE) private readonly backpack: IBackpackService,
+    private readonly frameProcessor: FrameProcessorService,
+    private readonly s3: S3Service,
+    private readonly media: MediaUrlResolver,
   ) {}
 
   // ---- ICosmeticsService ----
@@ -42,8 +50,15 @@ export class CosmeticsService implements ICosmeticsService {
     return this.repo.getById(cosmeticId);
   }
 
-  listActive(type?: CosmeticType): Promise<Cosmetic[]> {
-    return this.repo.listActive(type);
+  async listActive(type?: CosmeticType): Promise<Cosmetic[]> {
+    const cosmetics = await this.repo.listActive(type);
+    return Promise.all(
+      cosmetics.map(async (c) => ({
+        ...c,
+        mediaUrl: await this.media.resolve(c.mediaUrl),
+        thumbnailUrl: await this.media.resolve(c.thumbnailUrl),
+      })),
+    );
   }
 
   async ensureCosmetic(input: {
@@ -55,17 +70,16 @@ export class CosmeticsService implements ICosmeticsService {
   }): Promise<string> {
     const existing = await this.repo.findByTypeName(input.type, input.name);
     if (existing) return existing.id;
-    const created = await this.repo.create(
+    const created = await this.create(
+      '00000000-0000-0000-0000-000000000000',
       {
         type: input.type,
         name: input.name,
         rarity: input.rarity,
-        mediaUrl: input.mediaUrl ?? null,
-        transferable: input.transferable ?? false,
+        mediaUrl: input.mediaUrl,
+        transferable: input.transferable,
         enabled: true,
       },
-      // System-seeded cosmetics have no human author.
-      '00000000-0000-0000-0000-000000000000',
     );
     return created.id;
   }
@@ -86,7 +100,7 @@ export class CosmeticsService implements ICosmeticsService {
       refId: cosmetic.id,
       transferable: cosmetic.transferable,
       grantKey: input.grantKey,
-      metadata: { cosmeticId: cosmetic.id, rarity: cosmetic.rarity },
+      metadata: { cosmeticId: cosmetic.id, rarity: cosmetic.rarity, mediaUrl: cosmetic.mediaUrl },
     });
     return { cosmeticId: cosmetic.id, backpackItemId: res.itemId, duplicate: res.duplicate };
   }
@@ -94,7 +108,7 @@ export class CosmeticsService implements ICosmeticsService {
   // ---- Public catalog ----
 
   listCatalog(type?: CosmeticType): Promise<Cosmetic[]> {
-    return this.repo.listActive(type);
+    return this.listActive(type);
   }
 
   // ---- Admin CRUD ----
@@ -104,16 +118,32 @@ export class CosmeticsService implements ICosmeticsService {
       type: q.type,
       enabled: q.enabled,
     });
-    return buildPaginated(rows, total, q.page, q.limit);
+    const resolvedRows = await Promise.all(
+      rows.map(async (c) => ({
+        ...c,
+        mediaUrl: await this.media.resolve(c.mediaUrl),
+        thumbnailUrl: await this.media.resolve(c.thumbnailUrl),
+      })),
+    );
+    return buildPaginated(resolvedRows, total, q.page, q.limit);
   }
 
-  create(actorId: string, dto: CosmeticDto): Promise<Cosmetic> {
-    return this.repo.create(
+  async create(actorId: string, dto: CosmeticDto): Promise<Cosmetic> {
+    let finalMediaUrl = dto.mediaUrl ?? null;
+    let finalThumbnailUrl = dto.thumbnailUrl ?? null;
+
+    if (dto.type === 'FRAME' && finalMediaUrl) {
+      const processed = await this.processFrameMedia(finalMediaUrl, finalThumbnailUrl);
+      finalMediaUrl = processed.mediaUrl ?? finalMediaUrl;
+      finalThumbnailUrl = processed.thumbnailUrl ?? finalThumbnailUrl;
+    }
+
+    const created = await this.repo.create(
       {
         type: dto.type,
         name: dto.name,
-        mediaUrl: dto.mediaUrl ?? null,
-        thumbnailUrl: dto.thumbnailUrl ?? null,
+        mediaUrl: finalMediaUrl,
+        thumbnailUrl: finalThumbnailUrl,
         rarity: dto.rarity,
         price: dto.price ?? 0,
         isPremium: dto.isPremium ?? false,
@@ -123,21 +153,38 @@ export class CosmeticsService implements ICosmeticsService {
       },
       actorId,
     );
+    return {
+      ...created,
+      mediaUrl: await this.media.resolve(created.mediaUrl),
+      thumbnailUrl: await this.media.resolve(created.thumbnailUrl),
+    };
   }
 
   async update(actorId: string, id: string, dto: UpdateCosmeticDto): Promise<Cosmetic> {
-    if (!(await this.repo.getById(id))) {
+    const existing = await this.repo.getById(id);
+    if (!existing) {
       throw new BusinessException(
         ERROR_CODES.COSMETIC_NOT_FOUND,
         'Cosmetic not found.',
         HttpStatus.NOT_FOUND,
       );
     }
+
+    let finalMediaUrl = dto.mediaUrl;
+    let finalThumbnailUrl = dto.thumbnailUrl;
+
+    const isFrame = (dto.type ?? existing.type) === 'FRAME';
+    if (isFrame && finalMediaUrl) {
+      const processed = await this.processFrameMedia(finalMediaUrl, finalThumbnailUrl);
+      finalMediaUrl = processed.mediaUrl ?? finalMediaUrl;
+      finalThumbnailUrl = processed.thumbnailUrl ?? finalThumbnailUrl;
+    }
+
     const data: Prisma.CosmeticUpdateInput = {
       ...(dto.type !== undefined ? { type: dto.type } : {}),
       ...(dto.name !== undefined ? { name: dto.name } : {}),
-      ...(dto.mediaUrl !== undefined ? { mediaUrl: dto.mediaUrl } : {}),
-      ...(dto.thumbnailUrl !== undefined ? { thumbnailUrl: dto.thumbnailUrl } : {}),
+      ...(finalMediaUrl !== undefined ? { mediaUrl: finalMediaUrl } : {}),
+      ...(finalThumbnailUrl !== undefined ? { thumbnailUrl: finalThumbnailUrl } : {}),
       ...(dto.rarity !== undefined ? { rarity: dto.rarity } : {}),
       ...(dto.price !== undefined ? { price: dto.price } : {}),
       ...(dto.isPremium !== undefined ? { isPremium: dto.isPremium } : {}),
@@ -145,6 +192,53 @@ export class CosmeticsService implements ICosmeticsService {
       ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
       ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
     };
-    return this.repo.update(id, data, actorId);
+    const updated = await this.repo.update(id, data, actorId);
+    return {
+      ...updated,
+      mediaUrl: await this.media.resolve(updated.mediaUrl),
+      thumbnailUrl: await this.media.resolve(updated.thumbnailUrl),
+    };
+  }
+
+  async delete(id: string): Promise<{ deleted: boolean }> {
+    if (!(await this.repo.getById(id))) {
+      throw new BusinessException(
+        ERROR_CODES.COSMETIC_NOT_FOUND,
+        'Cosmetic not found.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    await this.repo.delete(id);
+    return { deleted: true };
+  }
+
+  private async processFrameMedia(
+    mediaUrl: string,
+    thumbnailUrl?: string | null,
+  ): Promise<{ mediaUrl: string; thumbnailUrl?: string | null }> {
+    try {
+      const key = mediaUrl.replace(/^https?:\/\/[^\/]+\//, '').replace(/^\/api\/storage\/download\//, '');
+      const head = await this.s3.headObject(key);
+      if (!head.exists) return { mediaUrl, thumbnailUrl };
+
+      const buffer = await this.s3.getObjectBuffer(key);
+      if (!buffer || buffer.length === 0) return { mediaUrl, thumbnailUrl };
+
+      const result = await this.frameProcessor.processFrame(buffer, head.contentType ?? 'image/png');
+      if (!result.isProcessed) return { mediaUrl, thumbnailUrl };
+
+      const ext = result.mimeType.includes('svg') ? 'svg' : 'png';
+      const processedKey = `${key.replace(/\.[^/.]+$/, '')}_transparent.${ext}`;
+
+      await this.s3.putObject(processedKey, result.buffer, result.mimeType);
+
+      return {
+        mediaUrl: processedKey,
+        thumbnailUrl: thumbnailUrl ?? processedKey,
+      };
+    } catch (err: any) {
+      this.logger.error(`Failed to process frame background: ${err?.message ?? err}`);
+      return { mediaUrl, thumbnailUrl };
+    }
   }
 }

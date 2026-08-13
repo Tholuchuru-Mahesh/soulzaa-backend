@@ -25,6 +25,7 @@ describe('CosmeticsStoreService', () => {
   let wallet: Record<string, jest.Mock>;
   let bus: jest.Mocked<IEventBus>;
   let queue: { enqueue: jest.Mock };
+  let media: { resolve: jest.Mock };
   let service: CosmeticsStoreService;
 
   beforeEach(() => {
@@ -48,12 +49,14 @@ describe('CosmeticsStoreService', () => {
     };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
+    media = { resolve: jest.fn().mockImplementation((key: string | null | undefined) => Promise.resolve(key ?? null)) };
     service = new CosmeticsStoreService(
       repo as unknown as CosmeticsRepository,
       cosmetics as unknown as CosmeticsService,
       wallet as unknown as IWalletService,
       bus,
       queue as unknown as QueueService,
+      media as any,
     );
   });
 

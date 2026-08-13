@@ -88,13 +88,7 @@ export class VipConfigSeeder implements OnApplicationBootstrap {
     try {
       let created = 0;
       for (const tier of TIERS) {
-        const cosmeticId = await this.cosmetics.ensureCosmetic({
-          type: tier.type,
-          name: tier.cosmeticName,
-          rarity: tier.rarity,
-        });
         const benefits: VipBenefit[] = [
-          { kind: 'COSMETIC', cosmeticId },
           { kind: 'PERK', description: `${tier.level} VIP privileges` },
         ];
         const inserted = await this.repo.seedConfig(

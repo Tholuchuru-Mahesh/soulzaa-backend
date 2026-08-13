@@ -11,8 +11,62 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 export class BackpackRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  getItem(id: string): Promise<BackpackItem | null> {
-    return this.prisma.backpackItem.findUnique({ where: { id } });
+  async ensureDefaultPinkFrame(userId: string): Promise<void> {
+    const cosmeticId = '00000000-0000-0000-0000-000000000001';
+    const grantKey = `default-pink-frame:${userId}`;
+
+    // 1. Ensure the Cosmetic catalog entry exists
+    await this.prisma.cosmetic.upsert({
+      where: { id: cosmeticId },
+      create: {
+        id: cosmeticId,
+        type: 'FRAME',
+        name: 'Default Pink Frame',
+        mediaUrl: 'default_pink_frame',
+        thumbnailUrl: 'default_pink_frame',
+        rarity: 'COMMON',
+        enabled: true,
+        price: 0,
+        isPremium: false,
+      },
+      update: {},
+    });
+
+    // 2. Ensure this user owns the default pink frame in their backpack
+    const exists = await this.prisma.backpackItem.count({
+      where: { grantKey },
+    });
+    if (exists === 0) {
+      const activeFrame = await this.prisma.backpackItem.findFirst({
+        where: { userId, type: 'FRAME', equipped: true },
+      });
+      await this.prisma.backpackItem.create({
+        data: {
+          userId,
+          type: 'FRAME',
+          refId: cosmeticId,
+          name: 'Default Pink Frame',
+          source: 'ADMIN',
+          quantity: 1,
+          equipped: activeFrame ? false : true,
+          transferable: false,
+          grantKey,
+          metadata: {
+            cosmeticId,
+            mediaUrl: 'default_pink_frame',
+            rarity: 'COMMON',
+          },
+        },
+      });
+    }
+  }
+
+  async getItem(id: string): Promise<BackpackItem | null> {
+    const item = await this.prisma.backpackItem.findUnique({ where: { id } });
+    if (item) {
+      await this.ensureDefaultPinkFrame(item.userId);
+    }
+    return item;
   }
 
   findByGrantKey(grantKey: string, tx?: Prisma.TransactionClient): Promise<BackpackItem | null> {
@@ -21,12 +75,16 @@ export class BackpackRepository {
   }
 
   /** The user's currently-equipped item of a type (one-per-type), or null. */
-  findEquippedByType(userId: string, type: BackpackItemType): Promise<BackpackItem | null> {
+  async findEquippedByType(userId: string, type: BackpackItemType): Promise<BackpackItem | null> {
+    await this.ensureDefaultPinkFrame(userId);
     return this.prisma.backpackItem.findFirst({ where: { userId, type, equipped: true } });
   }
 
   /** True when the user owns any (unexpired) item referencing this cosmetic id. */
   async ownsRef(userId: string, refId: string): Promise<boolean> {
+    if (refId === '00000000-0000-0000-0000-000000000001') {
+      await this.ensureDefaultPinkFrame(userId);
+    }
     const count = await this.prisma.backpackItem.count({
       where: {
         userId,
@@ -45,12 +103,13 @@ export class BackpackRepository {
     return client.backpackItem.create({ data });
   }
 
-  listItems(
+  async listItems(
     userId: string,
     skip: number,
     take: number,
     filter: { type?: BackpackItemType; equipped?: boolean },
   ): Promise<[BackpackItem[], number]> {
+    await this.ensureDefaultPinkFrame(userId);
     const where: Prisma.BackpackItemWhereInput = {
       userId,
       ...(filter.type ? { type: filter.type } : {}),

@@ -12,10 +12,16 @@ export class CosmeticsRepository {
     return this.prisma.cosmetic.findUnique({ where: { id } });
   }
 
-  /** Enabled, purchasable premium cosmetics (the store), optionally by type. */
   listStore(type?: CosmeticType): Promise<Cosmetic[]> {
     return this.prisma.cosmetic.findMany({
-      where: { enabled: true, isPremium: true, price: { gt: 0 }, ...(type ? { type } : {}) },
+      where: {
+        enabled: true,
+        OR: [
+          { isPremium: true, price: { gt: 0 } },
+          { id: '00000000-0000-0000-0000-000000000001' },
+        ],
+        ...(type ? { type } : {}),
+      },
       orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }],
     });
   }
@@ -78,6 +84,10 @@ export class CosmeticsRepository {
       where: { id },
       data: { ...data, ...auditUpdate(actorId) },
     });
+  }
+
+  delete(id: string): Promise<Cosmetic> {
+    return this.prisma.cosmetic.delete({ where: { id } });
   }
 
   /** Idempotent seed by (type, name). */

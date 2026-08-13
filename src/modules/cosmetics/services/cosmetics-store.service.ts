@@ -13,6 +13,7 @@ import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
 import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import { QueueService } from 'src/infra/queue/queue.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import {
   WALLET_SERVICE,
   type IWalletService,
@@ -39,10 +40,18 @@ export class CosmeticsStoreService {
     @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly queue: QueueService,
+    private readonly media: MediaUrlResolver,
   ) {}
 
-  listStore(type?: CosmeticType): Promise<Cosmetic[]> {
-    return this.repo.listStore(type);
+  async listStore(type?: CosmeticType): Promise<(Omit<Cosmetic, 'mediaUrl' | 'thumbnailUrl'> & { mediaUrl: string | null; thumbnailUrl: string | null })[]> {
+    const rows = await this.repo.listStore(type);
+    return Promise.all(
+      rows.map(async (c) => ({
+        ...c,
+        mediaUrl: await this.media.resolve(c.mediaUrl),
+        thumbnailUrl: await this.media.resolve(c.thumbnailUrl),
+      })),
+    );
   }
 
   async purchases(

@@ -38,27 +38,7 @@ export class ExpConfigSeeder implements OnApplicationBootstrap {
   }
 
   private async seed(): Promise<number> {
-    const badge = await this.cosmetics.ensureCosmetic({
-      type: CosmeticType.BADGE,
-      name: 'Bronze Achiever',
-      rarity: CosmeticRarity.COMMON,
-    });
-    const frame = await this.cosmetics.ensureCosmetic({
-      type: CosmeticType.FRAME,
-      name: 'Silver Frame',
-      rarity: CosmeticRarity.RARE,
-    });
-    const entrance = await this.cosmetics.ensureCosmetic({
-      type: CosmeticType.ENTRANCE_EFFECT,
-      name: 'Rising Star Entrance',
-      rarity: CosmeticRarity.EPIC,
-    });
-    const legend = await this.cosmetics.ensureCosmetic({
-      type: CosmeticType.FRAME,
-      name: 'Legend Frame',
-      rarity: CosmeticRarity.LEGENDARY,
-    });
-    const milestones: Record<number, string> = { 5: badge, 10: frame, 15: entrance, 20: legend };
+    const milestones: Record<number, string> = {};
 
     let created = 0;
     for (let level = 1; level <= 20; level++) {

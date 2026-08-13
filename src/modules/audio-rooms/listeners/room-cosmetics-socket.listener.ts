@@ -12,6 +12,12 @@ import {
   type RoomAppearanceUpdatedEvent,
 } from '../events/audio-room-appearance.events';
 import { AUDIO_ROOM_EVENTS, type RoomJoinedEvent } from '../events/audio-room.events';
+import { PresenceService } from 'src/infra/redis/presence.service';
+import {
+  BACKPACK_EVENTS,
+  BackpackItemEquippedEvent,
+  BackpackItemUnequippedEvent,
+} from 'src/modules/backpack/events/backpack.events';
 
 /**
  * Bridges AR-8 backpack cosmetics to the audio-room sockets:
@@ -29,6 +35,7 @@ export class RoomCosmeticsSocketListener implements OnModuleInit {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly sockets: SocketManager,
     @Inject(BACKPACK_SERVICE) private readonly backpack: IBackpackService,
+    private readonly presence: PresenceService,
   ) {}
 
   onModuleInit(): void {
@@ -36,6 +43,33 @@ export class RoomCosmeticsSocketListener implements OnModuleInit {
       this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.ROOM_APPEARANCE, e.payload),
     );
     this.bus.subscribe<RoomJoinedEvent>(AUDIO_ROOM_EVENTS.JOINED, (e) => void this.onJoin(e));
+
+    this.bus.subscribe<BackpackItemEquippedEvent>(BACKPACK_EVENTS.EQUIPPED, (e) => {
+      if (e.payload.type === BackpackItemType.FRAME) {
+        void this.onBackpackChange(e.payload.userId);
+      }
+    });
+
+    this.bus.subscribe<BackpackItemUnequippedEvent>(BACKPACK_EVENTS.UNEQUIPPED, (e) => {
+      if (e.payload.type === BackpackItemType.FRAME) {
+        void this.onBackpackChange(e.payload.userId);
+      }
+    });
+  }
+
+  private async onBackpackChange(userId: string): Promise<void> {
+    try {
+      const rooms = await this.presence.userRooms(userId);
+      for (const roomId of rooms) {
+        this.room(roomId, ROOM_SOCKET_EVENTS.UPDATED, {
+          roomId,
+          userId,
+          changed: ['frame'],
+        });
+      }
+    } catch (err) {
+      this.logger.warn(`Backpack change broadcast failed: ${(err as Error).message}`);
+    }
   }
 
   private async onJoin(e: RoomJoinedEvent): Promise<void> {

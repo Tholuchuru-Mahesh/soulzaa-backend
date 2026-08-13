@@ -26,11 +26,6 @@ export class EventsSeeder implements OnApplicationBootstrap {
 
   async onApplicationBootstrap(): Promise<void> {
     try {
-      const frameId = await this.cosmetics.ensureCosmetic({
-        type: CosmeticType.FRAME,
-        name: 'Welcome Festival Frame',
-        rarity: CosmeticRarity.RARE,
-      });
       const now = new Date();
       const farFuture = new Date(now.getTime() + 365 * 24 * 3600 * 1000);
       const weekend = new Date(now.getTime() + 3 * 24 * 3600 * 1000);
@@ -38,7 +33,6 @@ export class EventsSeeder implements OnApplicationBootstrap {
       const welcomeRewards: EventRewardEntry[] = [
         { kind: 'COINS', coins: 5_000, currency: 'FREE' },
         { kind: 'EXP', exp: 500 },
-        { kind: 'COSMETIC', cosmeticId: frameId },
       ];
 
       let created = 0;

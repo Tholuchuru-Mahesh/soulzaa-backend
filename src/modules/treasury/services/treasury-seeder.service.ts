@@ -94,9 +94,9 @@ export class TreasurySeederService implements OnModuleInit {
       await this.prisma.treasuryReserve.create({
         data: {
           maxSupply: BigInt('1000000000000'),
-          circulatingSupply: BigInt('500000000'),
-          reservedSupply: BigInt('100000000'),
-          treasuryBalance: BigInt('400000000'),
+          circulatingSupply: BigInt('0'),
+          reservedSupply: BigInt('0'),
+          treasuryBalance: BigInt('0'),
           isFrozen: false,
         },
       });

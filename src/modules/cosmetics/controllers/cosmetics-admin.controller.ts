@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -49,5 +50,11 @@ export class CosmeticsAdminController {
     @Body() dto: UpdateCosmeticDto,
   ) {
     return this.cosmetics.update(adminId, cosmeticId, dto);
+  }
+
+  @Delete(':cosmeticId')
+  @ApiOperation({ summary: 'Delete a cosmetic' })
+  delete(@Param('cosmeticId', ParseUuidPipe) cosmeticId: string) {
+    return this.cosmetics.delete(cosmeticId);
   }
 }

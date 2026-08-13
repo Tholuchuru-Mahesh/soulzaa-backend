@@ -185,7 +185,31 @@ export class UserQueryService {
       throw new NotFoundException(`User with ID '${userId}' not found`);
     }
 
-    const [userRoles, effectivePermissions, recentAuditLogs] = await Promise.all([
+    const [
+      userRoles,
+      effectivePermissions,
+      recentAuditLogs,
+      stats,
+      referral,
+      verification,
+      familyMember,
+      agencyRel,
+    const [
+      userRoles,
+      effectivePermissions,
+      recentAuditLogs,
+      stats,
+      referral,
+      verification,
+      familyMember,
+      agencyRel,
+      wallet,
+      roomLogs,
+      videoLogs,
+      giftTransactions,
+      recharges,
+      gamePlays,
+    ] = await Promise.all([
       this.prisma.userRole.findMany({
         where: { userId },
         include: {
@@ -207,7 +231,230 @@ export class UserQueryService {
         orderBy: { createdAt: 'desc' },
         take: 10,
       }),
+      this.prisma.userStatistics.findUnique({
+        where: { userId },
+      }),
+      this.prisma.referralRelationship.findUnique({
+        where: { refereeId: userId },
+      }),
+      this.prisma.userVerification.findUnique({
+        where: { userId },
+      }),
+      this.prisma.familyMember.findUnique({
+        where: { userId },
+      }),
+      this.prisma.agencyRelationship.findFirst({
+        where: { hostId: userId, status: 'ACTIVE' },
+      }),
+      this.prisma.wallet.findUnique({
+        where: { userId },
+      }),
+      this.prisma.roomLog.findMany({
+        where: { actorId: userId, action: 'JOINED' },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      this.prisma.videoRoomLog.findMany({
+        where: { actorId: userId, action: 'JOINED' },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      this.prisma.giftTransaction.findMany({
+        where: { senderId: userId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      this.prisma.purchaseOrder.findMany({
+        where: { userId, status: 'COMPLETED' },
+        include: { package: true },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      this.prisma.gameParticipant.findMany({
+        where: { userId },
+        orderBy: { joinedAt: 'desc' },
+        take: 10,
+      }),
     ]);
+
+    // Resolve details sequentially or concurrently
+    let referredBy = null;
+    if (referral) {
+      const referrer = await this.prisma.user.findUnique({
+        where: { id: referral.referrerId },
+      });
+      if (referrer) {
+        referredBy = referrer.username;
+      }
+    }
+
+    let family = null;
+    if (familyMember) {
+      const fam = await this.prisma.family.findUnique({
+        where: { id: familyMember.familyId },
+      });
+      if (fam) {
+        family = {
+          familyId: fam.id,
+          familyName: fam.name,
+          familyRole: familyMember.role,
+        };
+      }
+    }
+
+    let agency = null;
+    if (agencyRel) {
+      const agencyUser = await this.prisma.user.findUnique({
+        where: { id: agencyRel.agencyId },
+      });
+      if (agencyUser) {
+        agency = {
+          agencyId: agencyRel.agencyId,
+          agencyName: agencyUser.fullName || agencyUser.username,
+          agencyRole: 'HOST',
+        };
+      }
+    }
+
+    // Resolve name mappings for logs
+    const audioRoomIds = roomLogs.map((rl) => rl.roomId);
+    const audioRooms = await this.prisma.audioRoom.findMany({
+      where: { id: { in: audioRoomIds } },
+    });
+    const audioRoomMap = new Map(audioRooms.map((r) => [r.id, r]));
+
+    const videoRoomIds = videoLogs.map((vl) => vl.roomId);
+    const videoRooms = await this.prisma.videoRoom.findMany({
+      where: { id: { in: videoRoomIds } },
+    });
+    const videoRoomMap = new Map(videoRooms.map((r) => [r.id, r]));
+
+    const giftIds = giftTransactions.map((gt) => gt.giftId);
+    const gifts = await this.prisma.gift.findMany({
+      where: { id: { in: giftIds } },
+    });
+    const giftMap = new Map(gifts.map((g) => [g.id, g]));
+
+    const receiverIds = giftTransactions.map((gt) => gt.receiverId);
+    const receivers = await this.prisma.user.findMany({
+      where: { id: { in: receiverIds } },
+    });
+    const receiverMap = new Map(receivers.map((r) => [r.id, r]));
+
+    const definitionIds = gamePlays.map((gp) => gp.definitionId);
+    const definitions = await this.prisma.gameDefinition.findMany({
+      where: { id: { in: definitionIds } },
+    });
+    const definitionMap = new Map(definitions.map((d) => [d.id, d]));
+
+    const mappedRoomLogs = roomLogs.map((rl) => {
+      const room = audioRoomMap.get(rl.roomId);
+      return {
+        id: rl.id,
+        type: 'stream',
+        action: `Joined audio room “${room ? room.name : 'Unknown'}”`,
+        resource: `Room ID: AR${rl.roomId.replace(/-/g, '').slice(0, 6).toUpperCase()}`,
+        createdAt: rl.createdAt,
+      };
+    });
+
+    const mappedVideoLogs = videoLogs.map((vl) => {
+      const room = videoRoomMap.get(vl.roomId);
+      return {
+        id: vl.id,
+        type: 'stream',
+        action: `Creator live stream attendance`,
+        resource: `Stream ID: LS${vl.roomId.replace(/-/g, '').slice(0, 6).toUpperCase()}`,
+        createdAt: vl.createdAt,
+      };
+    });
+
+    const mappedGiftTxns = giftTransactions.map((gt) => {
+      const gift = giftMap.get(gt.giftId);
+      const receiver = receiverMap.get(gt.receiverId);
+      return {
+        id: gt.id,
+        type: 'gift',
+        action: `Sent gift “${gift ? gift.name : 'Gift'}” x${gt.quantity} to ${receiver ? receiver.username : 'user'}`,
+        resource: `Gift ID: GFT${gt.id.replace(/-/g, '').slice(0, 6).toUpperCase()}`,
+        createdAt: gt.createdAt,
+      };
+    });
+
+    const mappedRecharges = recharges.map((r) => ({
+      id: r.id,
+      type: 'recharge',
+      action: `Coin recharge - ${r.package ? r.package.name : `Package ${r.totalCoins}`}`,
+      resource: `Order ID: ${r.orderNumber}`,
+      createdAt: r.createdAt,
+    }));
+
+    const mappedGamePlays = gamePlays.map((gp) => {
+      const definition = definitionMap.get(gp.definitionId);
+      const shortTxnId = gp.stakeTxnId ? `TRX${gp.stakeTxnId.replace(/-/g, '').slice(0, 6).toUpperCase()}` : '';
+      return {
+        id: gp.id,
+        type: 'game',
+        action: `Played game “${definition ? definition.name : 'Game'}”`,
+        resource: `Game ID: GM${gp.sessionId.replace(/-/g, '').slice(0, 6).toUpperCase()}${shortTxnId ? `, Transaction ID: ${shortTxnId}` : ''}`,
+        createdAt: gp.joinedAt,
+      };
+    });
+
+    let mappedWalletTxns: any[] = [];
+    if (wallet) {
+      const walletTxns = await this.prisma.walletTransaction.findMany({
+        where: {
+          OR: [
+            { sourceWalletId: wallet.id },
+            { destinationWalletId: wallet.id },
+          ],
+          NOT: {
+            transactionType: {
+              in: ['GIFT', 'PURCHASE', 'GAME_ENTRY', 'GAME_REWARD'],
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      });
+
+      mappedWalletTxns = walletTxns.map((t) => {
+        const isSource = t.sourceWalletId === wallet.id;
+        const type = 'system';
+        const action = isSource ? 'Transferred Coins' : 'Received Transfer';
+        const resource = `Amount: ${t.amount.toString()}`;
+        return {
+          id: t.id,
+          type,
+          action,
+          resource,
+          createdAt: t.createdAt,
+        };
+      });
+    }
+
+    const combinedLogs = [
+      ...recentAuditLogs.map((log) => ({
+        id: log.id,
+        type: 'system',
+        action: log.action,
+        resource: `${log.resource || ''} ${log.resourceId || ''}`.trim(),
+        createdAt: log.createdAt,
+      })),
+      ...mappedRoomLogs,
+      ...mappedVideoLogs,
+      ...mappedGiftTxns,
+      ...mappedRecharges,
+      ...mappedGamePlays,
+      ...mappedWalletTxns,
+    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+     .slice(0, 10);
+
+    const level = stats ? stats.level : 1;
+    const vipLevel = stats ? stats.vipLevel : 0;
+    const kycVerifiedAt = verification && verification.verified ? verification.reviewedAt : null;
+    const ageVerifiedAt = verification && verification.verified ? verification.reviewedAt : null;
 
     const formattedRoles = userRoles.map((ur) => ({
       userRoleId: ur.id,
@@ -242,9 +489,16 @@ export class UserQueryService {
       mobileVerifiedAt: user.mobileVerifiedAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+      level,
+      vipLevel,
+      referredBy,
+      kycVerifiedAt,
+      ageVerifiedAt,
+      family,
+      agency,
       assignedRoles: formattedRoles,
       inheritedPermissions: effectivePermissions,
-      recentAuditLogs,
+      recentAuditLogs: combinedLogs,
     };
   }
 
