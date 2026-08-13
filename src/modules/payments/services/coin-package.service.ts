@@ -50,8 +50,12 @@ export class CoinPackageService {
     keys.push('payments.tax_rate_percent');
 
     for (const key of keys) {
-      const value = await this.platformConfig.get<unknown>(key);
-      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      try {
+        const value = await this.platformConfig.get<unknown>(key);
+        if (typeof value === 'number' && Number.isFinite(value)) return value;
+      } catch (err) {
+        // Ignore setting-not-found errors to continue to fallback key
+      }
     }
     return 0;
   }

@@ -33,6 +33,7 @@ enum PlatformRole {
   COIN_SELLER
   HOST
   USER
+  CREATOR
 }
 
 enum CurrencyType {

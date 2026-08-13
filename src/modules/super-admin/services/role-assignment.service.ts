@@ -287,4 +287,60 @@ export class RoleAssignmentService {
       actorId,
     );
   }
+
+  /**
+   * Revokes the Creator status (removes Creator role, deletes/resets UserVerification so they can apply from scratch).
+   */
+  async revokeCreator(targetUserId: string, actorId: string): Promise<any> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+    if (!user) {
+      throw new NotFoundException(`User with ID '${targetUserId}' not found`);
+    }
+
+    const role = await this.prisma.role.findUnique({
+      where: { name: 'CREATOR' },
+    });
+
+    if (role) {
+      await this.prisma.userRole.deleteMany({
+        where: {
+          userId: targetUserId,
+          roleId: role.id,
+        },
+      });
+    }
+
+    const currentRoles = user.roles || [];
+    const updatedRoles = currentRoles.filter((r) => r !== ('CREATOR' as any));
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        roles: {
+          set: updatedRoles,
+        },
+      },
+    });
+
+    await this.prisma.userVerification.updateMany({
+      where: { userId: targetUserId },
+      data: {
+        verified: false,
+        status: 'NONE',
+        type: null,
+        documentKey: null,
+        rejectionReason: null,
+        reviewedAt: null,
+        reviewedBy: null,
+      },
+    });
+
+    await this.authCacheService.invalidateUser(targetUserId);
+
+    return {
+      message: `Creator status successfully revoked for user '${user.username}'`,
+      userId: targetUserId,
+    };
+  }
 }

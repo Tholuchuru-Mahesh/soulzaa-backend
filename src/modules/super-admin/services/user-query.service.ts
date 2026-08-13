@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { AuthorizationService } from 'src/modules/authorization/services/authorization.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import { UserSearchFilterDto } from '../dto/user-query.dto';
 import { maskPrivilegedRole } from './role-masking.util';
 
@@ -9,6 +10,7 @@ export class UserQueryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authorizationService: AuthorizationService,
+    private readonly media: MediaUrlResolver,
   ) {}
 
   /**
@@ -42,8 +44,9 @@ export class UserQueryService {
     // 1. Text Search across multiple fields
     if (query?.trim()) {
       const q = query.trim();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q);
       where.OR = [
-        { id: { equals: q } },
+        ...(isUuid ? [{ id: { equals: q } }] : []),
         { username: { contains: q, mode: 'insensitive' } },
         { email: { contains: q, mode: 'insensitive' } },
         { mobile: { contains: q, mode: 'insensitive' } },
@@ -277,5 +280,70 @@ export class UserQueryService {
       totalPages: Math.ceil(total / limit),
       logs,
     };
+  }
+
+  async getPendingVerifications() {
+    const verifications = await this.prisma.userVerification.findMany({
+      where: {
+        status: 'PENDING',
+        type: 'CREATOR',
+      },
+      orderBy: {
+        submittedAt: 'desc',
+      },
+    });
+
+    if (verifications.length === 0) return [];
+
+    const userIds = verifications.map((v) => v.userId);
+    const users = await this.prisma.user.findMany({
+      where: {
+        id: { in: userIds },
+      },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+      },
+    });
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    const result = await Promise.all(
+      verifications.map(async (v) => {
+        const user = userMap.get(v.userId);
+        let platform = '';
+        let handle = '';
+        let selfieUrl = '';
+
+        if (v.documentKey) {
+          try {
+            const data = JSON.parse(v.documentKey);
+            if (data && typeof data === 'object') {
+              platform = data.platform || '';
+              handle = data.handle || '';
+              if (data.selfieKey) {
+                selfieUrl = (await this.media.resolve(data.selfieKey)) || '';
+              }
+            }
+          } catch (e) {
+            selfieUrl = (await this.media.resolve(v.documentKey)) || '';
+          }
+        }
+
+        return {
+          userId: v.userId,
+          username: user?.username || '',
+          fullName: user?.fullName || '',
+          selfieUrl,
+          platform,
+          handle,
+          submittedAt: v.submittedAt,
+          status: v.status,
+        };
+      })
+    );
+
+    return result;
   }
 }

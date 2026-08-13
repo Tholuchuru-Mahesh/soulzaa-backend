@@ -52,9 +52,12 @@ export class GiftCatalogService {
    * List gifts in catalog with optional category / type filter
    */
   async listGifts(dto: GiftQueryDto) {
-    const { category, type, enabled = true } = dto;
+    const { category, type, enabled } = dto;
     const where: any = {};
 
+    // Only filter by enabled state when explicitly requested.
+    // Omitting the param returns ALL gifts (active + disabled) — the admin
+    // catalog view must show everything so operators can manage disabled gifts.
     if (enabled !== undefined) {
       where.enabled = enabled;
     }

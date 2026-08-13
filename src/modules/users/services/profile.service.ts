@@ -9,6 +9,8 @@ import {
   VerificationType,
 } from '@prisma/client';
 import { CACHE_KEYS } from 'src/common/constants';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { NOTIFICATION_SERVICE, type INotificationService } from 'src/modules/notification/interfaces/notification.interface';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
@@ -96,6 +98,8 @@ export class ProfileService implements IProfileService {
     @Inject(USER_SEARCH_PROVIDER) private readonly searchProvider: IUserSearchProvider,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(PRIVACY_SERVICE) private readonly privacy: IPrivacyService,
+    @Inject(NOTIFICATION_SERVICE) private readonly notifications: INotificationService,
+    private readonly prisma: PrismaService,
     config: ConfigService,
   ) {
     const cfg = config.get('profile', { infer: true })!;
@@ -415,6 +419,86 @@ export class ProfileService implements IProfileService {
       );
     }
     const row = await this.profiles.reviewVerification(targetUserId, input);
+
+    if (input.approve) {
+      // 1. Find or create the Creator Role in rbac
+      let role = await this.prisma.role.findUnique({
+        where: { name: 'CREATOR' },
+      });
+      if (!role) {
+        role = await this.prisma.role.create({
+          data: {
+            name: 'CREATOR',
+            displayName: 'Creator',
+            description: 'Creator verification status role',
+            isSystem: false,
+          },
+        });
+      }
+
+      // 2. Map UserRole relationship
+      const existingUserRole = await this.prisma.userRole.findUnique({
+        where: {
+          userId_roleId: {
+            userId: targetUserId,
+            roleId: role.id,
+          },
+        },
+      });
+      if (!existingUserRole) {
+        await this.prisma.userRole.create({
+          data: {
+            userId: targetUserId,
+            roleId: role.id,
+          },
+        });
+      }
+
+      // 3. Update User model's PlatformRole roles array
+      const user = await this.users.findById(targetUserId);
+      if (user) {
+        const currentRoles = user.roles || [];
+        if (!currentRoles.includes('CREATOR' as any)) {
+          await this.prisma.user.update({
+            where: { id: targetUserId },
+            data: {
+              roles: {
+                set: [...currentRoles, 'CREATOR' as any],
+              },
+            },
+          });
+        }
+      }
+
+      // 4. Send success notification
+      try {
+        await this.notifications.create({
+          userId: targetUserId,
+          type: 'ROLE_GRANTED',
+          data: {
+            title: 'Creator Verification Approved',
+            body: 'Congratulations! You have been verified as a Creator. Your badge is active.',
+          },
+        });
+      } catch (err) {
+        console.error('Failed to send verification success notification:', err);
+      }
+    } else {
+      // Send rejection notification
+      try {
+        await this.notifications.create({
+          userId: targetUserId,
+          type: 'SYSTEM',
+          data: {
+            title: 'Creator Verification Rejected',
+            body: `Your Creator Verification request was rejected. Reason: ${input.reason || 'Not specified'}. You can resubmit your request.`,
+          },
+        });
+      } catch (err) {
+        console.error('Failed to send verification rejection notification:', err);
+      }
+    }
+
     await this.invalidate(targetUserId);
     await this.bus.publish(
       new UserVerifiedEvent({

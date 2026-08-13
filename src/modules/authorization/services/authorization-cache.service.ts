@@ -94,8 +94,9 @@ export class AuthorizationCacheService {
         this.getPermsKey(userId),
         this.getRolesKey(userId),
         this.getScopesKey(userId),
+        `user:profile:${userId}`,
       );
-      this.logger.log(`Invalidated authorization cache for user: ${userId}`);
+      this.logger.log(`Invalidated authorization and profile cache for user: ${userId}`);
     } catch (err) {
       this.logger.warn(`Redis invalidateUser failed: ${(err as Error).message}`);
     }

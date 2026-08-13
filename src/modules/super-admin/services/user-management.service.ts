@@ -78,8 +78,15 @@ export class UserManagementService {
   async unlockAccount(userId: string, actorId: string) {
     return this.lifecycleService.unlockAccount(userId, actorId);
   }
-
   async forceLogout(userId: string, actorId: string) {
     return this.lifecycleService.forceLogout(userId, actorId);
+  }
+
+  async getPendingVerifications() {
+    return this.queryService.getPendingVerifications();
+  }
+
+  async revokeCreator(userId: string, actorId: string) {
+    return this.roleAssignmentService.revokeCreator(userId, actorId);
   }
 }

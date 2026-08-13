@@ -49,27 +49,96 @@ export class DashboardOperationsService {
 
   /** User overview: account state mix, role distribution and newest signups. */
   async userOverview(recentLimit = 25) {
-    const [byStatus, roleRows, recent] = await Promise.all([
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const [
+      totalUsers,
+      activeUsers,
+      bannedUsers,
+      vipUsers,
+      newUsersToday,
+      byStatus,
+      roleRows,
+      recent
+    ] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.user.count({ where: { status: 'ACTIVE' } }),
+      this.prisma.user.count({ where: { status: { in: ['BANNED', 'SUSPENDED'] } } }),
+      this.prisma.userStatistics.count({ where: { vipLevel: { gt: 0 } } }),
+      this.prisma.user.count({ where: { createdAt: { gte: dayAgo } } }),
       this.prisma.user.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.userRole.groupBy({ by: ['roleId'], _count: { _all: true } }),
       this.prisma.user.findMany({
         orderBy: { createdAt: 'desc' },
         take: recentLimit,
-        select: { id: true, username: true, email: true, status: true, createdAt: true },
+        select: {
+          id: true,
+          username: true,
+          fullName: true,
+          email: true,
+          status: true,
+          createdAt: true,
+          locationCountry: {
+            select: {
+              code: true,
+              name: true
+            }
+          }
+        },
       }),
     ]);
 
-    // Resolve role names so the console does not have to hold an id→name map.
+    const userIds = recent.map((u) => u.id);
+
+    const [profiles, stats, wallets] = await Promise.all([
+      this.prisma.userProfile.findMany({ where: { userId: { in: userIds } } }),
+      this.prisma.userStatistics.findMany({ where: { userId: { in: userIds } } }),
+      this.prisma.wallet.findMany({ where: { userId: { in: userIds } } }),
+    ]);
+
+    const profileMap = new Map(profiles.map((p) => [p.userId, p]));
+    const statsMap = new Map(stats.map((s) => [s.userId, s]));
+    const walletMap = new Map(wallets.map((w) => [w.userId, w]));
+
     const roles = await this.prisma.role.findMany({ select: { id: true, name: true } });
     const roleNameById = new Map(roles.map((r) => [r.id, r.name]));
 
+    const richUsers = recent.map((user) => {
+      const profile = profileMap.get(user.id);
+      const stat = statsMap.get(user.id);
+      const wallet = walletMap.get(user.id);
+
+      return {
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName || user.username,
+        email: user.email,
+        status: user.status,
+        createdAt: user.createdAt,
+        country: user.locationCountry?.name || 'India',
+        countryCode: user.locationCountry?.code || 'IN',
+        avatarUrl: profile?.avatarKey ? `https://cdn.soulzaa.com/avatars/${profile.avatarKey}` : null,
+        vipLevel: stat?.vipLevel ?? 0,
+        userLevel: stat?.level ?? 1,
+        coinsBalance: Number(wallet?.goldBalance ?? 0n),
+        lastActive: user.createdAt,
+      };
+    });
+
     return {
+      metrics: {
+        totalUsers,
+        activeUsers,
+        bannedUsers,
+        vipUsers,
+        newUsersToday,
+      },
       byStatus: byStatus.map((row) => ({ status: row.status, count: row._count._all })),
       byRole: roleRows.map((row) => ({
         role: roleNameById.get(row.roleId) ?? row.roleId,
         users: row._count._all,
       })),
-      recentSignups: recent,
+      recentSignups: richUsers,
     };
   }
 

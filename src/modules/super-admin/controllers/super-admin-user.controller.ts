@@ -65,6 +65,14 @@ export class SuperAdminUserController {
     );
   }
 
+  @ApiOperation({ summary: 'Super Admin: list all pending creator verification requests' })
+  @ApiResponse({ status: 200, description: 'List of pending creator requests' })
+  @RequirePermissions('user.role.assign')
+  @Get('verifications/pending')
+  async getPendingVerifications() {
+    return this.userManagementService.getPendingVerifications();
+  }
+
   @ApiOperation({
     summary:
       'Get complete user profile details (roles, inherited permissions, scopes, recent activity)',
@@ -244,5 +252,14 @@ export class SuperAdminUserController {
   @HttpCode(HttpStatus.OK)
   async forceLogout(@Param('id') userId: string, @CurrentUser('id') actorId: string) {
     return this.userManagementService.forceLogout(userId, actorId);
+  }
+
+  @ApiOperation({ summary: 'Super Admin: revoke/remove creator verification and role' })
+  @ApiResponse({ status: 200, description: 'Creator status revoked' })
+  @RequirePermissions('user.role.assign')
+  @AuditLogAction('CREATOR_REVOKED', 'user_account')
+  @Delete(':id/creator')
+  async revokeCreator(@Param('id') userId: string, @CurrentUser('id') actorId: string) {
+    return this.userManagementService.revokeCreator(userId, actorId);
   }
 }

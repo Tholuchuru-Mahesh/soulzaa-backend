@@ -36,6 +36,7 @@ export const PLATFORM_ROLES = [
   'COIN_SELLER',
   'HOST',
   'USER',
+  'CREATOR',
 ] as const;
 
 export type PlatformRole = (typeof PLATFORM_ROLES)[number];

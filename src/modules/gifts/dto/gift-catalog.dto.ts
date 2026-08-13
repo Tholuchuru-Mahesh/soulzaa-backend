@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { GiftCategory, GiftType } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -194,7 +194,13 @@ export class GiftQueryDto {
   type?: string;
 
   @ApiPropertyOptional({ description: 'Filter enabled status (true/false)' })
-  @Type(() => Boolean)
+  @Transform(({ value }) => {
+    // @Type(() => Boolean) converts "false" → true (JS truthy bug).
+    // We need explicit string comparison instead.
+    if (value === true || value === 'true') return true;
+    if (value === false || value === 'false') return false;
+    return undefined;
+  })
   @IsBoolean()
   @IsOptional()
   enabled?: boolean;
