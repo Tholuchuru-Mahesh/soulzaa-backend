@@ -35,6 +35,8 @@ export const GAME_EVENTS = {
   LOBBY_SETTINGS_UPDATED: 'game.lobby_settings_updated',
   TURN_RESYNC_REQUESTED: 'game.turn_resync_requested',
   TURN_FORCE_ADVANCED: 'game.turn_force_advanced',
+  RESULT_REPORTED: 'game.result_reported',
+  RESULT_DISPUTED: 'game.result_disputed',
 } as const;
 
 export interface GameLobbyView {
@@ -244,4 +246,31 @@ export class GameTurnForceAdvancedEvent extends DomainEvent<{
   currentTurnUserId: string | null;
 }> {
   readonly name = GAME_EVENTS.TURN_FORCE_ADVANCED;
+}
+
+/**
+ * The host reported a result; settlement is withheld pending another
+ * participant's confirmation (or the confirm window elapsing undisputed —
+ * see GAME_RESULT_CONFIRM_SECONDS). Peer-relay games have no server-side
+ * rules engine, so this is the platform's defense against a host
+ * unilaterally declaring themselves the winner.
+ */
+export class GameResultReportedEvent extends DomainEvent<{
+  sessionId: string;
+  roomId: string | null;
+  reportedBy: string;
+  winners: string[];
+  expiresAt: number;
+}> {
+  readonly name = GAME_EVENTS.RESULT_REPORTED;
+}
+
+/** A non-host participant disputed the reported result — settlement withheld, needs admin review. */
+export class GameResultDisputedEvent extends DomainEvent<{
+  sessionId: string;
+  roomId: string | null;
+  disputedBy: string;
+  reportedBy: string;
+}> {
+  readonly name = GAME_EVENTS.RESULT_DISPUTED;
 }

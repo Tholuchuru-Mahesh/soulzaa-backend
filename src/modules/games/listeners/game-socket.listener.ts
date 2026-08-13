@@ -18,6 +18,8 @@ import {
   GameMatchFoundEvent,
   GameMatchReadyProgressEvent,
   GameMoveEvent,
+  GameResultDisputedEvent,
+  GameResultReportedEvent,
   GameSettledEvent,
   GameStartedEvent,
   GameTurnForceAdvancedEvent,
@@ -177,6 +179,25 @@ export class GameSocketListener implements OnModuleInit {
         GAMES_NAMESPACE,
         e.payload.sessionId,
         GAME_SOCKET_EVENTS.TURN_FORCE_ADVANCED,
+        e.payload,
+      );
+    });
+    // The host reported a result — tell the room so another client can confirm
+    // (or dispute) it before the platform settles.
+    this.bus.subscribe<GameResultReportedEvent>(GAME_EVENTS.RESULT_REPORTED, (e) => {
+      this.sockets.emitToNamespaceRoom(
+        GAMES_NAMESPACE,
+        e.payload.sessionId,
+        GAME_SOCKET_EVENTS.RESULT_REPORTED,
+        e.payload,
+      );
+    });
+    // A reported result was disputed — settlement withheld pending admin review.
+    this.bus.subscribe<GameResultDisputedEvent>(GAME_EVENTS.RESULT_DISPUTED, (e) => {
+      this.sockets.emitToNamespaceRoom(
+        GAMES_NAMESPACE,
+        e.payload.sessionId,
+        GAME_SOCKET_EVENTS.RESULT_DISPUTED,
         e.payload,
       );
     });

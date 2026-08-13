@@ -218,14 +218,18 @@ export class GamesRepository {
 
   // ======================= Sessions & participants =======================
 
-  createSession(data: Prisma.GameSessionUncheckedCreateInput): Promise<GameSession> {
-    return this.prisma.gameSession.create({ data });
+  createSession(
+    data: Prisma.GameSessionUncheckedCreateInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<GameSession> {
+    return (tx ?? this.prisma).gameSession.create({ data });
   }
 
   createParticipants(
     rows: Prisma.GameParticipantUncheckedCreateInput[],
+    tx?: Prisma.TransactionClient,
   ): Promise<Prisma.BatchPayload> {
-    return this.prisma.gameParticipant.createMany({ data: rows });
+    return (tx ?? this.prisma).gameParticipant.createMany({ data: rows });
   }
 
   getSession(id: string): Promise<GameSession | null> {
@@ -311,20 +315,6 @@ export class GamesRepository {
         startedAt: { lt: cutoff },
       },
     });
-  }
-
-  /** Abort a stale active session and mark playing participants refunded. */
-  async abortStaleSession(sessionId: string, now: Date): Promise<void> {
-    await this.prisma.$transaction([
-      this.prisma.gameSession.update({
-        where: { id: sessionId },
-        data: { status: GameSessionStatus.ABORTED, cancelledAt: now },
-      }),
-      this.prisma.gameParticipant.updateMany({
-        where: { sessionId, status: GameParticipantStatus.PLAYING },
-        data: { status: GameParticipantStatus.REFUNDED, settledAt: now },
-      }),
-    ]);
   }
 
   /** The active session a user is currently a PLAYING participant of, if any. */

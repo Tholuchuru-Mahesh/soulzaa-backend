@@ -309,6 +309,7 @@ export class CasinoGateway extends BaseGateway implements CasinoBroadcaster {
     const roundId = state?.roundId ?? null;
     const phase = state?.phase ?? 'betting';
     const secondsRemaining = state?.secondsRemaining ?? 0;
+    const winningOutcome = state?.winningOutcome ?? null;
     const history = state?.history ?? [];
     const winners = state?.lastWinners ?? [];
 
@@ -331,6 +332,7 @@ export class CasinoGateway extends BaseGateway implements CasinoBroadcaster {
         roundNumber: state?.roundNumber ?? null,
         phase,
         secondsRemaining,
+        winningOutcome,
         myBets: myBetsList,
         activeBets,
         poolBets,
@@ -348,6 +350,7 @@ export class CasinoGateway extends BaseGateway implements CasinoBroadcaster {
       roundNumber: state?.roundNumber ?? null,
       phase,
       secondsRemaining,
+      winningOutcome,
       onlineCount,
       pool: poolBets,
       history,

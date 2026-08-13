@@ -25,8 +25,10 @@ import type { GameActor } from '../interfaces/game-actor.interface';
 import { GamesService } from '../services/games.service';
 
 /**
- * Games platform REST surface (base `games`). Catalog + leaderboard are open;
- * lobby/stake actions require a registered (non-guest) account; result
+ * Games platform REST surface (base `games`). Catalog, open-lobby listing and
+ * the leaderboard are open; lobby/stake/session actions require a registered
+ * (non-guest) account, and session detail/live-state additionally require the
+ * caller to be a participant (or admin) of that specific session; result
  * submission is a trusted seam restricted to platform ADMIN/SUPER_ADMIN (a game
  * engine authenticates as a trusted role) — it validates and pays out but never
  * decides the winner.
@@ -220,9 +222,10 @@ export class GamesController {
   }
 
   @Get('sessions/:id')
-  @ApiOperation({ summary: 'Session detail' })
-  session(@Param('id', ParseUuidPipe) id: string) {
-    return this.games.getSession(id);
+  @NotGuest()
+  @ApiOperation({ summary: 'Session detail (participants or admins only)' })
+  session(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.games.getSession(this.actor(user), id);
   }
 
   @Post('sessions/:id/ack-result')
@@ -250,15 +253,22 @@ export class GamesController {
   }
 
   @Get('sessions/:id/live')
-  @ApiOperation({ summary: 'Live board state (move log + turn) for reconnect/restore' })
-  liveState(@Param('id', ParseUuidPipe) id: string) {
-    return this.games.getLiveState(id);
+  @NotGuest()
+  @ApiOperation({
+    summary: 'Live board state (move log + turn) for reconnect/restore (participants or admins only)',
+  })
+  liveState(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.games.getLiveState(this.actor(user), id);
   }
 
   @Post('sessions/:id/report-result')
   @HttpCode(HttpStatus.OK)
   @NotGuest()
-  @ApiOperation({ summary: 'Host reports the winner — settles from the escrowed pot' })
+  @ApiOperation({
+    summary:
+      'Host reports the winner — held pending another participant\'s confirmation ' +
+      '(or auto-confirms if undisputed) before it settles from the escrowed pot',
+  })
   reportResult(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) id: string,
@@ -269,6 +279,22 @@ export class GamesController {
       winningTeam: dto.winningTeam,
       resultData: dto.resultData,
     });
+  }
+
+  @Post('sessions/:id/confirm-result')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Corroborate the pending reported result — settles from the escrowed pot' })
+  confirmResult(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.games.confirmMatchResult(this.actor(user), id);
+  }
+
+  @Post('sessions/:id/dispute-result')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Dispute the pending reported result — withholds settlement for admin review' })
+  disputeResult(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.games.disputeMatchResult(this.actor(user), id);
   }
 
   @Post('sessions/:id/cancel')

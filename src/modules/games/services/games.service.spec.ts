@@ -551,8 +551,22 @@ describe('GamesService', () => {
   });
 
   describe('reportMatchResult', () => {
-    it('host reports a solo winner → the whole pot is paid via settleResult', async () => {
+    const OTHER: GameActor = { id: P2, roles: ['USER'] };
+
+    it('holds the result pending confirmation instead of settling immediately', async () => {
+      const res = (await service.reportMatchResult(ACTOR, 'sess-1', {
+        winners: [HOST],
+      })) as Record<string, unknown>;
+      expect(res).toMatchObject({ status: 'pending_confirmation', winners: [HOST] });
+      expect(wallet.credit).not.toHaveBeenCalled();
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.result_reported' }),
+      );
+    });
+
+    it('settles once a different participant confirms the reported result', async () => {
       await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] });
+      await service.confirmMatchResult(OTHER, 'sess-1');
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 200, reason: 'GAME_PAYOUT' }),
         FAKE_TX,
@@ -563,8 +577,46 @@ describe('GamesService', () => {
       );
     });
 
-    it('splits the pot evenly across multiple winners', async () => {
+    it('rejects the host confirming their own reported result', async () => {
+      await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] });
+      await expect(service.confirmMatchResult(ACTOR, 'sess-1')).rejects.toMatchObject({
+        errorCode: ERROR_CODES.GAME_NOT_AUTHORIZED,
+      });
+      expect(wallet.credit).not.toHaveBeenCalled();
+    });
+
+    it('withholds settlement when a different participant disputes the result', async () => {
+      await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] });
+      const res = await service.disputeMatchResult(OTHER, 'sess-1');
+      expect(res).toEqual({ disputed: true });
+      expect(wallet.credit).not.toHaveBeenCalled();
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.result_disputed' }),
+      );
+    });
+
+    it('rejects reporting again while a result is already pending', async () => {
+      await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] });
+      await expect(
+        service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] }),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_RESULT_ALREADY_REPORTED });
+    });
+
+    it('settles immediately when no other active participant remains to confirm', async () => {
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('p2', P2, { status: GameParticipantStatus.LOST }),
+      ]);
+      await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] });
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: HOST, amount: 200, reason: 'GAME_PAYOUT' }),
+        FAKE_TX,
+      );
+    });
+
+    it('splits the pot evenly across multiple winners once confirmed', async () => {
       await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST, P2] });
+      await service.confirmMatchResult(OTHER, 'sess-1');
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 100 }),
         FAKE_TX,
@@ -575,9 +627,10 @@ describe('GamesService', () => {
       );
     });
 
-    it('applies the house rake before paying the winner', async () => {
+    it('applies the house rake before paying the winner, once confirmed', async () => {
       repo.getDefinitionByCode.mockResolvedValue(def({ houseRakeBps: 500 })); // 5%
       await service.reportMatchResult(ACTOR, 'sess-1', { winners: [HOST] });
+      await service.confirmMatchResult(OTHER, 'sess-1');
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 190 }),
         FAKE_TX,
@@ -603,7 +656,7 @@ describe('GamesService', () => {
 
   describe('getLiveState', () => {
     it('returns the live state with the current turn and remaining seconds', async () => {
-      const res = (await service.getLiveState('sess-1')) as Record<string, unknown>;
+      const res = (await service.getLiveState(ACTOR, 'sess-1')) as Record<string, unknown>;
       expect(res).toMatchObject({ sessionId: 'sess-1', isOver: false, currentTurnUserId: HOST });
       expect(res).toHaveProperty('turnRemainingSeconds');
       expect(res).toHaveProperty('moves');
@@ -611,7 +664,7 @@ describe('GamesService', () => {
 
     it('rejects an unknown session', async () => {
       repo.getSession.mockResolvedValue(null);
-      await expect(service.getLiveState('nope')).rejects.toMatchObject({
+      await expect(service.getLiveState(ACTOR, 'nope')).rejects.toMatchObject({
         errorCode: ERROR_CODES.GAME_SESSION_NOT_FOUND,
       });
     });
@@ -1538,7 +1591,7 @@ describe('GamesService', () => {
         new Map([[HOST, { displayName: 'Host Name', avatarUrl: 'https://cdn/host.png' }]]),
       );
 
-      const view = (await service.getSession('sess-1')) as {
+      const view = (await service.getSession(ACTOR, 'sess-1')) as {
         participants: Record<string, unknown>[];
       };
 

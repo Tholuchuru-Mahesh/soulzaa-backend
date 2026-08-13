@@ -8,12 +8,20 @@
  * Turn semantics reproduced verbatim from the old `send_game_move` handler:
  *  - For "whitelisted" actions the CLIENT owns turn order — the server does NOT
  *    rotate (the client sends the next move / an explicit nextTurnPlayerId).
- *  - An explicit truthy `nextTurnPlayerId` always wins.
+ *  - An explicit truthy `nextTurnPlayerId` always wins, PROVIDED (a) the mover
+ *    currently holds the turn and (b) the requested seat is a real member of
+ *    seatOrder — otherwise the override is ignored and normal rotation rules
+ *    apply. Without this, any active participant could hijack the turn
+ *    pointer (or point it at a bogus id) by relaying a single crafted move.
  *  - `noTurnChange` suppresses rotation.
  *  - Otherwise the server rotates to the next seat.
  *  - `game_over` latches `isOver`.
  *  - `sync_state` replaces the whole move log (log compaction); `aim` is never
  *    stored (ephemeral live preview); everything else is appended.
+ *  - Only the seat that currently holds the turn may act at all (`canAct`),
+ *    except `sync_state`, which any active participant may send to resync a
+ *    desynced client's view of the board — it can never itself move the turn
+ *    pointer (rule (a) above still applies to its nextTurnPlayerId).
  */
 
 /** A single relayed move. `moveData` is an opaque, client-defined per-game envelope. */
@@ -79,6 +87,21 @@ function nextSeat(seatOrder: string[], current: string | null): string | null {
   return seatOrder[(idx + 1) % seatOrder.length];
 }
 
+/**
+ * Whether `frame.playerId` is allowed to act at all right now. Only the seat
+ * currently holding the turn may relay turn-consuming moves; `sync_state` is
+ * the sole exception (any active participant may resync the board), and it
+ * can never move the turn pointer itself — see `applyMove`. Callers (e.g.
+ * `GamesService.relayMove`) must check this BEFORE calling `applyMove` and
+ * reject the request outright if it's false — this is the primary defense
+ * against turn hijacking in the peer-relay model.
+ */
+export function canAct(state: GameLiveState, frame: GameMoveFrame): boolean {
+  const action = typeof frame.moveData.action === 'string' ? frame.moveData.action : '';
+  if (action === 'sync_state') return true;
+  return frame.playerId === state.currentTurnUserId;
+}
+
 /** Apply a relayed move, returning a NEW state (never mutates the input). */
 export function applyMove(state: GameLiveState, frame: GameMoveFrame): GameLiveState {
   const action = typeof frame.moveData.action === 'string' ? frame.moveData.action : '';
@@ -94,15 +117,28 @@ export function applyMove(state: GameLiveState, frame: GameMoveFrame): GameLiveS
     moves = [...state.moves, frame];
   }
 
-  // Turn handling.
+  // Turn handling. An explicit nextTurnPlayerId is only honored from the seat
+  // that currently holds the turn, and only if it names a real seat —
+  // otherwise it's ignored and normal rotation rules apply. This closes the
+  // turn-hijack vector where a crafted nextTurnPlayerId (via any whitelisted
+  // action, or via sync_state, which callers must allow from any
+  // participant) could hand the turn to an arbitrary — or non-existent —
+  // player.
   let currentTurnUserId = state.currentTurnUserId;
   let turnStartedAt = state.turnStartedAt;
   const explicitNext = frame.moveData.nextTurnPlayerId;
   const noTurnChange = frame.moveData.noTurnChange === true;
-  if (explicitNext !== undefined && explicitNext !== null && explicitNext !== '') {
+  const movesTurnOwner = frame.playerId === state.currentTurnUserId;
+  if (
+    movesTurnOwner &&
+    explicitNext !== undefined &&
+    explicitNext !== null &&
+    explicitNext !== '' &&
+    state.seatOrder.includes(String(explicitNext))
+  ) {
     currentTurnUserId = String(explicitNext);
     turnStartedAt = frame.timestamp;
-  } else if (!noTurnChange && !TURN_WHITELIST.has(action)) {
+  } else if (movesTurnOwner && !noTurnChange && !TURN_WHITELIST.has(action)) {
     currentTurnUserId = nextSeat(state.seatOrder, state.currentTurnUserId);
     turnStartedAt = frame.timestamp;
   }
@@ -121,6 +157,29 @@ export function applyMove(state: GameLiveState, frame: GameMoveFrame): GameLiveS
     turnStartedAt,
     timeoutCounts,
     isOver: state.isOver || action === 'game_over',
+  };
+}
+
+/**
+ * Permanently drop a seat from rotation (a mid-match forfeit) and, if that
+ * seat currently held the turn, hand it to whoever is next among the seats
+ * still present. Without this, a forfeited seat stays in `seatOrder`
+ * forever, and every future lap around the table stalls for a full
+ * watchdog cycle waiting to skip a seat that can no longer ever move. Never
+ * mutates the input.
+ */
+export function removeSeat(state: GameLiveState, userId: string, now: number): GameLiveState {
+  const wasCurrentTurn = state.currentTurnUserId === userId;
+  const nextUserId = wasCurrentTurn ? nextSeat(state.seatOrder, userId) : state.currentTurnUserId;
+  const seatOrder = state.seatOrder.filter((id) => id !== userId);
+  const timeoutCounts = { ...state.timeoutCounts };
+  delete timeoutCounts[userId];
+  return {
+    ...state,
+    seatOrder,
+    currentTurnUserId: nextUserId === userId ? null : nextUserId,
+    turnStartedAt: wasCurrentTurn ? now : state.turnStartedAt,
+    timeoutCounts,
   };
 }
 

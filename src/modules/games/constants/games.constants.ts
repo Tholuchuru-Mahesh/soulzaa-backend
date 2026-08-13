@@ -38,6 +38,10 @@ export const GAME_SOCKET_EVENTS = {
   TURN_RESYNC_REQUESTED: 'game.turn_resync_requested',
   /** The turn watchdog force-advanced a stalled turn past an unresponsive seat. */
   TURN_FORCE_ADVANCED: 'game.turn_force_advanced',
+  /** The host reported a result; awaiting another participant's confirmation. */
+  RESULT_REPORTED: 'game.result_reported',
+  /** A non-host participant disputed the reported result — settlement withheld. */
+  RESULT_DISPUTED: 'game.result_disputed',
 } as const;
 
 /** Bumped when a matchmaking socket payload shape changes (clients gate on it). */
@@ -50,7 +54,7 @@ export const gameLiveStateKey = (sessionId: string): string => `game:live:${sess
 export const GAME_LIVE_STATE_TTL_SECONDS = 60 * 60;
 
 /** Per-turn clock (advisory — clients drive the timeout, as in the legacy backend). */
-export const GAME_TURN_SECONDS = 30;
+export const GAME_TURN_SECONDS = Number(process.env.GAME_TURN_SECONDS ?? 30);
 
 /**
  * Turn watchdog: the server-side backstop for `GAME_TURN_SECONDS`. Clients
@@ -81,6 +85,24 @@ export const gameTurnResyncPendingKey = (sessionId: string): string =>
   `game:turn-resync:${sessionId}`;
 /** TTL for the resync-pending marker — a little longer than the resync grace itself. */
 export const GAME_TURN_RESYNC_PENDING_TTL_SECONDS = 60;
+
+/**
+ * Redis key holding a host-reported match result awaiting corroboration.
+ * Peer-relay games have no server-side rules engine, so the platform cannot
+ * verify a reported outcome itself — but it must not pay out on the host's
+ * word alone either (the host is just whichever player happened to be
+ * first-queued/lobby-creator, not a trusted role). Settlement is deferred
+ * until another active participant confirms, or the confirm window elapses
+ * with nobody disputing (see GameExpiryMonitor / sweepPendingResults).
+ */
+export const gamePendingResultKey = (sessionId: string): string =>
+  `game:pending-result:${sessionId}`;
+/** How long a reported result waits for corroboration before auto-settling. */
+export const GAME_RESULT_CONFIRM_SECONDS = Number(
+  process.env.GAME_RESULT_CONFIRM_SECONDS ?? 45,
+);
+/** Index ZSET (member=sessionId, score=expiresAt) — sweep due pending results without SCAN. */
+export const GAME_PENDING_RESULT_INDEX_KEY = 'game:pending-result:index';
 
 /**
  * Reconnect grace period (seconds) before a disconnected player is auto-forfeited
@@ -173,6 +195,17 @@ export const TEAM_2V2_CAPABLE_GAMES: ReadonlySet<GameCode> = new Set([
   GameCode.LUDO,
   GameCode.CARROM,
 ]);
+
+/**
+ * Valid Carrom-specific settings values — the single source of truth used by
+ * both the DTO layer (`@IsIn`) and the service-side guards
+ * (validateCarromSettings/enforceCarromSettings), so the two can't drift out
+ * of sync the way two separately-hardcoded literal arrays could.
+ */
+export const CARROM_MODES = ['classic', 'open_score'] as const;
+export type CarromMode = (typeof CARROM_MODES)[number];
+export const CARROM_TEAM_COIN_ASSIGNMENTS = ['team_a_white', 'team_a_black'] as const;
+export type CarromTeamCoinAssignment = (typeof CARROM_TEAM_COIN_ASSIGNMENTS)[number];
 
 /**
  * Games that seat fewer players in CLASSIC mode than their catalog `maxPlayers`

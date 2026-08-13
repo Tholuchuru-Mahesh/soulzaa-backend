@@ -8,8 +8,10 @@ import { GamesService } from './games.service';
  * lock: unstarted lobbies past their TTL (EXPIRED), matchmaking ready-checks past
  * their deadline (dissolved), stale queue entries, expired disconnect grace
  * periods, stalled in-session turns (the turn watchdog — see
- * `GamesService.sweepStalledTurns`), and stale active sessions. On shutdown it
- * best-effort drains live ready-checks so another instance can rematch.
+ * `GamesService.sweepStalledTurns`), stale active sessions, and host-reported
+ * results nobody confirmed or disputed within the confirm window (see
+ * `GamesService.sweepPendingResults`). On shutdown it best-effort drains live
+ * ready-checks so another instance can rematch.
  */
 @Injectable()
 export class GameExpiryMonitor implements OnModuleInit, OnModuleDestroy {
@@ -52,6 +54,7 @@ export class GameExpiryMonitor implements OnModuleInit, OnModuleDestroy {
         await this.games.sweepExpiredDisconnections(now);
         await this.games.sweepStalledTurns(now);
         await this.games.sweepStaleSessions(now);
+        await this.games.sweepPendingResults(now);
       } finally {
         await release();
       }

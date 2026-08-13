@@ -3,6 +3,8 @@ import { GameCode, GameMode, GameTeam } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -16,8 +18,46 @@ import {
   MaxLength,
   Min,
   ValidateNested,
+  registerDecorator,
+  type ValidationOptions,
 } from 'class-validator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
+import { CARROM_MODES, CARROM_TEAM_COIN_ASSIGNMENTS } from '../constants/games.constants';
+
+/** Sane global ceiling on a stake field — the real per-game min/max is catalog-driven
+ * and enforced server-side (assertStakeInRange); this just fails fast on a
+ * malformed/absurd value at the transport boundary instead of letting it reach
+ * business logic. */
+const MAX_STAKE_SANITY_CEILING = 1_000_000_000;
+
+/**
+ * Rejects a JSON-serializable value whose stringified size exceeds `maxBytes`.
+ * Used to bound `moveData`, which is otherwise an arbitrary opaque object
+ * relayed (and persisted to the in-session move log) once per request with no
+ * other size limit.
+ */
+function MaxJsonSize(maxBytes: number, options?: ValidationOptions) {
+  return (object: object, propertyName: string): void => {
+    registerDecorator({
+      name: 'maxJsonSize',
+      target: object.constructor,
+      propertyName,
+      options,
+      validator: {
+        validate(value: unknown): boolean {
+          try {
+            return JSON.stringify(value).length <= maxBytes;
+          } catch {
+            return false;
+          }
+        },
+        defaultMessage(): string {
+          return `$property must serialize to at most ${maxBytes} bytes`;
+        },
+      },
+    });
+  };
+}
 
 /** Host creates a lobby for a game at a chosen stake. */
 export class CreateLobbyDto {
@@ -31,6 +71,7 @@ export class CreateLobbyDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(MAX_STAKE_SANITY_CEILING)
   stake!: number;
 
   @ApiPropertyOptional({ description: 'Audio-room the game is played inside.' })
@@ -59,16 +100,17 @@ export class CreateLobbyDto {
   @MaxLength(64)
   password?: string;
 
-  @ApiPropertyOptional({ description: 'Carrom mode: "classic" or "open_score".' })
+  @ApiPropertyOptional({ enum: CARROM_MODES, description: 'Carrom mode.' })
   @IsOptional()
-  @IsString()
+  @IsIn(CARROM_MODES)
   carromMode?: string;
 
   @ApiPropertyOptional({
-    description: 'Carrom team coin assignment: "team_a_white" or "team_a_black".',
+    enum: CARROM_TEAM_COIN_ASSIGNMENTS,
+    description: 'Carrom team coin assignment.',
   })
   @IsOptional()
-  @IsString()
+  @IsIn(CARROM_TEAM_COIN_ASSIGNMENTS)
   teamCoinAssignment?: string;
 }
 
@@ -95,6 +137,7 @@ export class UpdateLobbySettingsDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(MAX_STAKE_SANITY_CEILING)
   stake?: number;
 
   @ApiPropertyOptional({ description: 'New max player cap.' })
@@ -111,16 +154,17 @@ export class UpdateLobbySettingsDto {
   @MaxLength(64)
   password?: string;
 
-  @ApiPropertyOptional({ description: 'Carrom mode: "classic" or "open_score".' })
+  @ApiPropertyOptional({ enum: CARROM_MODES, description: 'Carrom mode.' })
   @IsOptional()
-  @IsString()
+  @IsIn(CARROM_MODES)
   carromMode?: string;
 
   @ApiPropertyOptional({
-    description: 'Carrom team coin assignment: "team_a_white" or "team_a_black".',
+    enum: CARROM_TEAM_COIN_ASSIGNMENTS,
+    description: 'Carrom team coin assignment.',
   })
   @IsOptional()
-  @IsString()
+  @IsIn(CARROM_TEAM_COIN_ASSIGNMENTS)
   teamCoinAssignment?: string;
 }
 
@@ -136,6 +180,7 @@ export class JoinQueueDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @Max(MAX_STAKE_SANITY_CEILING)
   stake!: number;
 
   @ApiProperty({ enum: ['DUEL', 'TEAM_2V2'], description: 'DUEL pairs 2; TEAM_2V2 pairs 4.' })
@@ -178,7 +223,9 @@ export class PayoutEntryDto {
 export class SettleResultDto {
   @ApiProperty({ type: [String], description: 'Winning participant user ids.' })
   @IsArray()
+  @ArrayMinSize(1)
   @ArrayMaxSize(64)
+  @ArrayUnique()
   @IsUUID('4', { each: true })
   winners!: string[];
 
@@ -201,6 +248,7 @@ export class SettleResultDto {
 export class SubmitMoveDto {
   @ApiProperty({ description: 'Opaque per-game move payload (action + fields).' })
   @IsObject()
+  @MaxJsonSize(8_192)
   moveData!: Record<string, unknown>;
 
   @ApiPropertyOptional({
@@ -238,6 +286,7 @@ export class ReportMatchResultDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(64)
+  @ArrayUnique()
   @IsUUID('4', { each: true })
   winners?: string[];
 

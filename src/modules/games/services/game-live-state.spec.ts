@@ -1,9 +1,11 @@
 import {
   applyMove,
+  canAct,
   forceAdvanceTurn,
   GameLiveState,
   GameMoveFrame,
   initLiveState,
+  removeSeat,
 } from './game-live-state';
 
 const SEATS = ['u1', 'u2', 'u3', 'u4'];
@@ -59,6 +61,55 @@ describe('game-live-state', () => {
 
     it('suppresses rotation when noTurnChange is set', () => {
       const next = applyMove(baseState(), frame('u1', { action: 'pass', noTurnChange: true }));
+      expect(next.currentTurnUserId).toBe('u1');
+    });
+  });
+
+  describe('canAct (turn-ownership gate)', () => {
+    it('allows the current turn holder to act', () => {
+      expect(canAct(baseState(), frame('u1', { action: 'roll_dice' }))).toBe(true);
+    });
+
+    it('rejects a non-turn-holder attempting a normal action', () => {
+      expect(canAct(baseState(), frame('u2', { action: 'roll_dice' }))).toBe(false);
+    });
+
+    it('allows sync_state from any participant regardless of whose turn it is', () => {
+      expect(canAct(baseState(), frame('u3', { action: 'sync_state' }))).toBe(true);
+    });
+  });
+
+  describe('applyMove turn-hijack prevention', () => {
+    it('ignores nextTurnPlayerId from a mover who does not hold the turn', () => {
+      // u1 holds the turn; u2 tries to steal it via a crafted nextTurnPlayerId.
+      const next = applyMove(baseState(), frame('u2', { action: 'move_token', nextTurnPlayerId: 'u2' }));
+      expect(next.currentTurnUserId).toBe('u1');
+    });
+
+    it('does not rotate the turn on a move from a non-turn-holder', () => {
+      const next = applyMove(baseState(), frame('u2', { action: 'pass' }));
+      expect(next.currentTurnUserId).toBe('u1');
+    });
+
+    it('still appends a non-turn-holder move to the log (relayMove gates whether it is called at all)', () => {
+      const next = applyMove(baseState(), frame('u2', { action: 'pass' }));
+      expect(next.moves).toHaveLength(1);
+    });
+
+    it('ignores an explicit nextTurnPlayerId that does not name a real seat', () => {
+      const next = applyMove(
+        baseState(),
+        frame('u1', { action: 'move_token', nextTurnPlayerId: 'not-a-real-seat' }),
+      );
+      // Falls back to normal rotation instead of accepting the bogus id.
+      expect(next.currentTurnUserId).toBe('u2');
+    });
+
+    it('ignores nextTurnPlayerId on a sync_state sent by a non-turn-holder', () => {
+      const next = applyMove(
+        baseState(),
+        frame('u3', { action: 'sync_state', nextTurnPlayerId: 'u3' }),
+      );
       expect(next.currentTurnUserId).toBe('u1');
     });
   });
@@ -154,6 +205,43 @@ describe('game-live-state', () => {
       const { state: next, skippedUserId } = forceAdvanceTurn(state, 5000);
       expect(skippedUserId).toBeNull();
       expect(next.currentTurnUserId).toBeNull();
+    });
+  });
+
+  describe('removeSeat (mid-match forfeit)', () => {
+    it('drops the seat from seatOrder', () => {
+      const next = removeSeat(baseState(), 'u2', 5000);
+      expect(next.seatOrder).toEqual(['u1', 'u3', 'u4']);
+    });
+
+    it('hands the turn to the next seat when the removed seat held it', () => {
+      const next = removeSeat(baseState(), 'u1', 5000);
+      expect(next.currentTurnUserId).toBe('u2');
+      expect(next.turnStartedAt).toBe(5000);
+    });
+
+    it('leaves the turn untouched when the removed seat did not hold it', () => {
+      const next = removeSeat(baseState(), 'u3', 5000);
+      expect(next.currentTurnUserId).toBe('u1');
+      expect(next.turnStartedAt).toBe(500);
+    });
+
+    it('wraps around to find the next seat, skipping the removed one', () => {
+      const next = removeSeat(baseState({ currentTurnUserId: 'u4' }), 'u4', 5000);
+      expect(next.currentTurnUserId).toBe('u1');
+    });
+
+    it('drops the removed seat strike count', () => {
+      const state = baseState({ timeoutCounts: { u2: 2 } });
+      const next = removeSeat(state, 'u2', 5000);
+      expect(next.timeoutCounts).not.toHaveProperty('u2');
+    });
+
+    it('never mutates the input state', () => {
+      const state = baseState();
+      removeSeat(state, 'u1', 5000);
+      expect(state.seatOrder).toEqual(SEATS);
+      expect(state.currentTurnUserId).toBe('u1');
     });
   });
 });

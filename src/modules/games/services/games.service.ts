@@ -23,7 +23,7 @@ import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
-import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
+import { QUEUE_NAMES, type QueueName } from 'src/infra/queue/queue.constants';
 import { QueueService } from 'src/infra/queue/queue.service';
 
 import { CacheService } from 'src/infra/redis/cache.service';
@@ -44,6 +44,8 @@ import {
   type IWalletService,
 } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import {
+  CARROM_MODES,
+  CARROM_TEAM_COIN_ASSIGNMENTS,
   GAME_DISCONNECT_GRACE_SECONDS,
   GAME_JOIN_CODE_ALPHABET,
   GAME_JOIN_CODE_LENGTH,
@@ -53,6 +55,8 @@ import {
   GAME_MATCH_READY_INDEX_KEY,
   GAME_MAX_CONSECUTIVE_TURN_TIMEOUTS,
   GAME_MAX_SESSION_DURATION_SECONDS,
+  GAME_PENDING_RESULT_INDEX_KEY,
+  GAME_RESULT_CONFIRM_SECONDS,
   GAME_TURN_RESYNC_GRACE_MS,
   GAME_TURN_RESYNC_PENDING_TTL_SECONDS,
   GAME_TURN_SECONDS,
@@ -70,6 +74,7 @@ import {
   gameMatchReadyLockKey,
   gameMatchReadyUserKey,
   gameMatchUserKey,
+  gamePendingResultKey,
   gameSessionLockKey,
   gameTurnResyncPendingKey,
   gameWinningsLeaderboardKey,
@@ -95,6 +100,8 @@ import {
   GameMatchFoundEvent,
   GameMatchReadyProgressEvent,
   GameMoveEvent,
+  GameResultDisputedEvent,
+  GameResultReportedEvent,
   GameSettledEvent,
   GameStartedEvent,
   GameTurnForceAdvancedEvent,
@@ -103,7 +110,14 @@ import {
 } from '../events/game.events';
 import type { GameActor } from '../interfaces/game-actor.interface';
 import { GamesRepository } from '../repositories/games.repository';
-import { applyMove, forceAdvanceTurn, initLiveState, type GameLiveState } from './game-live-state';
+import {
+  applyMove,
+  canAct,
+  forceAdvanceTurn,
+  initLiveState,
+  removeSeat,
+  type GameLiveState,
+} from './game-live-state';
 import {
   assignTeamsAndSeats,
   expandTeamWinners,
@@ -125,6 +139,29 @@ export interface SettleResultInput {
   resultData?: Record<string, unknown>;
   settledBy?: string | null;
 }
+
+/**
+ * A host-reported result awaiting corroboration from another active
+ * participant before the platform will settle it — see `reportMatchResult`.
+ */
+interface PendingMatchResult {
+  winners: string[];
+  resultData: Record<string, unknown>;
+  reportedBy: string;
+  reportedAt: number;
+  expiresAt: number;
+}
+
+/** Outcome of a forfeit decision computed under the session lock — see `forfeit()`. */
+type ForfeitDecision =
+  | {
+      kind: 'settle';
+      winners: string[];
+      resultData: Record<string, unknown>;
+      seat: number;
+      remainingCount: number;
+    }
+  | { kind: 'continue'; seat: number; remainingCount: number };
 
 /** Per-user queue pointer (Redis JSON) — dedupe, O(1) leave, and retry carry-over. */
 interface MatchQueuePointer {
@@ -449,19 +486,20 @@ export class GamesService {
    * or starting a session to guard against malformed API payloads.
    */
   private validateCarromSettings(carromMode?: string, teamCoinAssignment?: string): void {
-    const validModes = ['classic', 'open_score'];
-    const validAssignments = ['team_a_white', 'team_a_black'];
-    if (carromMode !== undefined && !validModes.includes(carromMode)) {
+    if (carromMode !== undefined && !(CARROM_MODES as readonly string[]).includes(carromMode)) {
       throw new BusinessException(
         ERROR_CODES.VALIDATION_ERROR,
-        `Invalid carromMode '${carromMode}'. Allowed: ${validModes.join(', ')}.`,
+        `Invalid carromMode '${carromMode}'. Allowed: ${CARROM_MODES.join(', ')}.`,
         HttpStatus.BAD_REQUEST,
       );
     }
-    if (teamCoinAssignment !== undefined && !validAssignments.includes(teamCoinAssignment)) {
+    if (
+      teamCoinAssignment !== undefined &&
+      !(CARROM_TEAM_COIN_ASSIGNMENTS as readonly string[]).includes(teamCoinAssignment)
+    ) {
       throw new BusinessException(
         ERROR_CODES.VALIDATION_ERROR,
-        `Invalid teamCoinAssignment '${teamCoinAssignment}'. Allowed: ${validAssignments.join(', ')}.`,
+        `Invalid teamCoinAssignment '${teamCoinAssignment}'. Allowed: ${CARROM_TEAM_COIN_ASSIGNMENTS.join(', ')}.`,
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -487,19 +525,20 @@ export class GamesService {
     const resolvedCarromMode = carromMode ?? undefined;
     const resolvedAssignment = teamCoinAssignment ?? undefined;
     this.validateCarromSettings(resolvedCarromMode, resolvedAssignment);
-    const validModes = ['classic', 'open_score'];
-    const validAssignments = ['team_a_white', 'team_a_black'];
-    if (!resolvedCarromMode || !validModes.includes(resolvedCarromMode)) {
+    if (!resolvedCarromMode || !(CARROM_MODES as readonly string[]).includes(resolvedCarromMode)) {
       throw new BusinessException(
         ERROR_CODES.VALIDATION_ERROR,
-        `Team matches require a carromMode of ${validModes.join(' or ')}.`,
+        `Team matches require a carromMode of ${CARROM_MODES.join(' or ')}.`,
         HttpStatus.BAD_REQUEST,
       );
     }
-    if (!resolvedAssignment || !validAssignments.includes(resolvedAssignment)) {
+    if (
+      !resolvedAssignment ||
+      !(CARROM_TEAM_COIN_ASSIGNMENTS as readonly string[]).includes(resolvedAssignment)
+    ) {
       throw new BusinessException(
         ERROR_CODES.VALIDATION_ERROR,
-        `Team matches require a teamCoinAssignment of ${validAssignments.join(' or ')}.`,
+        `Team matches require a teamCoinAssignment of ${CARROM_TEAM_COIN_ASSIGNMENTS.join(' or ')}.`,
         HttpStatus.BAD_REQUEST,
       );
     }
@@ -688,36 +727,47 @@ export class GamesService {
       // Freeze seat order (CLASSIC = join order; TEAM_2V2 = positional A/B split).
       const seats = this.resolveSeats(fresh, members, memberRows);
 
-      // Create the session + participants, then escrow each stake. Any failed
-      // debit refunds everything already taken and aborts the session.
-      const session = await this.repo.createSession({
-        definitionId: def.id,
-        code: def.code,
-        lobbyId: fresh.id,
-        joinCode: fresh.code,
-        hostId: fresh.hostId,
-        roomId: fresh.roomId,
-        category: def.category,
-        currency: def.currency,
-        stake: fresh.stake,
-        mode: fresh.mode,
-        carromMode: carrom.carromMode,
-        teamCoinAssignment: carrom.teamCoinAssignment,
-        playerCount: members.length,
-        status: GameSessionStatus.ACTIVE,
-        createdBy: actorId,
+      // Create the session + participants atomically (either both land or
+      // neither does — otherwise a failure between the two calls could leave
+      // an ACTIVE session with zero participants and no stake escrowed,
+      // self-healing only once the 15-minute stale sweep eventually catches
+      // it), then escrow each stake. Any failed debit refunds everything
+      // already taken and aborts the session.
+      const session = await this.repo.runInTransaction(async (tx) => {
+        const created = await this.repo.createSession(
+          {
+            definitionId: def.id,
+            code: def.code,
+            lobbyId: fresh.id,
+            joinCode: fresh.code,
+            hostId: fresh.hostId,
+            roomId: fresh.roomId,
+            category: def.category,
+            currency: def.currency,
+            stake: fresh.stake,
+            mode: fresh.mode,
+            carromMode: carrom.carromMode,
+            teamCoinAssignment: carrom.teamCoinAssignment,
+            playerCount: members.length,
+            status: GameSessionStatus.ACTIVE,
+            createdBy: actorId,
+          },
+          tx,
+        );
+        await this.repo.createParticipants(
+          seats.map((s) => ({
+            sessionId: created.id,
+            definitionId: def.id,
+            userId: s.userId,
+            seat: s.seat,
+            team: s.team,
+            isBot: botIds.has(s.userId),
+            stake: botIds.has(s.userId) ? 0n : fresh.stake,
+          })),
+          tx,
+        );
+        return created;
       });
-      await this.repo.createParticipants(
-        seats.map((s) => ({
-          sessionId: session.id,
-          definitionId: def.id,
-          userId: s.userId,
-          seat: s.seat,
-          team: s.team,
-          isBot: botIds.has(s.userId),
-          stake: botIds.has(s.userId) ? 0n : fresh.stake,
-        })),
-      );
       const participants = await this.repo.listParticipants(session.id);
 
       const escrowed: GameParticipant[] = [];
@@ -795,7 +845,7 @@ export class GamesService {
           teamCoinAssignment: carrom.teamCoinAssignment,
         }),
       );
-      await this.queue.enqueue(QUEUE_NAMES.ANALYTICS_PROCESSING, 'game.started', {
+      await this.enqueueBestEffort(QUEUE_NAMES.ANALYTICS_PROCESSING, 'game.started', {
         sessionId: session.id,
         gameCode: def.code,
         players: members.length,
@@ -842,6 +892,24 @@ export class GamesService {
         HttpStatus.FORBIDDEN,
       );
     }
+    // The host is not a neutral role (in matchmaking it's just whichever
+    // player was first-queued), so a blanket "cancel for a full refund" is an
+    // asymmetric escape hatch: a host about to lose could otherwise void the
+    // match and get their stake back, while every other participant's only
+    // exit (forfeit) costs them theirs. Once gameplay has actually started —
+    // any move relayed — the host can no longer unilaterally cancel; they
+    // must forfeit (or an admin can still force-cancel for genuine
+    // operational reasons).
+    if (!this.isAdmin(actor)) {
+      const state = await this.loadOrInitLiveState(session);
+      if (state.moves.length > 0) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_HAS_MOVES,
+          'This match is already in progress — forfeit instead of cancelling.',
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
     return this.abortSession(sessionId, GameSessionStatus.CANCELLED, actor.id, 'host_cancel');
   }
 
@@ -850,7 +918,16 @@ export class GamesService {
     const session = await this.repo.getSession(input.sessionId);
     if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
 
-    return this.locks.withLock(gameSessionLockKey(session.id), async () => {
+    // A longer TTL than the default 10s: this critical section does a
+    // sequential wallet credit + ledger write per winner inside a DB
+    // transaction, so with several winners under DB contention it can run
+    // long enough for the default TTL to expire mid-operation, silently
+    // freeing the lock for a concurrent retry to double-settle. The
+    // idempotency keys and the getMatchResult check above are defense in
+    // depth, not a substitute for actually holding the lock for the duration.
+    return this.locks.withLock(
+      gameSessionLockKey(session.id),
+      async () => {
       const fresh = await this.repo.getSession(session.id);
       if (!fresh || fresh.status !== GameSessionStatus.ACTIVE) {
         throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
@@ -973,13 +1050,13 @@ export class GamesService {
           participants: participants.map((p) => p.userId),
         }),
       );
-      await this.queue.enqueue(QUEUE_NAMES.ANALYTICS_PROCESSING, 'game.settled', {
+      await this.enqueueBestEffort(QUEUE_NAMES.ANALYTICS_PROCESSING, 'game.settled', {
         sessionId: fresh.id,
         gameCode: fresh.code,
         payoutTotal,
         rakeAmount,
       });
-      await this.queue.enqueue(QUEUE_NAMES.RANKING_PROCESSING, 'game.settled', {
+      await this.enqueueBestEffort(QUEUE_NAMES.RANKING_PROCESSING, 'game.settled', {
         sessionId: fresh.id,
         winners: input.winners,
       });
@@ -993,7 +1070,9 @@ export class GamesService {
         winners: input.winners,
         payouts,
       };
-    });
+      },
+      { ttlMs: 30_000 },
+    );
   }
 
   /** Cancel-with-refund used by host cancel and the expiry monitor. */
@@ -1009,11 +1088,20 @@ export class GamesService {
         throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
       }
       const participants = await this.repo.listParticipants(fresh.id);
+      // Refund everyone whose stake is still unresolved: still PLAYING, or
+      // LOST via an earlier mid-match forfeit that the match never settled
+      // around (the forfeiter's stake would otherwise vanish — never paid to
+      // a winner, since no winner was ever determined, and never refunded).
       const refundable = participants.filter(
-        (p) => p.stakeTxnId && p.status === GameParticipantStatus.PLAYING,
+        (p) =>
+          p.stakeTxnId &&
+          !p.payoutTxnId &&
+          !p.refundTxnId &&
+          (p.status === GameParticipantStatus.PLAYING || p.status === GameParticipantStatus.LOST),
       );
       const refunded = await this.refundParticipants(fresh, refundable);
       await this.repo.closeSession(fresh.id, status, actorId);
+      await this.cache.del(gameLiveStateKey(fresh.id));
       await this.repo.logEvent({
         sessionId: fresh.id,
         userId: actorId,
@@ -1047,6 +1135,11 @@ export class GamesService {
     moveData: Record<string, unknown>,
     onBehalfOf?: string,
   ): Promise<{ accepted: true; currentTurnUserId: string | null; isOver: boolean }> {
+    // Generous but bounded — real gameplay (e.g. streaming `aim` previews
+    // during a drag gesture) can be fairly chatty, but every call re-persists
+    // the (growing) move log to Redis and fans out over sockets, so an
+    // unbounded flood is real DoS/cost surface. ~20/sec sustained.
+    await this.assertRateLimit(actor.id, 'move', 1200, 60);
     const session = await this.repo.getSession(sessionId);
     if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
     if (session.status !== GameSessionStatus.ACTIVE) {
@@ -1087,6 +1180,24 @@ export class GamesService {
     const frame = { playerId: moverId, moveData, timestamp: Date.now() };
     const state = await this.locks.withLock(gameSessionLockKey(sessionId), async () => {
       const current = await this.loadOrInitLiveState(session);
+      if (current.isOver) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_ALREADY_OVER,
+          'This match has already ended.',
+          HttpStatus.CONFLICT,
+        );
+      }
+      // Enforce turn ownership under the same lock we mutate state in — this
+      // is the primary defense against turn hijacking (see canAct's doc):
+      // being an active PLAYING participant (checked above) is NOT enough,
+      // the mover must actually hold the current turn (sync_state excepted).
+      if (!canAct(current, frame)) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_NOT_YOUR_TURN,
+          "It isn't your turn.",
+          HttpStatus.FORBIDDEN,
+        );
+      }
       const next = applyMove(current, frame);
       await this.cache.set(gameLiveStateKey(sessionId), next, GAME_LIVE_STATE_TTL_SECONDS);
       return next;
@@ -1109,14 +1220,24 @@ export class GamesService {
    * Host-reported match result for a board game. Peer-relay games are not
    * server-validated, so the host reports the winner(s); the platform derives the
    * payout from the escrowed pot (never a client-sent amount) — the winner takes
-   * the pot minus house rake, or a winning team splits it — and settles via the
-   * trusted seam, which caps payouts at the pot (escrow-bounded).
+   * the pot minus house rake, or a winning team splits it.
+   *
+   * The host is NOT a trusted role (in matchmaking it's just whichever player
+   * happened to be first-queued), so their report alone is never enough to pay
+   * out: it's held as a PendingMatchResult until another active participant
+   * corroborates it via `confirmMatchResult` (or the confirm window elapses
+   * with nobody disputing — see `sweepPendingResults`). Any other active
+   * participant may instead `disputeMatchResult` to withhold settlement for
+   * admin review. If nobody else is left to corroborate (shouldn't normally
+   * happen — forfeit() already auto-settles a sole survivor), it settles
+   * immediately since there's no one left to wait on.
    */
   async reportMatchResult(
     actor: GameActor,
     sessionId: string,
     input: { winners?: string[]; winningTeam?: GameTeam; resultData?: Record<string, unknown> },
   ): Promise<unknown> {
+    await this.assertRateLimit(actor.id, 'report-result', 5, 60);
     const session = await this.repo.getSession(sessionId);
     if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
     if (session.hostId !== actor.id) {
@@ -1154,14 +1275,215 @@ export class GamesService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    const resultData = input.resultData ?? {};
 
-    return this.settleToHumanWinners(session, winners, input.resultData ?? {}, actor.id);
+    return this.locks.withLock(gameSessionLockKey(sessionId), async () => {
+      const fresh = await this.repo.getSession(sessionId);
+      if (!fresh || fresh.status !== GameSessionStatus.ACTIVE) {
+        throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
+      }
+      if (await this.cache.get(gamePendingResultKey(sessionId))) {
+        throw this.conflict(
+          ERROR_CODES.GAME_RESULT_ALREADY_REPORTED,
+          'A result has already been reported for this session and is awaiting confirmation.',
+        );
+      }
+
+      const participants = await this.repo.listParticipants(sessionId);
+      const otherActive = participants.filter(
+        (p) => p.status === GameParticipantStatus.PLAYING && p.userId !== actor.id,
+      );
+      if (otherActive.length === 0) {
+        return this.settleToHumanWinners(session, winners, resultData, actor.id);
+      }
+
+      const expiresAt = Date.now() + GAME_RESULT_CONFIRM_SECONDS * 1000;
+      const pending: PendingMatchResult = {
+        winners,
+        resultData,
+        reportedBy: actor.id,
+        reportedAt: Date.now(),
+        expiresAt,
+      };
+      await this.cache.set(
+        gamePendingResultKey(sessionId),
+        pending,
+        GAME_RESULT_CONFIRM_SECONDS + 60,
+      );
+      await this.cache.setScore(GAME_PENDING_RESULT_INDEX_KEY, sessionId, expiresAt);
+      await this.repo.logEvent({
+        sessionId,
+        userId: actor.id,
+        action: 'session.result_reported',
+        detail: { winners, expiresAt },
+      });
+      await this.bus.publish(
+        new GameResultReportedEvent({
+          sessionId,
+          roomId: session.roomId,
+          reportedBy: actor.id,
+          winners,
+          expiresAt,
+        }),
+      );
+      return { status: 'pending_confirmation', winners, expiresAt };
+    });
+  }
+
+  /**
+   * Corroborate a host-reported result from a DIFFERENT active participant —
+   * required before the platform will actually pay out. See reportMatchResult.
+   */
+  async confirmMatchResult(actor: GameActor, sessionId: string): Promise<unknown> {
+    const session = await this.repo.getSession(sessionId);
+    if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
+
+    const outcome = await this.locks.withLock(gameSessionLockKey(sessionId), async () => {
+      const fresh = await this.repo.getSession(sessionId);
+      if (!fresh || fresh.status !== GameSessionStatus.ACTIVE) {
+        throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
+      }
+      const participant = await this.repo.getParticipant(sessionId, actor.id);
+      if (!participant || participant.status !== GameParticipantStatus.PLAYING) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_NOT_PARTICIPANT,
+          'You are not an active participant of this session.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      const pending = await this.cache.get<PendingMatchResult>(gamePendingResultKey(sessionId));
+      if (!pending) {
+        throw this.conflict(
+          ERROR_CODES.GAME_RESULT_PENDING_CONFIRMATION,
+          'There is no reported result awaiting confirmation for this session.',
+        );
+      }
+      if (pending.reportedBy === actor.id) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_NOT_AUTHORIZED,
+          'The result must be confirmed by a different participant than the one who reported it.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      await this.cache.del(gamePendingResultKey(sessionId));
+      await this.cache.sortedRemove(GAME_PENDING_RESULT_INDEX_KEY, sessionId);
+      return pending;
+    });
+
+    return this.settleToHumanWinners(
+      session,
+      outcome.winners,
+      outcome.resultData,
+      outcome.reportedBy,
+    );
+  }
+
+  /**
+   * A non-reporting active participant disputes a pending result — settlement
+   * is withheld (the session stays ACTIVE) pending admin review via the
+   * trusted `settleResult` seam. See reportMatchResult.
+   */
+  async disputeMatchResult(actor: GameActor, sessionId: string): Promise<{ disputed: true }> {
+    const session = await this.repo.getSession(sessionId);
+    if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
+
+    return this.locks.withLock(gameSessionLockKey(sessionId), async () => {
+      const fresh = await this.repo.getSession(sessionId);
+      if (!fresh || fresh.status !== GameSessionStatus.ACTIVE) {
+        throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
+      }
+      const participant = await this.repo.getParticipant(sessionId, actor.id);
+      if (!participant || participant.status !== GameParticipantStatus.PLAYING) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_NOT_PARTICIPANT,
+          'You are not an active participant of this session.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      const pending = await this.cache.get<PendingMatchResult>(gamePendingResultKey(sessionId));
+      if (!pending) {
+        throw this.conflict(
+          ERROR_CODES.GAME_RESULT_PENDING_CONFIRMATION,
+          'There is no reported result awaiting confirmation for this session.',
+        );
+      }
+      if (pending.reportedBy === actor.id) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_NOT_AUTHORIZED,
+          'You cannot dispute your own reported result.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      await this.cache.del(gamePendingResultKey(sessionId));
+      await this.cache.sortedRemove(GAME_PENDING_RESULT_INDEX_KEY, sessionId);
+      await this.repo.logEvent({
+        sessionId,
+        userId: actor.id,
+        action: 'session.result_disputed',
+        detail: { reportedBy: pending.reportedBy, winners: pending.winners },
+      });
+      await this.bus.publish(
+        new GameResultDisputedEvent({
+          sessionId,
+          roomId: fresh.roomId,
+          disputedBy: actor.id,
+          reportedBy: pending.reportedBy,
+        }),
+      );
+      return { disputed: true as const };
+    });
+  }
+
+  /**
+   * Auto-settles a reported result nobody disputed within the confirm window
+   * — otherwise a legitimately-won match could hang forever waiting on an
+   * opponent who disconnected, or who simply won't confirm a loss.
+   */
+  async sweepPendingResults(now: Date): Promise<void> {
+    const due = await this.cache.sortedRangeByScore(
+      GAME_PENDING_RESULT_INDEX_KEY,
+      0,
+      now.getTime(),
+    );
+    for (const sessionId of due) {
+      try {
+        const outcome = await this.locks.withLock(gameSessionLockKey(sessionId), async () => {
+          const pending = await this.cache.get<PendingMatchResult>(gamePendingResultKey(sessionId));
+          await this.cache.sortedRemove(GAME_PENDING_RESULT_INDEX_KEY, sessionId);
+          if (!pending || pending.expiresAt > Date.now()) return null;
+          const session = await this.repo.getSession(sessionId);
+          if (!session || session.status !== GameSessionStatus.ACTIVE) {
+            await this.cache.del(gamePendingResultKey(sessionId));
+            return null;
+          }
+          await this.cache.del(gamePendingResultKey(sessionId));
+          return { session, pending };
+        });
+        if (!outcome) continue;
+        await this.repo.logEvent({
+          sessionId,
+          action: 'session.result_auto_confirmed',
+          detail: { reportedBy: outcome.pending.reportedBy, winners: outcome.pending.winners },
+        });
+        await this.settleToHumanWinners(
+          outcome.session,
+          outcome.pending.winners,
+          outcome.pending.resultData,
+          outcome.pending.reportedBy,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Failed to auto-confirm pending result for session ${sessionId}: ${(err as Error).message}`,
+        );
+      }
+    }
   }
 
   /** Live board state for a reconnecting client (move log + turn + remaining seconds). */
-  async getLiveState(sessionId: string): Promise<unknown> {
+  async getLiveState(actor: GameActor, sessionId: string): Promise<unknown> {
     const session = await this.repo.getSession(sessionId);
     if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
+    await this.assertSessionViewable(actor, sessionId);
     const state = await this.loadOrInitLiveState(session);
     const elapsed = Math.floor((Date.now() - state.turnStartedAt) / 1000);
     return {
@@ -1183,6 +1505,15 @@ export class GamesService {
    * pot instead; if 2+ remain the match continues without the forfeiter (clients
    * withdraw the seat). Always relays a forfeit event so in-progress boards
    * withdraw the seat.
+   *
+   * The "who else is still PLAYING" read and the resulting write (mark this
+   * seat LOST when the match continues) run under the session lock so two
+   * near-simultaneous forfeits can't both observe the same stale "2+ remain"
+   * snapshot and both take the continue branch — which would strand the
+   * actual sole survivor in a match that never settles. settleResult/
+   * settleToHumanWinners take this same lock key themselves, so the actual
+   * settlement call happens AFTER the lock is released (the lock isn't
+   * reentrant — calling it again while held would deadlock).
    */
   async forfeit(actor: GameActor, sessionId: string): Promise<unknown> {
     const session = await this.repo.getSession(sessionId);
@@ -1190,26 +1521,46 @@ export class GamesService {
     if (session.status !== GameSessionStatus.ACTIVE) {
       throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
     }
-    const participant = await this.repo.getParticipant(sessionId, actor.id);
-    if (!participant || participant.status !== GameParticipantStatus.PLAYING) {
-      throw new BusinessException(
-        ERROR_CODES.GAME_NOT_PARTICIPANT,
-        'You are not an active participant of this session.',
-        HttpStatus.FORBIDDEN,
-      );
-    }
 
-    const participants = await this.repo.listParticipants(sessionId);
-    const seat = participants.findIndex((p) => p.userId === actor.id);
-    const remaining = participants.filter(
-      (p) => p.status === GameParticipantStatus.PLAYING && p.userId !== actor.id,
-    );
+    const decision = await this.locks.withLock(gameSessionLockKey(sessionId), async () => {
+      const participant = await this.repo.getParticipant(sessionId, actor.id);
+      if (!participant || participant.status !== GameParticipantStatus.PLAYING) {
+        throw new BusinessException(
+          ERROR_CODES.GAME_NOT_PARTICIPANT,
+          'You are not an active participant of this session.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      const participants = await this.repo.listParticipants(sessionId);
+      const seat = participants.findIndex((p) => p.userId === actor.id);
+      const remaining = participants.filter(
+        (p) => p.status === GameParticipantStatus.PLAYING && p.userId !== actor.id,
+      );
+
+      // TEAM_2V2 forfeits are team-aware: the match ends only when a whole
+      // team is out, and the surviving team's still-PLAYING members split
+      // the pot.
+      const result =
+        session.mode === GameMode.TEAM_2V2
+          ? await this.decideTeamForfeit(participant, actor.id, remaining, seat)
+          : await this.decideForfeit(participant, actor.id, remaining, seat);
+
+      // Match continues without the forfeiter: drop their seat from the live
+      // turn rotation now (and hand off the turn if it was theirs) so future
+      // laps don't keep stalling on a seat that can never move again.
+      if (result.kind === 'continue') {
+        const state = await this.loadOrInitLiveState(session);
+        const updated = removeSeat(state, actor.id, Date.now());
+        await this.cache.set(gameLiveStateKey(sessionId), updated, GAME_LIVE_STATE_TTL_SECONDS);
+      }
+      return result;
+    });
 
     await this.repo.logEvent({
       sessionId,
       userId: actor.id,
       action: 'session.forfeit',
-      detail: { seat, remaining: remaining.length },
+      detail: { seat: decision.seat, remaining: decision.remainingCount },
     });
     await this.bus.publish(
       new GameForfeitEvent({
@@ -1217,37 +1568,51 @@ export class GamesService {
         gameCode: session.code,
         roomId: session.roomId,
         userId: actor.id,
-        seat,
+        seat: decision.seat,
       }),
     );
 
-    // TEAM_2V2 forfeits are team-aware: the match ends only when a whole team is
-    // out, and the surviving team's still-PLAYING members split the pot.
-    if (session.mode === GameMode.TEAM_2V2) {
-      return this.forfeitTeamMatch(session, participant, actor.id, remaining);
+    if (decision.kind === 'settle') {
+      return this.settleToHumanWinners(session, decision.winners, decision.resultData, actor.id);
     }
+    return { forfeitedBy: actor.id, remaining: decision.remainingCount };
+  }
 
+  /**
+   * Decide (and, for the non-settling branch, persist) the outcome of a
+   * CLASSIC-mode forfeit. Must be called with the session lock held — see
+   * `forfeit()`. `remaining` are the still-PLAYING participants other than
+   * the forfeiter.
+   */
+  private async decideForfeit(
+    participant: GameParticipant,
+    actorId: string,
+    remaining: GameParticipant[],
+    seat: number,
+  ): Promise<ForfeitDecision> {
     if (remaining.length === 0) {
       // Everyone else already left — no refunds once a match has started, so
       // the LAST participant to leave (the one calling this, by construction —
       // every other PLAYING seat already forfeited before them) takes the pot
       // instead of it being returned to nobody in particular.
-      return this.settleToHumanWinners(
-        session,
-        [actor.id],
-        { reason: 'forfeit_last_to_leave', forfeitedBy: actor.id },
-        actor.id,
-      );
+      return {
+        kind: 'settle',
+        winners: [actorId],
+        resultData: { reason: 'forfeit_last_to_leave', forfeitedBy: actorId },
+        seat,
+        remainingCount: 0,
+      };
     }
     if (remaining.length === 1) {
       // Sole survivor takes the pot (minus house rake). Deterministic → the
       // platform settles it directly; settleResult still caps payout at the pot.
-      return this.settleToHumanWinners(
-        session,
-        [remaining[0].userId],
-        { reason: 'forfeit', forfeitedBy: actor.id },
-        actor.id,
-      );
+      return {
+        kind: 'settle',
+        winners: [remaining[0].userId],
+        resultData: { reason: 'forfeit', forfeitedBy: actorId },
+        seat,
+        remainingCount: 1,
+      };
     }
     // 2+ remain — the match continues without the forfeiter; mark them out so
     // they can no longer relay moves, and let the winner be reported normally.
@@ -1255,48 +1620,50 @@ export class GamesService {
       status: GameParticipantStatus.LOST,
       settledAt: new Date(),
     });
-    return { forfeitedBy: actor.id, remaining: remaining.length };
+    return { kind: 'continue', seat, remainingCount: remaining.length };
   }
 
   /**
-   * Resolve a forfeit in a TEAM_2V2 match. `remaining` are the still-PLAYING
-   * participants other than the forfeiter. If no team retains a player, no
-   * refunds once a match has started — the actor (the last of all four seats
-   * still PLAYING, by construction, since every other seat already forfeited)
-   * takes the pot alone; if exactly one team retains players it wins (its
-   * survivors split the pot — a forfeiter forfeits their claim, so a lone
-   * survivor takes the team's whole share); if both teams retain players the
-   * match continues.
+   * Decide (and, for the non-settling branch, persist) the outcome of a
+   * TEAM_2V2 forfeit. Must be called with the session lock held — see
+   * `forfeit()`. If no team retains a player, no refunds once a match has
+   * started — the actor (the last of all four seats still PLAYING, by
+   * construction, since every other seat already forfeited) takes the pot
+   * alone; if exactly one team retains players it wins (its survivors split
+   * the pot — a forfeiter forfeits their claim, so a lone survivor takes the
+   * team's whole share); if both teams retain players the match continues.
    */
-  private async forfeitTeamMatch(
-    session: GameSession,
+  private async decideTeamForfeit(
     participant: GameParticipant,
     actorId: string,
     remaining: GameParticipant[],
-  ): Promise<unknown> {
+    seat: number,
+  ): Promise<ForfeitDecision> {
     const teamsLeft = new Set(remaining.map((p) => p.team));
     if (teamsLeft.size === 0) {
-      return this.settleToHumanWinners(
-        session,
-        [actorId],
-        { reason: 'forfeit_last_to_leave', forfeitedBy: actorId },
-        actorId,
-      );
+      return {
+        kind: 'settle',
+        winners: [actorId],
+        resultData: { reason: 'forfeit_last_to_leave', forfeitedBy: actorId },
+        seat,
+        remainingCount: 0,
+      };
     }
     if (teamsLeft.size === 1) {
-      return this.settleToHumanWinners(
-        session,
-        remaining.map((p) => p.userId),
-        { reason: 'forfeit', forfeitedBy: actorId },
-        actorId,
-      );
+      return {
+        kind: 'settle',
+        winners: remaining.map((p) => p.userId),
+        resultData: { reason: 'forfeit', forfeitedBy: actorId },
+        seat,
+        remainingCount: remaining.length,
+      };
     }
     // Both teams still have players — continue without the forfeiter.
     await this.repo.updateParticipant(participant.id, {
       status: GameParticipantStatus.LOST,
       settledAt: new Date(),
     });
-    return { forfeitedBy: actorId, remaining: remaining.length };
+    return { kind: 'continue', seat, remainingCount: remaining.length };
   }
 
   /**
@@ -1854,10 +2221,24 @@ export class GamesService {
   }
 
   private async enqueueMmTelemetry(event: string, payload: Record<string, unknown>): Promise<void> {
+    await this.enqueueBestEffort(QUEUE_NAMES.ANALYTICS_PROCESSING, event, payload);
+  }
+
+  /**
+   * Fire-and-forget telemetry/ranking enqueue. Must never throw: it always
+   * runs after the financial state change it's reporting on (stake escrowed,
+   * payout credited) has already committed, so a queue-backend hiccup here
+   * must not surface as an error for an operation that actually succeeded.
+   */
+  private async enqueueBestEffort(
+    queueName: QueueName,
+    event: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
     try {
-      await this.queue.enqueue(QUEUE_NAMES.ANALYTICS_PROCESSING, event, payload);
+      await this.queue.enqueue(queueName, event, payload);
     } catch (err) {
-      this.logger.warn(`Matchmaking telemetry failed (${event}): ${(err as Error).message}`);
+      this.logger.warn(`Telemetry enqueue failed (${queueName}/${event}): ${(err as Error).message}`);
     }
   }
 
@@ -1957,16 +2338,18 @@ export class GamesService {
   }
 
   private async sweepStalledTurnForSession(session: GameSession, nowMs: number): Promise<void> {
-    const stallThresholdMs = GAME_TURN_SECONDS * 1000 + GAME_TURN_STALL_GRACE_MS;
-
-    // Cheap pre-check outside the lock — most sessions aren't stalled.
+    // Cheap pre-check outside the lock — most sessions aren't stalled. Uses
+    // the session's own turnSeconds (not the global default) so a
+    // per-session/per-game turn clock is actually honored, not just stored.
     const peek = await this.cache.get<GameLiveState>(gameLiveStateKey(session.id));
     if (!peek || peek.isOver || !peek.currentTurnUserId) return;
-    if (nowMs - peek.turnStartedAt <= stallThresholdMs) return;
+    const peekThresholdMs = peek.turnSeconds * 1000 + GAME_TURN_STALL_GRACE_MS;
+    if (nowMs - peek.turnStartedAt <= peekThresholdMs) return;
 
     await this.locks.withLock(gameSessionLockKey(session.id), async () => {
       const state = await this.loadOrInitLiveState(session);
       if (state.isOver || !state.currentTurnUserId) return;
+      const stallThresholdMs = state.turnSeconds * 1000 + GAME_TURN_STALL_GRACE_MS;
       const turnAgeMs = nowMs - state.turnStartedAt;
       if (turnAgeMs <= stallThresholdMs) return;
 
@@ -2035,23 +2418,15 @@ export class GamesService {
     const staleSessions = await this.repo.findStaleActiveSessions(cutoff);
     for (const session of staleSessions) {
       try {
-        await this.locks.withLock(gameSessionLockKey(session.id), async () => {
-          const fresh = await this.repo.getSession(session.id);
-          if (!fresh || fresh.status !== GameSessionStatus.ACTIVE) return;
-          await this.repo.abortStaleSession(fresh.id, now);
-          await this.cache.del(gameLiveStateKey(fresh.id));
-          await this.repo.logEvent({ sessionId: fresh.id, action: 'session.aborted_stale' });
-          await this.bus.publish(
-            new GameCancelledEvent({
-              sessionId: fresh.id,
-              gameCode: fresh.code,
-              roomId: fresh.roomId,
-              status: GameSessionStatus.ABORTED,
-              refundedUserIds: [],
-            }),
-          );
-        });
+        // Routes through abortSession (takes its own gameSessionLockKey lock)
+        // so every still-PLAYING participant is actually wallet-refunded with
+        // a ledger row, instead of just flipping their DB status — see
+        // abortSession/refundParticipants for the wallet-aware path.
+        await this.abortSession(session.id, GameSessionStatus.ABORTED, null, 'stale_timeout');
       } catch (err) {
+        // A concurrent settle/forfeit/cancel already moved the session out of
+        // ACTIVE — abortSession's fresh re-check throws GAME_SESSION_NOT_ACTIVE,
+        // which is an expected race here, not a failure to log loudly.
         this.logger.warn(`Failed to abort stale session ${session.id}: ${(err as Error).message}`);
       }
     }
@@ -2059,11 +2434,31 @@ export class GamesService {
 
   // ======================= Reads =======================
 
-  async getSession(sessionId: string): Promise<unknown> {
+  async getSession(actor: GameActor, sessionId: string): Promise<unknown> {
     const session = await this.repo.getSession(sessionId);
     if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
+    await this.assertSessionViewable(actor, sessionId);
     const participants = await this.repo.listParticipants(sessionId);
     return this.sessionView(session, participants);
+  }
+
+  /**
+   * Session detail and live board state carry other players' stakes,
+   * payouts, win/loss outcomes, and identity — only a participant of the
+   * session (or an admin) may read them. Without this, any authenticated
+   * caller could enumerate session ids and read other users' financial and
+   * personal data (an IDOR).
+   */
+  private async assertSessionViewable(actor: GameActor, sessionId: string): Promise<void> {
+    if (this.isAdmin(actor)) return;
+    const participant = await this.repo.getParticipant(sessionId, actor.id);
+    if (!participant) {
+      throw new BusinessException(
+        ERROR_CODES.GAME_NOT_AUTHORIZED,
+        'You are not a participant of this session.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
   }
 
   /**
@@ -2086,8 +2481,15 @@ export class GamesService {
         // 1. Abort stale sessions older than max allowed duration (e.g. 15 minutes)
         const ageSeconds = (Date.now() - session.startedAt.getTime()) / 1000;
         if (ageSeconds > GAME_MAX_SESSION_DURATION_SECONDS) {
-          await this.repo.abortStaleSession(session.id, new Date());
-          await this.cache.del(gameLiveStateKey(session.id));
+          try {
+            await this.abortSession(session.id, GameSessionStatus.ABORTED, null, 'stale_timeout');
+          } catch (err) {
+            // Another request/the sweep monitor may have already aborted it —
+            // that's fine, we still want to report "nothing active" below.
+            this.logger.warn(
+              `Failed to abort stale session ${session.id} on active-match check: ${(err as Error).message}`,
+            );
+          }
           return { kind: 'none' };
         }
 
@@ -2134,7 +2536,13 @@ export class GamesService {
 
   async listOpenLobbies(page: number, limit: number, skip: number): Promise<Paginated<unknown>> {
     const [rows, total] = await this.repo.listOpenLobbies(skip, limit);
-    const views = await Promise.all(rows.map((l) => this.lobbyView(l, undefined)));
+    // Resolve definitionId -> gameCode once for the whole page instead of once
+    // per lobby (lobbyView's own fallback does a full table scan every call).
+    const defs = await this.repo.listDefinitions(false);
+    const codeByDefinitionId = new Map(defs.map((d) => [d.id, d.code]));
+    const views = await Promise.all(
+      rows.map((l) => this.lobbyView(l, codeByDefinitionId.get(l.definitionId))),
+    );
     return buildPaginated(views, total, page, limit);
   }
 
@@ -2378,9 +2786,20 @@ export class GamesService {
   private async loadOrInitLiveState(session: GameSession): Promise<GameLiveState> {
     const cached = await this.cache.get<GameLiveState>(gameLiveStateKey(session.id));
     if (cached) return cached;
+    // Only reached if the Redis key is missing mid-match (TTL/eviction/ops
+    // incident) — a legitimate first-init happens exactly once, right after
+    // start. Log it: silently fabricating a fresh state here resets the move
+    // log and turn order from every client's perspective. Seed the rotation
+    // from currently-PLAYING seats only, so an already-forfeited participant
+    // doesn't reappear in the rotation.
+    this.logger.warn(
+      `Live state for session ${session.id} was missing in cache — reinitializing from DB.`,
+    );
     const participants = await this.repo.listParticipants(session.id);
     return initLiveState(
-      participants.map((p) => p.userId),
+      participants
+        .filter((p) => p.status === GameParticipantStatus.PLAYING)
+        .map((p) => p.userId),
       session.startedAt.getTime(),
       GAME_TURN_SECONDS,
     );
