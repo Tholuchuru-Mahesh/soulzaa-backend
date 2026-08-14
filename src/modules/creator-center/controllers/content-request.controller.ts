@@ -62,7 +62,8 @@ export class ContentRequestController {
   @Get()
   list(
     @CurrentUser('id') officialId: string,
-    @Query('status') status?: ContentRequestStatus,
+    @Query('status', new ParseEnumPipe(ContentRequestStatus, { optional: true }))
+    status?: ContentRequestStatus,
     @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit?: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset?: number,
   ) {
