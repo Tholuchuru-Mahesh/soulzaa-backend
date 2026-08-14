@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { DayOfWeek } from '@prisma/client';
 
@@ -132,7 +132,13 @@ export class ModeratorShiftService {
     });
 
     if (override) {
-      return this.isInWindow(now, override.startHour, override.startMinute, override.endHour, override.endMinute);
+      return this.isInWindow(
+        now,
+        override.startHour,
+        override.startMinute,
+        override.endHour,
+        override.endMinute,
+      );
     }
 
     // Check recurring schedule.
@@ -142,7 +148,13 @@ export class ModeratorShiftService {
     return this.isInWindow(now, shift.startHour, shift.startMinute, shift.endHour, shift.endMinute);
   }
 
-  private isInWindow(now: Date, startH: number, startM: number, endH: number, endM: number): boolean {
+  private isInWindow(
+    now: Date,
+    startH: number,
+    startM: number,
+    endH: number,
+    endM: number,
+  ): boolean {
     const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
     const startMinutes = startH * 60 + startM;
     const endMinutes = endH * 60 + endM;
@@ -188,13 +200,15 @@ export class ModeratorShiftService {
     if (daysUntilNext === null) return { isActive: false, shift, nextShiftStartsInSeconds: null };
 
     const minutesUntilStart =
-      daysUntilNext * 24 * 60 + (startMinutes - currentMinutes + 1440) % 1440;
+      daysUntilNext * 24 * 60 + ((startMinutes - currentMinutes + 1440) % 1440);
 
     return { isActive: false, shift, nextShiftStartsInSeconds: minutesUntilStart * 60 };
   }
 
   /** Returns all upcoming shifts starting within the next windowMinutes (for reminder scheduler). */
-  async getUpcomingShifts(windowMinutes = 15): Promise<Array<{ moderatorId: string; shiftId: string }>> {
+  async getUpcomingShifts(
+    windowMinutes = 15,
+  ): Promise<Array<{ moderatorId: string; shiftId: string }>> {
     const allActive = await this.prisma.moderatorShift.findMany({ where: { isActive: true } });
     const result: Array<{ moderatorId: string; shiftId: string }> = [];
 
@@ -216,7 +230,9 @@ export class ModeratorShiftService {
   }
 
   /** Returns all shifts ending within the next windowMinutes (for reminder scheduler). */
-  async getEndingSoonShifts(windowMinutes = 15): Promise<Array<{ moderatorId: string; shiftId: string }>> {
+  async getEndingSoonShifts(
+    windowMinutes = 15,
+  ): Promise<Array<{ moderatorId: string; shiftId: string }>> {
     const allActive = await this.prisma.moderatorShift.findMany({ where: { isActive: true } });
     const result: Array<{ moderatorId: string; shiftId: string }> = [];
 

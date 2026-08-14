@@ -114,7 +114,11 @@ describe('ProfileService', () => {
       check: jest.fn().mockResolvedValue(true),
       blockedIdsFor: jest.fn().mockResolvedValue([]),
     };
-    const notifications = { push: jest.fn(), create: jest.fn(), createSystemNotification: jest.fn().mockResolvedValue({}) };
+    const notifications = {
+      push: jest.fn(),
+      create: jest.fn(),
+      createSystemNotification: jest.fn().mockResolvedValue({}),
+    };
     const prisma = {
       role: { findUnique: jest.fn().mockResolvedValue({ id: 1, name: 'VERIFIED_USER' }) },
       userRole: { create: jest.fn(), findUnique: jest.fn().mockResolvedValue(null) },

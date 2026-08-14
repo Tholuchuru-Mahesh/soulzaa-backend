@@ -85,7 +85,11 @@ export class ModeratorTaskAssignmentService {
     });
   }
 
-  async updateAssignmentStatus(assignmentId: string, moderatorId: string, status: 'IN_PROGRESS' | 'COMPLETED') {
+  async updateAssignmentStatus(
+    assignmentId: string,
+    moderatorId: string,
+    status: 'IN_PROGRESS' | 'COMPLETED',
+  ) {
     const assignment = await this.prisma.moderator_task_assignments.findUnique({
       where: { id: assignmentId },
     });
@@ -104,4 +108,3 @@ export class ModeratorTaskAssignmentService {
     });
   }
 }
-

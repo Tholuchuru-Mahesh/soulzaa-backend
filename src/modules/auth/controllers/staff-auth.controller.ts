@@ -1,6 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, Length } from 'class-validator';
+import { IsOptional, IsString, Length } from 'class-validator';
 import { Public } from 'src/common/decorators/public.decorator';
 import { RequestMeta } from 'src/common/decorators/request-meta.decorator';
 import type { RequestMetadata } from 'src/common/interfaces/request-metadata.interface';
@@ -41,7 +41,10 @@ export class StaffAuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Staff Portal login (requires staff role, TOTP 2FA if enrolled, bound device, & IP validation)' })
+  @ApiOperation({
+    summary:
+      'Staff Portal login (requires staff role, TOTP 2FA if enrolled, bound device, & IP validation)',
+  })
   login(@Body() dto: StaffLoginDto, @RequestMeta() meta: RequestMetadata) {
     const ctx: AuthContext = {
       ip: meta.ip,

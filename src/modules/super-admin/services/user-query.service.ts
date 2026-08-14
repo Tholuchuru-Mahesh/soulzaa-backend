@@ -314,12 +314,6 @@ export class UserQueryService {
     });
     const audioRoomMap = new Map(audioRooms.map((r) => [r.id, r]));
 
-    const videoRoomIds = videoLogs.map((vl) => vl.roomId);
-    const videoRooms = await this.prisma.videoRoom.findMany({
-      where: { id: { in: videoRoomIds } },
-    });
-    const videoRoomMap = new Map(videoRooms.map((r) => [r.id, r]));
-
     const giftIds = giftTransactions.map((gt) => gt.giftId);
     const gifts = await this.prisma.gift.findMany({
       where: { id: { in: giftIds } },
@@ -350,7 +344,6 @@ export class UserQueryService {
     });
 
     const mappedVideoLogs = videoLogs.map((vl) => {
-      const room = videoRoomMap.get(vl.roomId);
       return {
         id: vl.id,
         type: 'stream',
@@ -382,7 +375,9 @@ export class UserQueryService {
 
     const mappedGamePlays = gamePlays.map((gp) => {
       const definition = definitionMap.get(gp.definitionId);
-      const shortTxnId = gp.stakeTxnId ? `TRX${gp.stakeTxnId.replace(/-/g, '').slice(0, 6).toUpperCase()}` : '';
+      const shortTxnId = gp.stakeTxnId
+        ? `TRX${gp.stakeTxnId.replace(/-/g, '').slice(0, 6).toUpperCase()}`
+        : '';
       return {
         id: gp.id,
         type: 'game',
@@ -396,10 +391,7 @@ export class UserQueryService {
     if (wallet) {
       const walletTxns = await this.prisma.walletTransaction.findMany({
         where: {
-          OR: [
-            { sourceWalletId: wallet.id },
-            { destinationWalletId: wallet.id },
-          ],
+          OR: [{ sourceWalletId: wallet.id }, { destinationWalletId: wallet.id }],
           NOT: {
             transactionType: {
               in: ['GIFT', 'PURCHASE', 'GAME_ENTRY', 'GAME_REWARD'],
@@ -439,8 +431,9 @@ export class UserQueryService {
       ...mappedRecharges,
       ...mappedGamePlays,
       ...mappedWalletTxns,
-    ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-     .slice(0, 10);
+    ]
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, 10);
 
     const level = stats ? stats.level : 1;
     const vipLevel = stats ? stats.vipLevel : 0;

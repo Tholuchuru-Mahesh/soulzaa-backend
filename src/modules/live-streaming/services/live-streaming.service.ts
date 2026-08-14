@@ -52,11 +52,7 @@ export class LiveStreamingService {
   }
 
   /** List currently LIVE streams — optionally scoped to a territory. */
-  async listLive(
-    scopeFilter: Record<string, unknown>,
-    limit = 25,
-    offset = 0,
-  ) {
+  async listLive(scopeFilter: Record<string, unknown>, limit = 25, offset = 0) {
     const isUnrestricted = Object.keys(scopeFilter).length === 0;
 
     // Re-map user scope predicates (countryId/stateId/regionId on the User

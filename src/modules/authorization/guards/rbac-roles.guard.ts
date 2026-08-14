@@ -9,7 +9,7 @@ export class RbacRolesGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly roleResolver: RoleResolver,
-  ) { }
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [

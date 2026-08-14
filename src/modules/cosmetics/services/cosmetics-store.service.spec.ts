@@ -49,7 +49,11 @@ describe('CosmeticsStoreService', () => {
     };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
-    media = { resolve: jest.fn().mockImplementation((key: string | null | undefined) => Promise.resolve(key ?? null)) };
+    media = {
+      resolve: jest
+        .fn()
+        .mockImplementation((key: string | null | undefined) => Promise.resolve(key ?? null)),
+    };
     service = new CosmeticsStoreService(
       repo as unknown as CosmeticsRepository,
       cosmetics as unknown as CosmeticsService,

@@ -34,3 +34,9 @@ yarn-error.log*
 # Firebase Admin SDK service account key — NEVER commit.
 # Lives only on the server; a committed key gets auto-disabled by Google.
 firebase-service-account.json
+
+# Compiled output from a stray tsc run over test/. These were committed once and
+# broke lint: eslint parsed the emitted .d.ts files, which belong to no tsconfig.
+test/**/*.js
+test/**/*.js.map
+test/**/*.d.ts

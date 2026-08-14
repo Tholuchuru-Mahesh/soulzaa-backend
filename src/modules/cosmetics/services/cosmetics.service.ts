@@ -70,17 +70,14 @@ export class CosmeticsService implements ICosmeticsService {
   }): Promise<string> {
     const existing = await this.repo.findByTypeName(input.type, input.name);
     if (existing) return existing.id;
-    const created = await this.create(
-      '00000000-0000-0000-0000-000000000000',
-      {
-        type: input.type,
-        name: input.name,
-        rarity: input.rarity,
-        mediaUrl: input.mediaUrl,
-        transferable: input.transferable,
-        enabled: true,
-      },
-    );
+    const created = await this.create('00000000-0000-0000-0000-000000000000', {
+      type: input.type,
+      name: input.name,
+      rarity: input.rarity,
+      mediaUrl: input.mediaUrl,
+      transferable: input.transferable,
+      enabled: true,
+    });
     return created.id;
   }
 
@@ -217,14 +214,19 @@ export class CosmeticsService implements ICosmeticsService {
     thumbnailUrl?: string | null,
   ): Promise<{ mediaUrl: string; thumbnailUrl?: string | null }> {
     try {
-      const key = mediaUrl.replace(/^https?:\/\/[^\/]+\//, '').replace(/^\/api\/storage\/download\//, '');
+      const key = mediaUrl
+        .replace(/^https?:\/\/[^/]+\//, '')
+        .replace(/^\/api\/storage\/download\//, '');
       const head = await this.s3.headObject(key);
       if (!head.exists) return { mediaUrl, thumbnailUrl };
 
       const buffer = await this.s3.getObjectBuffer(key);
       if (!buffer || buffer.length === 0) return { mediaUrl, thumbnailUrl };
 
-      const result = await this.frameProcessor.processFrame(buffer, head.contentType ?? 'image/png');
+      const result = await this.frameProcessor.processFrame(
+        buffer,
+        head.contentType ?? 'image/png',
+      );
       if (!result.isProcessed) return { mediaUrl, thumbnailUrl };
 
       const ext = result.mimeType.includes('svg') ? 'svg' : 'png';

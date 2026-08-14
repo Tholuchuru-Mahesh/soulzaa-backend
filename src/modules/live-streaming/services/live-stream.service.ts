@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LiveStreamStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -83,7 +83,11 @@ export class LiveStreamService {
     });
   }
 
-  async listStreams(filters: { status?: LiveStreamStatus; regionId?: string }, page = 1, limit = 20) {
+  async listStreams(
+    filters: { status?: LiveStreamStatus; regionId?: string },
+    page = 1,
+    limit = 20,
+  ) {
     const where: Record<string, unknown> = {};
     if (filters.status) where['status'] = filters.status;
     if (filters.regionId) where['regionId'] = filters.regionId;
@@ -152,10 +156,7 @@ export class LiveStreamService {
     });
 
     // 4. Update Moderator KPI stats
-    await this.performanceStats.recordAction(
-      input.moderatorId,
-      input.action as any,
-    );
+    await this.performanceStats.recordAction(input.moderatorId, input.action as any);
 
     if (this.auditLog) {
       void this.auditLog.logAction({
@@ -168,7 +169,10 @@ export class LiveStreamService {
     }
 
     // If action is BAN or KICK and taken by moderation authority, end stream if host was targeted
-    if (input.targetUserId === stream.hostId && (input.action === 'BAN' || input.action === 'KICK')) {
+    if (
+      input.targetUserId === stream.hostId &&
+      (input.action === 'BAN' || input.action === 'KICK')
+    ) {
       await this.prisma.liveStream.update({
         where: { id: input.streamId },
         data: {
@@ -193,7 +197,12 @@ export class LiveStreamService {
     });
   }
 
-  async escalateViolation(streamId: string, moderatorId: string, targetUserId: string, reason: string) {
+  async escalateViolation(
+    streamId: string,
+    moderatorId: string,
+    targetUserId: string,
+    reason: string,
+  ) {
     const stream = await this.getStream(streamId);
     if (this.scopeService) {
       await this.scopeService.assertModeratorInScope(moderatorId, stream.regionId);

@@ -12,22 +12,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ContentRequestStatus } from '@prisma/client';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
-import {
-  CreateContentRequestDto,
-  UpdateContentRequestDto,
-} from '../dto/content-request.dto';
+import { CreateContentRequestDto, UpdateContentRequestDto } from '../dto/content-request.dto';
 import { ContentRequestService } from '../services/content-request.service';
 
 /**
@@ -47,10 +38,7 @@ export class ContentRequestController {
   @ApiOperation({ summary: 'Create a content review request (Official)' })
   @ApiResponse({ status: 201, description: 'Content request created' })
   @Post()
-  create(
-    @CurrentUser('id') officialId: string,
-    @Body() dto: CreateContentRequestDto,
-  ) {
+  create(@CurrentUser('id') officialId: string, @Body() dto: CreateContentRequestDto) {
     return this.service.create(officialId, dto);
   }
 

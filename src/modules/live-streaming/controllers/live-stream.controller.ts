@@ -102,11 +102,10 @@ export class LiveStreamController {
 
   @Get(':id/moderation/actions')
   @RequirePermissions('live.stream.moderate')
-  @ApiOperation({ summary: 'Get moderation action trail for a live stream (optionally filter by target user)' })
-  getActions(
-    @Param('id', ParseUuidPipe) id: string,
-    @Query('targetUserId') targetUserId?: string,
-  ) {
+  @ApiOperation({
+    summary: 'Get moderation action trail for a live stream (optionally filter by target user)',
+  })
+  getActions(@Param('id', ParseUuidPipe) id: string, @Query('targetUserId') targetUserId?: string) {
     return this.service.getStreamActions(id, targetUserId);
   }
 
@@ -128,7 +127,9 @@ export class LiveStreamController {
   @Post(':id/join')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('live.stream.view')
-  @ApiOperation({ summary: 'Join live stream viewer presence (ephemeral, anonymous for moderators)' })
+  @ApiOperation({
+    summary: 'Join live stream viewer presence (ephemeral, anonymous for moderators)',
+  })
   joinStream(@Param('id', ParseUuidPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.joinStream(id, user);
   }

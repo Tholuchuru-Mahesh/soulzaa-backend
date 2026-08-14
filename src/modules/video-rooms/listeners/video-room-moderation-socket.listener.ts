@@ -114,9 +114,7 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
     );
   }
 
-  private anonymize<T extends { moderatorId: string }>(
-    payload: T,
-  ): T & { systemMessage: string } {
+  private anonymize<T extends { moderatorId: string }>(payload: T): T & { systemMessage: string } {
     return {
       ...payload,
       moderatorId: SYSTEM_MODERATOR_ID,

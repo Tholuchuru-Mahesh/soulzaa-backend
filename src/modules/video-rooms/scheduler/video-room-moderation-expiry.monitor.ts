@@ -6,7 +6,12 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, VideoRoomBlock, VideoRoomModerationActionType, VideoRoomMute } from '@prisma/client';
+import {
+  Prisma,
+  VideoRoomBlock,
+  VideoRoomModerationActionType,
+  VideoRoomMute,
+} from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { LockService } from 'src/infra/redis/lock.service';
 import { MODERATION_MONITOR_LOCK_KEY } from '../constants/video-room-moderation.constants';

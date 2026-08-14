@@ -70,7 +70,11 @@ export class ModeratorNotificationService {
    * Notify a moderator when a high-priority report is assigned or created.
    * Called from the report service when severity is critical.
    */
-  async notifyHighPriorityReport(moderatorId: string, reportId: string, reason: string): Promise<void> {
+  async notifyHighPriorityReport(
+    moderatorId: string,
+    reportId: string,
+    reason: string,
+  ): Promise<void> {
     await this.prisma.notification.create({
       data: {
         userId: moderatorId,
@@ -83,7 +87,11 @@ export class ModeratorNotificationService {
   // ---- Task 27: MODERATOR_REPORT_ASSIGNED ----
 
   /** Notify a moderator when a report is assigned to them. */
-  async notifyReportAssigned(moderatorId: string, reportId: string, assignedBy: string): Promise<void> {
+  async notifyReportAssigned(
+    moderatorId: string,
+    reportId: string,
+    assignedBy: string,
+  ): Promise<void> {
     await this.prisma.notification.create({
       data: {
         userId: moderatorId,
@@ -111,7 +119,9 @@ export class ModeratorNotificationService {
         },
       });
     }
-    this.logger.log(`EMERGENCY_REQUEST sent to ${recipientModeratorIds.length} moderator(s) by ${senderId}`);
+    this.logger.log(
+      `EMERGENCY_REQUEST sent to ${recipientModeratorIds.length} moderator(s) by ${senderId}`,
+    );
   }
 
   // ---- Task 27: MODERATOR_POLICY_UPDATE ----
@@ -153,7 +163,9 @@ export class ModeratorNotificationService {
         },
       });
     }
-    this.logger.log(`OFFICIAL_MESSAGE sent to ${recipientModeratorIds.length} moderator(s) by official ${officialId}`);
+    this.logger.log(
+      `OFFICIAL_MESSAGE sent to ${recipientModeratorIds.length} moderator(s) by official ${officialId}`,
+    );
   }
 
   // ---- Task 33: MODERATOR_MANAGER_INSTRUCTION ----
@@ -175,7 +187,9 @@ export class ModeratorNotificationService {
         },
       });
     }
-    this.logger.log(`MANAGER_INSTRUCTION sent to ${recipientModeratorIds.length} moderator(s) by manager ${managerId}`);
+    this.logger.log(
+      `MANAGER_INSTRUCTION sent to ${recipientModeratorIds.length} moderator(s) by manager ${managerId}`,
+    );
   }
 
   // ---- Task 33: MODERATOR_SYSTEM_ANNOUNCEMENT ----
@@ -196,6 +210,8 @@ export class ModeratorNotificationService {
         },
       });
     }
-    this.logger.log(`SYSTEM_ANNOUNCEMENT broadcast to ${moderators.length} moderator(s) by ${adminId}`);
+    this.logger.log(
+      `SYSTEM_ANNOUNCEMENT broadcast to ${moderators.length} moderator(s) by ${adminId}`,
+    );
   }
 }

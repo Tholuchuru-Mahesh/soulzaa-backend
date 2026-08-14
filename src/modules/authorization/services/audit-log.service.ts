@@ -80,7 +80,6 @@ export class AuditLogService {
     }
   }
 
-
   /**
    * Query audit log records with pagination and filters.
    */

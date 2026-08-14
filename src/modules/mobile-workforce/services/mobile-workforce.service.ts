@@ -270,16 +270,28 @@ export class MobileWorkforceService {
       // 9. Pending agency role requests in territory
       inScopeUserIds !== null
         ? this.prisma.roleRequest.count({
-            where: { type: 'AGENCY' as any, status: 'SUBMITTED' as any, subjectUserId: { in: inScopeUserIds } },
+            where: {
+              type: 'AGENCY' as any,
+              status: 'SUBMITTED' as any,
+              subjectUserId: { in: inScopeUserIds },
+            },
           })
-        : this.prisma.roleRequest.count({ where: { type: 'AGENCY' as any, status: 'SUBMITTED' as any } }),
+        : this.prisma.roleRequest.count({
+            where: { type: 'AGENCY' as any, status: 'SUBMITTED' as any },
+          }),
 
       // 10. Pending coin seller role requests in territory
       inScopeUserIds !== null
         ? this.prisma.roleRequest.count({
-            where: { type: 'COIN_SELLER' as any, status: 'SUBMITTED' as any, subjectUserId: { in: inScopeUserIds } },
+            where: {
+              type: 'COIN_SELLER' as any,
+              status: 'SUBMITTED' as any,
+              subjectUserId: { in: inScopeUserIds },
+            },
           })
-        : this.prisma.roleRequest.count({ where: { type: 'COIN_SELLER' as any, status: 'SUBMITTED' as any } }),
+        : this.prisma.roleRequest.count({
+            where: { type: 'COIN_SELLER' as any, status: 'SUBMITTED' as any },
+          }),
 
       // 11a. Pending audio room reports from reporters in scope
       this.prisma.roomReport.count({ where: { status: 'PENDING', ...reporterFilter } }),

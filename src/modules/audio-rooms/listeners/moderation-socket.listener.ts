@@ -59,7 +59,11 @@ export class ModerationSocketListener implements OnModuleInit {
       this.room(e.payload.roomId, ROOM_SOCKET_EVENTS.MEMBER_UNMUTED, this.anonymize(e.payload)),
     );
     this.bus.subscribe<MemberWarnedEvent>(AUDIO_ROOM_MODERATION_EVENTS.WARNED, (e) =>
-      this.user(e.payload.targetUserId, ROOM_SOCKET_EVENTS.MEMBER_WARNED, this.anonymize(e.payload)),
+      this.user(
+        e.payload.targetUserId,
+        ROOM_SOCKET_EVENTS.MEMBER_WARNED,
+        this.anonymize(e.payload),
+      ),
     );
     this.bus.subscribe<MemberReportedEvent>(AUDIO_ROOM_MODERATION_EVENTS.REPORTED, (e) =>
       e.payload.recipientIds.forEach((id) =>
@@ -76,9 +80,7 @@ export class ModerationSocketListener implements OnModuleInit {
     );
   }
 
-  private anonymize<T extends { moderatorId: string }>(
-    payload: T,
-  ): T & { systemMessage: string } {
+  private anonymize<T extends { moderatorId: string }>(payload: T): T & { systemMessage: string } {
     return {
       ...payload,
       moderatorId: SYSTEM_MODERATOR_ID,

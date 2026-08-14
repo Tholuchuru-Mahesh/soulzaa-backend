@@ -1,4 +1,10 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { ModeratorWarningService } from '../services/moderator-warning.service';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 

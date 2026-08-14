@@ -40,7 +40,9 @@ export class ModeratorDeviceBindingService {
     });
 
     if (otherActiveDevices.length > 0) {
-      this.logger.warn(`Moderator ${userId} login blocked: active device already bound (${otherActiveDevices[0].id})`);
+      this.logger.warn(
+        `Moderator ${userId} login blocked: active device already bound (${otherActiveDevices[0].id})`,
+      );
       throw new ConflictException(
         'Moderators are restricted to one active device. Submit a Device Change Request to switch devices.',
       );
@@ -76,7 +78,9 @@ export class ModeratorDeviceBindingService {
         userId: input.moderatorId,
         deviceId: input.oldDeviceId ?? null,
         event: DeviceEventType.CHANGE_REQUESTED,
-        metadata: JSON.parse(JSON.stringify({ requestId: request.id, newDeviceInfo: input.newDeviceInfo })),
+        metadata: JSON.parse(
+          JSON.stringify({ requestId: request.id, newDeviceInfo: input.newDeviceInfo }),
+        ),
       },
     });
 
@@ -146,7 +150,9 @@ export class ModeratorDeviceBindingService {
     const info = (request.newDeviceInfo ?? {}) as Record<string, any>;
     const deviceIdentifier = (info.deviceIdentifier ?? info.identifier ?? randomUUID()) as string;
     const rawPlatform = (info.platform ?? 'ANDROID').toString().toUpperCase();
-    const platform = (['ANDROID', 'IOS', 'WEB'].includes(rawPlatform) ? rawPlatform : 'ANDROID') as DevicePlatform;
+    const platform = (
+      ['ANDROID', 'IOS', 'WEB'].includes(rawPlatform) ? rawPlatform : 'ANDROID'
+    ) as DevicePlatform;
 
     await this.prisma.userDevice.upsert({
       where: {

@@ -340,11 +340,7 @@ export class FriendsService {
       user = await this.users.findByUsername(username);
     }
     if (!user || user.isHiddenAccount) {
-      throw new BusinessException(
-        ERROR_CODES.NOT_FOUND,
-        'User not found',
-        HttpStatus.NOT_FOUND,
-      );
+      throw new BusinessException(ERROR_CODES.NOT_FOUND, 'User not found', HttpStatus.NOT_FOUND);
     }
     return user.id;
   }

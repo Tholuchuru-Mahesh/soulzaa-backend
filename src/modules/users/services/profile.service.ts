@@ -191,17 +191,13 @@ export class ProfileService implements IProfileService {
     if (!viewerId) return false;
     const viewer = await this.users.findById(viewerId);
     if (!viewer) return false;
-    const isLegacyAdmin = (viewer.roles ?? []).some(
-      (r) => r === 'ADMIN' || r === 'SUPER_ADMIN',
-    );
+    const isLegacyAdmin = (viewer.roles ?? []).some((r) => r === 'ADMIN' || r === 'SUPER_ADMIN');
     if (isLegacyAdmin) return true;
     const rbacRoles = await this.prisma.userRole.findMany({
       where: { userId: viewerId },
       include: { role: true },
     });
-    return rbacRoles.some(
-      (ur) => ur.role?.name === 'ADMIN' || ur.role?.name === 'SUPER_ADMIN',
-    );
+    return rbacRoles.some((ur) => ur.role?.name === 'ADMIN' || ur.role?.name === 'SUPER_ADMIN');
   }
 
   async getStatistics(userId: string): Promise<StatisticsView | null> {
@@ -660,7 +656,7 @@ export class ProfileService implements IProfileService {
         mediaUrl = (item.metadata as any)?.mediaUrl ?? null;
       }
       return this.media.resolve(mediaUrl);
-    } catch (_) {
+    } catch {
       return null;
     }
   }

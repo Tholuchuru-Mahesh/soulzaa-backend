@@ -137,9 +137,7 @@ export class WorkforceScopeService {
       this.logger.warn(
         `Moderator ${moderatorId} attempted operation outside assigned region scope (target region: ${regionId})`,
       );
-      throw new ForbiddenException(
-        'You are not authorized to perform moderation in this region.',
-      );
+      throw new ForbiddenException('You are not authorized to perform moderation in this region.');
     }
   }
 }

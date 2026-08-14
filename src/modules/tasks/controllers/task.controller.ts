@@ -289,7 +289,10 @@ export class TaskController {
     @Body() dto: { status: 'IN_PROGRESS' | 'COMPLETED' },
     @CurrentUser() user: any,
   ) {
-    return this.moderatorAssignmentService.updateAssignmentStatus(assignmentId, user.id, dto.status);
+    return this.moderatorAssignmentService.updateAssignmentStatus(
+      assignmentId,
+      user.id,
+      dto.status,
+    );
   }
 }
-

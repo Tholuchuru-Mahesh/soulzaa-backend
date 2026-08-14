@@ -17,21 +17,23 @@ export class ModeratorPerformanceSelfController {
 
   @Get('me')
   @RequirePermissions('moderator.performance.view.self')
-  @ApiOperation({ summary: "Moderator views their own performance summary" })
+  @ApiOperation({ summary: 'Moderator views their own performance summary' })
   mySummary(@CurrentUser() user: AuthenticatedUser) {
     return this.service.getSummary(user.id);
   }
 
   @Get('me/daily')
   @RequirePermissions('moderator.performance.view.self')
-  @ApiOperation({ summary: "Moderator views their daily stats (optional ?date=YYYY-MM-DD)" })
+  @ApiOperation({ summary: 'Moderator views their daily stats (optional ?date=YYYY-MM-DD)' })
   myDaily(@CurrentUser() user: AuthenticatedUser, @Query('date') date?: string) {
     return this.service.getDaily(user.id, date);
   }
 
   @Get('me/range')
   @RequirePermissions('moderator.performance.view.self')
-  @ApiOperation({ summary: 'Moderator views stats for a date range (?from=YYYY-MM-DD&to=YYYY-MM-DD)' })
+  @ApiOperation({
+    summary: 'Moderator views stats for a date range (?from=YYYY-MM-DD&to=YYYY-MM-DD)',
+  })
   myRange(
     @CurrentUser() user: AuthenticatedUser,
     @Query('from') from: string,

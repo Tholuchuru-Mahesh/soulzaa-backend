@@ -11,13 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CampaignStatus } from '@prisma/client';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
@@ -41,10 +35,7 @@ export class CampaignController {
   @ApiOperation({ summary: 'Create a campaign in my territory' })
   @ApiResponse({ status: 201, description: 'Campaign created' })
   @Post()
-  create(
-    @CurrentUser('id') officialId: string,
-    @Body() dto: CreateCampaignDto,
-  ) {
+  create(@CurrentUser('id') officialId: string, @Body() dto: CreateCampaignDto) {
     return this.service.create(officialId, dto);
   }
 

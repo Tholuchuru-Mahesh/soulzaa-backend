@@ -151,15 +151,21 @@ export class VideoRoomModerationService {
       });
 
       if (this.investigationRecording) {
-        void this.investigationRecording.beginRecording({
-          moderatorId: actor.id,
-          targetUserId,
-          roomId: ref.id,
-          violationReason: reason ?? 'Video room kick',
-          evidencePayload: { roomId: ref.id, action: 'KICK' },
-        }).then((rec) => {
-          if (rec) void this.investigationRecording?.completeRecording({ recordingId: rec.id, actionTaken: 'KICK' });
-        });
+        void this.investigationRecording
+          .beginRecording({
+            moderatorId: actor.id,
+            targetUserId,
+            roomId: ref.id,
+            violationReason: reason ?? 'Video room kick',
+            evidencePayload: { roomId: ref.id, action: 'KICK' },
+          })
+          .then((rec) => {
+            if (rec)
+              void this.investigationRecording?.completeRecording({
+                recordingId: rec.id,
+                actionTaken: 'KICK',
+              });
+          });
       }
       if (this.auditLog) {
         void this.auditLog.logAction({
@@ -284,15 +290,21 @@ export class VideoRoomModerationService {
       });
 
       if (this.investigationRecording) {
-        void this.investigationRecording.beginRecording({
-          moderatorId: actor.id,
-          targetUserId,
-          roomId: ref.id,
-          violationReason: reason ?? 'Video room blacklist',
-          evidencePayload: { roomId: ref.id, action: 'BLOCK', blockId: block.id },
-        }).then((rec) => {
-          if (rec) void this.investigationRecording?.completeRecording({ recordingId: rec.id, actionTaken: 'BLOCK' });
-        });
+        void this.investigationRecording
+          .beginRecording({
+            moderatorId: actor.id,
+            targetUserId,
+            roomId: ref.id,
+            violationReason: reason ?? 'Video room blacklist',
+            evidencePayload: { roomId: ref.id, action: 'BLOCK', blockId: block.id },
+          })
+          .then((rec) => {
+            if (rec)
+              void this.investigationRecording?.completeRecording({
+                recordingId: rec.id,
+                actionTaken: 'BLOCK',
+              });
+          });
       }
       if (this.auditLog) {
         void this.auditLog.logAction({
@@ -428,15 +440,21 @@ export class VideoRoomModerationService {
       });
 
       if (this.investigationRecording) {
-        void this.investigationRecording.beginRecording({
-          moderatorId: actor.id,
-          targetUserId,
-          roomId: ref.id,
-          violationReason: dto.reason ?? 'Video room mute',
-          evidencePayload: { roomId: ref.id, action: 'MUTE', channels },
-        }).then((rec) => {
-          if (rec) void this.investigationRecording?.completeRecording({ recordingId: rec.id, actionTaken: 'MUTE' });
-        });
+        void this.investigationRecording
+          .beginRecording({
+            moderatorId: actor.id,
+            targetUserId,
+            roomId: ref.id,
+            violationReason: dto.reason ?? 'Video room mute',
+            evidencePayload: { roomId: ref.id, action: 'MUTE', channels },
+          })
+          .then((rec) => {
+            if (rec)
+              void this.investigationRecording?.completeRecording({
+                recordingId: rec.id,
+                actionTaken: 'MUTE',
+              });
+          });
       }
       if (this.auditLog) {
         void this.auditLog.logAction({
@@ -444,7 +462,12 @@ export class VideoRoomModerationService {
           action: `video_room.mute_${dto.type.toLowerCase()}`,
           resource: 'video_room',
           resourceId: ref.id,
-          details: { targetUserId, channels, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
+          details: {
+            targetUserId,
+            channels,
+            reason: dto.reason ?? null,
+            expiresAt: expiresAt?.toISOString() ?? null,
+          },
         });
       }
     });

@@ -102,12 +102,18 @@ export class InvestigationRecordingService {
   }
 
   async getByEvidenceId(evidenceId: string) {
-    const recording = await this.prisma.investigationRecording.findUnique({ where: { evidenceId } });
+    const recording = await this.prisma.investigationRecording.findUnique({
+      where: { evidenceId },
+    });
     if (!recording) throw new NotFoundException('Evidence not found');
     return recording;
   }
 
-  async listRecordings(filters: { moderatorId?: string; targetUserId?: string }, page = 1, limit = 20) {
+  async listRecordings(
+    filters: { moderatorId?: string; targetUserId?: string },
+    page = 1,
+    limit = 20,
+  ) {
     const where: Record<string, unknown> = {};
     if (filters.moderatorId) where['moderatorId'] = filters.moderatorId;
     if (filters.targetUserId) where['targetUserId'] = filters.targetUserId;

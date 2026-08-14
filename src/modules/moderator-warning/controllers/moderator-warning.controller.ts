@@ -56,7 +56,7 @@ export class ModeratorWarningController {
 
   @Get(':moderatorId')
   @RequirePermissions('moderator.warning.view')
-  @ApiOperation({ summary: "List all warnings for a moderator (Manager/Admin)" })
+  @ApiOperation({ summary: 'List all warnings for a moderator (Manager/Admin)' })
   listForModerator(
     @Param('moderatorId', ParseUuidPipe) moderatorId: string,
     @Query('status') status?: ModeratorWarningStatus,
@@ -110,7 +110,7 @@ export class MyWarningsController {
 
   @Get()
   @RequirePermissions('moderator.warning.view.self')
-  @ApiOperation({ summary: "Moderator views their own warning records" })
+  @ApiOperation({ summary: 'Moderator views their own warning records' })
   myWarnings(@CurrentUser() user: AuthenticatedUser) {
     return this.service.getWarnings(user.id);
   }

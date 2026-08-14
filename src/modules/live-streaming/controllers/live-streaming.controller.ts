@@ -24,8 +24,6 @@ class StartStreamDto {
   description?: string;
 }
 
-class EndStreamDto {}
-
 @ApiTags('Live Streaming')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RbacPermissionsGuard)
@@ -58,10 +56,7 @@ export class LiveStreamingController {
   @ApiOperation({ summary: 'End my live stream' })
   @ApiResponse({ status: 200, description: 'Stream ended' })
   @Patch(':id/end')
-  end(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser('id') streamerId: string,
-  ) {
+  end(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') streamerId: string) {
     return this.service.endStream(id, streamerId);
   }
 

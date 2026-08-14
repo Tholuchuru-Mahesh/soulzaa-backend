@@ -26,7 +26,9 @@ export class ModeratorLiveMonitoringController {
 
   @Get()
   @RequirePermissions('mobile.workforce.view')
-  @ApiOperation({ summary: 'Region-scoped live monitoring: active rooms and streams for the assigned region' })
+  @ApiOperation({
+    summary: 'Region-scoped live monitoring: active rooms and streams for the assigned region',
+  })
   async getLiveMonitoring(@CurrentUser() user: AuthenticatedUser) {
     const scopeWhere = await this.scope.userScopeFilter(user.id);
     const isUnrestricted = Object.keys(scopeWhere).length === 0;
@@ -42,13 +44,9 @@ export class ModeratorLiveMonitoringController {
       userIdsInScope = inScope.map((u) => u.id);
     }
 
-    const scopedFilter = userIdsInScope
-      ? { hostId: { in: userIdsInScope } }
-      : {};
+    const scopedFilter = userIdsInScope ? { hostId: { in: userIdsInScope } } : {};
 
-    const audioRoomScopeFilter = userIdsInScope
-      ? { ownerId: { in: userIdsInScope } }
-      : {};
+    const audioRoomScopeFilter = userIdsInScope ? { ownerId: { in: userIdsInScope } } : {};
 
     const [audioRooms, videoRooms, liveStreams] = await Promise.all([
       this.prisma.audioRoom.findMany({

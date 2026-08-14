@@ -1,14 +1,7 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
-import {
-  CreateCommunityProgramDto,
-  UpdateCommunityProgramDto,
-} from '../dto/campaign.dto';
+import { CreateCommunityProgramDto, UpdateCommunityProgramDto } from '../dto/campaign.dto';
 
 /**
  * Community Program service — Officials create and manage ongoing
@@ -44,9 +37,7 @@ export class CommunityProgramService {
       },
     });
 
-    this.logger.log(
-      `Community program ${program.id} created by Official ${officialId}`,
-    );
+    this.logger.log(`Community program ${program.id} created by Official ${officialId}`);
     return program;
   }
 
@@ -57,9 +48,7 @@ export class CommunityProgramService {
     const scopeWhere = await this.scope.userScopeFilter(officialId);
     const isUnrestricted = Object.keys(scopeWhere).length === 0;
 
-    const locationFilter = isUnrestricted
-      ? {}
-      : this.buildLocationFilter(scopeWhere);
+    const locationFilter = isUnrestricted ? {} : this.buildLocationFilter(scopeWhere);
 
     const where = {
       ...locationFilter,
@@ -111,9 +100,7 @@ export class CommunityProgramService {
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
-  private buildLocationFilter(
-    scopeWhere: Record<string, unknown>,
-  ): Record<string, unknown> {
+  private buildLocationFilter(scopeWhere: Record<string, unknown>): Record<string, unknown> {
     if (!('OR' in scopeWhere)) return {};
     return {
       OR: (scopeWhere['OR'] as Record<string, unknown>[]).map((clause) => {

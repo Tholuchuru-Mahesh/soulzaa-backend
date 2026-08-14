@@ -29,7 +29,10 @@ export class FrameProcessorService {
     try {
       return await this.processRaster(buffer);
     } catch (err: any) {
-      this.logger.error(`Failed to process frame image background: ${err?.message ?? err}`, err?.stack);
+      this.logger.error(
+        `Failed to process frame image background: ${err?.message ?? err}`,
+        err?.stack,
+      );
       return { buffer, mimeType, isProcessed: false };
     }
   }

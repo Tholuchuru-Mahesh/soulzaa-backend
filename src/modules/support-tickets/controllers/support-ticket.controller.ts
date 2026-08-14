@@ -4,7 +4,6 @@ import {
   DefaultValuePipe,
   Get,
   Param,
-  ParseEnumPipe,
   ParseIntPipe,
   ParseUUIDPipe,
   Patch,

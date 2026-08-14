@@ -1,16 +1,8 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContentRequestStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
-import {
-  CreateContentRequestDto,
-  UpdateContentRequestDto,
-} from '../dto/content-request.dto';
+import { CreateContentRequestDto, UpdateContentRequestDto } from '../dto/content-request.dto';
 
 /**
  * Content Request service — Officials create and manage content review
@@ -55,9 +47,7 @@ export class ContentRequestService {
       },
     });
 
-    this.logger.log(
-      `Content request ${request.id} created by Official ${officialId}`,
-    );
+    this.logger.log(`Content request ${request.id} created by Official ${officialId}`);
     return request;
   }
 
@@ -77,9 +67,7 @@ export class ContentRequestService {
     const isUnrestricted = Object.keys(scopeWhere).length === 0;
 
     // Build a location filter from the scope predicate
-    const locationFilter = isUnrestricted
-      ? {}
-      : this.buildLocationFilter(scopeWhere);
+    const locationFilter = isUnrestricted ? {} : this.buildLocationFilter(scopeWhere);
 
     const where = {
       ...locationFilter,
@@ -114,11 +102,7 @@ export class ContentRequestService {
   /**
    * Update a content request's status (IN_REVIEW → RESOLVED / REJECTED).
    */
-  async updateStatus(
-    id: string,
-    actorId: string,
-    dto: UpdateContentRequestDto,
-  ) {
+  async updateStatus(id: string, actorId: string, dto: UpdateContentRequestDto) {
     const request = await this.findById(id);
 
     const terminal: ContentRequestStatus[] = ['RESOLVED', 'REJECTED'];
@@ -137,17 +121,13 @@ export class ContentRequestService {
       data: { status: dto.status, ...extra },
     });
 
-    this.logger.log(
-      `Content request ${id} status → ${dto.status} by ${actorId}`,
-    );
+    this.logger.log(`Content request ${id} status → ${dto.status} by ${actorId}`);
     return updated;
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  private buildLocationFilter(
-    scopeWhere: Record<string, unknown>,
-  ): Record<string, unknown> {
+  private buildLocationFilter(scopeWhere: Record<string, unknown>): Record<string, unknown> {
     if (!('OR' in scopeWhere)) return {};
     return {
       OR: (scopeWhere['OR'] as Record<string, unknown>[]).map((clause) => {

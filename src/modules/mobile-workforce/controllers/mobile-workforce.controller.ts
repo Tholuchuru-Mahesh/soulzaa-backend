@@ -70,7 +70,7 @@ export class MobileWorkforceController {
     summary: 'Official Portal dashboard — all metrics in one call',
     description:
       'Returns regionalOverview (8 counters), pendingActions (6 counters) and ' +
-      'runningActivities (3 counters), all narrowed to the caller\'s geographic scope. ' +
+      "runningActivities (3 counters), all narrowed to the caller's geographic scope. " +
       'No hardcoded data — every number is a live DB count.',
   })
   @ApiResponse({
@@ -82,4 +82,3 @@ export class MobileWorkforceController {
     return this.service.dashboard(userId);
   }
 }
-

@@ -85,7 +85,11 @@ describe('AnalyticsReportingService', () => {
       counters as unknown as AnalyticsCountersService,
     );
     const prisma = {
-      giftTransaction: { aggregate: jest.fn().mockResolvedValue({ _sum: { creatorEarnings: 0n, totalCoinValue: 0n }, _count: 0 }) },
+      giftTransaction: {
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _sum: { creatorEarnings: 0n, totalCoinValue: 0n }, _count: 0 }),
+      },
       ledgerEntry: { aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0n } }) },
     };
     service = new AnalyticsReportingService(

@@ -64,7 +64,9 @@ export class ModeratorDeviceChangeController {
   @Put(':id/manager-review')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('moderator.device.review')
-  @ApiOperation({ summary: 'Manager review stage for device change request (Country/Regional Manager)' })
+  @ApiOperation({
+    summary: 'Manager review stage for device change request (Country/Regional Manager)',
+  })
   managerReview(
     @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -76,7 +78,9 @@ export class ModeratorDeviceChangeController {
   @Put(':id/approve')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('moderator.device.review')
-  @ApiOperation({ summary: 'Approve a device change request (Admin final approval + auto device registration)' })
+  @ApiOperation({
+    summary: 'Approve a device change request (Admin final approval + auto device registration)',
+  })
   approve(
     @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,

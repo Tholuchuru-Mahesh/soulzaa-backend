@@ -22,7 +22,11 @@ describe('WalletReadService', () => {
     const wallet = {
       getBalance: jest.fn().mockResolvedValue({ gold: 500, game: 0, diamond: 100 }),
     };
-    const prisma = { giftTransaction: { aggregate: jest.fn().mockResolvedValue({ _sum: { creatorEarnings: 100n } }) } };
+    const prisma = {
+      giftTransaction: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { creatorEarnings: 100n } }),
+      },
+    };
     const svc = new WalletReadService(repo as never, wallet as never, prisma as never);
 
     const res = await svc.getEarnings('u1');
@@ -62,7 +66,11 @@ describe('WalletReadService', () => {
       1,
     ]);
     const wallet = { getBalance: jest.fn() };
-    const prisma = { giftTransaction: { aggregate: jest.fn().mockResolvedValue({ _sum: { creatorEarnings: 100n } }) } };
+    const prisma = {
+      giftTransaction: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { creatorEarnings: 100n } }),
+      },
+    };
     const svc = new WalletReadService(repo as never, wallet as never, prisma as never);
 
     const res = await svc.getRewards('u1', 1, 20);
@@ -94,7 +102,11 @@ describe('WalletReadService', () => {
       1,
     ]);
     const wallet = { getBalance: jest.fn() };
-    const prisma = { giftTransaction: { aggregate: jest.fn().mockResolvedValue({ _sum: { creatorEarnings: 100n } }) } };
+    const prisma = {
+      giftTransaction: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { creatorEarnings: 100n } }),
+      },
+    };
     const svc = new WalletReadService(repo as never, wallet as never, prisma as never);
 
     const res = await svc.getHistory('u1', { currency: WalletCurrency.GOLD }, 2, 10);

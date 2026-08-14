@@ -1,11 +1,4 @@
-import {
-  Body,
-  Controller,
-  HttpCode,
-  HttpStatus,
-  Post,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
@@ -66,7 +59,12 @@ export class ModeratorNotificationController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: { moderatorIds: string[]; message: string; regionId?: string },
   ) {
-    await this.notificationService.sendEmergencyRequest(dto.moderatorIds, user.id, dto.message, dto.regionId);
+    await this.notificationService.sendEmergencyRequest(
+      dto.moderatorIds,
+      user.id,
+      dto.message,
+      dto.regionId,
+    );
     return { ok: true };
   }
 
@@ -78,7 +76,12 @@ export class ModeratorNotificationController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: { moderatorIds: string[]; title: string; message: string },
   ) {
-    await this.notificationService.sendOfficialMessage(dto.moderatorIds, user.id, dto.title, dto.message);
+    await this.notificationService.sendOfficialMessage(
+      dto.moderatorIds,
+      user.id,
+      dto.title,
+      dto.message,
+    );
     return { ok: true };
   }
 
@@ -88,7 +91,13 @@ export class ModeratorNotificationController {
   @ApiOperation({ summary: 'Manager: send an instruction to specific moderators' })
   async sendManagerInstruction(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { moderatorIds: string[]; title: string; instruction: string; priority?: 'NORMAL' | 'URGENT' },
+    @Body()
+    dto: {
+      moderatorIds: string[];
+      title: string;
+      instruction: string;
+      priority?: 'NORMAL' | 'URGENT';
+    },
   ) {
     await this.notificationService.sendManagerInstruction(
       dto.moderatorIds,

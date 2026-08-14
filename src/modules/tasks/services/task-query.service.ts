@@ -111,4 +111,3 @@ export class TaskQueryService {
     return { assigned, completed, pending, overdue, overduePercentage };
   }
 }
-

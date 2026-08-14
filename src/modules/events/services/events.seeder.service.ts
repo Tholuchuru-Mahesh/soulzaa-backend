@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
-import { CosmeticRarity, CosmeticType, EventType, Prisma } from '@prisma/client';
+import { EventType, Prisma } from '@prisma/client';
 import {
   COSMETICS_SERVICE,
   type ICosmeticsService,

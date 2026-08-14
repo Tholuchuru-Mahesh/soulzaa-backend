@@ -11,13 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -44,10 +38,7 @@ export class EventsOfficialController {
   @ApiOperation({ summary: 'Create a territory-scoped regional event (Official)' })
   @ApiResponse({ status: 201, description: 'Regional event created and scoped' })
   @Post()
-  create(
-    @CurrentUser('id') officialId: string,
-    @Body() dto: CreateEventDto,
-  ) {
+  create(@CurrentUser('id') officialId: string, @Body() dto: CreateEventDto) {
     return this.service.create(officialId, dto);
   }
 

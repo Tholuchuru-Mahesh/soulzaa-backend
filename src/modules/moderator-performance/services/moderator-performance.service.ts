@@ -129,16 +129,18 @@ export class ModeratorPerformanceService {
       this.getRange(moderatorId, monthKey, today),
     ]);
 
-    const aggregate = (rows: Array<{
-      reportsReviewed: number;
-      reportsResolved: number;
-      bansIssued: number;
-      kicksIssued: number;
-      mutesIssued: number;
-      warningsIssued: number;
-      roomsVisited: number;
-      performanceScore: number;
-    }>) =>
+    const aggregate = (
+      rows: Array<{
+        reportsReviewed: number;
+        reportsResolved: number;
+        bansIssued: number;
+        kicksIssued: number;
+        mutesIssued: number;
+        warningsIssued: number;
+        roomsVisited: number;
+        performanceScore: number;
+      }>,
+    ) =>
       rows.reduce(
         (acc, r) => ({
           reportsReviewed: acc.reportsReviewed + r.reportsReviewed,
@@ -149,7 +151,12 @@ export class ModeratorPerformanceService {
           warningsIssued: acc.warningsIssued + r.warningsIssued,
           roomsVisited: acc.roomsVisited + r.roomsVisited,
           avgScore:
-            rows.length > 0 ? rows.reduce((s: number, x: { performanceScore: number }) => s + x.performanceScore, 0) / rows.length : 0,
+            rows.length > 0
+              ? rows.reduce(
+                  (s: number, x: { performanceScore: number }) => s + x.performanceScore,
+                  0,
+                ) / rows.length
+              : 0,
         }),
         {
           reportsReviewed: 0,

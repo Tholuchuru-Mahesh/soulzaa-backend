@@ -1,6 +1,5 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
-import { GIFT_EVENTS, GiftSentEvent } from 'src/modules/gifts/events/gift.events';
 import {
   TreasureBoxOpenedEvent,
   TreasureProgressEvent,

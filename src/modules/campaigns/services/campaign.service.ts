@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { CampaignStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
@@ -61,9 +56,7 @@ export class CampaignService {
     const scopeWhere = await this.scope.userScopeFilter(officialId);
     const isUnrestricted = Object.keys(scopeWhere).length === 0;
 
-    const locationFilter = isUnrestricted
-      ? {}
-      : this.buildLocationFilter(scopeWhere);
+    const locationFilter = isUnrestricted ? {} : this.buildLocationFilter(scopeWhere);
 
     const where = {
       ...locationFilter,
@@ -113,9 +106,7 @@ export class CampaignService {
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
-  private buildLocationFilter(
-    scopeWhere: Record<string, unknown>,
-  ): Record<string, unknown> {
+  private buildLocationFilter(scopeWhere: Record<string, unknown>): Record<string, unknown> {
     if (!('OR' in scopeWhere)) return {};
     return {
       OR: (scopeWhere['OR'] as Record<string, unknown>[]).map((clause) => {

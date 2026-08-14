@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
 import { CreateEventDto, UpdateEventDto } from '../dto/events.dto';
@@ -62,7 +58,12 @@ export class EventsOfficialService {
       );
     }
 
-    return { ...event, countryId: official.countryId, stateId: official.stateId, regionId: official.regionId };
+    return {
+      ...event,
+      countryId: official.countryId,
+      stateId: official.stateId,
+      regionId: official.regionId,
+    };
   }
 
   /**
@@ -77,10 +78,7 @@ export class EventsOfficialService {
    * Global events (no countryId) are excluded; only events whose scope
    * matches the caller's assignments are returned.
    */
-  async list(
-    officialId: string,
-    opts: { limit?: number; offset?: number } = {},
-  ) {
+  async list(officialId: string, opts: { limit?: number; offset?: number } = {}) {
     const scopeWhere = await this.scope.userScopeFilter(officialId);
     const isUnrestricted = Object.keys(scopeWhere).length === 0;
 

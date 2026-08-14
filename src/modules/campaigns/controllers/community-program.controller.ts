@@ -4,7 +4,6 @@ import {
   DefaultValuePipe,
   Get,
   Param,
-  ParseBoolPipe,
   ParseIntPipe,
   ParseUUIDPipe,
   Patch,
@@ -12,21 +11,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOperation,
-  ApiQuery,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
-import {
-  CreateCommunityProgramDto,
-  UpdateCommunityProgramDto,
-} from '../dto/campaign.dto';
+import { CreateCommunityProgramDto, UpdateCommunityProgramDto } from '../dto/campaign.dto';
 import { CommunityProgramService } from '../services/community-program.service';
 
 /**
@@ -44,10 +34,7 @@ export class CommunityProgramController {
   @ApiOperation({ summary: 'Create a community program in my territory' })
   @ApiResponse({ status: 201, description: 'Program created' })
   @Post()
-  create(
-    @CurrentUser('id') officialId: string,
-    @Body() dto: CreateCommunityProgramDto,
-  ) {
+  create(@CurrentUser('id') officialId: string, @Body() dto: CreateCommunityProgramDto) {
     return this.service.create(officialId, dto);
   }
 
@@ -63,8 +50,7 @@ export class CommunityProgramController {
     @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit?: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset?: number,
   ) {
-    const activeFilter =
-      isActive !== undefined ? isActive === 'true' : undefined;
+    const activeFilter = isActive !== undefined ? isActive === 'true' : undefined;
     return this.service.list(officialId, { isActive: activeFilter, limit, offset });
   }
 

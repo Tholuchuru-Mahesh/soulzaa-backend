@@ -11,7 +11,12 @@ import { ShiftActiveGuard } from './guards/shift-active.guard';
 @Module({
   imports: [PrismaModule, ScheduleModule.forRoot()],
   controllers: [ModeratorShiftController, ModeratorNotificationController],
-  providers: [ModeratorShiftService, ShiftReminderScheduler, ShiftActiveGuard, ModeratorNotificationService],
+  providers: [
+    ModeratorShiftService,
+    ShiftReminderScheduler,
+    ShiftActiveGuard,
+    ModeratorNotificationService,
+  ],
   exports: [ModeratorShiftService, ShiftActiveGuard, ModeratorNotificationService],
 })
 export class ModeratorShiftModule {}

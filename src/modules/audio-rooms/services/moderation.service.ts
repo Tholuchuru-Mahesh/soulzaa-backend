@@ -141,15 +141,21 @@ export class ModerationService implements IModerationService {
 
       // Hook InvestigationRecording & Performance KPI
       if (this.investigationRecording) {
-        void this.investigationRecording.beginRecording({
-          moderatorId: actor.id,
-          targetUserId,
-          roomId,
-          violationReason: reason ?? 'Audio room kick',
-          evidencePayload: { roomId, action: 'KICK', kickId: kick.id },
-        }).then((rec) => {
-          if (rec) void this.investigationRecording?.completeRecording({ recordingId: rec.id, actionTaken: 'KICK' });
-        });
+        void this.investigationRecording
+          .beginRecording({
+            moderatorId: actor.id,
+            targetUserId,
+            roomId,
+            violationReason: reason ?? 'Audio room kick',
+            evidencePayload: { roomId, action: 'KICK', kickId: kick.id },
+          })
+          .then((rec) => {
+            if (rec)
+              void this.investigationRecording?.completeRecording({
+                recordingId: rec.id,
+                actionTaken: 'KICK',
+              });
+          });
       }
       if (this.performanceStats) {
         void this.performanceStats.recordAction(actor.id, 'KICK');
@@ -260,15 +266,21 @@ export class ModerationService implements IModerationService {
       });
 
       if (this.investigationRecording) {
-        void this.investigationRecording.beginRecording({
-          moderatorId: actor.id,
-          targetUserId,
-          roomId,
-          violationReason: dto.reason ?? 'Audio room ban',
-          evidencePayload: { roomId, action: 'BAN', banId: ban.id },
-        }).then((rec) => {
-          if (rec) void this.investigationRecording?.completeRecording({ recordingId: rec.id, actionTaken: 'BAN' });
-        });
+        void this.investigationRecording
+          .beginRecording({
+            moderatorId: actor.id,
+            targetUserId,
+            roomId,
+            violationReason: dto.reason ?? 'Audio room ban',
+            evidencePayload: { roomId, action: 'BAN', banId: ban.id },
+          })
+          .then((rec) => {
+            if (rec)
+              void this.investigationRecording?.completeRecording({
+                recordingId: rec.id,
+                actionTaken: 'BAN',
+              });
+          });
       }
       if (this.performanceStats) {
         void this.performanceStats.recordAction(actor.id, 'BAN');
@@ -279,7 +291,11 @@ export class ModerationService implements IModerationService {
           action: `audio_room.ban_${dto.type.toLowerCase()}`,
           resource: 'audio_room',
           resourceId: roomId,
-          details: { targetUserId, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
+          details: {
+            targetUserId,
+            reason: dto.reason ?? null,
+            expiresAt: expiresAt?.toISOString() ?? null,
+          },
         });
       }
 
@@ -369,7 +385,11 @@ export class ModerationService implements IModerationService {
           action: `audio_room.mute_${dto.type.toLowerCase()}`,
           resource: 'audio_room',
           resourceId: roomId,
-          details: { targetUserId, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
+          details: {
+            targetUserId,
+            reason: dto.reason ?? null,
+            expiresAt: expiresAt?.toISOString() ?? null,
+          },
         });
       }
       if (this.performanceStats) {
@@ -523,11 +543,17 @@ export class ModerationService implements IModerationService {
       if (dto.recommendedAction === 'WARNING') {
         await this.warn(actor, roomId, report.targetUserId, reason);
       } else if (dto.recommendedAction === 'MUTE') {
-        await this.mute(actor, roomId, report.targetUserId, { type: ModerationMuteType.PERMANENT, reason });
+        await this.mute(actor, roomId, report.targetUserId, {
+          type: ModerationMuteType.PERMANENT,
+          reason,
+        });
       } else if (dto.recommendedAction === 'KICK') {
         await this.kick(actor, roomId, report.targetUserId, reason);
       } else if (dto.recommendedAction === 'BAN') {
-        await this.ban(actor, roomId, report.targetUserId, { type: ModerationBanType.PERMANENT, reason });
+        await this.ban(actor, roomId, report.targetUserId, {
+          type: ModerationBanType.PERMANENT,
+          reason,
+        });
       }
     }
 

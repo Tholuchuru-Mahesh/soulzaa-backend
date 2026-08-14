@@ -43,7 +43,12 @@ export class CosmeticsStoreService {
     private readonly media: MediaUrlResolver,
   ) {}
 
-  async listStore(type?: CosmeticType): Promise<(Omit<Cosmetic, 'mediaUrl' | 'thumbnailUrl'> & { mediaUrl: string | null; thumbnailUrl: string | null })[]> {
+  async listStore(type?: CosmeticType): Promise<
+    (Omit<Cosmetic, 'mediaUrl' | 'thumbnailUrl'> & {
+      mediaUrl: string | null;
+      thumbnailUrl: string | null;
+    })[]
+  > {
     const rows = await this.repo.listStore(type);
     return Promise.all(
       rows.map(async (c) => ({
