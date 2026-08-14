@@ -1,8 +1,9 @@
 // src/modules/wallet/services/wallet-read.service.ts
 import { Injectable } from '@nestjs/common';
-import { LedgerEntry, WalletCurrency, WalletTxnReason } from '@prisma/client';
+import { GiftTxnStatus, LedgerEntry, WalletCurrency, WalletTxnReason } from '@prisma/client';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 import type { HostEarningsDto, RewardDto } from '../dto/wallet.dto';
 import { WalletRepository } from '../repositories/wallet.repository';
 import { WalletService } from './wallet.service';
@@ -23,11 +24,15 @@ export class WalletReadService {
   constructor(
     private readonly repo: WalletRepository,
     private readonly wallet: WalletService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async getEarnings(userId: string): Promise<HostEarningsDto> {
-    const [giftSums, goldSums, balances] = await Promise.all([
-      this.repo.sumByReason(userId, [WalletTxnReason.GIFT_RECEIVE], WalletCurrency.DIAMOND),
+    const [giftAgg, goldSums, balances] = await Promise.all([
+      this.prisma.giftTransaction.aggregate({
+        where: { receiverId: userId, status: GiftTxnStatus.COMPLETED },
+        _sum: { creatorEarnings: true },
+      }),
       this.repo.sumByReason(
         userId,
         [WalletTxnReason.TREASURE_BOX, WalletTxnReason.PK_REWARD],
@@ -35,15 +40,15 @@ export class WalletReadService {
       ),
       this.wallet.getBalance(userId),
     ]);
+    const gifts = Number(giftAgg._sum.creatorEarnings ?? 0n);
     const sumOf = (
       rows: Array<{ reason: WalletTxnReason; total: bigint }>,
       reason: WalletTxnReason,
     ): number => Number(rows.find((s) => s.reason === reason)?.total ?? 0n);
-    const gifts = sumOf(giftSums, WalletTxnReason.GIFT_RECEIVE);
     const treasure = sumOf(goldSums, WalletTxnReason.TREASURE_BOX);
     const pk = sumOf(goldSums, WalletTxnReason.PK_REWARD);
     return {
-      // totalEarned is a gross lifetime income tally across sources (nominal coins).
+      // totalEarned is the authoritative lifetime earnings total (matches Creator Earnings Lifetime).
       totalEarned: gifts + treasure + pk,
       // Only the DIAMOND wallet (gift diamonds) is withdrawable / settlement-ready.
       settlementReady: balances.diamond,

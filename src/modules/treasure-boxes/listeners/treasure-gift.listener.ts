@@ -3,13 +3,13 @@ import { GiftContextType } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { GIFT_EVENTS, type GiftSentEvent } from 'src/modules/gifts/events/gift.events';
 import { RocketService } from '../services/rocket.service';
-import { TreasureService } from '../services/treasure.service';
+import { TreasureEventService } from '../services/treasure-event.service';
 
 /**
  * Feeds gift value into treasure boxes and rocket events. Subscribes to the
- * gifts module's GiftSentEvent (the cross-module seam) and, for AUDIO_ROOM
- * gifts, contributes to the room's active treasure box and to any rocket the
- * gift triggers. Best-effort: a failure here never rolls back the gift.
+ * gifts module's GiftSentEvent (the cross-module seam) and, for AUDIO_ROOM and
+ * VIDEO_ROOM gifts, contributes to the room's active treasure box and to any
+ * rocket the gift triggers.
  */
 @Injectable()
 export class TreasureGiftListener implements OnModuleInit {
@@ -17,7 +17,7 @@ export class TreasureGiftListener implements OnModuleInit {
 
   constructor(
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
-    private readonly treasure: TreasureService,
+    private readonly treasureEvents: TreasureEventService,
     private readonly rocket: RocketService,
   ) {}
 
@@ -35,6 +35,17 @@ export class TreasureGiftListener implements OnModuleInit {
 
   private async handle(e: GiftSentEvent): Promise<void> {
     const p = e.payload;
+
+    // 1. Apply gift progress to active Treasure Box
+    try {
+      await this.treasureEvents.handleGiftSent(p);
+    } catch (err) {
+      this.logger.error(
+        `Treasure box progress processing failed for gift ${p.transactionId}: ${(err as Error).message}`,
+      );
+    }
+
+    // 2. Apply gift contribution to active Rocket event if applicable
     try {
       await this.rocket.maybeTrigger({
         roomId: p.contextId,

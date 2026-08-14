@@ -52,17 +52,6 @@ export class TreasureEventService implements OnModuleInit {
         );
       }
     });
-
-    // Event-driven subscription to GiftSentEvent
-    this.bus.subscribe<GiftSentEvent>(GIFT_EVENTS.SENT, async (event) => {
-      try {
-        await this.handleGiftSent(event.payload);
-      } catch (err) {
-        this.logger.error(
-          `Error handling GiftSentEvent in Treasure Engine: ${(err as Error).message}`,
-        );
-      }
-    });
   }
 
   /**

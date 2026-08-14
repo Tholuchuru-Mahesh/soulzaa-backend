@@ -1,1 +1,51 @@
+// ============================================================
+// Live Streaming — streams, participants, PK battles, goals
+// Owned by the "live_streaming" module. No cross-module FK relations —
+// reference other domains (users) by id and coordinate via the event bus.
+// `countryId`/`stateId`/`regionId` mirror the streamer's location at the
+// time the stream started so territory-scoped counts stay accurate even
+// if the streamer's profile location is updated later.
+// ============================================================
 
+/// A live broadcast session. One stream per row; ended streams are never
+/// deleted — `status = ENDED` is the terminal state. `streamKey` is the
+/// ZEGOCLOUD / Agora publish key handed to the streamer client. `viewerCount`
+/// is a soft real-time counter kept consistent by the presence service;
+/// `peakViewerCount` is the historic high-water mark.
+model LiveStream {
+  id              String           @id @default(uuid()) @db.Uuid
+  streamerId      String           @db.Uuid
+  hostId          String?          @db.Uuid
+  title           String
+  description     String?
+  thumbnailKey    String?
+  status          LiveStreamStatus @default(SCHEDULED)
+  streamKey       String?          @unique
+  viewerCount     Int              @default(0)
+  peakViewerCount Int              @default(0)
+
+  // Geographic snapshot at stream start — used for territory-scoped counts.
+  countryId String? @db.Uuid
+  stateId   String? @db.Uuid
+  regionId  String? @db.Uuid
+
+  scheduledAt DateTime?
+  startedAt   DateTime? @default(now())
+  endedAt     DateTime?
+  endedBy     String?   @db.Uuid
+
+  // ---- Relations ----
+  live_stream_moderation_actions live_stream_moderation_actions[]
+
+  // ---- Audit ----
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([streamerId])
+  @@index([hostId])
+  @@index([status, stateId])
+  @@index([status, countryId])
+  @@index([createdAt])
+  @@map("live_streams")
+}

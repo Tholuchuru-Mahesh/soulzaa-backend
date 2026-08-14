@@ -43,11 +43,12 @@ export class LiveStreamService {
       select: { regionId: true, stateId: true, countryId: true },
     });
 
-    return this.prisma.live_streams.create({
+    return this.prisma.liveStream.create({
       data: {
         id: randomUUID(),
         hostId: input.hostId,
-        title: input.title,
+        streamerId: input.hostId,
+        title: input.title ?? 'Live Stream',
         description: input.description,
         regionId: host?.regionId ?? null,
         stateId: host?.stateId ?? null,
@@ -59,7 +60,7 @@ export class LiveStreamService {
   }
 
   async getStream(id: string) {
-    const stream = await this.prisma.live_streams.findUnique({
+    const stream = await this.prisma.liveStream.findUnique({
       where: { id },
     });
     if (!stream) throw new NotFoundException('Live stream not found');
@@ -72,7 +73,7 @@ export class LiveStreamService {
       throw new BadRequestException('Stream is already ended or suspended');
     }
 
-    return this.prisma.live_streams.update({
+    return this.prisma.liveStream.update({
       where: { id },
       data: {
         status: LiveStreamStatus.ENDED,
@@ -89,13 +90,13 @@ export class LiveStreamService {
 
     const skip = (page - 1) * limit;
     const [items, total] = await Promise.all([
-      this.prisma.live_streams.findMany({
+      this.prisma.liveStream.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
-      this.prisma.live_streams.count({ where }),
+      this.prisma.liveStream.count({ where }),
     ]);
 
     return { items, total, page, limit };
@@ -168,7 +169,7 @@ export class LiveStreamService {
 
     // If action is BAN or KICK and taken by moderation authority, end stream if host was targeted
     if (input.targetUserId === stream.hostId && (input.action === 'BAN' || input.action === 'KICK')) {
-      await this.prisma.live_streams.update({
+      await this.prisma.liveStream.update({
         where: { id: input.streamId },
         data: {
           status: LiveStreamStatus.SUSPENDED,

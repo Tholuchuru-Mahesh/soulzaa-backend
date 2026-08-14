@@ -1,12 +1,15 @@
 import { Global, Module } from '@nestjs/common';
 import { EventsAdminController } from './controllers/events-admin.controller';
 import { EventsController } from './controllers/events.controller';
+import { EventsOfficialController } from './controllers/events-official.controller';
 import { EVENTS_SERVICE } from './interfaces/events.service.interface';
 import { EventsRepository } from './repositories/events.repository';
 import { EventRewardGranter } from './services/event-reward.granter';
 import { EventsAdminService } from './services/events-admin.service';
+import { EventsOfficialService } from './services/events-official.service';
 import { EventsSeeder } from './services/events.seeder.service';
 import { EventsService } from './services/events.service';
+import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
 
 /**
  * Events (AR-8) — the seasonal/promotional event system. Claimable reward events
@@ -19,12 +22,14 @@ import { EventsService } from './services/events.service';
  */
 @Global()
 @Module({
-  controllers: [EventsController, EventsAdminController],
+  imports: [MobileWorkforceModule],
+  controllers: [EventsController, EventsAdminController, EventsOfficialController],
   providers: [
     EventsRepository,
     EventRewardGranter,
     EventsService,
     EventsAdminService,
+    EventsOfficialService,
     EventsSeeder,
     { provide: EVENTS_SERVICE, useExisting: EventsService },
   ],

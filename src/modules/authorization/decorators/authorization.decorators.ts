@@ -1,5 +1,5 @@
 import { SetMetadata, createParamDecorator, ExecutionContext } from '@nestjs/common';
-import { PERMISSIONS_KEY, ROLES_KEY } from 'src/common/constants';
+import { PERMISSIONS_KEY, ROLES_KEY } from '../../../common/constants';
 
 export const AUDIT_LOG_ACTION_KEY = 'auditLogAction';
 

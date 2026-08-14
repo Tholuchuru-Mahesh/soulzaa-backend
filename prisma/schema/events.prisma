@@ -15,13 +15,22 @@ model PlatformEvent {
   multiplier  Int             @default(1)
   eligibility Json?
   bannerUrl   String?
-  createdBy   String?         @db.Uuid
-  updatedBy   String?         @db.Uuid
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+
+  // ---- Geographic scope (null = global; set for Official-created regional events) ----
+  countryId String? @db.Uuid
+  stateId   String? @db.Uuid
+  regionId  String? @db.Uuid
+
+  // ---- Audit ----
+  createdBy String?  @db.Uuid
+  updatedBy String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([enabled, type])
   @@index([startAt, endAt])
+  @@index([countryId, enabled])
+  @@index([stateId, enabled])
   @@map("platform_events")
 }
 

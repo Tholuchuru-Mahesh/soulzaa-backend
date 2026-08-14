@@ -1,7 +1,7 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Role } from '@prisma/client';
-import { EVENT_BUS, type IEventBus } from 'src/common/events';
-import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { EVENT_BUS, type IEventBus } from '../../../common/events';
+import { PrismaService } from '../../../infra/prisma/prisma.service';
 import { RoleAssignedEvent, RoleRevokedEvent } from '../events/role.events';
 import { AssignRoleDto } from '../dto/assign-role.dto';
 import { CreateRoleDto } from '../dto/create-role.dto';

@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ROLES_KEY } from 'src/common/constants';
-import { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
+import { ROLES_KEY } from '../../../common/constants';
+import { AuthenticatedUser } from '../../../common/interfaces/authenticated-user';
 import { RoleResolver } from '../services/role-resolver.service';
 
 @Injectable()
@@ -9,7 +9,7 @@ export class RbacRolesGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly roleResolver: RoleResolver,
-  ) {}
+  ) { }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [

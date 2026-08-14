@@ -66,5 +66,20 @@ export class MobileWorkforceController {
   moderatorDashboard(@CurrentUser('id') userId: string) {
     return this.service.moderatorDashboard(userId);
   }
+  @ApiOperation({
+    summary: 'Official Portal dashboard — all metrics in one call',
+    description:
+      'Returns regionalOverview (8 counters), pendingActions (6 counters) and ' +
+      'runningActivities (3 counters), all narrowed to the caller\'s geographic scope. ' +
+      'No hardcoded data — every number is a live DB count.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Dashboard snapshot with counters for the Official mobile portal',
+  })
+  @Get('dashboard')
+  dashboard(@CurrentUser('id') userId: string) {
+    return this.service.dashboard(userId);
+  }
 }
 

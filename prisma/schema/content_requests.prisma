@@ -1,0 +1,51 @@
+// ============================================================
+// Content Requests — Official-initiated content review system.
+//
+// An Official raises a ContentRequest against a user's content
+// (audio room, live stream, post, profile, etc.) that needs
+// review or action. The request is resolved by the Official
+// or escalated to Admin. Geo-anchored to the Official's
+// territory at creation time.
+// ============================================================
+
+enum ContentRequestStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+enum ContentRequestCategory {
+  AUDIO_ROOM
+  LIVE_STREAM
+  PROFILE
+  POST
+  OTHER
+}
+
+model ContentRequest {
+  id          String                  @id @default(uuid()) @db.Uuid
+  officialId  String                  @db.Uuid
+  subjectId   String?                 @db.Uuid  // the user the request is about
+  category    ContentRequestCategory  @default(OTHER)
+  title       String
+  description String?
+  referenceId String?                 // e.g. roomId / streamId / postId being flagged
+  status      ContentRequestStatus    @default(OPEN)
+  resolvedAt  DateTime?
+  closedById  String?                 @db.Uuid
+
+  // Geographic scope snapshot at creation
+  countryId String? @db.Uuid
+  stateId   String? @db.Uuid
+  regionId  String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([officialId, status])
+  @@index([countryId, status])
+  @@index([stateId, status])
+  @@index([regionId, status])
+  @@map("content_requests")
+}

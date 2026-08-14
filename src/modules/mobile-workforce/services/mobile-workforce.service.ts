@@ -170,4 +170,177 @@ export class MobileWorkforceService {
       pendingQueuePreview: queue,
     };
   }
+
+  /**
+   * Comprehensive Official Portal dashboard.
+   *
+   * Returns all metrics required by the mobile dashboard in a single parallel
+   * batch. Every metric is narrowed to the caller's geographic scope — two
+   * officials in different territories see different numbers.
+   */
+  async dashboard(userId: string) {
+    const scopeWhere = await this.scope.userScopeFilter(userId);
+    const isUnrestricted = Object.keys(scopeWhere).length === 0;
+    const now = new Date();
+
+    // Re-map user scope predicates (countryId/stateId/regionId on the User
+    // table) to the same columns on entity tables (live_streams, support_tickets etc.).
+    const buildLocationFilter = (sw: typeof scopeWhere): Record<string, unknown> => {
+      if (isUnrestricted || !('OR' in sw)) return {};
+      return {
+        OR: sw.OR.map((clause) => {
+          const out: Record<string, unknown> = {};
+          if ('countryId' in clause) out['countryId'] = clause['countryId'];
+          if ('stateId' in clause) out['stateId'] = clause['stateId'];
+          if ('regionId' in clause) out['regionId'] = clause['regionId'];
+          return out;
+        }),
+      };
+    };
+
+    const locationFilter = buildLocationFilter(scopeWhere);
+
+    // Resolve in-scope user IDs once for queries that join via ownerId/founderId.
+    let inScopeUserIds: string[] | null = null;
+    if (!isUnrestricted) {
+      const scopeUsers = await this.prisma.user.findMany({
+        where: scopeWhere,
+        select: { id: true },
+        take: 10_000,
+      });
+      inScopeUserIds = scopeUsers.map((u) => u.id);
+    }
+
+    const ownerFilter = inScopeUserIds !== null ? { ownerId: { in: inScopeUserIds } } : {};
+    const founderFilter = inScopeUserIds !== null ? { founderId: { in: inScopeUserIds } } : {};
+    const reporterFilter = inScopeUserIds !== null ? { reporterId: { in: inScopeUserIds } } : {};
+
+    const [
+      totalUsers,
+      activeCreators,
+      totalAgencies,
+      activeCoinSellers,
+      activeFamilies,
+      liveAudioRooms,
+      liveVideoRooms,
+      liveStreams,
+      pendingAgencyRequests,
+      pendingCoinSellerRequests,
+      pendingAudioReports,
+      pendingVideoReports,
+      openSupportTickets,
+      runningEvents,
+      tasksAssigned,
+      openContentRequests,
+      activeCampaigns,
+      activeCommunityPrograms,
+    ] = await Promise.all([
+      // 1. Total users in scope
+      this.prisma.user.count({ where: scopeWhere }),
+
+      // 2. Active creators (HOST or CREATOR role) in scope
+      this.prisma.user.count({
+        where: { ...scopeWhere, status: 'ACTIVE', roles: { hasSome: ['HOST', 'CREATOR'] as any } },
+      }),
+
+      // 3. Active agency relationships for users in scope
+      inScopeUserIds !== null
+        ? this.prisma.agencyRelationship.count({
+            where: { agencyId: { in: inScopeUserIds }, status: 'ACTIVE' },
+          })
+        : this.prisma.agencyRelationship.count({ where: { status: 'ACTIVE' } }),
+
+      // 4. Active coin sellers in scope
+      this.prisma.user.count({
+        where: { ...scopeWhere, status: 'ACTIVE', roles: { hasSome: ['COIN_SELLER'] as any } },
+      }),
+
+      // 5. Active families whose founder is in scope
+      this.prisma.family.count({ where: { ...founderFilter, status: 'ACTIVE' } }),
+
+      // 6. Live audio rooms owned by someone in scope
+      this.prisma.audioRoom.count({ where: { ...ownerFilter, status: 'LIVE' } }),
+
+      // 7. Live video rooms owned by someone in scope
+      this.prisma.videoRoom.count({ where: { ...ownerFilter, status: 'LIVE' } }),
+
+      // 8. Live streams in territory
+      this.prisma.liveStream.count({ where: { status: 'LIVE', ...locationFilter } }),
+
+      // 9. Pending agency role requests in territory
+      inScopeUserIds !== null
+        ? this.prisma.roleRequest.count({
+            where: { type: 'AGENCY' as any, status: 'SUBMITTED' as any, subjectUserId: { in: inScopeUserIds } },
+          })
+        : this.prisma.roleRequest.count({ where: { type: 'AGENCY' as any, status: 'SUBMITTED' as any } }),
+
+      // 10. Pending coin seller role requests in territory
+      inScopeUserIds !== null
+        ? this.prisma.roleRequest.count({
+            where: { type: 'COIN_SELLER' as any, status: 'SUBMITTED' as any, subjectUserId: { in: inScopeUserIds } },
+          })
+        : this.prisma.roleRequest.count({ where: { type: 'COIN_SELLER' as any, status: 'SUBMITTED' as any } }),
+
+      // 11a. Pending audio room reports from reporters in scope
+      this.prisma.roomReport.count({ where: { status: 'PENDING', ...reporterFilter } }),
+
+      // 11b. Pending video room reports from reporters in scope
+      this.prisma.videoRoomReport.count({ where: { status: 'PENDING', ...reporterFilter } }),
+
+      // 12. Open support tickets in territory
+      this.prisma.supportTicket.count({
+        where: { status: { in: ['OPEN', 'IN_PROGRESS', 'ESCALATED'] }, ...locationFilter },
+      }),
+
+      // 13. Running platform events (currently active)
+      this.prisma.platformEvent.count({
+        where: { enabled: true, startAt: { lte: now }, endAt: { gte: now } },
+      }),
+
+      // 14. Tasks assigned to this official that are in-progress (not yet completed)
+      this.prisma.taskProgress.count({ where: { userId, isCompleted: false } }),
+
+      // 15. Open content requests in territory
+      this.prisma.contentRequest.count({
+        where: { status: { in: ['OPEN', 'IN_REVIEW'] }, ...locationFilter },
+      }),
+
+      // 16. Active campaigns in territory
+      this.prisma.campaign.count({
+        where: { status: { in: ['ACTIVE', 'DRAFT'] }, ...locationFilter },
+      }),
+
+      // 17. Active community programs in territory
+      this.prisma.communityProgram.count({
+        where: { isActive: true, ...locationFilter },
+      }),
+    ]);
+
+    return {
+      regionalOverview: {
+        totalUsers,
+        activeCreators,
+        totalAgencies,
+        activeCoinSellers,
+        activeFamilies,
+        liveAudioRooms,
+        liveVideoRooms,
+        liveStreams,
+      },
+      pendingActions: {
+        agencyRequests: pendingAgencyRequests,
+        coinSellerRequests: pendingCoinSellerRequests,
+        reports: pendingAudioReports + pendingVideoReports,
+        supportTickets: openSupportTickets,
+        contentRequests: openContentRequests,
+        tasksAssigned,
+      },
+      runningActivities: {
+        events: runningEvents,
+        campaigns: activeCampaigns,
+        communityPrograms: activeCommunityPrograms,
+      },
+      generatedAt: now.toISOString(),
+    };
+  }
 }

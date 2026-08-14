@@ -84,11 +84,16 @@ describe('AnalyticsReportingService', () => {
       repo as unknown as AnalyticsRepository,
       counters as unknown as AnalyticsCountersService,
     );
+    const prisma = {
+      giftTransaction: { aggregate: jest.fn().mockResolvedValue({ _sum: { creatorEarnings: 0n, totalCoinValue: 0n }, _count: 0 }) },
+      ledgerEntry: { aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0n } }) },
+    };
     service = new AnalyticsReportingService(
       repo as unknown as AnalyticsRepository,
       counters as unknown as AnalyticsCountersService,
       rollup,
       rooms as never,
+      prisma as never,
     );
   });
 

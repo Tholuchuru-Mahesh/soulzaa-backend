@@ -1,7 +1,16 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
-import type { CreatorDailyStat, RoomActivity, RoomDailyStat, RoomMemberRole } from '@prisma/client';
+import {
+  CreatorDailyStat,
+  GiftTxnStatus,
+  RoomActivity,
+  RoomDailyStat,
+  RoomMemberRole,
+  WalletCurrency,
+  WalletTxnReason,
+} from '@prisma/client';
 import type { PlatformRole } from 'src/common/constants';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 import {
   AUDIO_ROOMS_SERVICE,
   type IAudioRoomsService,
@@ -41,6 +50,7 @@ export class AnalyticsReportingService {
     private readonly counters: AnalyticsCountersService,
     private readonly rollup: AnalyticsRollupService,
     @Inject(AUDIO_ROOMS_SERVICE) private readonly rooms: IAudioRoomsService,
+    private readonly prisma: PrismaService,
   ) {}
 
   /** Owner/admin-only room analytics: cumulative + today + revenue + daily series. */
@@ -72,12 +82,12 @@ export class AnalyticsReportingService {
       today: {
         dateKey,
         joins: live.joins,
-        uniqueVisitors: live.uniqueVisitors,
-        peakParticipants: live.peakParticipants,
         messages: live.messages,
         giftCount: live.giftCount,
         giftCoins: live.giftCoins,
         speakingSeconds: live.speakingSeconds,
+        uniqueVisitors: live.uniqueVisitors,
+        peakParticipants: live.peakParticipants,
         engagementScore: this.rollup.roomEngagement(live),
       },
       revenue: { giftCoins: giftCoins.toString(), creatorCoins: creatorCoins.toString() },
@@ -87,12 +97,26 @@ export class AnalyticsReportingService {
 
   /** A user's own creator analytics: today + lifetime totals + revenue + series. */
   async getMyAnalytics(userId: string, days: number): Promise<CreatorAnalyticsView> {
-    const dateKey = dateKeyOf();
-    const [live, totals, series, revenue] = await Promise.all([
-      this.counters.readCreator(userId, dateKey),
-      this.repo.sumCreatorDailyStats(userId),
+    const now = new Date();
+    const todayKey = dateKeyOf(now);
+
+    const [live, seriesRows, revenue, giftLifetime, treasurePkSums] = await Promise.all([
+      this.counters.readCreator(userId, todayKey),
       this.repo.listCreatorDailyStats(userId, dateKeyDaysAgo(days)),
       this.repo.getRevenueReports({ userId, roomId: GLOBAL_ANALYTICS_UUID }),
+      this.prisma.giftTransaction.aggregate({
+        where: { receiverId: userId, status: GiftTxnStatus.COMPLETED },
+        _sum: { creatorEarnings: true, totalCoinValue: true },
+        _count: true,
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          wallet: { userId },
+          reason: { in: [WalletTxnReason.TREASURE_BOX, WalletTxnReason.PK_REWARD] },
+          currency: WalletCurrency.GOLD,
+        },
+        _sum: { amount: true },
+      }),
     ]);
 
     let giftCoins = 0n;
@@ -102,27 +126,85 @@ export class AnalyticsReportingService {
       creatorCoins += r.creatorCoins;
     }
 
+    const lifetimeGifts = Number(giftLifetime._sum.creatorEarnings ?? 0n);
+    const treasurePkTotal = Number(treasurePkSums._sum?.amount ?? 0n);
+    const lifetimeEarningsTotal = lifetimeGifts + treasurePkTotal;
+
+    // Build complete dailySeries map for the requested days (ordered oldest -> newest)
+    const map = new Map(seriesRows.map((s) => [s.dateKey, s]));
+    const formattedSeries: CreatorDailyStatView[] = [];
+
+    for (let i = days - 1; i >= 0; i--) {
+      const key = dateKeyDaysAgo(i);
+      if (key === todayKey) {
+        const existing = map.get(key);
+        const liveEarn = live.creatorEarnings;
+        const liveCoins = live.giftCoinsReceived;
+        const liveCount = live.giftsReceivedCount;
+        formattedSeries.push({
+          dateKey: key,
+          giftsReceivedCount: (existing?.giftsReceivedCount ?? 0) + liveCount,
+          giftCoinsReceived: (
+            (existing ? Number(existing.giftCoinsReceived) : 0) + liveCoins
+          ).toString(),
+          creatorEarnings: (
+            (existing ? Number(existing.creatorEarnings) : 0) + liveEarn
+          ).toString(),
+          roomsHosted: (existing?.roomsHosted ?? 0) + live.roomsHosted,
+          speakingSeconds: (
+            (existing ? Number(existing.speakingSeconds) : 0) + live.speakingSeconds
+          ).toString(),
+          engagementScore: existing?.engagementScore ?? this.rollup.creatorEngagement(live),
+        });
+      } else if (map.has(key)) {
+        const s = map.get(key)!;
+        formattedSeries.push(this.creatorDailyView(s));
+      } else {
+        formattedSeries.push({
+          dateKey: key,
+          giftsReceivedCount: 0,
+          giftCoinsReceived: '0',
+          creatorEarnings: '0',
+          roomsHosted: 0,
+          speakingSeconds: '0',
+          engagementScore: 0,
+        });
+      }
+    }
+
+    const todayItem = formattedSeries.find((s) => s.dateKey === todayKey);
+    const todayEarnings = todayItem ? Number(todayItem.creatorEarnings) : live.creatorEarnings;
+
     return {
       userId,
       today: {
-        dateKey,
-        giftsReceivedCount: live.giftsReceivedCount,
-        giftCoinsReceived: live.giftCoinsReceived,
-        creatorEarnings: live.creatorEarnings,
-        roomsHosted: live.roomsHosted,
-        speakingSeconds: live.speakingSeconds,
+        dateKey: todayKey,
+        giftsReceivedCount: todayItem ? todayItem.giftsReceivedCount : live.giftsReceivedCount,
+        giftCoinsReceived: todayItem ? Number(todayItem.giftCoinsReceived) : live.giftCoinsReceived,
+        creatorEarnings: todayEarnings,
+        roomsHosted: todayItem ? todayItem.roomsHosted : live.roomsHosted,
+        speakingSeconds: todayItem ? Number(todayItem.speakingSeconds) : live.speakingSeconds,
         engagementScore: this.rollup.creatorEngagement(live),
       },
       totals: {
-        giftsReceivedCount: totals.giftsReceivedCount,
-        giftCoinsReceived: totals.giftCoinsReceived.toString(),
-        creatorEarnings: totals.creatorEarnings.toString(),
-        roomsHosted: totals.roomsHosted,
-        speakingSeconds: totals.speakingSeconds.toString(),
-        audioHours: Math.round((Number(totals.speakingSeconds) / 3600) * 100) / 100,
+        giftsReceivedCount: Number(giftLifetime._count ?? 0),
+        giftCoinsReceived: (giftLifetime._sum.totalCoinValue ?? 0n).toString(),
+        // Wallet Earnings = Creator Earnings Lifetime (authoritative exact lifetime total)
+        creatorEarnings: lifetimeEarningsTotal.toString(),
+        roomsHosted: seriesRows.reduce((acc, r) => acc + r.roomsHosted, 0) + live.roomsHosted,
+        speakingSeconds: (
+          seriesRows.reduce((acc, r) => acc + r.speakingSeconds, 0n) + BigInt(live.speakingSeconds)
+        ).toString(),
+        audioHours:
+          Math.round(
+            ((Number(seriesRows.reduce((acc, r) => acc + r.speakingSeconds, 0n)) +
+              live.speakingSeconds) /
+              3600) *
+              100,
+          ) / 100,
       },
       revenue: { giftCoins: giftCoins.toString(), creatorCoins: creatorCoins.toString() },
-      dailySeries: series.map((s) => this.creatorDailyView(s)),
+      dailySeries: formattedSeries,
     };
   }
 

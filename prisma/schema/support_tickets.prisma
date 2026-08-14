@@ -1,0 +1,103 @@
+// ============================================================
+// Support Tickets — user-raised support requests that Officials
+// review, respond to, assign, and close.
+// Owned by the "support-tickets" module.
+// No cross-module FK relations — reference other domains by id only.
+// ============================================================
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  ESCALATED
+}
+
+enum SupportTicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SupportTicketCategory {
+  ACCOUNT
+  BILLING
+  CONTENT
+  TECHNICAL
+  ABUSE
+  OTHER
+}
+
+/// A support request raised by a platform user.
+/// `countryId`/`stateId`/`regionId` mirror the submitter's location at the
+/// time of creation so the ticket stays in the correct Official's queue even
+/// if the user later changes region. `assignedOfficialId` is set when an
+/// Official picks up the ticket; `escalatedToAdminId` is set on escalation.
+model SupportTicket {
+  id                  String                @id @default(uuid()) @db.Uuid
+  submitterId         String                @db.Uuid
+  title               String
+  description         String
+  category            SupportTicketCategory @default(OTHER)
+  priority            SupportTicketPriority @default(MEDIUM)
+  status              SupportTicketStatus   @default(OPEN)
+  assignedOfficialId  String?               @db.Uuid
+  escalatedToAdminId  String?               @db.Uuid
+
+  // Geographic snapshot at ticket creation time — used for scope filtering.
+  countryId  String? @db.Uuid
+  stateId    String? @db.Uuid
+  regionId   String? @db.Uuid
+
+  resolvedAt   DateTime?
+  closedAt     DateTime?
+  escalatedAt  DateTime?
+
+  // ---- Audit ----
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages SupportTicketMessage[]
+  audits   SupportTicketAudit[]
+
+  @@index([status, stateId])
+  @@index([status, countryId])
+  @@index([assignedOfficialId])
+  @@index([submitterId])
+  @@index([createdAt])
+  @@map("support_tickets")
+}
+
+/// A message thread on a support ticket (user reply or staff reply).
+model SupportTicketMessage {
+  id       String  @id @default(uuid()) @db.Uuid
+  ticketId String  @db.Uuid
+  authorId String  @db.Uuid
+  /// true = posted by Official/Admin staff; false = posted by submitter
+  isStaff  Boolean @default(false)
+  message  String
+
+  createdAt DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@map("support_ticket_messages")
+}
+
+/// Append-only audit trail for support ticket lifecycle events.
+model SupportTicketAudit {
+  id       String  @id @default(uuid()) @db.Uuid
+  ticketId String  @db.Uuid
+  actorId  String? @db.Uuid
+  action   String
+  details  Json?
+
+  createdAt DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@map("support_ticket_audits")
+}

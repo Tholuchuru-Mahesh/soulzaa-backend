@@ -17,7 +17,7 @@ describe('LoginSecurityService', () => {
     const config = {
       get: () => ({ loginMaxAttempts: 3, loginLockSeconds: 900 }),
     } as unknown as ConfigService;
-    service = new LoginSecurityService(cache as unknown as CacheService, config);
+    service = new LoginSecurityService(cache as unknown as CacheService, {} as any, config);
   });
 
   it('throws ACCOUNT_LOCKED when a lock exists', async () => {

@@ -63,7 +63,7 @@ export class ModeratorLiveMonitoringController {
         orderBy: { createdAt: 'desc' },
         take: 100,
       }),
-      this.prisma.live_streams.findMany({
+      this.prisma.liveStream.findMany({
         where: { status: LiveStreamStatus.ACTIVE, ...scopedFilter },
         select: { id: true, title: true, hostId: true, createdAt: true },
         orderBy: { createdAt: 'desc' },

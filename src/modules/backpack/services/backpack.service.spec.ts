@@ -51,6 +51,7 @@ describe('BackpackService', () => {
       repo as unknown as BackpackRepository,
       locks as unknown as LockService,
       bus,
+      { invalidateCache: jest.fn().mockResolvedValue(undefined) } as any,
     );
   });
 

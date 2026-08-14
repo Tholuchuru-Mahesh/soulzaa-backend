@@ -1,7 +1,7 @@
 import { Global, Module } from '@nestjs/common';
-import { ROLE_SOURCE } from 'src/common/interfaces/role-source.interface';
-import { PrismaModule } from 'src/infra/prisma/prisma.module';
-import { RedisModule } from 'src/infra/redis/redis.module';
+import { ROLE_SOURCE } from '../../common/interfaces/role-source.interface';
+import { PrismaModule } from '../../infra/prisma/prisma.module';
+import { RedisModule } from '../../infra/redis/redis.module';
 import { AuthorizationController } from './controllers/authorization.controller';
 import { RbacPermissionsGuard } from './guards/rbac-permissions.guard';
 import { RbacRolesGuard } from './guards/rbac-roles.guard';

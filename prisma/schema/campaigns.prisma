@@ -1,0 +1,70 @@
+// ============================================================
+// Campaigns & Community Programs — Official Portal operational
+// management surfaces.
+//
+// Campaigns: time-bounded promotional or engagement initiatives
+// an Official runs in their territory. Community Programs:
+// ongoing (or recurring) community-engagement programs at the
+// country level.
+// ============================================================
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+/// A territory-scoped campaign managed by an Official.
+/// Campaigns may have rewards, milestones, or just be a
+/// labeled time window for reporting purposes.
+model Campaign {
+  id          String         @id @default(uuid()) @db.Uuid
+  createdById String         @db.Uuid
+  title       String
+  description String?
+  status      CampaignStatus @default(DRAFT)
+  startAt     DateTime
+  endAt       DateTime
+
+  // Geographic scope snapshot at creation — the Official's territory
+  countryId String? @db.Uuid
+  stateId   String? @db.Uuid
+  regionId  String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdById])
+  @@index([countryId, status])
+  @@index([stateId, status])
+  @@index([regionId, status])
+  @@index([startAt, endAt])
+  @@map("campaigns")
+}
+
+/// Community programs run by Officials — typically ongoing
+/// regional initiatives (e.g. creator bootcamps, moderation
+/// drives, charity streams).
+model CommunityProgram {
+  id          String   @id @default(uuid()) @db.Uuid
+  createdById String   @db.Uuid
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  startAt     DateTime?
+  endAt       DateTime?
+
+  // Geographic scope snapshot
+  countryId String? @db.Uuid
+  stateId   String? @db.Uuid
+  regionId  String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdById])
+  @@index([countryId, isActive])
+  @@index([stateId, isActive])
+  @@map("community_programs")
+}

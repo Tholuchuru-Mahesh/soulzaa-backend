@@ -79,6 +79,19 @@ async function bootstrap(): Promise<void> {
   await app.listen(appCfg.port, '0.0.0.0');
   const logger = app.get(PinoLogger);
   logger.log(`🚀 Soulzaa backend listening on port ${appCfg.port} (/${appCfg.apiPrefix})`);
+
+  const gracefulShutdown = async () => {
+    try {
+      await app.close();
+    } catch {
+      // ignore shutdown errors
+    } finally {
+      process.exit(0);
+    }
+  };
+
+  process.once('SIGINT', gracefulShutdown);
+  process.once('SIGTERM', gracefulShutdown);
 }
 
 void bootstrap();

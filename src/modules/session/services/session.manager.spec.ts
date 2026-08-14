@@ -58,6 +58,7 @@ describe('SessionManager', () => {
       repo as unknown as SessionRepository,
       bus,
       devices as unknown as IDeviceService,
+      {} as any,
       config,
     );
   });

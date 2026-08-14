@@ -1,4 +1,4 @@
-import { DomainEvent } from 'src/common/events';
+import { DomainEvent } from '../../../common/events';
 
 /**
  * Published when a user's role assignments change.

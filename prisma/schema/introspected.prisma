@@ -27,35 +27,11 @@ model live_stream_moderation_actions {
   reason       String?
   evidenceId   String?
   createdAt    DateTime     @default(now())
-  live_streams live_streams @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  stream                       LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
 
   @@index([moderatorId])
   @@index([streamId])
   @@index([targetUserId])
-}
-
-model live_streams {
-  id                             String                           @id @db.Uuid
-  hostId                         String                           @db.Uuid
-  title                          String?
-  description                    String?
-  regionId                       String?                          @db.Uuid
-  stateId                        String?                          @db.Uuid
-  countryId                      String?                          @db.Uuid
-  status                         LiveStreamStatus                 @default(ACTIVE)
-  viewerCount                    Int                              @default(0)
-  startedAt                      DateTime                         @default(now())
-  endedAt                        DateTime?
-  endedBy                        String?                          @db.Uuid
-  createdAt                      DateTime                         @default(now())
-  updatedAt                      DateTime
-  live_stream_moderation_actions live_stream_moderation_actions[]
-
-  @@index([countryId])
-  @@index([hostId])
-  @@index([regionId])
-  @@index([stateId])
-  @@index([status])
 }
 
 model moderator_task_assignments {
@@ -101,6 +77,9 @@ enum InvestigationStatus {
 }
 
 enum LiveStreamStatus {
+  SCHEDULED
+  LIVE
+  PAUSED
   ACTIVE
   ENDED
   SUSPENDED
