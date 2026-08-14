@@ -134,7 +134,8 @@ export class CoinSellerCheckoutService {
 
     const order = await this.inventory.createPurchaseOrder(sellerId, packageId, idempotencyKey);
 
-    const meta = (order.metadata as { paymentLinkUrl?: string; paymentLinkId?: string } | null) ?? {};
+    const meta =
+      (order.metadata as { paymentLinkUrl?: string; paymentLinkId?: string } | null) ?? {};
     // A replayed request returns the link it already made rather than opening a
     // second payable page for the same money.
     if (meta.paymentLinkUrl) {
@@ -240,10 +241,14 @@ export class CoinSellerCheckoutService {
     // Ownership, not just existence: without this any authenticated seller
     // could confirm another seller's order into their own inventory.
     if (order.sellerId !== sellerId) {
-      throw new BusinessException(ERROR_CODES.FORBIDDEN, 'Purchase order belongs to another seller');
+      throw new BusinessException(
+        ERROR_CODES.FORBIDDEN,
+        'Purchase order belongs to another seller',
+      );
     }
 
-    const razorpayOrderId = (order.metadata as { razorpayOrderId?: string } | null)?.razorpayOrderId;
+    const razorpayOrderId = (order.metadata as { razorpayOrderId?: string } | null)
+      ?.razorpayOrderId;
     if (!razorpayOrderId) {
       throw new BusinessException(
         ERROR_CODES.VALIDATION_ERROR,
@@ -259,12 +264,12 @@ export class CoinSellerCheckoutService {
       this.logger.warn(`Razorpay signature mismatch on purchase order ${purchaseOrderId}`);
       await this.prisma.coinSellerInventoryPurchaseOrder.update({
         where: { id: purchaseOrderId },
-        data: { status: 'FAILED', metadata: { ...((order.metadata as object) ?? {}), signatureMismatch: true } },
+        data: {
+          status: 'FAILED',
+          metadata: { ...((order.metadata as object) ?? {}), signatureMismatch: true },
+        },
       });
-      throw new BusinessException(
-        ERROR_CODES.VALIDATION_ERROR,
-        'Payment verification failed',
-      );
+      throw new BusinessException(ERROR_CODES.VALIDATION_ERROR, 'Payment verification failed');
     }
 
     return this.creditVerifiedOrder(purchaseOrderId, razorpayPaymentId, sellerId);

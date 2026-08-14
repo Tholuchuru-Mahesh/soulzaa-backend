@@ -48,7 +48,6 @@ export class SellCoinsDto {
   idempotencyKey!: string;
 }
 
-
 /**
  * What the client hands back from Razorpay checkout.
  *

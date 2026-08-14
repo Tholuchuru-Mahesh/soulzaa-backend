@@ -101,12 +101,7 @@ describe('CoinSellerCheckoutService', () => {
       const { service, prisma, inventory } = build();
       prisma.coinSellerInventoryPurchaseOrder.findUnique.mockResolvedValue(withGatewayOrder);
 
-      await service.confirmCheckout(
-        SELLER,
-        'po-1',
-        'pay_1',
-        signatureFor('order_rzp1', 'pay_1'),
-      );
+      await service.confirmCheckout(SELLER, 'po-1', 'pay_1', signatureFor('order_rzp1', 'pay_1'));
 
       expect(inventory.approvePurchaseOrder).toHaveBeenCalledWith('po-1', SELLER);
     });
@@ -116,7 +111,12 @@ describe('CoinSellerCheckoutService', () => {
       prisma.coinSellerInventoryPurchaseOrder.findUnique.mockResolvedValue(withGatewayOrder);
 
       await expect(
-        service.confirmCheckout(SELLER, 'po-1', 'pay_1', signatureFor('order_rzp1', 'pay_1', 'wrong-secret')),
+        service.confirmCheckout(
+          SELLER,
+          'po-1',
+          'pay_1',
+          signatureFor('order_rzp1', 'pay_1', 'wrong-secret'),
+        ),
       ).rejects.toThrow(/verification failed/i);
 
       expect(inventory.approvePurchaseOrder).not.toHaveBeenCalled();
