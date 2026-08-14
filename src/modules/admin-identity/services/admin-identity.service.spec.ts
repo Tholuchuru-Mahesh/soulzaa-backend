@@ -1,4 +1,4 @@
-import { AdminIdentityService } from './admin-identity.service';
+import { HIDDEN_ROLES, AdminIdentityService } from './admin-identity.service';
 
 describe('AdminIdentityService.syncHiddenState', () => {
   const users = { setHiddenAccount: jest.fn(), findById: jest.fn() } as any;
@@ -29,10 +29,10 @@ describe('AdminIdentityService.syncHiddenState', () => {
     expect(users.setHiddenAccount).toHaveBeenCalledWith('u-3', false);
   });
 
-  it('does not hide a MODERATOR — only ADMIN and SUPER_ADMIN are hidden', async () => {
+  it('hides a MODERATOR — moderator identities are anonymous too', async () => {
     roles.getRoleNames.mockResolvedValue(['MODERATOR']);
     await service.syncHiddenState('u-4');
-    expect(users.setHiddenAccount).toHaveBeenCalledWith('u-4', false);
+    expect(users.setHiddenAccount).toHaveBeenCalledWith('u-4', true);
   });
 
   it('invalidates the cached profile so the change takes effect immediately', async () => {
@@ -74,7 +74,9 @@ describe('AdminIdentityService.backfill', () => {
 
     const result = await service.backfill();
 
-    expect(roles.getUserIdsWithAnyRole).toHaveBeenCalledWith(['SUPER_ADMIN', 'ADMIN']);
+    // Asserted against the constant rather than a literal list, so adding a
+    // role to HIDDEN_ROLES does not silently leave the backfill untested.
+    expect(roles.getUserIdsWithAnyRole).toHaveBeenCalledWith([...HIDDEN_ROLES]);
     expect(users.setHiddenAccount).toHaveBeenCalledWith('a-1', true);
     expect(users.setHiddenAccount).toHaveBeenCalledWith('a-2', true);
     expect(result).toEqual({ scanned: 2, hidden: 2 });

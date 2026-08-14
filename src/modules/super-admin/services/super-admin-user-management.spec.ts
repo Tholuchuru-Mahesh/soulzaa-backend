@@ -45,6 +45,27 @@ describe('Super Admin Phase 2B: User & Role Management Services', () => {
       findMany: jest.fn(),
       count: jest.fn(),
     },
+    // getUserProfileDetails fans out over the whole profile in one Promise.all,
+    // so every model it touches needs a stub here — a missing one surfaces as
+    // "Cannot read properties of undefined" rather than as a null result.
+    // The defaults matter too: the method maps over each findMany result, so an
+    // unstubbed resolution (undefined) throws instead of yielding an empty list.
+    userStatistics: { findUnique: jest.fn().mockResolvedValue(null) },
+    referralRelationship: { findUnique: jest.fn().mockResolvedValue(null) },
+    userVerification: { findUnique: jest.fn().mockResolvedValue(null) },
+    familyMember: { findUnique: jest.fn().mockResolvedValue(null) },
+    family: { findUnique: jest.fn().mockResolvedValue(null) },
+    agencyRelationship: { findFirst: jest.fn().mockResolvedValue(null) },
+    wallet: { findUnique: jest.fn().mockResolvedValue(null) },
+    walletTransaction: { findMany: jest.fn().mockResolvedValue([]) },
+    purchaseOrder: { findMany: jest.fn().mockResolvedValue([]) },
+    giftTransaction: { findMany: jest.fn().mockResolvedValue([]) },
+    gift: { findMany: jest.fn().mockResolvedValue([]) },
+    roomLog: { findMany: jest.fn().mockResolvedValue([]) },
+    videoRoomLog: { findMany: jest.fn().mockResolvedValue([]) },
+    audioRoom: { findMany: jest.fn().mockResolvedValue([]) },
+    gameParticipant: { findMany: jest.fn().mockResolvedValue([]) },
+    gameDefinition: { findMany: jest.fn().mockResolvedValue([]) },
   };
 
   const mockRoleService = {

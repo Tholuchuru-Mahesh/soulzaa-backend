@@ -1510,6 +1510,35 @@ export const DEFAULT_PERMISSIONS = [
     description: 'Can view dashboard usage and health statistics',
   },
 
+  // Review permissions for the official portal. These are enforced by
+  // controllers but were never declared here, which left every one of those
+  // endpoints reachable only by the SUPER_ADMIN wildcard — no other role could
+  // be granted a code the catalogue does not define.
+  {
+    code: 'content_request.review',
+    module: 'content_request',
+    action: 'review',
+    category: 'SYSTEM',
+    displayName: 'Review Content Requests',
+    description: 'Review, approve or reject creator content requests',
+  },
+  {
+    code: 'support_ticket.review',
+    module: 'support_ticket',
+    action: 'review',
+    category: 'SYSTEM',
+    displayName: 'Review Support Tickets',
+    description: 'View, assign and respond to support tickets in scope',
+  },
+  {
+    code: 'moderator.warning.review',
+    module: 'moderator_warning',
+    action: 'review',
+    category: 'SYSTEM',
+    displayName: 'Review Moderator Warnings',
+    description: 'Review and action internal moderator warning records',
+  },
+
   // Moderator Workforce & Operational System Permissions
   {
     code: 'moderator.shift.view',

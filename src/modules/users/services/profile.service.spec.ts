@@ -384,6 +384,7 @@ describe('ProfileService', () => {
         level: 24,
         vipLevel: 3,
         verified: true,
+        equippedFrameUrl: null,
       });
     });
 
@@ -409,6 +410,7 @@ describe('ProfileService', () => {
         level: 1,
         vipLevel: 0,
         verified: false,
+        equippedFrameUrl: null,
       });
     });
 

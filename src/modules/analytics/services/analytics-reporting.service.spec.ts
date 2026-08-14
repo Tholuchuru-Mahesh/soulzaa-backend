@@ -1,7 +1,15 @@
+import { dateKeyOf } from '../constants/analytics.constants';
 import { AnalyticsRepository } from '../repositories/analytics.repository';
 import { AnalyticsCountersService } from './analytics-counters.service';
 import { AnalyticsReportingService, type AnalyticsActor } from './analytics-reporting.service';
 import { AnalyticsRollupService } from './analytics-rollup.service';
+
+/**
+ * getMyAnalytics returns a zero-filled window ending today, so a row keyed to a
+ * fixed calendar date silently falls out of range as time passes. The creator's
+ * day is pinned to today for that reason.
+ */
+const TODAY_KEY = dateKeyOf();
 
 const ROOM = 'room-1';
 const OWNER: AnalyticsActor = { id: 'owner-1', roles: ['USER'] };
@@ -30,7 +38,7 @@ describe('AnalyticsReportingService', () => {
       }),
       listRoomDailyStats: jest.fn().mockResolvedValue([
         {
-          dateKey: '20260706',
+          dateKey: TODAY_KEY,
           joins: 8,
           uniqueVisitors: 6,
           peakParticipants: 4,
@@ -43,7 +51,7 @@ describe('AnalyticsReportingService', () => {
       ]),
       listCreatorDailyStats: jest.fn().mockResolvedValue([
         {
-          dateKey: '20260706',
+          dateKey: TODAY_KEY,
           giftsReceivedCount: 4,
           giftCoinsReceived: 900n,
           creatorEarnings: 450n,
@@ -86,9 +94,12 @@ describe('AnalyticsReportingService', () => {
     );
     const prisma = {
       giftTransaction: {
+        // Lifetime totals now come from the gift ledger rather than
+        // sumCreatorDailyStats; these mirror the daily-stat figures above so
+        // the assertions keep describing the same creator.
         aggregate: jest
           .fn()
-          .mockResolvedValue({ _sum: { creatorEarnings: 0n, totalCoinValue: 0n }, _count: 0 }),
+          .mockResolvedValue({ _sum: { creatorEarnings: 450n, totalCoinValue: 900n }, _count: 4 }),
       },
       ledgerEntry: { aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0n } }) },
     };
@@ -130,11 +141,16 @@ describe('AnalyticsReportingService', () => {
     it('returns today, lifetime totals, revenue and series', async () => {
       const res = await service.getMyAnalytics(OWNER.id, 30);
       expect(res.userId).toBe(OWNER.id);
-      expect(res.today.giftCoinsReceived).toBe(300);
+      // The banked row now sits on today's slot, so today reads banked + live.
+      expect(res.today.giftCoinsReceived).toBe(1200); // 900 banked + 300 live
       expect(res.totals.creatorEarnings).toBe('450');
-      expect(res.totals.audioHours).toBe(2); // 7200s / 3600
+      // audioHours is now derived from the returned series plus the live
+      // session (300s + 120s), not from sumCreatorDailyStats' 7200s lifetime.
+      expect(res.totals.audioHours).toBe(0.12);
       expect(res.revenue).toEqual({ giftCoins: '1500', creatorCoins: '750' });
-      expect(res.dailySeries[0].creatorEarnings).toBe('450');
+      // The row lands on today's slot, which is the last in the window.
+      const todayRow = res.dailySeries.find((d) => d.dateKey === TODAY_KEY)!;
+      expect(todayRow.creatorEarnings).toBe('600'); // 450 banked + 150 live
     });
   });
 });

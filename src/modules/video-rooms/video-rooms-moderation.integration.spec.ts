@@ -36,6 +36,12 @@ import { VideoRoomsRepository } from './repositories/video-rooms.repository';
 import { VideoRoomModerationExpiryMonitor } from './scheduler/video-room-moderation-expiry.monitor';
 import { VideoRoomAutoModerationService } from './services/video-room-auto-moderation.service';
 import { VideoRoomMediaService } from './services/video-room-media.service';
+import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
+import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
+import { AuditLogService } from 'src/modules/authorization/services/audit-log.service';
+import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import { ModeratorShiftService } from 'src/modules/moderator-shift/services/moderator-shift.service';
+import { ModeratorWarningService } from 'src/modules/moderator-warning/services/moderator-warning.service';
 import type { JoinContext } from './services/video-room-member.service';
 import { VideoRoomMemberService } from './services/video-room-member.service';
 import { VideoRoomModerationQueryService } from './services/video-room-moderation-query.service';
@@ -455,6 +461,16 @@ describe('VR-16 moderation engine — DI graph (video-rooms.module.ts provider w
         { provide: VideoRoomPermissionService, useValue: {} },
         { provide: VideoRoomSessionService, useValue: {} },
         { provide: VideoRoomMediaService, useValue: {} },
+        // VideoRoomReportService now records moderator KPIs. This suite asserts
+        // the DI graph resolves, not what the KPIs contain, so a stub suffices.
+        { provide: ModeratorPerformanceService, useValue: {} },
+        { provide: InvestigationRecordingService, useValue: {} },
+        { provide: AuditLogService, useValue: {} },
+        { provide: WorkforceScopeService, useValue: {} },
+        // Controllers in this graph are now guarded by ShiftActiveGuard, which
+        // takes the shift service.
+        { provide: ModeratorShiftService, useValue: {} },
+        { provide: ModeratorWarningService, useValue: {} },
         {
           provide: getQueueToken(VIDEO_ROOM_MODERATION_QUEUES.PROCESSING),
           useValue: { add: jest.fn() },

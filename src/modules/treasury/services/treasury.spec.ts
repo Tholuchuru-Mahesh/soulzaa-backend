@@ -19,6 +19,29 @@ describe('TreasuryModule Shared Services', () => {
   let seederService: TreasurySeederService;
 
   const mockPrismaService = {
+    // Circulating, reserved and treasury balances are now summed from the
+    // wallet table rather than read off the reserve row; only maxSupply and
+    // isFrozen still come from the reserve. These sums reproduce the same
+    // figures the assertions below have always described.
+    wallet: {
+      aggregate: jest.fn().mockImplementation(({ where }: { where: { type: unknown } }) =>
+        where.type === 'USER_WALLET'
+          ? {
+              _sum: {
+                availableBalance: BigInt('500000000'),
+                lockedBalance: BigInt('60000000'),
+                reservedBalance: BigInt('30000000'),
+                pendingBalance: BigInt('10000000'),
+              },
+            }
+          : {
+              _sum: {
+                availableBalance: BigInt('400000000'),
+                lockedBalance: BigInt('0'),
+              },
+            },
+      ),
+    },
     treasuryReserve: {
       findFirst: jest.fn(),
       create: jest.fn(),

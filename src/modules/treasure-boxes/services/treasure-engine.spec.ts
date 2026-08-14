@@ -17,6 +17,7 @@ import {
 } from './treasure-configuration.service';
 import { TreasureDistributionService } from './treasure-distribution.service';
 import { TreasureEligibilityService } from './treasure-eligibility.service';
+import { TreasureGiftListener } from '../listeners/treasure-gift.listener';
 import { TreasureEventService } from './treasure-event.service';
 import { TreasureHistoryService } from './treasure-history.service';
 import { TreasureProgressService } from './treasure-progress.service';
@@ -402,10 +403,52 @@ describe('Phase 6: Enterprise Treasure Box Engine', () => {
     });
   });
 
-  describe('5. Event-Driven GiftSentEvent Consumption', () => {
-    it('should subscribe to GiftSentEvent and process progress without DB polling', async () => {
+  describe('5. Event-Driven Consumption', () => {
+    it('subscribes to audio_room.created to auto-start the day session', () => {
       eventService.onModuleInit();
-      expect(mockEventBus.subscribe).toHaveBeenCalledWith('gift.sent', expect.any(Function));
+      expect(mockEventBus.subscribe).toHaveBeenCalledWith(
+        'audio_room.created',
+        expect.any(Function),
+      );
+    });
+
+    // gift.sent is no longer subscribed here: it moved to TreasureGiftListener,
+    // which filters by context before calling back into this service. Asserting
+    // it through the listener keeps the gift->progress path covered rather than
+    // just dropping the old expectation.
+    it('routes a room gift from TreasureGiftListener into progress handling', () => {
+      const bus = { subscribe: jest.fn(), publish: jest.fn() };
+      const treasureEvents = { handleGiftSent: jest.fn().mockResolvedValue(undefined) };
+      const rocket = { maybeTrigger: jest.fn().mockResolvedValue(undefined) };
+      const listener = new TreasureGiftListener(
+        bus as never,
+        treasureEvents as never,
+        rocket as never,
+      );
+
+      listener.onModuleInit();
+      expect(bus.subscribe).toHaveBeenCalledWith('gift.sent', expect.any(Function));
+
+      const handler = bus.subscribe.mock.calls[0][1] as (e: unknown) => void;
+      handler({ payload: { contextType: 'AUDIO_ROOM', contextId: 'room-1', transactionId: 't1' } });
+      expect(treasureEvents.handleGiftSent).toHaveBeenCalledWith(
+        expect.objectContaining({ contextId: 'room-1' }),
+      );
+    });
+
+    it('ignores a gift sent outside a room', () => {
+      const bus = { subscribe: jest.fn(), publish: jest.fn() };
+      const treasureEvents = { handleGiftSent: jest.fn() };
+      const rocket = { maybeTrigger: jest.fn() };
+      new TreasureGiftListener(
+        bus as never,
+        treasureEvents as never,
+        rocket as never,
+      ).onModuleInit();
+
+      const handler = bus.subscribe.mock.calls[0][1] as (e: unknown) => void;
+      handler({ payload: { contextType: 'PRIVATE_CHAT', contextId: 'dm-1' } });
+      expect(treasureEvents.handleGiftSent).not.toHaveBeenCalled();
     });
   });
 });

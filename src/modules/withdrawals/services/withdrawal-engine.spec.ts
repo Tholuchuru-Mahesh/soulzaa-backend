@@ -6,6 +6,7 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import { ConfigurationEngineService } from 'src/modules/platform-configuration/services/configuration-engine.service';
 import { CoinEconomyService } from 'src/modules/treasury/services/coin-economy.service';
+import { FinancialPolicyService } from 'src/modules/treasury/services/financial-policy.service';
 import { WALLET_SERVICE } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import { WithdrawalApprovalService } from './withdrawal-approval.service';
 import { WithdrawalAuditService } from './withdrawal-audit.service';
@@ -114,6 +115,18 @@ describe('Phase 10: Enterprise Withdrawal Engine', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: ConfigurationEngineService, useValue: mockPlatformConfigService },
         { provide: CoinEconomyService, useValue: mockCoinEconomyService },
+        // Thresholds now come from financial policy, falling back to the
+        // withdrawal config. Mirrors the 1000/100000 limits asserted below.
+        {
+          provide: FinancialPolicyService,
+          useValue: {
+            getPolicy: jest.fn().mockImplementation((key: string) =>
+              Promise.resolve({
+                value: key === 'min_withdrawal_amount' ? '1000' : '100000',
+              }),
+            ),
+          },
+        },
         { provide: WALLET_SERVICE, useValue: mockWalletService },
         { provide: EVENT_BUS, useValue: mockEventBus },
         { provide: LockService, useValue: mockLockService },

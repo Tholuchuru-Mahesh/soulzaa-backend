@@ -33,7 +33,15 @@ export class VideoRoomViewerQueryService {
   }
 
   async countAudience(roomId: string): Promise<ViewerCountBreakdown> {
-    const presenceRows = await this.members.listPresence(roomId);
+    // The total comes from the presence seam, not from `presenceRows.length`:
+    // listPresence is capped at VIDEO_ROOM_MAX_PAGE_SIZE and drops users whose
+    // identity does not resolve, so counting its rows silently understates a
+    // room larger than one page. The breakdown is still derived from the rows,
+    // which is why the two can legitimately disagree.
+    const [audience, presenceRows] = await Promise.all([
+      this.presence.audienceCount(roomId),
+      this.members.listPresence(roomId),
+    ]);
     let watching = 0,
       background = 0,
       reconnecting = 0;
@@ -43,7 +51,7 @@ export class VideoRoomViewerQueryService {
       else if (s === ViewerStatus.BACKGROUND) background++;
       else if (s === ViewerStatus.RECONNECTING) reconnecting++;
     }
-    return { audience: presenceRows.length, watching, background, reconnecting };
+    return { audience, watching, background, reconnecting };
   }
 
   async getMyViewer(userId: string, roomId: string) {

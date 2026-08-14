@@ -13,12 +13,14 @@ function repoMock() {
 describe('WalletReadService', () => {
   it('getEarnings sums gifts (EARNINGS) + treasure/pk (GOLD) by source; settlement-ready = earnings balance', async () => {
     const repo = repoMock();
-    repo.sumByReason
-      .mockResolvedValueOnce([{ reason: WalletTxnReason.GIFT_RECEIVE, total: 100n }])
-      .mockResolvedValueOnce([
-        { reason: WalletTxnReason.TREASURE_BOX, total: 30n },
-        { reason: WalletTxnReason.PK_REWARD, total: 40n },
-      ]);
+    // One call, not two: gift earnings now come from giftTransaction.aggregate
+    // below, so the only sumByReason call is the GOLD treasure/pk one. The
+    // stale first `once` was being consumed by that call, leaving it with rows
+    // for neither reason.
+    repo.sumByReason.mockResolvedValueOnce([
+      { reason: WalletTxnReason.TREASURE_BOX, total: 30n },
+      { reason: WalletTxnReason.PK_REWARD, total: 40n },
+    ]);
     const wallet = {
       getBalance: jest.fn().mockResolvedValue({ gold: 500, game: 0, diamond: 100 }),
     };
@@ -34,18 +36,16 @@ describe('WalletReadService', () => {
     expect(res.bySource).toEqual({ gifts: 100, treasure: 30, pk: 40 });
     expect(res.totalEarned).toBe(170);
     expect(res.settlementReady).toBe(100);
+    // Gifts are read from giftTransaction now, so the ledger is consulted once,
+    // for the GOLD treasure/pk rewards only.
+    expect(repo.sumByReason).toHaveBeenCalledTimes(1);
     expect(repo.sumByReason).toHaveBeenNthCalledWith(
       1,
-      'u1',
-      [WalletTxnReason.GIFT_RECEIVE],
-      WalletCurrency.DIAMOND,
-    );
-    expect(repo.sumByReason).toHaveBeenNthCalledWith(
-      2,
       'u1',
       [WalletTxnReason.TREASURE_BOX, WalletTxnReason.PK_REWARD],
       WalletCurrency.GOLD,
     );
+    expect(prisma.giftTransaction.aggregate).toHaveBeenCalled();
   });
 
   it('getRewards maps ledger rows to RewardDto (paginated)', async () => {

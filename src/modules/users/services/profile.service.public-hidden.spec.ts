@@ -23,9 +23,17 @@ describe('ProfileService — public lookup of a hidden account', () => {
       findByUsername: jest.fn(async () => opts.target),
     };
     const privacy = { check: jest.fn().mockResolvedValue(true) };
+    // Staff identification now also consults RBAC rows, not just the legacy
+    // `roles` array. `viewerHidden` has always meant "the viewer is one of
+    // these staff accounts", so it answers here too.
+    const prisma = {
+      userRole: {
+        findMany: jest.fn(async () => (opts.viewerHidden ? [{ role: { name: 'ADMIN' } }] : [])),
+      },
+    };
 
     const service = Object.create(ProfileService.prototype) as ProfileService;
-    Object.assign(service, { users, privacy });
+    Object.assign(service, { users, privacy, prisma });
     (
       service as unknown as { getProfileView: (id: string) => Promise<ProfileView | null> }
     ).getProfileView = async (id) => ({ id }) as ProfileView;

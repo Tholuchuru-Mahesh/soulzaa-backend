@@ -58,7 +58,13 @@ describe('SessionManager', () => {
       repo as unknown as SessionRepository,
       bus,
       devices as unknown as IDeviceService,
-      {} as any,
+      // getMaxConcurrentLimit() reads the viewer's roles to cap moderators at a
+      // single session; these tests are about the ordinary limit, so the user
+      // resolves as a non-moderator.
+      {
+        user: { findUnique: jest.fn().mockResolvedValue({ roles: ['USER'] }) },
+        userRole: { findFirst: jest.fn().mockResolvedValue(null) },
+      } as any,
       config,
     );
   });
