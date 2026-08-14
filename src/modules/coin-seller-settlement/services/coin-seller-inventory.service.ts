@@ -126,7 +126,10 @@ export class CoinSellerInventoryService {
       if (!order) {
         throw new BusinessException(ERROR_CODES.NOT_FOUND, 'Purchase order not found');
       }
-      if (order.status !== 'PENDING_PAYMENT' && order.status !== 'PENDING_APPROVAL') {
+      // Only these two are approvable, and both exist in InventoryPurchaseStatus.
+      // This previously also accepted 'PENDING_APPROVAL', which is not a member
+      // of the enum and so could never match any stored row.
+      if (order.status !== 'PENDING_PAYMENT' && order.status !== 'PAYMENT_VERIFIED') {
         throw new BusinessException(ERROR_CODES.VALIDATION_ERROR, 'Order not in a pending state');
       }
 
@@ -151,10 +154,14 @@ export class CoinSellerInventoryService {
       });
 
       // Update Order
+      // INVENTORY_CREDITED, not 'COMPLETED': the latter is not a member of
+      // InventoryPurchaseStatus, so Postgres rejected the write and the whole
+      // approval transaction rolled back. TypeScript did not catch it because
+      // `tx` is typed `any`.
       const approvedOrder = await tx.coinSellerInventoryPurchaseOrder.update({
         where: { id: orderId },
         data: {
-          status: 'COMPLETED',
+          status: 'INVENTORY_CREDITED',
           approvedBy: adminId,
           approvedAt: new Date(),
           creditedAt: new Date(),

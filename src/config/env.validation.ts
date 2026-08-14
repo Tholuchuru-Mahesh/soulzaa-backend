@@ -138,7 +138,9 @@ export const envSchema = z.object({
   // Use Apple's sandbox verification host (development builds).
   APPLE_IAP_USE_SANDBOX: z.coerce.boolean().default(false),
   // Razorpay key secret — signs `{order_id}|{payment_id}`.
+  RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
   // Stripe webhook signing secret (`whsec_...`).
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   // Allows the MOCK_GATEWAY provider to approve receipts. Must stay false in

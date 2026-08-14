@@ -203,7 +203,9 @@ export const paymentsConfig = registerAs('payments', () => ({
   googleRtdnServiceAccountEmail: env().GOOGLE_RTDN_SERVICE_ACCOUNT_EMAIL,
   appleSharedSecret: env().APPLE_IAP_SHARED_SECRET,
   appleUseSandbox: env().APPLE_IAP_USE_SANDBOX,
+  razorpayKeyId: env().RAZORPAY_KEY_ID,
   razorpayKeySecret: env().RAZORPAY_KEY_SECRET,
+  razorpayWebhookSecret: env().RAZORPAY_WEBHOOK_SECRET,
   stripeWebhookSecret: env().STRIPE_WEBHOOK_SECRET,
   allowMockGateway: env().PAYMENTS_ALLOW_MOCK_GATEWAY,
 }));

@@ -5,6 +5,7 @@ import { WalletModule } from 'src/modules/wallet/wallet.module';
 import { CoinSellerSettlementController } from './controllers/coin-seller-settlement.controller';
 import { CoinSellerInventoryController } from './controllers/coin-seller-inventory.controller';
 import { CoinSellerOfficialController } from './controllers/coin-seller-official.controller';
+import { CoinSellerWebhookController } from './controllers/coin-seller-webhook.controller';
 import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
 import {
   CoinSellerAuditService,
@@ -19,12 +20,19 @@ import {
   CoinSellerValidationService,
   CoinSellerInventoryService,
   CoinSellerUserSaleService,
+  CoinSellerCheckoutService,
+  CoinSellerPanelService,
 } from './services';
 
 @Global()
 @Module({
   imports: [PlatformConfigurationModule, TreasuryModule, WalletModule, MobileWorkforceModule],
-  controllers: [CoinSellerSettlementController, CoinSellerInventoryController, CoinSellerOfficialController],
+  controllers: [
+    CoinSellerSettlementController,
+    CoinSellerInventoryController,
+    CoinSellerOfficialController,
+    CoinSellerWebhookController,
+  ],
   providers: [
     CoinSellerConfigurationService,
     CoinSellerCommissionService,
@@ -32,6 +40,8 @@ import {
     CoinSellerValidationService,
     CoinSellerInventoryService,
     CoinSellerUserSaleService,
+    CoinSellerCheckoutService,
+    CoinSellerPanelService,
     CoinSellerSettlementService,
     CoinSellerHistoryService,
     CoinSellerAuditService,
@@ -46,6 +56,8 @@ import {
     CoinSellerValidationService,
     CoinSellerInventoryService,
     CoinSellerUserSaleService,
+    CoinSellerCheckoutService,
+    CoinSellerPanelService,
     CoinSellerSettlementService,
     CoinSellerHistoryService,
     CoinSellerAuditService,

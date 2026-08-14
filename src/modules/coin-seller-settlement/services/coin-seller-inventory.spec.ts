@@ -291,7 +291,7 @@ describe('Coin Seller inventory and user sale', () => {
         sellerId: SELLER,
         inventoryId: INVENTORY,
         coinAmount: BigInt(100000),
-        status: 'PENDING_APPROVAL',
+        status: 'PAYMENT_VERIFIED',
         inventory: { availableBalance: BigInt(0) },
       });
       tx.coinSellerInventoryPurchaseOrder.update.mockResolvedValue({ id: 'po-1' });
@@ -322,7 +322,7 @@ describe('Coin Seller inventory and user sale', () => {
         sellerId: SELLER,
         inventoryId: INVENTORY,
         coinAmount: BigInt(100000),
-        status: 'PENDING_APPROVAL',
+        status: 'PAYMENT_VERIFIED',
         inventory: { availableBalance: BigInt(0) },
       });
       tx.treasuryReserve.findFirst.mockResolvedValue({

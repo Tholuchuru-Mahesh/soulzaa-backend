@@ -16,7 +16,11 @@ async function bootstrap(): Promise<void> {
     return Number(this);
   };
 
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // `rawBody` keeps the untouched request bytes alongside the parsed body.
+  // Gateway webhooks (Razorpay) sign the exact bytes they sent, so verifying
+  // against a re-serialised object would fail on any key reordering or
+  // whitespace difference.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
 
   // Structured logging (pino) as the app logger.
   app.useLogger(app.get(PinoLogger));

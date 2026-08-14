@@ -10,3 +10,5 @@ export * from './coin-seller-audit.service';
 export * from './coin-seller-statistics.service';
 export * from './coin-seller-query.service';
 export * from './coin-seller-event.service';
+export * from './coin-seller-checkout.service';
+export * from './coin-seller-panel.service';
