@@ -68,6 +68,12 @@ describe('Coin Seller inventory and user sale', () => {
       user: {
         findUnique: jest.fn(),
       },
+      // The country resolver consults the countries table so a normalised
+      // countryId and a free-text name collapse to the same code.
+      country: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     };
 
     mockWallet = {
@@ -109,7 +115,7 @@ describe('Coin Seller inventory and user sale', () => {
         availableBalance: BigInt(0),
         ...data,
       }));
-      mockPrisma.user.findUnique.mockResolvedValue({ country: 'IN' });
+      mockPrisma.user.findUnique.mockResolvedValue({ country: 'IN', countryId: null });
 
       await inventoryService.createPurchaseOrder(SELLER, 'pkg-1', 'po-key-1');
 
@@ -128,7 +134,7 @@ describe('Coin Seller inventory and user sale', () => {
         isActive: true,
       });
       mockPrisma.coinSellerInventory.findUnique.mockResolvedValue(null);
-      mockPrisma.user.findUnique.mockResolvedValue({ country: null });
+      mockPrisma.user.findUnique.mockResolvedValue({ country: null, countryId: null });
 
       await expect(
         inventoryService.createPurchaseOrder(SELLER, 'pkg-1', 'po-key-1'),
@@ -141,7 +147,7 @@ describe('Coin Seller inventory and user sale', () => {
         country: 'IN',
         availableBalance: BigInt(50000),
       });
-      mockPrisma.user.findUnique.mockResolvedValue({ country: 'IN' });
+      mockPrisma.user.findUnique.mockResolvedValue({ country: 'IN', countryId: null });
       tx.coinSellerInventory.findUnique.mockResolvedValue({
         id: INVENTORY,
         country: 'IN',
@@ -200,7 +206,7 @@ describe('Coin Seller inventory and user sale', () => {
         country: 'IN',
         availableBalance: BigInt(50000),
       });
-      mockPrisma.user.findUnique.mockResolvedValue({ country: 'IN' });
+      mockPrisma.user.findUnique.mockResolvedValue({ country: 'IN', countryId: null });
       tx.coinSellerInventory.findUnique.mockResolvedValue({
         id: INVENTORY,
         country: 'IN',
@@ -242,7 +248,7 @@ describe('Coin Seller inventory and user sale', () => {
         country: 'IN',
         availableBalance: BigInt(50000),
       });
-      mockPrisma.user.findUnique.mockResolvedValue({ country: 'IN' });
+      mockPrisma.user.findUnique.mockResolvedValue({ country: 'IN', countryId: null });
       tx.coinSellerInventory.findUnique.mockResolvedValue({
         id: INVENTORY,
         country: 'IN',
@@ -268,7 +274,7 @@ describe('Coin Seller inventory and user sale', () => {
         country: 'IN',
         availableBalance: BigInt(50000),
       });
-      mockPrisma.user.findUnique.mockResolvedValue({ country: 'IN' });
+      mockPrisma.user.findUnique.mockResolvedValue({ country: 'IN', countryId: null });
       tx.coinSellerInventory.findUnique.mockResolvedValue({
         id: INVENTORY,
         country: 'IN',

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
+import { resolveUserCountryCode } from '../utils/resolve-user-country';
 import {
   WALLET_SERVICE,
   type IWalletService,
@@ -68,20 +69,25 @@ export class CoinSellerUserSaleService {
     // 2. Validate Buyer and Country Restriction
     const buyer = await this.prisma.user.findUnique({
       where: { id: buyerId },
-      select: { country: true },
+      select: { id: true },
     });
     if (!buyer) {
       throw new BusinessException(ERROR_CODES.NOT_FOUND, 'Buyer not found');
     }
-    if (!buyer.country) {
+
+    // Resolved the same way as the seller's, so "India" and "IN" are one
+    // country rather than two. Comparing the raw columns blocked sales
+    // between a seller and buyer who had written their country differently.
+    const buyerCountry = await resolveUserCountryCode(this.prisma, buyerId);
+    if (!buyerCountry) {
       throw new BusinessException(ERROR_CODES.VALIDATION_ERROR, 'Buyer country is not set');
     }
 
     // Country restriction: Seller and Buyer must be in the same country (PRD §8, §20)
-    if (inventory.country !== buyer.country) {
+    if (inventory.country.toUpperCase() !== buyerCountry) {
       throw new BusinessException(
         ERROR_CODES.FORBIDDEN,
-        `Coin Seller in ${inventory.country} cannot sell to User in ${buyer.country}`,
+        `Coin Seller in ${inventory.country} cannot sell to User in ${buyerCountry}`,
       );
     }
 
@@ -139,7 +145,7 @@ export class CoinSellerUserSaleService {
           buyerId,
           coinAmount: amount,
           sellerCountry: inventory.country,
-          buyerCountry: buyer.country,
+          buyerCountry,
           status: 'COMPLETED',
           idempotencyKey: key,
           buyerWalletTxnId: creditResult.transactionId,

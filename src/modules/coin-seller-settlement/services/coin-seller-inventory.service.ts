@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
+import { resolveUserCountryCode } from '../utils/resolve-user-country';
 
 @Injectable()
 export class CoinSellerInventoryService {
@@ -22,17 +23,18 @@ export class CoinSellerInventoryService {
    * inventory this replaces.
    */
   private async resolveSellerCountry(sellerId: string): Promise<string> {
-    const seller = await this.prisma.user.findUnique({
-      where: { id: sellerId },
-      select: { country: true },
-    });
-    if (!seller?.country) {
+    // Reads the normalised `countryId` first, which the agency application
+    // flow fills in. Before that this only looked at the free-text `country`
+    // column, which registration never sets — so an agency that had just paid
+    // to activate could not open its inventory without someone running SQL.
+    const code = await resolveUserCountryCode(this.prisma, sellerId);
+    if (!code) {
       throw new BusinessException(
         ERROR_CODES.VALIDATION_ERROR,
         'Coin Seller has no country on file; set the seller country before purchasing inventory',
       );
     }
-    return seller.country;
+    return code;
   }
 
   /**
