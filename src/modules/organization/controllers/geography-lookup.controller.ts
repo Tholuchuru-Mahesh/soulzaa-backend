@@ -33,7 +33,6 @@ const toOption = (row: {
 @ApiTags('Organization — Geography Lookup')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RbacPermissionsGuard)
-@RequirePermissions('organization.hierarchy.view')
 @Controller('organization/geography')
 export class GeographyLookupController {
   constructor(
@@ -46,6 +45,8 @@ export class GeographyLookupController {
   @ApiOperation({ summary: 'List countries for a selector' })
   @ApiQuery({ name: 'activeOnly', required: false, description: 'Default true' })
   @ApiResponse({ status: 200, type: [GeographyOptionDto] })
+  // Any signed-in user: these are the options an agency applicant picks from,
+  // and a list of country names reveals nothing.
   @Get('countries')
   async listCountries(@Query('activeOnly') activeOnly?: string) {
     const rows = await this.countries.getAllCountries(activeOnly !== 'false');
@@ -55,6 +56,7 @@ export class GeographyLookupController {
   @ApiOperation({ summary: 'List the states of a country' })
   @ApiQuery({ name: 'activeOnly', required: false, description: 'Default true' })
   @ApiResponse({ status: 200, type: [GeographyOptionDto] })
+  // Selector data, same reasoning as the country list.
   @Get('countries/:countryId/states')
   async listStates(
     @Param('countryId') countryId: string,
@@ -67,6 +69,7 @@ export class GeographyLookupController {
   @ApiOperation({ summary: 'List the regions of a state' })
   @ApiQuery({ name: 'activeOnly', required: false, description: 'Default true' })
   @ApiResponse({ status: 200, type: [GeographyOptionDto] })
+  // Selector data, same reasoning as the country list.
   @Get('states/:stateId/regions')
   async listRegions(@Param('stateId') stateId: string, @Query('activeOnly') activeOnly?: string) {
     const rows = await this.regions.getAllRegions(stateId, activeOnly !== 'false');
@@ -74,6 +77,9 @@ export class GeographyLookupController {
   }
 
   @ApiOperation({ summary: 'Full Country → State → Region tree' })
+  // Still gated: the whole hierarchy at once is an operational view rather
+  // than something a form needs.
+  @RequirePermissions('organization.hierarchy.view')
   @ApiResponse({ status: 200, description: 'Nested hierarchy for tree views' })
   @Get('tree')
   tree() {

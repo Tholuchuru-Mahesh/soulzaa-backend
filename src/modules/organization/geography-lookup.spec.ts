@@ -10,10 +10,25 @@ import { StateService } from './services/state.service';
 const reflector = new Reflector();
 
 describe('geography lookup contract', () => {
-  it('is gated on hierarchy view, which ADMIN holds', () => {
-    expect(reflector.get<string[]>(PERMISSIONS_KEY, GeographyLookupController)).toEqual([
-      'organization.hierarchy.view',
-    ]);
+  // The three selectors are open to any signed-in user on purpose: an agency
+  // applicant has to pick their country and state on the application form, and
+  // holds no organization permission. A list of place names discloses nothing.
+  it('leaves the selectors ungated so an applicant can read them', () => {
+    expect(reflector.get<string[]>(PERMISSIONS_KEY, GeographyLookupController)).toBeUndefined();
+
+    for (const handler of ['listCountries', 'listStates', 'listRegions'] as const) {
+      expect(
+        reflector.get<string[]>(PERMISSIONS_KEY, GeographyLookupController.prototype[handler]),
+      ).toBeUndefined();
+    }
+  });
+
+  // The whole hierarchy at once is an operational view rather than a selector,
+  // so it keeps the permission the class used to carry.
+  it('still gates the full tree on hierarchy view, which ADMIN holds', () => {
+    expect(
+      reflector.get<string[]>(PERMISSIONS_KEY, GeographyLookupController.prototype.tree),
+    ).toEqual(['organization.hierarchy.view']);
     expect(DEFAULT_ROLE_PERMISSIONS.ADMIN).toContain('organization.hierarchy.view');
   });
 

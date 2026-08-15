@@ -77,7 +77,10 @@ export class RoleRequestService {
    * submission without having burned a reference number.
    */
   async submit(input: SubmitRoleRequestInput, initiatedByUserId: string) {
-    const geography = await this.routing.resolveGeography(input.subjectUserId);
+    // The applicant typed their country and state on the form, so hand those
+    // to the resolver: they are a far better source than anything that can be
+    // inferred, and without them an ordinary account has no location at all.
+    const geography = await this.routing.resolveGeography(input.subjectUserId, input.formData);
     const stage = ENTRY_STAGE[input.type];
 
     const prepared = await this.documents.prepare(

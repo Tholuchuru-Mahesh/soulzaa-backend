@@ -16,7 +16,14 @@ describe('RoleRequestRoutingService', () => {
   const prisma = {
     user: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
     country: { findFirst: jest.fn().mockResolvedValue(null) },
-    region: { findMany: jest.fn().mockResolvedValue([]) },
+    state: {
+      findUnique: jest.fn().mockResolvedValue({ countryId: 'c-in' }),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    region: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
   };
   const scopes = { getUserScopes: jest.fn() };
   const roles = { getRoleNames: jest.fn() };
@@ -50,6 +57,133 @@ describe('RoleRequestRoutingService', () => {
       });
 
       await expect(service.resolveGeography('u-1')).rejects.toThrow(BadRequestException);
+    });
+
+    // Once the form's fields are selectors, this is the path every application
+    // takes: an explicit id, no name matching, correct with any number of
+    // countries, states or regions.
+    it('uses an explicit regionId from the form, without matching any names', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        regionId: null,
+        stateId: null,
+        countryId: null,
+        country: null,
+      });
+      prisma.region.findUnique.mockResolvedValue({
+        id: 'r-blr',
+        stateId: 's-ka',
+        state: { countryId: 'c-in' },
+      });
+
+      await expect(service.resolveGeography('u-1', { regionId: 'r-blr' })).resolves.toEqual(
+        KARNATAKA,
+      );
+
+      // No fuzzy matching happened at all.
+      expect(prisma.country.findFirst).not.toHaveBeenCalled();
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u-1' },
+        data: { regionId: 'r-blr', stateId: 's-ka', countryId: 'c-in' },
+      });
+    });
+
+    it('ignores a regionId that names nothing rather than trusting the client', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        regionId: null,
+        stateId: null,
+        countryId: null,
+        country: null,
+      });
+      prisma.region.findUnique.mockResolvedValue(null);
+      prisma.region.findMany.mockResolvedValue([]);
+
+      await expect(service.resolveGeography('u-1', { regionId: 'made-up' })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('resolves from an explicit stateId when the state has one region', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        regionId: null,
+        stateId: null,
+        countryId: null,
+        country: null,
+      });
+      prisma.region.findMany.mockResolvedValue([{ id: 'r-blr', stateId: 's-ka' }]);
+
+      await expect(service.resolveGeography('u-1', { stateId: 's-ka' })).resolves.toEqual(
+        KARNATAKA,
+      );
+    });
+
+    // The multi-state case that matters today: two states under one country,
+    // and the applicant's own answer is what separates them.
+    it('does not fall back to the country when the named state has several regions', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        regionId: null,
+        stateId: null,
+        countryId: null,
+        country: null,
+      });
+      prisma.region.findMany.mockResolvedValue([
+        { id: 'r-blr', stateId: 's-ka' },
+        { id: 'r-mys', stateId: 's-ka' },
+      ]);
+
+      await expect(service.resolveGeography('u-1', { stateId: 's-ka' })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    // The application form asks for country and state, so those answers are
+    // the best source available — better than anything inferred.
+    it('resolves the region from the application form the applicant filled in', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        regionId: null,
+        stateId: null,
+        countryId: null,
+        country: null,
+      });
+      prisma.country.findFirst.mockResolvedValue({ id: 'c-in' });
+      prisma.state.findFirst.mockResolvedValue({ id: 's-ka' });
+      prisma.region.findMany.mockResolvedValue([{ id: 'r-blr', stateId: 's-ka' }]);
+
+      await expect(
+        service.resolveGeography('u-1', {
+          country: 'India',
+          state: 'Karnataka',
+          city: 'Bangalore',
+        }),
+      ).resolves.toEqual(KARNATAKA);
+
+      // Narrowed by the state the applicant gave, not just the country.
+      expect(prisma.region.findMany).toHaveBeenCalledWith({
+        where: { stateId: 's-ka' },
+        select: { id: true, stateId: true },
+        take: 2,
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u-1' },
+        data: { regionId: 'r-blr', stateId: 's-ka', countryId: 'c-in' },
+      });
+    });
+
+    it('ignores a form state that names nothing and falls back to the country', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        regionId: null,
+        stateId: null,
+        countryId: null,
+        country: null,
+      });
+      prisma.country.findFirst.mockResolvedValue({ id: 'c-in' });
+      prisma.state.findFirst.mockResolvedValue(null);
+      prisma.region.findMany.mockResolvedValue([{ id: 'r-blr', stateId: 's-ka' }]);
+
+      await expect(
+        service.resolveGeography('u-1', { country: 'India', state: 'Atlantis' }),
+      ).resolves.toEqual(KARNATAKA);
     });
 
     // Registration only ever captures a free-text country, so an ordinary
@@ -110,7 +244,43 @@ describe('RoleRequestRoutingService', () => {
       expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
-    it('does not derive anything for a user whose country is unknown', async () => {
+    // The real shape of a new signup: registration requires no country at all,
+    // so the account arrives with every location column empty.
+    it('still resolves a user who has no country, when the platform has one region', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        regionId: null,
+        stateId: null,
+        countryId: null,
+        country: null,
+      });
+      prisma.region.findMany.mockResolvedValue([{ id: 'r-blr', stateId: 's-ka' }]);
+
+      await expect(service.resolveGeography('u-1')).resolves.toEqual(KARNATAKA);
+      // No country filter — there was no country to filter on.
+      expect(prisma.region.findMany.mock.calls[0][0].where).toEqual({});
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u-1' },
+        data: { regionId: 'r-blr', stateId: 's-ka', countryId: 'c-in' },
+      });
+    });
+
+    it('refuses a user with no country when the platform has several regions', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        regionId: null,
+        stateId: null,
+        countryId: null,
+        country: null,
+      });
+      prisma.region.findMany.mockResolvedValue([
+        { id: 'r-blr', stateId: 's-ka' },
+        { id: 'r-mum', stateId: 's-mh' },
+      ]);
+
+      await expect(service.resolveGeography('u-1')).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('does not derive anything when an unknown country name has several regions behind it', async () => {
       prisma.user.findUnique.mockResolvedValue({
         regionId: null,
         stateId: null,
@@ -118,9 +288,13 @@ describe('RoleRequestRoutingService', () => {
         country: 'Atlantis',
       });
       prisma.country.findFirst.mockResolvedValue(null);
+      prisma.region.findMany.mockResolvedValue([
+        { id: 'r-blr', stateId: 's-ka' },
+        { id: 'r-mum', stateId: 's-mh' },
+      ]);
 
       await expect(service.resolveGeography('u-1')).rejects.toThrow(BadRequestException);
-      expect(prisma.region.findMany).not.toHaveBeenCalled();
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
 
     it('prefers the region already on the account over deriving one', async () => {

@@ -39,7 +39,10 @@ export class RoleRequestRoutingService {
    * stages do not have to walk the hierarchy on every queue read, and a request
    * keeps the territory it was filed in even if the subject later moves.
    */
-  async resolveGeography(subjectUserId: string): Promise<RequestGeography> {
+  async resolveGeography(
+    subjectUserId: string,
+    formData?: Record<string, unknown> | null,
+  ): Promise<RequestGeography> {
     const user = await this.prisma.user.findUnique({
       where: { id: subjectUserId },
       select: { regionId: true, stateId: true, countryId: true, country: true },
@@ -53,7 +56,7 @@ export class RoleRequestRoutingService {
     // normalised hierarchy, so an ordinary account reaches here with no region
     // and could never file a request at all. Derive it where the answer is not
     // a guess.
-    const derived = await this.deriveRegion(subjectUserId, user);
+    const derived = await this.deriveRegion(subjectUserId, user, formData);
     if (derived) {
       return derived;
     }
@@ -79,10 +82,85 @@ export class RoleRequestRoutingService {
   private async deriveRegion(
     subjectUserId: string,
     user: { countryId: string | null; country: string | null } | null,
+    formData?: Record<string, unknown> | null,
   ): Promise<RequestGeography | null> {
     if (!user) return null;
 
+    // An explicit region id from the form is the only fully unambiguous answer,
+    // and the one this platform should be using once the form's country/state
+    // fields are selectors rather than free text. It is checked first, and
+    // validated rather than trusted — a client-supplied id must name a real
+    // region before it is written to the account.
+    const formRegionId = typeof formData?.regionId === 'string' ? formData.regionId.trim() : '';
+    if (formRegionId) {
+      const region = await this.prisma.region.findUnique({
+        where: { id: formRegionId },
+        select: { id: true, stateId: true, state: { select: { countryId: true } } },
+      });
+      if (region) {
+        await this.prisma.user.update({
+          where: { id: subjectUserId },
+          data: {
+            regionId: region.id,
+            stateId: region.stateId,
+            countryId: region.state.countryId,
+          },
+        });
+        this.logger.log(
+          `Resolved region ${region.id} for user ${subjectUserId} from the form's id`,
+        );
+        return {
+          regionId: region.id,
+          stateId: region.stateId,
+          countryId: region.state.countryId,
+        };
+      }
+      this.logger.warn(`Form supplied region ${formRegionId}, which does not exist — ignoring`);
+    }
+
+    // A state id narrows to one state without depending on spelling.
+    const formStateId = typeof formData?.stateId === 'string' ? formData.stateId.trim() : '';
+    if (formStateId) {
+      const resolved = await this.regionFromState(subjectUserId, formStateId);
+      if (resolved) return resolved;
+    }
+
+    // Free-text fallbacks, for forms that still send names.
+    const formCountry = typeof formData?.country === 'string' ? formData.country.trim() : '';
+    const formState = typeof formData?.state === 'string' ? formData.state.trim() : '';
+
     let countryId = user.countryId;
+    if (!countryId && formCountry) {
+      const country = await this.prisma.country.findFirst({
+        where: {
+          OR: [
+            { code: { equals: formCountry, mode: 'insensitive' } },
+            { name: { equals: formCountry, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+      countryId = country?.id ?? null;
+    }
+
+    // A state narrows further than a country, so try it before falling back.
+    if (countryId && formState) {
+      const state = await this.prisma.state.findFirst({
+        where: {
+          countryId,
+          OR: [
+            { code: { equals: formState, mode: 'insensitive' } },
+            { name: { equals: formState, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (state) {
+        const resolved = await this.regionFromState(subjectUserId, state.id, countryId);
+        if (resolved) return resolved;
+      }
+    }
+
     if (!countryId && user.country) {
       // Free-text country, matched case-insensitively against the code or the
       // name — "IN", "in" and "India" all name the same country.
@@ -97,10 +175,13 @@ export class RoleRequestRoutingService {
       });
       countryId = country?.id ?? null;
     }
-    if (!countryId) return null;
 
+    // Registration does not require a country either, so plenty of accounts
+    // reach here with nothing at all. Falling back to every region keeps the
+    // same rule — assign only when there is exactly one, so the answer is
+    // still not a guess. On a single-territory platform that covers everyone.
     const regions = await this.prisma.region.findMany({
-      where: { state: { countryId } },
+      where: countryId ? { state: { countryId } } : {},
       select: { id: true, stateId: true },
       // Two is enough to know it is ambiguous; there is no need to read them all.
       take: 2,
@@ -115,12 +196,71 @@ export class RoleRequestRoutingService {
     }
 
     const [region] = regions;
+    // When the country was unknown, take it from the region that was resolved
+    // rather than leaving the account half-located.
+    const resolvedCountryId =
+      countryId ??
+      (
+        await this.prisma.state.findUnique({
+          where: { id: region.stateId },
+          select: { countryId: true },
+        })
+      )?.countryId ??
+      null;
+
+    await this.prisma.user.update({
+      where: { id: subjectUserId },
+      data: { regionId: region.id, stateId: region.stateId, countryId: resolvedCountryId },
+    });
+    this.logger.log(`Derived region ${region.id} for user ${subjectUserId} from their country`);
+
+    return { regionId: region.id, stateId: region.stateId, countryId: resolvedCountryId };
+  }
+
+  /**
+   * Resolves a state to its single region and pins the user there.
+   *
+   * A state with several regions is left unresolved on purpose — picking one
+   * would file the request with an Official who does not cover the applicant.
+   */
+  private async regionFromState(
+    subjectUserId: string,
+    stateId: string,
+    knownCountryId?: string | null,
+  ): Promise<RequestGeography | null> {
+    const regions = await this.prisma.region.findMany({
+      where: { stateId },
+      select: { id: true, stateId: true },
+      // Two is enough to know it is ambiguous.
+      take: 2,
+    });
+    if (regions.length !== 1) {
+      if (regions.length > 1) {
+        this.logger.warn(
+          `State ${stateId} has several regions — cannot pick one for user ${subjectUserId}`,
+        );
+      }
+      return null;
+    }
+
+    const [region] = regions;
+    const countryId =
+      knownCountryId ??
+      (
+        await this.prisma.state.findUnique({
+          where: { id: stateId },
+          select: { countryId: true },
+        })
+      )?.countryId ??
+      null;
+
     await this.prisma.user.update({
       where: { id: subjectUserId },
       data: { regionId: region.id, stateId: region.stateId, countryId },
     });
-    this.logger.log(`Derived region ${region.id} for user ${subjectUserId} from their country`);
-
+    this.logger.log(
+      `Resolved region ${region.id} for user ${subjectUserId} from their application form`,
+    );
     return { regionId: region.id, stateId: region.stateId, countryId };
   }
 
