@@ -92,10 +92,13 @@ COMMIT;
 
 -- What to run next. The grant is in the database, but the API will keep
 -- answering 403 from the Redis cache until these keys are dropped.
+-- Printed as the complete command, container prefix included, so it can be
+-- copied verbatim rather than reassembled by hand.
 SELECT
-  u.id            AS user_id,
+  u.id AS user_id,
   u.username,
-  'redis-cli DEL "rbac:perms:' || u.id || '" "rbac:roles:' || u.id || '"' AS run_this_next
+  'docker exec -i soulzaa-redis redis-cli DEL "rbac:perms:' || u.id ||
+    '" "rbac:roles:' || u.id || '"' AS run_this_next
 FROM users u
 JOIN user_roles ur ON ur."userId" = u.id
 JOIN roles r ON r.id = ur."roleId"
