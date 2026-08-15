@@ -104,8 +104,9 @@ describe('game-live-state', () => {
         baseState(),
         frame('u1', { action: 'pass', nextTurnPlayerId: 'not-a-real-seat' }),
       );
-      // Falls back to normal rotation instead of accepting the bogus id.
-      expect(next.currentTurnUserId).toBe('u2');
+      // The bogus id is ignored; move_token is whitelisted (client owns turn
+      // order), so the server does NOT auto-rotate — the turn stays put.
+      expect(next.currentTurnUserId).toBe('u1');
     });
 
     it('ignores nextTurnPlayerId on a sync_state sent by a non-turn-holder', () => {

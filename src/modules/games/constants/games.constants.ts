@@ -131,6 +131,15 @@ export interface GameDisconnectPointer {
 export const gameLobbyLockKey = (lobbyId: string): string => `game:lock:lobby:{${lobbyId}}`;
 export const gameSessionLockKey = (sessionId: string): string => `game:lock:session:{${sessionId}}`;
 
+/**
+ * Serializes "start a game in this audio room" across board-game lobbies
+ * and casino windows alike, enforcing one active `GameSession` per room
+ * regardless of which family creates it — held around the
+ * find-active-then-create check in both `GamesService.startSessionFromLobby`
+ * and `RoomCasinoWindowService.startWindow`.
+ */
+export const roomActiveGameLockKey = (roomId: string): string => `game:lock:room:{${roomId}}`;
+
 /** Global leaderboards (Redis sorted sets). */
 export const GAME_WINS_LEADERBOARD_KEY = 'game:wins';
 export const gameWinningsLeaderboardKey = (currency: GameCurrency): string =>

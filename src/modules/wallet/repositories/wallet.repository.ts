@@ -5,6 +5,7 @@ import {
   Wallet,
   WalletCurrency,
   WalletEntryType,
+  WalletStatus,
   WalletTransaction,
   WalletTxnReason,
 } from '@prisma/client';
@@ -184,7 +185,22 @@ export class WalletRepository {
         update: {},
       });
       const wallet = await t.wallet.findUniqueOrThrow({ where: { userId: input.userId } });
-      const before = (wallet[field] as unknown as bigint) ?? 0n;
+      // Row-level pessimistic lock shared with Path B (WalletTransactionService's
+      // `SELECT ... FOR UPDATE`). Without it, this Path A read-then-absolute-write
+      // could interleave with a concurrent Path B `{ increment }` movement and
+      // silently LOSE that movement (a casino bet racing an admin transfer can
+      // drop coins). Re-reads the balance under the lock so the absolute write
+      // below is computed against a stable snapshot.
+      await t.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
+      const locked = await t.wallet.findUniqueOrThrow({ where: { userId: input.userId } });
+      if (locked.status !== WalletStatus.ACTIVE) {
+        throw new BusinessException(
+          ERROR_CODES.WALLET_NOT_ACTIVE,
+          `Wallet is ${locked.status} and cannot process operations.`,
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      const before = (locked[field] as unknown as bigint) ?? 0n;
       const delta = input.type === WalletEntryType.DEBIT ? -input.amount : input.amount;
       const after = before + delta;
       if (after < 0n) {
@@ -199,6 +215,16 @@ export class WalletRepository {
         [field]: after,
         version: { increment: 1 },
       };
+      // Keep the GOLD aggregate (`availableBalance`) in lockstep with
+      // `goldBalance`, accounting for any outstanding reservations — same
+      // invariant Path B's credit/debit maintains, so reservations and
+      // transfers (which validate against `availableBalance`) see real GOLD
+      // instead of the stale aggregate this path used to leave behind.
+      if (input.currency === WalletCurrency.GOLD) {
+        const reserved = (locked.reservedBalance as unknown as bigint) ?? 0n;
+        const available = after - reserved;
+        data.availableBalance = available > 0n ? available : 0n;
+      }
       if (input.reason === WalletTxnReason.RECHARGE) {
         data.totalRecharged = { increment: input.amount };
       }

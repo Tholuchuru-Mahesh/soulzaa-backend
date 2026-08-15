@@ -25,6 +25,7 @@ import { WalletMetrics } from '../metrics/wallet.metrics';
 import { WalletRepository } from '../repositories/wallet.repository';
 import { WalletCreditedEvent, WalletDebitedEvent } from '../events/wallet.events';
 import { WalletAuditService } from './wallet-audit.service';
+import { WalletValidationService } from './wallet-validation.service';
 
 @Injectable()
 export class WalletService implements IWalletService {
@@ -35,6 +36,7 @@ export class WalletService implements IWalletService {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly metrics: WalletMetrics,
     private readonly auditService: WalletAuditService,
+    private readonly validationService: WalletValidationService,
   ) {}
 
   /**
@@ -115,14 +117,37 @@ export class WalletService implements IWalletService {
       );
     }
 
+    // Emergency-economy freeze + wallet feature flag. Validated on DEBIT only:
+    // an emergency freeze must halt money leaving the economy (bets, gifts,
+    // game stakes, VIP), while credits (payouts/refunds/settlements) still
+    // flow so nothing gets stuck mid-settlement for the duration of the freeze.
+    if (type === WalletEntryType.DEBIT) {
+      await this.validationService.validateEconomyStatus();
+    }
+
     const run = async (t?: Prisma.TransactionClient) => {
-      // Idempotent replay: return the stored result without re-applying.
+      // Idempotent replay: return the stored result without re-applying. The
+      // reported `balanceAfter` is the wallet's CURRENT balance for the
+      // currency (not the original movement amount), so a replayed tap shows
+      // the balance the user actually holds right now.
       const existing = await this.repo.findByIdempotencyKey(input.idempotencyKey, t);
       if (existing) {
+        const wallet = await this.repo.getWallet(input.userId);
+        const balanceField =
+          input.currency === WalletCurrency.GOLD
+            ? 'goldBalance'
+            : input.currency === WalletCurrency.DIAMOND
+              ? 'diamondBalance'
+              : input.currency === WalletCurrency.GAME
+                ? 'gameBalance'
+                : input.currency === WalletCurrency.FREE
+                  ? 'freeBalance'
+                  : 'earningsBalance';
+        const balance = wallet?.[balanceField as keyof typeof wallet] ?? 0n;
         return {
           transactionId: existing.id,
           currency: existing.currency,
-          balanceAfter: Number(existing.amount),
+          balanceAfter: Number(balance),
           duplicate: true,
         };
       }

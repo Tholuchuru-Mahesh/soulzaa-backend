@@ -7,6 +7,8 @@ import type { IPrivacyService } from 'src/modules/privacy/interfaces/privacy.int
 import { ProfileRepository } from '../repositories/profile.repository';
 import { UsersRepository } from '../repositories/users.repository';
 import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import type { INotificationService } from 'src/modules/notification/interfaces/notification.interface';
 import { ProfileService } from './profile.service';
 import type { IUserSearchProvider } from './search/user-search.provider';
 
@@ -82,6 +84,8 @@ describe('ProfileService', () => {
   let search: jest.Mocked<IUserSearchProvider>;
   let bus: jest.Mocked<IEventBus>;
   let privacy: jest.Mocked<Pick<IPrivacyService, 'check' | 'blockedIdsFor'>>;
+  let notifications: INotificationService;
+  let prisma: PrismaService;
   let service: ProfileService;
 
   beforeEach(() => {
@@ -114,15 +118,22 @@ describe('ProfileService', () => {
       check: jest.fn().mockResolvedValue(true),
       blockedIdsFor: jest.fn().mockResolvedValue([]),
     };
-    const notifications = {
-      push: jest.fn(),
-      create: jest.fn(),
-      createSystemNotification: jest.fn().mockResolvedValue({}),
-    };
-    const prisma = {
-      role: { findUnique: jest.fn().mockResolvedValue({ id: 1, name: 'VERIFIED_USER' }) },
-      userRole: { create: jest.fn(), findUnique: jest.fn().mockResolvedValue(null) },
-    };
+    notifications = {
+      create: jest.fn().mockResolvedValue({}),
+    } as unknown as INotificationService;
+    prisma = {
+      role: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'role-1', name: 'CREATOR' }),
+        create: jest.fn().mockResolvedValue({ id: 'role-1', name: 'CREATOR' }),
+      },
+      userRole: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+      },
+      user: {
+        update: jest.fn().mockResolvedValue({}),
+      },
+    } as unknown as PrismaService;
     const config = { get: () => CFG } as unknown as ConfigService;
     service = new ProfileService(
       users as unknown as UsersRepository,
@@ -133,8 +144,8 @@ describe('ProfileService', () => {
       search,
       bus,
       privacy as unknown as IPrivacyService,
-      notifications as any,
-      prisma as any,
+      notifications,
+      prisma,
       config,
     );
   });

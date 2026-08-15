@@ -16,6 +16,7 @@ import {
   GAME_TURN_RESYNC_GRACE_MS,
   GAME_TURN_SECONDS,
   GAME_TURN_STALL_GRACE_MS,
+  GAME_LIVE_STATE_TTL_SECONDS,
   gameDisconnectKey,
   gameLiveStateKey,
   gameMatchQueueKey,
@@ -36,6 +37,7 @@ import type { IUsersService } from 'src/modules/users/interfaces/users.service.i
 import type { IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import type { GameActor } from '../interfaces/game-actor.interface';
 import { GamesRepository } from '../repositories/games.repository';
+import type { AudioRoomGameAuthzService } from './audio-room-game-authz.service';
 import { GamesService } from './games.service';
 
 // Sentinel "transaction client" the mocked repo.runInTransaction hands to the
@@ -134,6 +136,7 @@ describe('GamesService', () => {
   let wallet: Record<string, jest.Mock>;
   let users: Record<string, jest.Mock>;
   let profiles: Record<string, jest.Mock>;
+  let authz: Record<string, jest.Mock>;
   let service: GamesService;
 
   beforeEach(() => {
@@ -178,6 +181,13 @@ describe('GamesService', () => {
       markResultSeen: jest.fn().mockResolvedValue(undefined),
       updateLobby: jest.fn().mockResolvedValue(lobby()),
       addBotMember: jest.fn().mockResolvedValue({ id: 'bm1' }),
+      // Audio-room integration: no room-bound lobby/session by default — the
+      // overwhelming majority of tests never set dto.roomId, so these mocks
+      // simply never gate anything unless a test explicitly overrides them.
+      findActiveSessionForRoom: jest.fn().mockResolvedValue(null),
+      findOpenLobbyForRoom: jest.fn().mockResolvedValue(null),
+      updateSessionHost: jest.fn().mockResolvedValue(session()),
+      updateLobbyHost: jest.fn().mockResolvedValue(lobby()),
       // Settlement runs its writes inside one DB transaction — the mock just
       // invokes the callback with a non-null sentinel "tx" (real atomicity/
       // rollback is a Prisma guarantee, not something a unit test can observe).
@@ -230,6 +240,14 @@ describe('GamesService', () => {
     // Default: no identities resolved (empty map) — views degrade to null
     // displayName/avatar for tests that don't care about player identity.
     profiles = { resolvePublicIdentities: jest.fn().mockResolvedValue(new Map()) };
+    // Default: authorized + a member — tests exercising the room-gated
+    // branches (dto.roomId set) override these per-case.
+    authz = {
+      assertCanStartBoardGame: jest.fn().mockResolvedValue(undefined),
+      assertCanStartCasinoWindow: jest.fn().mockResolvedValue(undefined),
+      assertCanWatch: jest.fn().mockResolvedValue(undefined),
+      isMember: jest.fn().mockResolvedValue(true),
+    };
     const prismaMock = {
       gameParticipant: { findMany: jest.fn().mockResolvedValue([]) },
       casinoBet: {
@@ -248,6 +266,7 @@ describe('GamesService', () => {
       wallet as unknown as IWalletService,
       users as unknown as IUsersService,
       profiles as unknown as IProfileService,
+      authz as unknown as AudioRoomGameAuthzService,
     );
   });
 
@@ -353,6 +372,151 @@ describe('GamesService', () => {
         expect.objectContaining({ userId: HOST, amount: 100, reason: 'GAME_REFUND' }),
       );
       expect(repo.closeSession).toHaveBeenCalledWith('sess-1', GameSessionStatus.ABORTED, HOST);
+    });
+  });
+
+  describe('audio-room integration', () => {
+    describe('createLobby with roomId', () => {
+      it('checks host authority for the room before creating', async () => {
+        await service.createLobby(ACTOR, {
+          gameCode: GameCode.GREEDY,
+          stake: 500,
+          roomId: 'room-1',
+        });
+        expect(authz.assertCanStartBoardGame).toHaveBeenCalledWith('room-1', HOST);
+        expect(repo.createLobby).toHaveBeenCalled();
+      });
+
+      it('propagates a host-authority rejection without creating a lobby', async () => {
+        authz.assertCanStartBoardGame.mockRejectedValue(
+          new BusinessException(ERROR_CODES.GAME_NOT_AUTHORIZED, 'no'),
+        );
+        await expect(
+          service.createLobby(ACTOR, { gameCode: GameCode.GREEDY, stake: 500, roomId: 'room-1' }),
+        ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_NOT_AUTHORIZED });
+        expect(repo.createLobby).not.toHaveBeenCalled();
+      });
+
+      it('rejects when the room already has an active game', async () => {
+        repo.findActiveSessionForRoom.mockResolvedValue(session({ roomId: 'room-1' }));
+        await expect(
+          service.createLobby(ACTOR, { gameCode: GameCode.GREEDY, stake: 500, roomId: 'room-1' }),
+        ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_ROOM_ALREADY_ACTIVE });
+        expect(repo.createLobby).not.toHaveBeenCalled();
+      });
+
+      it('skips every room check when roomId is absent (unchanged default path)', async () => {
+        await service.createLobby(ACTOR, { gameCode: GameCode.GREEDY, stake: 500 });
+        expect(authz.assertCanStartBoardGame).not.toHaveBeenCalled();
+        expect(repo.findActiveSessionForRoom).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('joining a room-bound lobby', () => {
+      beforeEach(() => {
+        repo.getLobbyByCode.mockResolvedValue(lobby({ roomId: 'room-1' }));
+        repo.getLobbyById.mockResolvedValue(lobby({ roomId: 'room-1' }));
+      });
+
+      const OTHER_ROOM_MEMBER: GameActor = { id: STRANGER, roles: ['USER'] };
+
+      it('lets a current room member join a room-bound lobby by code', async () => {
+        authz.isMember.mockResolvedValue(true);
+        repo.getMember.mockResolvedValue(null);
+        repo.countMembers.mockResolvedValue(0);
+        await expect(service.joinLobby(OTHER_ROOM_MEMBER, 'ABCDEF')).resolves.toBeDefined();
+        expect(authz.isMember).toHaveBeenCalledWith('room-1', STRANGER);
+        expect(repo.addMember).toHaveBeenCalled();
+      });
+
+      it('rejects a non-member who obtains the join code', async () => {
+        authz.isMember.mockResolvedValue(false);
+        await expect(service.joinLobby(OTHER_ROOM_MEMBER, 'ABCDEF')).rejects.toMatchObject({
+          errorCode: ERROR_CODES.NOT_ROOM_MEMBER,
+        });
+        expect(repo.addMember).not.toHaveBeenCalled();
+      });
+
+      it('rejects a non-member even with the correct password', async () => {
+        repo.getLobbyById.mockResolvedValue(
+          lobby({ roomId: 'room-1', passwordHash: sha256('hunter2') }),
+        );
+        authz.isMember.mockResolvedValue(false);
+        await expect(service.joinLobby(OTHER_ROOM_MEMBER, 'ABCDEF', 'hunter2')).rejects.toMatchObject({
+          errorCode: ERROR_CODES.NOT_ROOM_MEMBER,
+        });
+        expect(repo.addMember).not.toHaveBeenCalled();
+      });
+
+      it('does not consult room membership for a lobby with no roomId (unchanged default path)', async () => {
+        repo.getLobbyByCode.mockResolvedValue(lobby());
+        repo.getLobbyById.mockResolvedValue(lobby());
+        repo.getMember.mockResolvedValue(null);
+        repo.countMembers.mockResolvedValue(0);
+        await expect(service.joinLobby(OTHER_ROOM_MEMBER, 'ABCDEF')).resolves.toBeDefined();
+        expect(authz.isMember).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('starting a room-bound lobby', () => {
+      beforeEach(() => {
+        repo.getLobbyByCode.mockResolvedValue(lobby({ roomId: 'room-1' }));
+        repo.getLobbyById.mockResolvedValue(lobby({ roomId: 'room-1' }));
+      });
+
+      it('re-checks host authority and the active-session guard under the room lock, then starts', async () => {
+        await service.startLobby(ACTOR, 'ABCDEF');
+        expect(authz.assertCanStartBoardGame).toHaveBeenCalledWith('room-1', HOST);
+        expect(repo.findActiveSessionForRoom).toHaveBeenCalledWith('room-1');
+        expect(repo.createSession).toHaveBeenCalled();
+      });
+
+      it('rejects if another active game already claimed the room between create and start', async () => {
+        repo.findActiveSessionForRoom.mockResolvedValue(session({ roomId: 'room-1' }));
+        await expect(service.startLobby(ACTOR, 'ABCDEF')).rejects.toMatchObject({
+          errorCode: ERROR_CODES.GAME_ROOM_ALREADY_ACTIVE,
+        });
+        expect(repo.createSession).not.toHaveBeenCalled();
+      });
+
+      it('does not touch the room lock for a lobby with no roomId', async () => {
+        repo.getLobbyByCode.mockResolvedValue(lobby());
+        repo.getLobbyById.mockResolvedValue(lobby());
+        await service.startLobby(ACTOR, 'ABCDEF');
+        expect(authz.assertCanStartBoardGame).not.toHaveBeenCalled();
+        expect(repo.findActiveSessionForRoom).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('getSession spectator access', () => {
+      it('lets a current room member view a room-bound session they did not join', async () => {
+        repo.getSession.mockResolvedValue(session({ roomId: 'room-1' }));
+        repo.getParticipant.mockResolvedValue(null);
+        authz.isMember.mockResolvedValue(true);
+        const spectator: GameActor = { id: STRANGER, roles: ['USER'] };
+        await expect(service.getSession(spectator, 'sess-1')).resolves.toBeDefined();
+        expect(authz.isMember).toHaveBeenCalledWith('room-1', STRANGER);
+      });
+
+      it('rejects a non-member, non-participant for a room-bound session', async () => {
+        repo.getSession.mockResolvedValue(session({ roomId: 'room-1' }));
+        repo.getParticipant.mockResolvedValue(null);
+        authz.isMember.mockResolvedValue(false);
+        const stranger: GameActor = { id: STRANGER, roles: ['USER'] };
+        await expect(service.getSession(stranger, 'sess-1')).rejects.toMatchObject({
+          errorCode: ERROR_CODES.GAME_NOT_AUTHORIZED,
+        });
+      });
+
+      it('rejects a non-participant for a session with no roomId (unchanged default behavior)', async () => {
+        repo.getSession.mockResolvedValue(session());
+        repo.getParticipant.mockResolvedValue(null);
+        const stranger: GameActor = { id: STRANGER, roles: ['USER'] };
+        await expect(service.getSession(stranger, 'sess-1')).rejects.toMatchObject({
+          errorCode: ERROR_CODES.GAME_NOT_AUTHORIZED,
+        });
+        expect(authz.isMember).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -1224,7 +1388,26 @@ describe('GamesService', () => {
         participant('p3', STRANGER, { team: GameTeam.A, seat: 2 }),
         participant('p4', P3, { team: GameTeam.B, seat: 3 }),
       ]);
-      await service.reportMatchResult(ACTOR, 'sess-1', { winningTeam: GameTeam.A });
+
+      // The host's team report expands to both teammates and is held PENDING
+      // corroboration — the host is not a trusted role, so no wallet movement
+      // until a different active participant confirms.
+      const res = (await service.reportMatchResult(ACTOR, 'sess-1', {
+        winningTeam: GameTeam.A,
+      })) as { status: string; winners: string[] };
+      expect(res.status).toBe('pending_confirmation');
+      expect(res.winners).toEqual(expect.arrayContaining([HOST, STRANGER]));
+      expect(wallet.credit).not.toHaveBeenCalled();
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'game.result_reported',
+          payload: expect.objectContaining({
+            winners: expect.arrayContaining([HOST, STRANGER]),
+          }),
+        }),
+      );
+
+      // A different active participant corroborates → both teammates split the pot.
       await service.confirmMatchResult({ id: P2, roles: ['USER'] }, 'sess-1');
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: HOST, amount: 200 }),
@@ -1279,7 +1462,15 @@ describe('GamesService', () => {
             status: GameParticipantStatus.PLAYING,
           }),
         ]);
-        await service.reportMatchResult(ACTOR, 'sess-1', { winningTeam: GameTeam.A });
+        // The host's report is held pending — only the expanded winner set is
+        // visible up front; the actual payout lands on corroboration.
+        const res = (await service.reportMatchResult(ACTOR, 'sess-1', {
+          winningTeam: GameTeam.A,
+        })) as { status: string; winners: string[] };
+        expect(res.status).toBe('pending_confirmation');
+        expect(res.winners).toEqual([HOST]);
+        expect(wallet.credit).not.toHaveBeenCalled();
+
         await service.confirmMatchResult({ id: P2, roles: ['USER'] }, 'sess-1');
 
         expect(wallet.credit).toHaveBeenCalledWith(
@@ -1445,6 +1636,63 @@ describe('GamesService', () => {
     });
   });
 
+  describe('closeRoomBoundLobby', () => {
+    it('closes the room-bound open lobby and broadcasts lobby_cancelled (room_ended)', async () => {
+      repo.findOpenLobbyForRoom.mockResolvedValue(lobby());
+      repo.getLobbyById.mockResolvedValue(lobby());
+      await service.closeRoomBoundLobby('room-1');
+      expect(repo.markLobbyClosed).toHaveBeenCalledWith(
+        'lobby-1',
+        GameLobbyStatus.CANCELLED,
+        null,
+      );
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.lobby_cancelled' }),
+      );
+    });
+
+    it('is a no-op when the room has no open lobby', async () => {
+      repo.findOpenLobbyForRoom.mockResolvedValue(null);
+      await service.closeRoomBoundLobby('room-1');
+      expect(repo.markLobbyClosed).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when the lobby raced to a non-OPEN state', async () => {
+      repo.findOpenLobbyForRoom.mockResolvedValue(lobby());
+      repo.getLobbyById.mockResolvedValue(lobby({ status: GameLobbyStatus.STARTED }));
+      await service.closeRoomBoundLobby('room-1');
+      expect(repo.markLobbyClosed).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('repointRoomGameHost', () => {
+    it('re-points the board session host and the open lobby host on ownership transfer', async () => {
+      repo.findActiveSessionForRoom.mockResolvedValue(session({ roomId: 'room-1' }));
+      repo.findOpenLobbyForRoom.mockResolvedValue(lobby({ roomId: 'room-1' }));
+      await service.repointRoomGameHost('room-1', P2);
+      expect(repo.updateSessionHost).toHaveBeenCalledWith('sess-1', P2);
+      expect(repo.updateLobbyHost).toHaveBeenCalledWith('lobby-1', P2);
+    });
+
+    it('skips casino window sessions but still re-points an open lobby', async () => {
+      repo.findActiveSessionForRoom.mockResolvedValue(
+        session({ roomId: 'room-1', code: GameCode.GREEDY_FOOD }),
+      );
+      repo.findOpenLobbyForRoom.mockResolvedValue(lobby({ roomId: 'room-1' }));
+      await service.repointRoomGameHost('room-1', P2);
+      expect(repo.updateSessionHost).not.toHaveBeenCalled();
+      expect(repo.updateLobbyHost).toHaveBeenCalledWith('lobby-1', P2);
+    });
+
+    it('is a no-op when the room has neither a session nor a lobby', async () => {
+      repo.findActiveSessionForRoom.mockResolvedValue(null);
+      repo.findOpenLobbyForRoom.mockResolvedValue(null);
+      await service.repointRoomGameHost('room-1', P2);
+      expect(repo.updateSessionHost).not.toHaveBeenCalled();
+      expect(repo.updateLobbyHost).not.toHaveBeenCalled();
+    });
+  });
+
   describe('staked-seat bots', () => {
     const BOT = '99999999-9999-9999-9999-999999999999';
 
@@ -1504,7 +1752,15 @@ describe('GamesService', () => {
         participant('p3', P2, { team: GameTeam.B, isBot: false, stake: 100n }),
         participant('p4', P3, { team: GameTeam.B, isBot: false, stake: 100n }),
       ]);
-      await service.reportMatchResult(ACTOR, 'sess-1', { winningTeam: GameTeam.A });
+      // The team expands to the still-PLAYING bot, but settlement is pending
+      // corroboration and only the human collects on payout.
+      const res = (await service.reportMatchResult(ACTOR, 'sess-1', {
+        winningTeam: GameTeam.A,
+      })) as { status: string; winners: string[] };
+      expect(res.status).toBe('pending_confirmation');
+      expect(res.winners).toEqual(expect.arrayContaining([HOST, BOT]));
+      expect(wallet.credit).not.toHaveBeenCalled();
+
       await service.confirmMatchResult({ id: P2, roles: ['USER'] }, 'sess-1');
       // Only the human on team A is paid — the whole distributable pot.
       expect(wallet.credit).toHaveBeenCalledWith(
@@ -1535,12 +1791,20 @@ describe('GamesService', () => {
 
     it('lets the host relay a move on a bot’s behalf', async () => {
       repo.getParticipant.mockResolvedValue(participant('pb', BOT, { isBot: true }));
-      cache.get.mockResolvedValue({
-        isOver: false,
+      // Turn ownership is the relay gate — relayMove rejects with
+      // GAME_NOT_YOUR_TURN unless the mover is the current-turn seat. Seed the
+      // live state so the bot actually holds the turn.
+      const botTurn: GameLiveState = {
         currentTurnUserId: BOT,
+        turnStartedAt: Date.now(),
+        turnSeconds: GAME_TURN_SECONDS,
+        seatOrder: [HOST, BOT],
         moves: [],
+        isOver: false,
         timeoutCounts: {},
-      });
+      };
+      await cache.set(gameLiveStateKey('sess-1'), botTurn, GAME_LIVE_STATE_TTL_SECONDS);
+
       const res = (await service.relayMove(
         ACTOR,
         'sess-1',

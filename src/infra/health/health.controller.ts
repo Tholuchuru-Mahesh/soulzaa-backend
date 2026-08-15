@@ -35,7 +35,7 @@ export class HealthController {
   @Public()
   @HealthCheck()
   liveness() {
-    return this.livenessChecks();
+    return this.health.check([() => this.eventLoop.isHealthy('event_loop')]);
   }
 
   /** Liveness alias (k8s livenessProbe): process + memory + event-loop health. */

@@ -6,7 +6,7 @@
   "transform": {
     "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": { "allowJs": true } }]
   },
-  "transformIgnorePatterns": ["node_modules/(?!.*jose)"],
+  "transformIgnorePatterns": ["/node_modules/.pnpm/(?!(otplib|@otplib|@scure|@noble|jose))"],
   "moduleNameMapper": {
     "^src/(.*)$": "<rootDir>/../src/$1"
   }

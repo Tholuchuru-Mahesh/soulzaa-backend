@@ -40,3 +40,6 @@ firebase-service-account.json
 test/**/*.js
 test/**/*.js.map
 test/**/*.d.ts
+
+# TypeScript incremental build cache — regenerated per machine, never source
+*.tsbuildinfo

@@ -338,5 +338,40 @@ describe('Phase 3: Enterprise Wallet & Double-Entry Ledger Infrastructure', () =
 
       expect(mockEventBus.publish).not.toHaveBeenCalled();
     });
+
+    it('P2002 idempotency race: recovers the concurrent winner as a replay instead of leaking a 500', async () => {
+      const existing = {
+        id: 'tx-winner',
+        idempotencyKey: 'idemp-race',
+        transactionType: 'DEPOSIT',
+        amount: BigInt(1000),
+        status: TransactionStatus.COMPLETED,
+        createdAt: new Date(),
+      };
+      // Pre-check misses the concurrent insert (call 1); the recovery re-fetch
+      // inside the catch finds the winner (call 2).
+      mockPrismaService.walletTransaction.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(existing);
+      mockPrismaService.wallet.findUnique.mockResolvedValue({
+        id: 'w-1',
+        userId: 'u-1',
+        status: WalletStatus.ACTIVE,
+        availableBalance: BigInt(500),
+      });
+      const p2002 = Object.assign(new Error('Unique constraint failed on the fields: (`idempotencyKey`)'), {
+        code: 'P2002',
+      });
+      mockPrismaService.$transaction = jest.fn().mockRejectedValue(p2002);
+
+      const result = await transactionService.creditWallet({
+        userId: 'u-1',
+        amount: 1000,
+        idempotencyKey: 'idemp-race',
+      });
+
+      expect(result.transactionId).toBe('tx-winner');
+      expect((result as any).isDuplicateReplay).toBe(true);
+    });
   });
 });

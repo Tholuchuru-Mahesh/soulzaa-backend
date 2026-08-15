@@ -41,11 +41,13 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { CasinoGame } from '@prisma/client';
+import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { LockService } from 'src/infra/redis/lock.service';
 import {
   PROFILE_SERVICE,
   type IProfileService,
 } from 'src/modules/users/interfaces/profile.interface';
+import { CasinoRoundBroadcastEvent } from '../events/casino-round-broadcast.event';
 import {
   CASINO_EVENTS,
   CASINO_ROOMS,
@@ -73,7 +75,7 @@ export const CASINO_GAMES: readonly CasinoGame[] = [CasinoGame.GREEDY_FOOD, Casi
 /** Shared leader lock — one process drives BOTH games' loops at a time (spec §5.4). */
 const LEADER_LOCK_KEY = 'casino:loop:leader';
 /** Comfortably longer than the 1s tick so a brief stall doesn't cause a false failover. */
-const LEADER_LOCK_TTL_MS = 3_000;
+const LEADER_LOCK_TTL_MS = 10_000;
 const TICK_INTERVAL_MS = 1_000;
 
 @Injectable()
@@ -99,6 +101,7 @@ export class CasinoLoopService implements OnModuleInit, OnModuleDestroy {
     @Inject(forwardRef(() => CASINO_BROADCASTER))
     private readonly broadcaster: CasinoBroadcaster,
     @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
+    @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
 
   onModuleInit(): void {
@@ -401,6 +404,18 @@ export class CasinoLoopService implements OnModuleInit, OnModuleDestroy {
 
   private broadcast(game: CasinoGame, event: string, payload: unknown): void {
     this.broadcaster.emitToRoom(this.roomFor(game), event, payload);
+    // Mirror hook for audio-room casino windows: fire-and-forget publish of
+    // the exact broadcast so RoomCasinoWindowListener can re-emit it into each
+    // active window session room on /games (the room-scoped spectator feed).
+    // Only the leader-locked loop instance broadcasts, so this is a single
+    // writer — a bus failure must never break the round loop.
+    this.bus
+      .publish(new CasinoRoundBroadcastEvent({ game, event, payload }))
+      .catch((err: Error) =>
+        this.logger.error(
+          `Casino round-broadcast publish failed (${game} ${event}): ${err.message}`,
+        ),
+      );
   }
 
   private roomFor(game: CasinoGame): string {

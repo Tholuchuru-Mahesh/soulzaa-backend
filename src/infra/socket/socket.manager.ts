@@ -9,6 +9,10 @@ import { MonitoringMetrics } from '../observability/monitoring.metrics';
 import { PresenceService } from '../redis/presence.service';
 import { TokenService } from '../auth/token.service';
 import { PresenceChangedEvent } from './presence.events';
+import {
+  ROOM_JOIN_POLICY_REGISTRY,
+  type RoomJoinPolicyRegistry,
+} from './room-join-policy.interface';
 
 /** Socket.IO middleware signature (namespace-level `server.use`). */
 type SocketMiddleware = (socket: Socket, next: (err?: ExtendedError) => void) => void;
@@ -46,6 +50,7 @@ export class SocketManager {
     private readonly metrics: MonitoringMetrics,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(ROLE_SOURCE) private readonly roleSource: IRoleSource,
+    @Inject(ROOM_JOIN_POLICY_REGISTRY) private readonly joinPolicies: RoomJoinPolicyRegistry,
   ) {}
 
   /**
@@ -140,9 +145,38 @@ export class SocketManager {
     }
   }
 
-  /** Join a room: keep the socket room and the Redis presence set in sync. */
-  async joinRoom(client: Socket, roomId: string): Promise<void> {
+  /**
+   * Join a room: keep the socket room and the Redis presence set in sync.
+   *
+   * `namespace` (a namespace path, e.g. `/games`) is optional and, when
+   * given, is looked up in `ROOM_JOIN_POLICY_REGISTRY`. No namespace, or no
+   * policy registered for it, joins unconditionally — the historical,
+   * unrestricted behavior every caller had before this check existed. A
+   * registered policy resolving `'deny'` refuses the join (the socket is
+   * never added to the room) and emits `room:join_denied` to the caller
+   * instead. A `'spectator'` resolution still joins the room, but is also
+   * recorded on `client.data.spectatorRooms` so read-only hot-path handlers
+   * (e.g. `game:aim`) can block writes in O(1) without re-querying.
+   *
+   * Returns whether the join actually happened, so callers (`BaseGateway
+   * .onRoomJoin`) can reflect the real outcome to the client instead of
+   * always acking success.
+   */
+  async joinRoom(client: Socket, roomId: string, namespace?: string): Promise<boolean> {
     const user = client.data.user as AuthenticatedUser;
+    const policy = namespace ? this.joinPolicies.get(namespace) : undefined;
+    if (policy) {
+      const verdict = await policy.canJoin(user.id, roomId);
+      if (verdict === 'deny') {
+        client.emit('room:join_denied', { roomId });
+        return false;
+      }
+      if (verdict === 'spectator') {
+        const spectatorRooms = (client.data.spectatorRooms ??= new Set<string>());
+        spectatorRooms.add(roomId);
+      }
+    }
+
     await client.join(roomId);
     await this.presence.joinRoom(roomId, user.id);
     const payload = {
@@ -155,6 +189,7 @@ export class SocketManager {
     };
     client.to(roomId).emit('video_room:member_joined', payload);
     client.to(roomId).emit('room:member_joined', payload);
+    return true;
   }
 
   /** Leave a room: keep the socket room and the Redis presence set in sync. */
@@ -162,6 +197,7 @@ export class SocketManager {
     const user = client.data.user as AuthenticatedUser;
     await client.leave(roomId);
     await this.presence.leaveRoom(roomId, user.id);
+    (client.data.spectatorRooms as Set<string> | undefined)?.delete(roomId);
     const payload = {
       roomId,
       userId: user?.id,

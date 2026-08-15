@@ -81,6 +81,19 @@ export class GamesRepository {
     return this.prisma.gameLobby.findUnique({ where: { id } });
   }
 
+  /**
+   * The room's current open (pre-start) lobby, if any — backed by the
+   * `[roomId, status]` index. Deliberately ignores the `isPrivate`/
+   * `isMatchmade` filters `listOpenLobbies` applies for the PUBLIC browse:
+   * a room-bound lobby is scoped by room membership (checked by the caller),
+   * not by public discoverability, so those flags don't apply here.
+   */
+  findOpenLobbyForRoom(roomId: string): Promise<GameLobby | null> {
+    return this.prisma.gameLobby.findFirst({
+      where: { roomId, status: GameLobbyStatus.OPEN },
+    });
+  }
+
   listOpenLobbies(skip: number, take: number): Promise<[GameLobby[], number]> {
     // Matchmade lobbies are transient + auto-started; private lobbies are join-by-code —
     // neither is surfaced in the public browse.
@@ -307,14 +320,68 @@ export class GamesRepository {
     });
   }
 
-  /** List active sessions started before cutoff timestamp for stale cleanup. */
+  /**
+   * List active sessions started before cutoff timestamp for stale cleanup.
+   * Excludes the house-banked casino codes (GREEDY_FOOD/LUCKY_FRUIT): those
+   * `GameSession` rows are audio-room "casino window" presence markers (see
+   * RoomCasinoWindowService), not board-game matches — they have no
+   * `startedAt`-relative timeout of their own (a window lives as long as the
+   * host keeps it open) and must never be swept by the generic 15-minute
+   * board-game staleness monitor.
+   */
   async findStaleActiveSessions(cutoff: Date): Promise<GameSession[]> {
     return this.prisma.gameSession.findMany({
       where: {
         status: GameSessionStatus.ACTIVE,
         startedAt: { lt: cutoff },
+        code: { notIn: [GameCode.GREEDY_FOOD, GameCode.LUCKY_FRUIT] },
       },
     });
+  }
+
+  /**
+   * The room's current active session, board-game or casino-window alike —
+   * backed by the `[roomId, status]` index. Used to enforce "one active game
+   * per audio room" and to answer "is a game already running here" for late
+   * joiners.
+   */
+  findActiveSessionForRoom(roomId: string): Promise<GameSession | null> {
+    return this.prisma.gameSession.findFirst({
+      where: { roomId, status: GameSessionStatus.ACTIVE },
+    });
+  }
+
+  /**
+   * Every ACTIVE, room-bound casino-window session for `code` — the fan-out
+   * targets for the room-scoped casino mirror (`RoomCasinoWindowListener`).
+   * Windows are GameSession presence markers (no participants/stakes); an
+   * ACTIVE one means the room's host currently has this Gold Coin game open.
+   */
+  listActiveRoomWindowsByCode(code: GameCode): Promise<GameSession[]> {
+    return this.prisma.gameSession.findMany({
+      where: { status: GameSessionStatus.ACTIVE, code, roomId: { not: null } },
+    });
+  }
+
+  /**
+   * Every ACTIVE, room-bound casino-window session across both Gold Coin games —
+   * the reconciliation target for the orphan-window sweep
+   * (`RoomCasinoWindowMonitor` → `RoomCasinoWindowService.sweepOrphanWindows`):
+   * a window whose audio room is no longer live has leaked and must be closed.
+   */
+  listActiveRoomWindows(): Promise<GameSession[]> {
+    return this.prisma.gameSession.findMany({
+      where: {
+        status: GameSessionStatus.ACTIVE,
+        code: { in: [GameCode.GREEDY_FOOD, GameCode.LUCKY_FRUIT] },
+        roomId: { not: null },
+      },
+    });
+  }
+
+  /** Re-points a session's host — used when an audio room's ownership transfers mid-window. */
+  updateSessionHost(id: string, hostId: string): Promise<GameSession> {
+    return this.prisma.gameSession.update({ where: { id }, data: { hostId } });
   }
 
   /** The active session a user is currently a PLAYING participant of, if any. */

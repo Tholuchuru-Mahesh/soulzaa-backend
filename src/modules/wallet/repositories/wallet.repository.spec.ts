@@ -1,5 +1,92 @@
-import { WalletCurrency, WalletEntryType, WalletTxnReason } from '@prisma/client';
+import {
+  WalletCurrency,
+  WalletEntryType,
+  WalletStatus,
+  WalletTxnReason,
+} from '@prisma/client';
 import { WalletRepository } from './wallet.repository';
+
+describe('WalletRepository.applyMovement (Path A money-safety)', () => {
+  const prismaWith = (wallet: Record<string, unknown>) => {
+    const mockPrisma: any = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      wallet: {
+        upsert: jest.fn().mockResolvedValue({ id: 'w1' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(wallet),
+        update: jest.fn().mockResolvedValue(wallet),
+      },
+      walletTransaction: { create: jest.fn().mockResolvedValue({ id: 'tx1' }) },
+      ledgerEntry: {
+        create: jest.fn().mockResolvedValue({ id: 'le1', balanceAfter: wallet.goldBalance ?? 0n }),
+      },
+      $transaction: jest.fn((fn: (t: unknown) => unknown) => fn(mockPrisma)),
+    };
+    return mockPrisma;
+  };
+
+  const goldWallet = {
+    id: 'w1',
+    userId: 'u1',
+    status: WalletStatus.ACTIVE,
+    goldBalance: 1000n,
+    reservedBalance: 200n,
+  };
+
+  const movement = {
+    userId: 'u1',
+    currency: WalletCurrency.GOLD,
+    type: WalletEntryType.CREDIT,
+    reason: WalletTxnReason.ADMIN_CREDIT,
+    amount: 500n,
+    idempotencyKey: 'k1',
+  };
+
+  it('acquires a row-level FOR UPDATE lock and re-reads balance under it (W1)', async () => {
+    const prisma = prismaWith(goldWallet);
+    const repo = new WalletRepository(prisma as never);
+
+    await repo.applyMovement(movement);
+
+    expect(prisma.$queryRaw).toHaveBeenCalled();
+    // initial findUniqueOrThrow + re-read under the lock
+    expect(prisma.wallet.findUniqueOrThrow).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a movement against a non-ACTIVE wallet (W3/W7 freeze bypass)', async () => {
+    const prisma = prismaWith({ ...goldWallet, status: WalletStatus.SUSPENDED });
+    const repo = new WalletRepository(prisma as never);
+
+    await expect(repo.applyMovement(movement)).rejects.toMatchObject({
+      errorCode: 'WALLET_NOT_ACTIVE',
+    });
+    expect(prisma.wallet.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps GOLD availableBalance in lockstep with goldBalance minus reservations (W7)', async () => {
+    const prisma = prismaWith(goldWallet);
+    const repo = new WalletRepository(prisma as never);
+
+    await repo.applyMovement(movement);
+
+    // credit 500 → goldBalance 1500, availableBalance = 1500 - 200 reserved = 1300
+    const data = prisma.wallet.update.mock.calls[0][0].data;
+    expect(data.goldBalance).toBe(1500n);
+    expect(data.availableBalance).toBe(1300n);
+  });
+
+  it('clamps availableBalance at zero rather than going negative', async () => {
+    // Reserved 500 against a 100-coin balance is a drifted/edge state; a small
+    // credit must still clamp the aggregate instead of exposing a negative
+    // availableBalance that every other guard reads as "has balance".
+    const prisma = prismaWith({ ...goldWallet, goldBalance: 100n, reservedBalance: 500n });
+    const repo = new WalletRepository(prisma as never);
+
+    await repo.applyMovement({ ...movement, amount: 200n });
+
+    const data = prisma.wallet.update.mock.calls[0][0].data;
+    expect(data.availableBalance).toBe(0n);
+  });
+});
 
 describe('WalletRepository.aggregateSignedByCurrency', () => {
   /** Groups the double-entry ledger for a wallet the user actually owns. */

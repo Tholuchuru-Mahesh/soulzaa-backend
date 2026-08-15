@@ -40,6 +40,20 @@ export const LUCKY_MAX_SYMBOLS = 6;
 export const casinoBetLockKey = (userId: string): string => `casino:lock:bet:${userId}`;
 
 /**
+ * Round-level lock serialising bet-placement against settlement for ONE round.
+ * `placeBet` takes it (inside the per-user bet lock) to re-check the round's
+ * DB state before persisting a bet; `settleRound` takes it for the whole
+ * settle critical section (read snapshot → credit/refund). This closes the
+ * orphaned-bet race: a bet validated against the in-memory `betting` phase can
+ * no longer slip in after settlement has snapshotted the round.
+ *
+ * Lock ordering is consistent (round lock → per-user bet lock → wallet row
+ * lock), so it can never deadlock with the wallet layer, which locks on a
+ * completely different key.
+ */
+export const casinoRoundLockKey = (roundId: string): string => `casino:lock:round:${roundId}`;
+
+/**
  * Wallet idempotency key for a single bet placement — PER-TAP (keyed by the
  * client's own `clientBetId`), not per-item. This is what makes faithful
  * stacking possible: two different taps on the same item get two different
@@ -77,6 +91,22 @@ export const HISTORY_LEN = 8;
 
 /** Leaderboard size for a settled round's top winners. */
 export const TOP_WINNERS = 3;
+
+// ─────────────────────────────────────────────────────────────
+// Audio-room window lifecycle sweep
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Cadence of the orphan-window reconciliation (audio-room casino windows whose
+ * room is no longer live). A low-frequency best-effort sweep — the DELETED /
+ * ENDED / OWNERSHIP_TRANSFERRED event handlers are the primary path; this is
+ * only the safety net for missed events or a crash between window-create and
+ * room-end. Single-instance across replicas via a Redis lock.
+ */
+export const CASINO_WINDOW_SWEEP_INTERVAL_MS = 60_000;
+
+/** Distributed-lock key guarding the orphan-window sweep (see `CASINO_WINDOW_SWEEP_INTERVAL_MS`). */
+export const CASINO_WINDOW_SWEEP_LOCK_KEY = 'casino:window:monitor';
 
 /**
  * Max rows in the sync payload's `recentWinners` list — a rolling "last N

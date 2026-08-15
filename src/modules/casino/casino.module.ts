@@ -1,8 +1,12 @@
 import { Module } from '@nestjs/common';
 import { CASINO_BROADCASTER } from './interfaces/casino-broadcaster.interface';
+import { CasinoRoomController } from './controllers/casino-room.controller';
+import { RoomCasinoWindowListener } from './listeners/room-casino-window.listener';
 import { CasinoRepository } from './repositories/casino.repository';
 import { CasinoLoopService } from './services/casino-loop.service';
 import { CasinoService } from './services/casino.service';
+import { RoomCasinoWindowMonitor } from './services/room-casino-window.monitor';
+import { RoomCasinoWindowService } from './services/room-casino-window.service';
 import { CasinoGateway } from './gateway/casino.gateway';
 
 /**
@@ -30,13 +34,26 @@ import { CasinoGateway } from './gateway/casino.gateway';
  * the gateway reads `getState` off the loop for `*_sync` replies) — a genuine
  * DI cycle resolved with `forwardRef` on BOTH edges (see the `@Inject` sites
  * in `casino.gateway.ts` and `casino-loop.service.ts`).
+ *
+ * Audio-room windows: `RoomCasinoWindowService` (owner-gated start/close,
+ * host-only bets, member-gated window sync) + `RoomCasinoWindowListener` (the
+ * room-scoped mirror + room-end/room-delete close + ownership transfer) +
+ * `RoomCasinoWindowMonitor` (Redis-locked orphan-window sweep) +
+ * `CasinoRoomController` (the REST surface). These depend on
+ * `GamesRepository`/`AudioRoomGameAuthzService` from the (global) GamesModule
+ * and the global `AUDIO_ROOMS_SERVICE` — no module imports needed, mirroring
+ * the rest of this module's zero-imports style.
  */
 @Module({
+  controllers: [CasinoRoomController],
   providers: [
     CasinoRepository,
     CasinoService,
     CasinoLoopService,
     CasinoGateway,
+    RoomCasinoWindowService,
+    RoomCasinoWindowListener,
+    RoomCasinoWindowMonitor,
     { provide: CASINO_BROADCASTER, useExisting: CasinoGateway },
   ],
 })

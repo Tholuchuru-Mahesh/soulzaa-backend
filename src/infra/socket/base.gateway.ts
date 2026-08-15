@@ -68,8 +68,15 @@ export abstract class BaseGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { roomId: string },
   ): Promise<{ ok: boolean; roomId: string }> {
-    await this.manager.joinRoom(client, body.roomId);
-    return { ok: true, roomId: body.roomId };
+    // Namespace path (e.g. "/games") lets SocketManager consult a
+    // per-namespace RoomJoinPolicy if one is registered; namespaces with no
+    // policy join unconditionally, exactly as before this check existed.
+    // `Server`'s public type omits `.name`, but Nest injects the namespace's
+    // own `Namespace` object here (whose `.name` IS the path) — same cast
+    // `SocketManager.serverForNamespace` already relies on.
+    const namespace = (this.server as unknown as { name: string }).name;
+    const ok = await this.manager.joinRoom(client, body.roomId, namespace);
+    return { ok, roomId: body.roomId };
   }
 
   @SubscribeMessage('room:leave')

@@ -80,6 +80,18 @@ export class GamesController {
     return this.games.getLobby(code);
   }
 
+  @Get('rooms/:roomId/status')
+  @NotGuest()
+  @ApiOperation({
+    summary: 'Active session / open lobby for an audio room (current room members only)',
+  })
+  roomStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('roomId', ParseUuidPipe) roomId: string,
+  ) {
+    return this.games.getRoomGameStatus(this.actor(user), roomId);
+  }
+
   @Post('lobbies/:code/join')
   @HttpCode(HttpStatus.OK)
   @NotGuest()

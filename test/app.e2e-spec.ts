@@ -49,6 +49,7 @@ describe('Soulzaa backend (e2e)', () => {
     expect(res.body).toEqual({
       success: true,
       data: { pong: true, service: 'soulzaa-backend' },
+      requestId: expect.any(String),
       timestamp: expect.any(String),
     });
   });

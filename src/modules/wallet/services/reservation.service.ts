@@ -37,6 +37,19 @@ export class ReservationService {
       : undefined;
 
     return this.prisma.$transaction(async (tx) => {
+      // Row-level pessimistic lock + re-validation INSIDE the transaction: the
+      // pre-transaction `validateSufficientBalance` above is a fast-fail check,
+      // but two concurrent reserves could both pass it before either commits.
+      // Re-reading under `FOR UPDATE` and re-checking closes that TOCTOU so the
+      // aggregate can never be driven negative.
+      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
+      const lockedWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
+      if (!lockedWallet) {
+        throw new NotFoundException('Wallet not found');
+      }
+      this.validationService.validateWalletActive(lockedWallet);
+      this.validationService.validateSufficientBalance(lockedWallet, amountBig);
+
       // Move balance from availableBalance to reservedBalance
       const updatedWallet = await tx.wallet.update({
         where: { id: wallet.id },

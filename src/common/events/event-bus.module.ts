@@ -10,7 +10,7 @@ import { InMemoryEventBus } from './in-memory-event-bus';
  */
 @Global()
 @Module({
-  imports: [EventEmitterModule.forRoot({ wildcard: true, delimiter: '.' })],
+  imports: [EventEmitterModule.forRoot({ wildcard: true, delimiter: '.', maxListeners: 50 })],
   providers: [{ provide: EVENT_BUS, useClass: InMemoryEventBus }],
   exports: [EVENT_BUS],
 })

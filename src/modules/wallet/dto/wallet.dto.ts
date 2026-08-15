@@ -36,6 +36,14 @@ export class AdminAdjustWalletDto {
   @IsString()
   @MaxLength(500)
   note!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Client-supplied idempotency key (UUID). Reusing the same key with the same amount is a no-op replay; omit to auto-generate one (defaults to a fresh key per call).',
+  })
+  @IsOptional()
+  @IsUUID()
+  idempotencyKey?: string;
 }
 
 /** Query for a user's rewards feed. */

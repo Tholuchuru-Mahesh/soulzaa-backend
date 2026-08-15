@@ -78,6 +78,7 @@ import {
   gameSessionLockKey,
   gameTurnResyncPendingKey,
   gameWinningsLeaderboardKey,
+  roomActiveGameLockKey,
   matchMaxRetries,
   matchQueueTtlSeconds,
   matchReadySeconds,
@@ -110,6 +111,7 @@ import {
 } from '../events/game.events';
 import type { GameActor } from '../interfaces/game-actor.interface';
 import { GamesRepository } from '../repositories/games.repository';
+import { AudioRoomGameAuthzService } from './audio-room-game-authz.service';
 import {
   applyMove,
   canAct,
@@ -209,6 +211,7 @@ export class GamesService {
     @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
     @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
+    private readonly authz: AudioRoomGameAuthzService,
   ) {}
 
   // ======================= Catalog =======================
@@ -252,6 +255,19 @@ export class GamesService {
   // ======================= Lobbies =======================
 
   async createLobby(actor: GameActor, dto: CreateLobbyDto): Promise<unknown> {
+    if (dto.roomId) {
+      // UX-level early check — the authoritative "one active game per room"
+      // gate is re-checked under a room lock at start time (see
+      // startSessionFromLobby); this just gives the room's host immediate
+      // feedback instead of a lobby that can never be started.
+      await this.authz.assertCanStartBoardGame(dto.roomId, actor.id);
+      if (await this.repo.findActiveSessionForRoom(dto.roomId)) {
+        throw this.conflict(
+          ERROR_CODES.GAME_ROOM_ALREADY_ACTIVE,
+          'This room already has an active game.',
+        );
+      }
+    }
     const def = await this.requireEnabledDefinition(dto.gameCode);
     this.assertStakeInRange(def, dto.stake);
     const mode = dto.mode ?? GameMode.CLASSIC;
@@ -305,6 +321,18 @@ export class GamesService {
       const fresh = await this.repo.getLobbyById(lobby.id);
       if (!fresh || fresh.status !== GameLobbyStatus.OPEN) {
         throw this.conflict(ERROR_CODES.GAME_LOBBY_NOT_OPEN, 'This lobby is not open.');
+      }
+      // Audio-room integration: a lobby bound to an audio room may only be
+      // joined by current members of that room — a user in another room (or a
+      // stranger) who obtains the join code must not gain access to a game
+      // hosted inside a private room. Checked before the password so a
+      // non-member learns nothing about the password.
+      if (fresh.roomId && !(await this.authz.isMember(fresh.roomId, actor.id))) {
+        throw new BusinessException(
+          ERROR_CODES.NOT_ROOM_MEMBER,
+          'You must be a member of the hosting room to join this lobby.',
+          HttpStatus.FORBIDDEN,
+        );
       }
       if (fresh.passwordHash && !safeEqualHex(sha256(password ?? ''), fresh.passwordHash)) {
         throw this.conflict(ERROR_CODES.GAME_LOBBY_BAD_PASSWORD, 'Incorrect lobby password.');
@@ -478,6 +506,72 @@ export class GamesService {
       );
       return { closed: true };
     });
+  }
+
+  /**
+   * Closes the room's still-open (pre-start) room-bound lobby when its audio
+   * room ends. An active board-game session is aborted separately (the room-end
+   * lifecycle listener → `abortSession`); a lobby that never started would
+   * otherwise stay OPEN until its TTL sweep — still joinable-looking to members
+   * of the ended room but permanently unstartable (start requires a live room).
+   * No stake is escrowed until session start, so this is just the status flip +
+   * the same lobby_cancelled fan-out the host-close path uses. A no-op when the
+   * room has no open room-bound lobby (or it raced to STARTED/closed).
+   */
+  async closeRoomBoundLobby(roomId: string): Promise<void> {
+    const lobby = await this.repo.findOpenLobbyForRoom(roomId);
+    if (!lobby) return;
+    await this.locks.withLock(gameLobbyLockKey(lobby.id), async () => {
+      const fresh = await this.repo.getLobbyById(lobby.id);
+      if (!fresh || fresh.status !== GameLobbyStatus.OPEN) return;
+      await this.repo.markLobbyClosed(fresh.id, GameLobbyStatus.CANCELLED, null);
+      await this.repo.logEvent({
+        lobbyId: fresh.id,
+        action: 'lobby.closed_room_ended',
+      });
+      await this.bus.publish(
+        new GameLobbyCancelledEvent({
+          lobbyId: fresh.id,
+          code: fresh.code,
+          reason: 'room_ended',
+        }),
+      );
+    });
+  }
+
+  /**
+   * Re-points the room's room-bound board-game ownership after an audio-room
+   * OWNERSHIP_TRANSFERRED: the new room owner becomes the host of any still-open
+   * room-bound lobby (so they can start it) and of any active board-game session
+   * (so they can report/cancel it). Casino windows are deliberately skipped —
+   * their host re-point is handled by the casino module's own listener
+   * (`RoomCasinoWindowService.onOwnerChanged`), which re-reads the same session.
+   */
+  async repointRoomGameHost(roomId: string, newOwnerId: string): Promise<void> {
+    const session = await this.repo.findActiveSessionForRoom(roomId);
+    if (
+      session &&
+      session.code !== GameCode.GREEDY_FOOD &&
+      session.code !== GameCode.LUCKY_FRUIT
+    ) {
+      await this.repo.updateSessionHost(session.id, newOwnerId);
+      await this.repo.logEvent({
+        sessionId: session.id,
+        userId: newOwnerId,
+        action: 'session.host_updated',
+        detail: { reason: 'room_ownership_transferred' },
+      });
+    }
+    const lobby = await this.repo.findOpenLobbyForRoom(roomId);
+    if (lobby) {
+      await this.repo.updateLobbyHost(lobby.id, newOwnerId);
+      await this.repo.logEvent({
+        lobbyId: lobby.id,
+        userId: newOwnerId,
+        action: 'lobby.host_updated',
+        detail: { reason: 'room_ownership_transferred' },
+      });
+    }
   }
 
   /**
@@ -733,41 +827,60 @@ export class GamesService {
       // self-healing only once the 15-minute stale sweep eventually catches
       // it), then escrow each stake. Any failed debit refunds everything
       // already taken and aborts the session.
-      const session = await this.repo.runInTransaction(async (tx) => {
-        const created = await this.repo.createSession(
-          {
-            definitionId: def.id,
-            code: def.code,
-            lobbyId: fresh.id,
-            joinCode: fresh.code,
-            hostId: fresh.hostId,
-            roomId: fresh.roomId,
-            category: def.category,
-            currency: def.currency,
-            stake: fresh.stake,
-            mode: fresh.mode,
-            carromMode: carrom.carromMode,
-            teamCoinAssignment: carrom.teamCoinAssignment,
-            playerCount: members.length,
-            status: GameSessionStatus.ACTIVE,
-            createdBy: actorId,
-          },
-          tx,
-        );
-        await this.repo.createParticipants(
-          seats.map((s) => ({
-            sessionId: created.id,
-            definitionId: def.id,
-            userId: s.userId,
-            seat: s.seat,
-            team: s.team,
-            isBot: botIds.has(s.userId),
-            stake: botIds.has(s.userId) ? 0n : fresh.stake,
-          })),
-          tx,
-        );
-        return created;
-      });
+      const createSessionRow = () =>
+        this.repo.runInTransaction(async (tx) => {
+          const created = await this.repo.createSession(
+            {
+              definitionId: def.id,
+              code: def.code,
+              lobbyId: fresh.id,
+              joinCode: fresh.code,
+              hostId: fresh.hostId,
+              roomId: fresh.roomId,
+              category: def.category,
+              currency: def.currency,
+              stake: fresh.stake,
+              mode: fresh.mode,
+              carromMode: carrom.carromMode,
+              teamCoinAssignment: carrom.teamCoinAssignment,
+              playerCount: members.length,
+              status: GameSessionStatus.ACTIVE,
+              createdBy: actorId,
+            },
+            tx,
+          );
+          await this.repo.createParticipants(
+            seats.map((s) => ({
+              sessionId: created.id,
+              definitionId: def.id,
+              userId: s.userId,
+              seat: s.seat,
+              team: s.team,
+              isBot: botIds.has(s.userId),
+              stake: botIds.has(s.userId) ? 0n : fresh.stake,
+            })),
+            tx,
+          );
+          return created;
+        });
+
+      // Audio-room integration: re-check host authority + "one active game per
+      // room" against a fresh read, under a room-scoped lock held through
+      // session creation — the authoritative gate (the create-lobby-time check
+      // is UX-only). No `roomId` (the overwhelming majority of lobbies) skips
+      // this entirely — zero behavior change for non-room-bound games.
+      const session = fresh.roomId
+        ? await this.locks.withLock(roomActiveGameLockKey(fresh.roomId), async () => {
+            await this.authz.assertCanStartBoardGame(fresh.roomId as string, actorId);
+            if (await this.repo.findActiveSessionForRoom(fresh.roomId as string)) {
+              throw this.conflict(
+                ERROR_CODES.GAME_ROOM_ALREADY_ACTIVE,
+                'This room already has an active game.',
+              );
+            }
+            return createSessionRow();
+          })
+        : await createSessionRow();
       const participants = await this.repo.listParticipants(session.id);
 
       const escrowed: GameParticipant[] = [];
@@ -2454,13 +2567,18 @@ export class GamesService {
   private async assertSessionViewable(actor: GameActor, sessionId: string): Promise<void> {
     if (this.isAdmin(actor)) return;
     const participant = await this.repo.getParticipant(sessionId, actor.id);
-    if (!participant) {
-      throw new BusinessException(
-        ERROR_CODES.GAME_NOT_AUTHORIZED,
-        'You are not a participant of this session.',
-        HttpStatus.FORBIDDEN,
-      );
-    }
+    if (participant) return;
+    // Not a participant — still viewable read-only if this is a room-bound
+    // session and the caller is a current member of that audio room
+    // (spectator). A non-member falls through to the same rejection a
+    // non-participant always got.
+    const session = await this.repo.getSession(sessionId);
+    if (session?.roomId && (await this.authz.isMember(session.roomId, actor.id))) return;
+    throw new BusinessException(
+      ERROR_CODES.GAME_NOT_AUTHORIZED,
+      'You are not a participant of this session.',
+      HttpStatus.FORBIDDEN,
+    );
   }
 
   /**
@@ -2546,6 +2664,31 @@ export class GamesService {
       rows.map((l) => this.lobbyView(l, codeByDefinitionId.get(l.definitionId))),
     );
     return buildPaginated(views, total, page, limit);
+  }
+
+  /**
+   * What's currently happening with games in this audio room — the active
+   * session (if a match has started) or the open lobby (if the host has
+   * created one but not started it yet), so the room's UI can render
+   * "Start"/"Join"/"Watch" without the caller ever supplying a session/lobby
+   * id it would otherwise have to already know. Gated on current room
+   * membership — this is the one seam that would otherwise let a non-member
+   * probe whether a private room has a lobby open.
+   */
+  async getRoomGameStatus(
+    actor: GameActor,
+    roomId: string,
+  ): Promise<{ activeSession: unknown; openLobby: unknown }> {
+    await this.authz.assertCanWatch(roomId, actor.id);
+    const [session, lobby] = await Promise.all([
+      this.repo.findActiveSessionForRoom(roomId),
+      this.repo.findOpenLobbyForRoom(roomId),
+    ]);
+    const [activeSession, openLobby] = await Promise.all([
+      session ? this.sessionView(session, await this.repo.listParticipants(session.id)) : null,
+      lobby ? this.lobbyView(lobby, await this.gameCodeOf(lobby.definitionId)) : null,
+    ]);
+    return { activeSession, openLobby };
   }
 
   async history(actor: GameActor, dto: ListSessionsDto): Promise<Paginated<unknown>> {

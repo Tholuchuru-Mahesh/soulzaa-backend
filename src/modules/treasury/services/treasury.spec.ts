@@ -164,6 +164,13 @@ describe('TreasuryModule Shared Services', () => {
       const isExceeded = await policyService.validatePolicyLimit('max_gift_amount', 600000);
       expect(isExceeded).toBe(false);
     });
+
+    it('FAILS CLOSED when the policy cannot be read (refuses instead of silently bypassing the cap)', async () => {
+      mockPrismaService.financialPolicy.findUnique.mockResolvedValue(null);
+
+      const isAllowed = await policyService.validatePolicyLimit('max_gift_amount', 100);
+      expect(isAllowed).toBe(false);
+    });
   });
 
   describe('RiskManagementService', () => {

@@ -2,9 +2,12 @@ import { Global, Module } from '@nestjs/common';
 import { GamesAdminController } from './controllers/games-admin.controller';
 import { GamesController } from './controllers/games.controller';
 import { GAMES_SERVICE } from './interfaces/games.service.interface';
+import { AudioRoomLifecycleListener } from './listeners/audio-room-lifecycle.listener';
 import { GameSocketListener } from './listeners/game-socket.listener';
+import { GamesRoomJoinPolicy } from './listeners/games-room-join-policy';
 import { PresenceForfeitListener } from './listeners/presence-forfeit.listener';
 import { GamesRepository } from './repositories/games.repository';
+import { AudioRoomGameAuthzService } from './services/audio-room-game-authz.service';
 import { GameCatalogSeeder } from './services/game-catalog.seeder';
 import { GameExpiryMonitor } from './services/game-expiry.monitor';
 import { GamesService } from './services/games.service';
@@ -37,8 +40,11 @@ import { GamesService } from './services/games.service';
     GameExpiryMonitor,
     GameSocketListener,
     PresenceForfeitListener,
+    AudioRoomGameAuthzService,
+    GamesRoomJoinPolicy,
+    AudioRoomLifecycleListener,
     { provide: GAMES_SERVICE, useExisting: GamesService },
   ],
-  exports: [GAMES_SERVICE, GamesService, GamesRepository],
+  exports: [GAMES_SERVICE, GamesService, GamesRepository, AudioRoomGameAuthzService],
 })
 export class GamesModule {}

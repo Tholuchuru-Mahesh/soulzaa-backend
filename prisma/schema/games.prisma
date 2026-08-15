@@ -58,6 +58,8 @@ model GameLobby {
   @@index([status, expiresAt])
   @@index([definitionId, status])
   @@index([hostId])
+  /// Audio-room integration: "does this room have an open lobby" lookup.
+  @@index([roomId, status])
   @@map("game_lobbies")
 }
 
@@ -111,6 +113,8 @@ model GameSession {
   @@index([status])
   @@index([definitionId, status])
   @@index([roomId])
+  /// Audio-room integration: "does this room have an active session" lookup.
+  @@index([roomId, status])
   @@index([hostId])
   @@index([status, startedAt])
   @@map("game_sessions")

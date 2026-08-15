@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { WalletStatus, WalletType } from '@prisma/client';
+import { WalletCurrency, WalletStatus, WalletTxnReason, WalletType } from '@prisma/client';
 import { EVENT_BUS } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
@@ -7,6 +7,7 @@ import { WalletMetrics } from '../metrics/wallet.metrics';
 import { WalletRepository } from '../repositories/wallet.repository';
 import { WalletAuditService } from './wallet-audit.service';
 import { WalletService } from './wallet.service';
+import { WalletValidationService } from './wallet-validation.service';
 
 describe('WalletService', () => {
   let service: WalletService;
@@ -38,6 +39,12 @@ describe('WalletService', () => {
   };
   const mockBus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
   const mockMetrics = { recordMovement: jest.fn(), recordFailure: jest.fn() };
+  const mockValidation = {
+    validateEconomyStatus: jest.fn().mockResolvedValue(undefined),
+    validateWalletActive: jest.fn(),
+    validatePositiveAmount: jest.fn(),
+    validateSufficientBalance: jest.fn(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -49,6 +56,7 @@ describe('WalletService', () => {
         { provide: EVENT_BUS, useValue: mockBus },
         { provide: WalletMetrics, useValue: mockMetrics },
         { provide: WalletAuditService, useValue: mockAuditService },
+        { provide: WalletValidationService, useValue: mockValidation },
       ],
     }).compile();
 
@@ -99,5 +107,75 @@ describe('WalletService', () => {
     const updated = await service.updateWalletStatus('w-300', WalletStatus.LOCKED, 'actor-1');
     expect(updated.status).toBe(WalletStatus.LOCKED);
     expect(mockAuditService.logAudit).toHaveBeenCalled();
+  });
+
+  it('W4: an idempotent replay reports the wallet CURRENT balance, not the original amount', async () => {
+    mockRepo.findByIdempotencyKey.mockResolvedValue({
+      id: 'tx-1',
+      currency: WalletCurrency.GOLD,
+      amount: 100n,
+    });
+    mockRepo.getWallet.mockResolvedValue({
+      id: 'w-1',
+      goldBalance: 750n,
+      diamondBalance: 0n,
+      gameBalance: 0n,
+      freeBalance: 0n,
+      earningsBalance: 0n,
+    });
+
+    const res = await service.debit({
+      userId: 'u1',
+      currency: WalletCurrency.GOLD,
+      amount: 100,
+      reason: WalletTxnReason.CASINO_BET,
+      idempotencyKey: 'k1',
+    });
+
+    expect(res.duplicate).toBe(true);
+    expect(res.balanceAfter).toBe(750);
+    expect(mockRepo.applyMovement).not.toHaveBeenCalled();
+  });
+
+  it('validates economy status on a DEBIT before any money moves (freeze gate)', async () => {
+    mockRepo.findByIdempotencyKey.mockResolvedValue(null);
+    mockRepo.applyMovement.mockResolvedValue({
+      transactionId: 'tx-2',
+      walletId: 'w-1',
+      currency: WalletCurrency.GOLD,
+      amount: 100n,
+      reason: WalletTxnReason.CASINO_BET,
+      balanceAfter: 800n,
+    });
+    const res = await service.debit({
+      userId: 'u1',
+      currency: WalletCurrency.GOLD,
+      amount: 100,
+      reason: WalletTxnReason.CASINO_BET,
+      idempotencyKey: 'k1',
+    });
+    expect(mockValidation.validateEconomyStatus).toHaveBeenCalled();
+    expect(mockRepo.applyMovement).toHaveBeenCalled();
+    expect(res.duplicate).toBe(false);
+  });
+
+  it('does not validate economy status on a CREDIT (payouts still flow during a freeze)', async () => {
+    mockRepo.findByIdempotencyKey.mockResolvedValue(null);
+    mockRepo.applyMovement.mockResolvedValue({
+      transactionId: 'tx-3',
+      walletId: 'w-1',
+      currency: WalletCurrency.GOLD,
+      amount: 100n,
+      reason: WalletTxnReason.CASINO_WIN,
+      balanceAfter: 900n,
+    });
+    await service.credit({
+      userId: 'u1',
+      currency: WalletCurrency.GOLD,
+      amount: 100,
+      reason: WalletTxnReason.CASINO_WIN,
+      idempotencyKey: 'k2',
+    });
+    expect(mockValidation.validateEconomyStatus).not.toHaveBeenCalled();
   });
 });

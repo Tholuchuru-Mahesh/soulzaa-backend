@@ -66,12 +66,37 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit(): Promise<void> {
-    await this.$connect();
+    await this.connectWithRetry();
     this.logger.log(
       `Prisma connected to PostgreSQL (connection_limit=${
         this.poolSettings.connectionLimit ?? 'default'
       }, pool_timeout=${this.poolSettings.poolTimeout}s)`,
     );
+  }
+
+  /**
+   * Connects with a bounded retry so a slow-starting dependency (e.g. the
+   * Dockerized Postgres coming up alongside the app) doesn't kill the boot
+   * with an immediate P1001. Retries up to ~30s, then rethrows so the app
+   * still fails loudly if the database is genuinely unreachable.
+   */
+  private async connectWithRetry(): Promise<void> {
+    const maxAttempts = 15;
+    const retryDelayMs = 2000;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.$connect();
+        return;
+      } catch (error) {
+        if (attempt >= maxAttempts) throw error;
+        this.logger.warn(
+          `Prisma connect failed (attempt ${attempt}/${maxAttempts}): ${
+            (error as Error).message
+          } — retrying in ${retryDelayMs}ms`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

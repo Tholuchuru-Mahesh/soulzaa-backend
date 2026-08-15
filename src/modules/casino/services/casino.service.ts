@@ -43,6 +43,7 @@ import {
   casinoBetIdempotencyKey,
   casinoBetLockKey,
   casinoRefundIdempotencyKey,
+  casinoRoundLockKey,
   casinoWinIdempotencyKey,
   CASINO_CHIPS,
   LUCKY_MAX_SYMBOLS,
@@ -170,51 +171,66 @@ export class CasinoService {
     // would deadlock (the same process trying to re-acquire a lock it
     // already holds against a non-reentrant SET NX).
     return this.locks.withLock(casinoBetLockKey(userId), async () => {
-      if (isLucky) {
-        const distinct = await this.repo.countDistinctSymbols(roundId, userId);
-        if (distinct >= LUCKY_MAX_SYMBOLS) {
-          // Cap only blocks a brand-new 7th symbol — adding more to a symbol
-          // the user already bet on this round is always allowed.
-          const already = await this.repo.hasSymbol(roundId, userId, item);
-          if (!already) {
-            throw new CasinoError('You can bet on a maximum of 6 symbols.');
+      // Round lock serialises bet-placement against settlement for this round,
+      // then re-check the round's DB state — NOT just the in-memory `phase`
+      // validated above. The in-memory check races the loop: a bet can pass it
+      // a moment before `settleRound` snapshots the round, get its debit
+      // persisted, and then be orphaned (debited but never settled) because it
+      // isn't in that snapshot. Re-reading `CasinoRound` under the round lock
+      // closes that gap — if the loop already started settling, the round is
+      // no longer `BETTING` here and the bet is rejected.
+      return this.locks.withLock(casinoRoundLockKey(roundId), async () => {
+        const round = await this.repo.getRound(roundId);
+        if (!round || round.status !== CasinoRoundStatus.BETTING) {
+          throw new CasinoError('Betting is locked for this round');
+        }
+
+        if (isLucky) {
+          const distinct = await this.repo.countDistinctSymbols(roundId, userId);
+          if (distinct >= LUCKY_MAX_SYMBOLS) {
+            // Cap only blocks a brand-new 7th symbol — adding more to a symbol
+            // the user already bet on this round is always allowed.
+            const already = await this.repo.hasSymbol(roundId, userId, item);
+            if (!already) {
+              throw new CasinoError('You can bet on a maximum of 6 symbols.');
+            }
           }
         }
-      }
 
-      let debit;
-      try {
-        debit = await this.wallet.debit({
-          userId,
-          currency: WalletCurrency.GOLD,
-          amount,
-          reason: WalletTxnReason.CASINO_BET,
-          idempotencyKey: casinoBetIdempotencyKey(roundId, userId, clientBetId),
-          referenceType: 'casino_round',
-          referenceId: roundId,
-          metadata: { gameCode: game, item },
-        });
-      } catch (err) {
-        if (
-          err instanceof BusinessException &&
-          err.errorCode === ERROR_CODES.INSUFFICIENT_BALANCE
-        ) {
-          throw new CasinoError(isLucky ? 'Insufficient coins.' : 'Insufficient wallet balance');
+        let debit;
+        try {
+          debit = await this.wallet.debit({
+            userId,
+            currency: WalletCurrency.GOLD,
+            amount,
+            reason: WalletTxnReason.CASINO_BET,
+            idempotencyKey: casinoBetIdempotencyKey(roundId, userId, clientBetId),
+            referenceType: 'casino_round',
+            referenceId: roundId,
+            metadata: { gameCode: game, item },
+          });
+        } catch (err) {
+          if (
+            err instanceof BusinessException &&
+            err.errorCode === ERROR_CODES.INSUFFICIENT_BALANCE
+          ) {
+            throw new CasinoError(isLucky ? 'Insufficient coins.' : 'Insufficient wallet balance');
+          }
+          throw err;
         }
-        throw err;
-      }
 
-      const bet = await this.repo.createBet({
-        roundId,
-        userId,
-        game,
-        betItem: item,
-        betAmount: amount,
-        clientBetId,
-        betTxnId: debit.transactionId,
+        const bet = await this.repo.createBet({
+          roundId,
+          userId,
+          game,
+          betItem: item,
+          betAmount: amount,
+          clientBetId,
+          betTxnId: debit.transactionId,
+        });
+
+        return { balanceAfter: debit.balanceAfter, betId: bet.id };
       });
-
-      return { balanceAfter: debit.balanceAfter, betId: bet.id };
     });
   }
 
@@ -258,6 +274,15 @@ export class CasinoService {
     roundId: string,
     winningOutcome: string,
   ): Promise<SettleRoundResult> {
+    // Round lock around the ENTIRE settle critical section (snapshot → credit/
+    // refund → close). Combined with `placeBet`'s round-lock + DB re-check, a
+    // bet can never be validated against the in-memory `betting` phase and then
+    // slip past this snapshot: once the round is no longer `BETTING` in the DB,
+    // placement is rejected. TTL extended well past a large round's settle time
+    // so a concurrent retry can't enter while the first settle is mid-transaction.
+    return this.locks.withLock(
+      casinoRoundLockKey(roundId),
+      async () => {
     const placed = await this.repo.listPlacedBets(roundId);
     const computed = placed.map((bet) => ({
       bet,
@@ -321,6 +346,9 @@ export class CasinoService {
       .slice(0, TOP_WINNERS);
 
     return { winningOutcome, payouts, winners };
+      },
+      { ttlMs: 30_000 },
+    );
   }
 
   /**

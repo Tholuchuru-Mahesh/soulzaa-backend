@@ -118,7 +118,7 @@ describe('Super Admin Phase 2B: User & Role Management Services', () => {
         { provide: AuthorizationCacheService, useValue: mockAuthCacheService },
         { provide: CacheService, useValue: mockCacheService },
         { provide: RoleResolver, useValue: mockRoleResolver },
-        { provide: MediaUrlResolver, useValue: { resolveAvatarUrl: jest.fn() } },
+        { provide: MediaUrlResolver, useValue: { resolve: jest.fn((key: string) => key) } },
         PolicyEngineService,
         RoleRankPolicyRule,
       ],

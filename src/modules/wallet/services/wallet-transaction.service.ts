@@ -50,6 +50,28 @@ export class WalletTransactionService {
   }
 
   /**
+   * Two identical requests can both pass the idempotency pre-check above before
+   * either commits; the loser then hits the unique constraint (P2002). Instead of
+   * leaking a raw Prisma 500, re-fetch the winner's transaction and return it as
+   * the idempotent replay — same behaviour as the pre-check, just race-safe.
+   */
+  private async recoverDuplicate(
+    idempotencyKey: string,
+    e: unknown,
+  ): Promise<ReturnType<WalletTransactionService['formatTransactionResponse']> | null> {
+    // Duck-typed P2002 check (not `instanceof PrismaClientKnownRequestError`):
+    // works for the real driver error AND for errors serialized across a
+    // process boundary, which lose the class identity.
+    if ((e as { code?: string })?.code === 'P2002') {
+      const existing = await this.prisma.walletTransaction.findUnique({
+        where: { idempotencyKey },
+      });
+      if (existing) return this.formatTransactionResponse(existing);
+    }
+    return null;
+  }
+
+  /**
    * Credits a user wallet account with double-entry ledger entry
    */
   async creditWallet(dto: CreditWalletDto, actorId?: string) {
@@ -70,7 +92,8 @@ export class WalletTransactionService {
     const wallet = await this.walletService.getOrCreateWallet(dto.userId);
     this.validationService.validateWalletActive(wallet);
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
       // Row-level pessimistic locking
       await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
       const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
@@ -145,18 +168,23 @@ export class WalletTransactionService {
       };
     });
 
-    await this.publishMovement(WalletEntryType.CREDIT, {
-      userId: dto.userId,
-      transactionId: result.transactionId,
-      currency: dto.currency ?? WalletCurrency.GOLD,
-      amount: Number(amountBig),
-      balanceAfter: Number(result.balanceAfter),
-      reason: dto.reason ?? WalletTxnReason.ADMIN_CREDIT,
-      referenceType: dto.referenceType ?? null,
-      referenceId: dto.referenceId ?? null,
-    });
+      await this.publishMovement(WalletEntryType.CREDIT, {
+        userId: dto.userId,
+        transactionId: result.transactionId,
+        currency: dto.currency ?? WalletCurrency.GOLD,
+        amount: Number(amountBig),
+        balanceAfter: Number(result.balanceAfter),
+        reason: dto.reason ?? WalletTxnReason.ADMIN_CREDIT,
+        referenceType: dto.referenceType ?? null,
+        referenceId: dto.referenceId ?? null,
+      });
 
-    return result;
+      return result;
+    } catch (e) {
+      const replay = await this.recoverDuplicate(dto.idempotencyKey, e);
+      if (replay) return replay;
+      throw e;
+    }
   }
 
   /**
@@ -180,7 +208,8 @@ export class WalletTransactionService {
     this.validationService.validateWalletActive(wallet);
     this.validationService.validateSufficientBalance(wallet, amountBig, dto.currency);
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
       // Row-level pessimistic locking
       await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
       const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
@@ -257,18 +286,23 @@ export class WalletTransactionService {
       };
     });
 
-    await this.publishMovement(WalletEntryType.DEBIT, {
-      userId: dto.userId,
-      transactionId: result.transactionId,
-      currency: dto.currency ?? WalletCurrency.GOLD,
-      amount: Number(amountBig),
-      balanceAfter: Number(result.balanceAfter),
-      reason: dto.reason ?? WalletTxnReason.ADMIN_DEBIT,
-      referenceType: dto.referenceType ?? null,
-      referenceId: dto.referenceId ?? null,
-    });
+      await this.publishMovement(WalletEntryType.DEBIT, {
+        userId: dto.userId,
+        transactionId: result.transactionId,
+        currency: dto.currency ?? WalletCurrency.GOLD,
+        amount: Number(amountBig),
+        balanceAfter: Number(result.balanceAfter),
+        reason: dto.reason ?? WalletTxnReason.ADMIN_DEBIT,
+        referenceType: dto.referenceType ?? null,
+        referenceId: dto.referenceId ?? null,
+      });
 
-    return result;
+      return result;
+    } catch (e) {
+      const replay = await this.recoverDuplicate(dto.idempotencyKey, e);
+      if (replay) return replay;
+      throw e;
+    }
   }
 
   /**
@@ -317,7 +351,8 @@ export class WalletTransactionService {
 
     const wallet = await this.walletService.getOrCreateWallet(dto.userId);
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
       const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
       if (!freshWallet) throw new NotFoundException(`Wallet not found`);
@@ -388,18 +423,23 @@ export class WalletTransactionService {
       };
     });
 
-    await this.publishMovement(WalletEntryType.DEBIT, {
-      userId: dto.userId,
-      transactionId: result.transactionId,
-      currency: dto.currency ?? WalletCurrency.GOLD,
-      amount: Number(amountBig),
-      balanceAfter: Number(result.balanceAfter),
-      reason,
-      referenceType: dto.referenceType ?? null,
-      referenceId: dto.referenceId ?? null,
-    });
+      await this.publishMovement(WalletEntryType.DEBIT, {
+        userId: dto.userId,
+        transactionId: result.transactionId,
+        currency: dto.currency ?? WalletCurrency.GOLD,
+        amount: Number(amountBig),
+        balanceAfter: Number(result.balanceAfter),
+        reason,
+        referenceType: dto.referenceType ?? null,
+        referenceId: dto.referenceId ?? null,
+      });
 
-    return result;
+      return result;
+    } catch (e) {
+      const replay = await this.recoverDuplicate(dto.idempotencyKey, e);
+      if (replay) return replay;
+      throw e;
+    }
   }
 
   /**
@@ -432,7 +472,8 @@ export class WalletTransactionService {
     }
     this.validationService.validateSufficientBalance(senderWallet, amountBig);
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
       if (isSelfTransfer) {
         await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${senderWallet.id}::uuid FOR UPDATE`;
       } else {
@@ -557,28 +598,33 @@ export class WalletTransactionService {
       };
     });
 
-    await this.publishMovement(WalletEntryType.DEBIT, {
-      userId: dto.senderUserId,
-      transactionId: result.transactionId,
-      currency: dto.currency ?? WalletCurrency.GOLD,
-      amount: Number(amountBig),
-      balanceAfter: Number(result.senderAvailableBalance),
-      reason: WalletTxnReason.SYSTEM_TRANSFER,
-      referenceType: dto.referenceType ?? null,
-      referenceId: dto.referenceId ?? null,
-    });
-    await this.publishMovement(WalletEntryType.CREDIT, {
-      userId: dto.recipientUserId,
-      transactionId: result.transactionId,
-      currency: dto.currency ?? WalletCurrency.GOLD,
-      amount: Number(amountBig),
-      balanceAfter: Number(result.recipientAvailableBalance),
-      reason: WalletTxnReason.SYSTEM_TRANSFER,
-      referenceType: dto.referenceType ?? null,
-      referenceId: dto.referenceId ?? null,
-    });
+      await this.publishMovement(WalletEntryType.DEBIT, {
+        userId: dto.senderUserId,
+        transactionId: result.transactionId,
+        currency: dto.currency ?? WalletCurrency.GOLD,
+        amount: Number(amountBig),
+        balanceAfter: Number(result.senderAvailableBalance),
+        reason: WalletTxnReason.SYSTEM_TRANSFER,
+        referenceType: dto.referenceType ?? null,
+        referenceId: dto.referenceId ?? null,
+      });
+      await this.publishMovement(WalletEntryType.CREDIT, {
+        userId: dto.recipientUserId,
+        transactionId: result.transactionId,
+        currency: dto.currency ?? WalletCurrency.GOLD,
+        amount: Number(amountBig),
+        balanceAfter: Number(result.recipientAvailableBalance),
+        reason: WalletTxnReason.SYSTEM_TRANSFER,
+        referenceType: dto.referenceType ?? null,
+        referenceId: dto.referenceId ?? null,
+      });
 
-    return result;
+      return result;
+    } catch (e) {
+      const replay = await this.recoverDuplicate(dto.idempotencyKey, e);
+      if (replay) return replay;
+      throw e;
+    }
   }
 
   private formatTransactionResponse(tx: any) {

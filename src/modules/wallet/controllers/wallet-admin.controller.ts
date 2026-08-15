@@ -56,7 +56,9 @@ export class WalletAdminController {
   @RequirePermissions('wallet.view')
   @AuditLogAction('TRANSACTION_CREATED', 'wallet_transaction')
   async adjust(@CurrentUser('id') adminId: string, @Body() dto: AdminAdjustWalletDto) {
-    const idempotencyKey = `admin-adjust:${randomUUID()}`;
+    // Client-supplied idempotency key lets support retry an adjust safely
+    // without double-applying; falls back to a fresh key per call.
+    const idempotencyKey = dto.idempotencyKey ?? `admin-adjust:${randomUUID()}`;
 
     if (dto.type === WalletEntryType.CREDIT) {
       return this.transactionService.creditWallet(

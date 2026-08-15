@@ -57,6 +57,7 @@ function makeService(
     createBet: jest.fn().mockResolvedValue({ id: 'bet1' }),
     countDistinctSymbols: jest.fn().mockResolvedValue(0),
     hasSymbol: jest.fn().mockResolvedValue(false),
+    getRound: jest.fn().mockResolvedValue({ status: 'BETTING' }),
     ...overrides.repo,
   };
   const wallet = {
@@ -227,6 +228,28 @@ describe('CasinoService.placeBet', () => {
     const boom = new Error('db connection lost');
     const { svc } = makeService({ wallet: { debit: jest.fn().mockRejectedValue(boom) } });
     await expect(svc.placeBet(base)).rejects.toBe(boom);
+  });
+
+  it('RACE (orphaned bet): rejects a bet when the DB round is no longer BETTING (settle already started)', async () => {
+    // The in-memory `phase` check passes, but settlement has already closed the
+    // round in the DB. The round-lock + DB re-check must reject the bet BEFORE
+    // any debit is issued, so no bet can be charged and then orphaned because
+    // it missed the settlement snapshot.
+    const { svc, wallet } = makeService({
+      repo: { getRound: jest.fn().mockResolvedValue({ status: 'SETTLED' }) },
+    });
+    await expect(svc.placeBet(base)).rejects.toThrow(/Betting is locked for this round/i);
+    expect(wallet.debit).not.toHaveBeenCalled();
+    expect(svc['repo'].createBet).not.toHaveBeenCalled();
+  });
+
+  it('accepts a bet when the DB round is still BETTING (normal path under round lock)', async () => {
+    const { svc, wallet } = makeService({
+      repo: { getRound: jest.fn().mockResolvedValue({ status: 'BETTING' }) },
+    });
+    const res = await svc.placeBet(base);
+    expect(wallet.debit).toHaveBeenCalled();
+    expect(res).toEqual({ balanceAfter: 900, betId: 'bet1' });
   });
 
   it('STACKING: two placeBet calls on the SAME item with DIFFERENT clientBetIds both debit and both persist', async () => {

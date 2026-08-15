@@ -60,14 +60,20 @@ function makeLoop(
       .mockResolvedValue(new Map([['u1', { displayName: 'Alice', avatarUrl: null }]])),
   };
 
+  const bus = {
+    publish: jest.fn().mockResolvedValue(undefined),
+    subscribe: jest.fn(() => () => undefined),
+  };
+
   const loop = new CasinoLoopService(
     repo as any,
     casino as any,
     locks as any,
     broadcaster as any,
     profiles as any,
+    bus as any,
   );
-  return { loop, repo, casino, locks, broadcaster, emitted, profiles };
+  return { loop, repo, casino, locks, broadcaster, emitted, profiles, bus };
 }
 
 /** Runs `n` `tickGame` calls sequentially, awaiting each (the loop is not re-entrant-safe by design). */

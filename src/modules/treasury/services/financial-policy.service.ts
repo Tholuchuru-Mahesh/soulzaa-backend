@@ -1,9 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { TreasuryAuditService } from './treasury-audit.service';
 
 @Injectable()
 export class FinancialPolicyService {
+  private readonly logger = new Logger(FinancialPolicyService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: TreasuryAuditService,
@@ -102,7 +104,14 @@ export class FinancialPolicyService {
   }
 
   /**
-   * Validates whether an amount respects the configured policy cap
+   * Validates whether an amount respects the configured policy cap.
+   *
+   * FAIL-CLOSED: a policy lookup/parse error (DB down, row missing, corrupt
+   * value) returns `false`, so a payout in flight can NEVER exceed its cap on
+   * a transient failure — the operation is refused and surfaced for manual
+   * review instead of silently bypassing the cap. Keys are always seeded by
+   * `TreasurySeederService.DEFAULT_FINANCIAL_POLICIES`, so a missing row is a
+   * real anomaly that deserves a hard stop, not a quiet allowance.
    */
   async validatePolicyLimit(key: string, amount: number): Promise<boolean> {
     try {
@@ -110,8 +119,12 @@ export class FinancialPolicyService {
       const cap = BigInt(policy.value);
       const requested = BigInt(amount);
       return requested <= cap;
-    } catch {
-      return true;
+    } catch (err) {
+      this.logger.error(
+        `validatePolicyLimit("${key}", ${amount}) failed — refusing (fail closed): ` +
+          `${(err as Error).message}`,
+      );
+      return false;
     }
   }
 }

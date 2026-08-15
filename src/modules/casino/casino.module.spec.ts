@@ -1,13 +1,23 @@
 import { Test, type TestingModule } from '@nestjs/testing';
+import { EVENT_BUS } from 'src/common/events';
 import { LockService } from 'src/infra/redis/lock.service';
 import { SocketManager } from 'src/infra/socket/socket.manager';
+import {
+  AUDIO_ROOMS_SERVICE,
+} from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
+import { GamesRepository } from 'src/modules/games/repositories/games.repository';
+import { AudioRoomGameAuthzService } from 'src/modules/games/services/audio-room-game-authz.service';
 import { PROFILE_SERVICE } from 'src/modules/users/interfaces/profile.interface';
 import { WALLET_SERVICE } from 'src/modules/wallet/interfaces/wallet.service.interface';
+import { CasinoRoomController } from './controllers/casino-room.controller';
 import { CasinoGateway } from './gateway/casino.gateway';
 import { CASINO_BROADCASTER } from './interfaces/casino-broadcaster.interface';
+import { RoomCasinoWindowListener } from './listeners/room-casino-window.listener';
 import { CasinoRepository } from './repositories/casino.repository';
 import { CasinoLoopService } from './services/casino-loop.service';
 import { CasinoService } from './services/casino.service';
+import { RoomCasinoWindowMonitor } from './services/room-casino-window.monitor';
+import { RoomCasinoWindowService } from './services/room-casino-window.service';
 
 /**
  * Task 12's circular-dependency proof.
@@ -75,6 +85,13 @@ describe('Casino DI graph — CasinoLoopService <-> CasinoGateway cycle', () => 
           },
         },
         {
+          provide: EVENT_BUS,
+          useValue: {
+            publish: jest.fn().mockResolvedValue(undefined),
+            subscribe: jest.fn(() => () => undefined),
+          },
+        },
+        {
           provide: SocketManager,
           useValue: {
             joinRoom: jest.fn().mockResolvedValue(undefined),
@@ -117,5 +134,111 @@ describe('Casino DI graph — CasinoLoopService <-> CasinoGateway cycle', () => 
     const loop = moduleRef.get(CasinoLoopService);
     expect(gateway.loop).toBeDefined();
     expect(gateway.loop).toBe(loop);
+  });
+});
+
+/**
+ * Full-wiring proof for the audio-room window providers. Declares the REAL
+ * `CasinoModule` provider graph (every provider the module registers — incl.
+ * the new `RoomCasinoWindowService`/`RoomCasinoWindowListener`/`CasinoRoomController`)
+ * with only the external @Global deps stood in as minimal doubles. If any new
+ * provider's DI were missing/unresolvable, `get()` below would throw — without
+ * needing Postgres/Redis. (The module is not imported via `imports` because its
+ * providers rely on @Global tokens like `PrismaService` that a bare TestingModule
+ * wouldn't provide, and `PrismaService`'s PrismaClient base isn't jest-cloneable;
+ * declaring the real classes directly exercises the same resolution graph.)
+ */
+describe('CasinoModule — full wiring (incl. RoomCasinoWindowService/Listener/Controller)', () => {
+  let moduleRef: TestingModule;
+
+  beforeAll(async () => {
+    moduleRef = await Test.createTestingModule({
+      providers: [
+        {
+          provide: GamesRepository,
+          useValue: {
+            findActiveSessionForRoom: jest.fn().mockResolvedValue(null),
+            listActiveRoomWindowsByCode: jest.fn().mockResolvedValue([]),
+            getDefinitionByCode: jest.fn().mockResolvedValue(null),
+            createSession: jest.fn(),
+            completeSession: jest.fn(),
+          },
+        },
+        {
+          provide: AudioRoomGameAuthzService,
+          useValue: {
+            assertCanStartCasinoWindow: jest.fn(),
+            assertCanWatch: jest.fn(),
+            isMember: jest.fn(),
+          },
+        },
+        { provide: AUDIO_ROOMS_SERVICE, useValue: { getOwnerId: jest.fn() } },
+        {
+          provide: CasinoRepository,
+          useValue: {
+            listPlacedBets: jest.fn().mockResolvedValue([]),
+            listUserBets: jest.fn().mockResolvedValue([]),
+            recentWinningBets: jest.fn().mockResolvedValue([]),
+            createRound: jest.fn(),
+            createBet: jest.fn(),
+            runInTransaction: jest.fn(),
+          },
+        },
+        {
+          provide: LockService,
+          useValue: {
+            withLock: jest.fn(async (_k: string, fn: () => Promise<unknown>) => fn()),
+            acquire: jest.fn(),
+            release: jest.fn(),
+            acquireLockObject: jest.fn().mockResolvedValue(null),
+            extend: jest.fn().mockResolvedValue(true),
+          },
+        },
+        {
+          provide: SocketManager,
+          useValue: {
+            joinRoom: jest.fn().mockResolvedValue(undefined),
+            leaveRoom: jest.fn().mockResolvedValue(undefined),
+            emitToUser: jest.fn(),
+            emitToNamespaceRoom: jest.fn(),
+            registerServer: jest.fn(),
+            register: jest.fn().mockResolvedValue(true),
+            unregister: jest.fn().mockResolvedValue(true),
+            authMiddleware: jest.fn(),
+          },
+        },
+        { provide: WALLET_SERVICE, useValue: { getBalance: jest.fn(), debit: jest.fn(), credit: jest.fn() } },
+        { provide: PROFILE_SERVICE, useValue: { resolvePublicIdentities: jest.fn() } },
+        {
+          provide: EVENT_BUS,
+          useValue: {
+            publish: jest.fn().mockResolvedValue(undefined),
+            subscribe: jest.fn(() => () => undefined),
+          },
+        },
+        // The REAL module providers — the same classes CasinoModule registers.
+        CasinoService,
+        CasinoLoopService,
+        CasinoGateway,
+        RoomCasinoWindowService,
+        RoomCasinoWindowListener,
+        RoomCasinoWindowMonitor,
+        CasinoRoomController,
+        { provide: CASINO_BROADCASTER, useExisting: CasinoGateway },
+      ],
+    }).compile();
+  });
+
+  afterAll(async () => {
+    await moduleRef.close();
+  });
+
+  it('resolves every audio-room window provider without a DI error', () => {
+    expect(moduleRef.get(RoomCasinoWindowService)).toBeInstanceOf(RoomCasinoWindowService);
+    expect(moduleRef.get(RoomCasinoWindowListener)).toBeInstanceOf(RoomCasinoWindowListener);
+    expect(moduleRef.get(RoomCasinoWindowMonitor)).toBeInstanceOf(RoomCasinoWindowMonitor);
+    expect(moduleRef.get(CasinoRoomController)).toBeInstanceOf(CasinoRoomController);
+    expect(moduleRef.get(CasinoLoopService)).toBeInstanceOf(CasinoLoopService);
+    expect(moduleRef.get(CasinoGateway)).toBeInstanceOf(CasinoGateway);
   });
 });
