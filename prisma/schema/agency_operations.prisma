@@ -212,3 +212,39 @@ enum AgencyActivationStatus {
   /// Payment attempted and failed or was abandoned; a new attempt may be made.
   FAILED
 }
+
+/// A user asking to join an agency.
+///
+/// Membership itself lives in `AgencyRelationship`; this is the request that
+/// creates one. Kept as its own row rather than a status on the relationship so
+/// a decline leaves a record without ever having made the user a member.
+model AgencyJoinRequest {
+  id       String @id @default(uuid()) @db.Uuid
+  agencyId String @db.Uuid
+  userId   String @db.Uuid
+
+  status  AgencyJoinRequestStatus @default(PENDING)
+  /// Optional note from the applicant.
+  message String?
+
+  decidedAt DateTime?
+  /// The agency owner who accepted or declined.
+  decidedBy String?   @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// One live request per user per agency. Enforced partially in the service
+  /// too, because a user who was declined may ask again later.
+  @@index([agencyId, status])
+  @@index([userId, status])
+  @@map("agency_join_requests")
+}
+
+enum AgencyJoinRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  /// Withdrawn by the applicant before a decision.
+  CANCELLED
+}
