@@ -112,7 +112,14 @@ export class CoinSellerInventoryService {
    * total coin supply grew silently on every approval and no reconciliation
    * could detect it.
    */
-  async approvePurchaseOrder(orderId: string, adminId: string) {
+  /**
+   * Credits an order's coins from the treasury.
+   *
+   * [adminId] is written to `approvedBy` and to the audit's `actorId`, both
+   * uuid columns — pass null for a credit no human approved (the Razorpay
+   * webhook) and name the origin in [source], rather than inventing an id.
+   */
+  async approvePurchaseOrder(orderId: string, adminId: string | null, source?: string) {
     return this.prisma.$transaction(async (tx: any) => {
       // Lock the order before reading its status: two concurrent approvals
       // would otherwise both observe PENDING and both credit the inventory.
@@ -190,7 +197,7 @@ export class CoinSellerInventoryService {
           referenceType: 'CoinSellerInventoryPurchaseOrder',
           referenceId: order.id,
           actorId: adminId,
-          details: { treasuryReserveId: reserve.id },
+          details: { treasuryReserveId: reserve.id, ...(source ? { source } : {}) },
         },
       });
 

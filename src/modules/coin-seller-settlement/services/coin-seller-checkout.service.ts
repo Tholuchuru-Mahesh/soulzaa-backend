@@ -280,8 +280,18 @@ export class CoinSellerCheckoutService {
    *
    * Both the client confirmation and the webhook land here, so the already-
    * credited check is the thing that stops a double credit — not the caller.
+   *
+   * [actorId] must be a real user id or `null`. It is written to `approvedBy`,
+   * a uuid column, so a descriptive placeholder string cannot go here: Postgres
+   * rejects it and takes the whole crediting transaction down with it. A credit
+   * with no human behind it passes null and records its origin in [source].
    */
-  async creditVerifiedOrder(purchaseOrderId: string, providerTxnRef: string, actorId: string) {
+  async creditVerifiedOrder(
+    purchaseOrderId: string,
+    providerTxnRef: string,
+    actorId: string | null,
+    source?: string,
+  ) {
     const order = await this.prisma.coinSellerInventoryPurchaseOrder.findUnique({
       where: { id: purchaseOrderId },
     });
@@ -299,7 +309,7 @@ export class CoinSellerCheckoutService {
 
     // Reuses the existing approval path, which sources the coins from the
     // treasury and writes the audit row inside one transaction.
-    return this.inventory.approvePurchaseOrder(purchaseOrderId, actorId);
+    return this.inventory.approvePurchaseOrder(purchaseOrderId, actorId, source);
   }
 
   /**
@@ -362,7 +372,14 @@ export class CoinSellerCheckoutService {
       return { handled: false, reason: 'Paid amount does not cover the order' };
     }
 
-    const order = await this.creditVerifiedOrder(purchaseOrderId, payment.id, 'RAZORPAY_WEBHOOK');
+    // Null actor, not the string 'RAZORPAY_WEBHOOK': nobody approved this, and
+    // approvedBy is a uuid column. The origin is kept on the audit row instead.
+    const order = await this.creditVerifiedOrder(
+      purchaseOrderId,
+      payment.id,
+      null,
+      'RAZORPAY_WEBHOOK',
+    );
     return { handled: true, purchaseOrderId, status: (order as { status?: string }).status };
   }
 

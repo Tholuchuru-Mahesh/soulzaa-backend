@@ -103,7 +103,7 @@ describe('CoinSellerCheckoutService', () => {
 
       await service.confirmCheckout(SELLER, 'po-1', 'pay_1', signatureFor('order_rzp1', 'pay_1'));
 
-      expect(inventory.approvePurchaseOrder).toHaveBeenCalledWith('po-1', SELLER);
+      expect(inventory.approvePurchaseOrder).toHaveBeenCalledWith('po-1', SELLER, undefined);
     });
 
     it('rejects a forged signature and credits nothing', async () => {
@@ -146,6 +146,28 @@ describe('CoinSellerCheckoutService', () => {
       await service.confirmCheckout(SELLER, 'po-1', 'pay_1', signatureFor('order_rzp1', 'pay_1'));
 
       expect(inventory.approvePurchaseOrder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the approver written for a system credit', () => {
+    it('passes a null actor, never a descriptive string', async () => {
+      // approvedBy and the audit's actorId are both uuid columns. A readable
+      // placeholder like 'RAZORPAY_WEBHOOK' is rejected by Postgres, which
+      // rolls back the crediting transaction — the buyer is charged and the
+      // coins never arrive. TypeScript cannot catch it: the constraint lives
+      // in the schema, and the tx client is typed `any`.
+      const { service, prisma, inventory } = build();
+      prisma.coinSellerInventoryPurchaseOrder.findUnique.mockResolvedValue({
+        id: 'po-1',
+        sellerId: SELLER,
+        status: 'PENDING_PAYMENT',
+      });
+
+      await service.creditVerifiedOrder('po-1', 'pay_1', null, 'RAZORPAY_WEBHOOK');
+
+      const actor = inventory.approvePurchaseOrder.mock.calls[0][1];
+      expect(actor).toBeNull();
+      expect(typeof actor).not.toBe('string');
     });
   });
 
@@ -203,7 +225,7 @@ describe('CoinSellerCheckoutService', () => {
       const result = await service.handleWebhookEvent(body, signature);
 
       expect(result.handled).toBe(true);
-      expect(inventory.approvePurchaseOrder).toHaveBeenCalledWith('po-1', 'RAZORPAY_WEBHOOK');
+      expect(inventory.approvePurchaseOrder).toHaveBeenCalledWith('po-1', null, 'RAZORPAY_WEBHOOK');
     });
 
     it('rejects an unsigned call', async () => {
@@ -241,7 +263,7 @@ describe('CoinSellerCheckoutService', () => {
       const result = await service.handleWebhookEvent(body, signature);
 
       expect(result.handled).toBe(true);
-      expect(inventory.approvePurchaseOrder).toHaveBeenCalledWith('po-1', 'RAZORPAY_WEBHOOK');
+      expect(inventory.approvePurchaseOrder).toHaveBeenCalledWith('po-1', null, 'RAZORPAY_WEBHOOK');
     });
 
     it('matches a captured payment by its gateway order id when notes are absent', async () => {
@@ -257,7 +279,7 @@ describe('CoinSellerCheckoutService', () => {
       const result = await service.handleWebhookEvent(body, signature);
 
       expect(result.handled).toBe(true);
-      expect(inventory.approvePurchaseOrder).toHaveBeenCalledWith('po-1', 'RAZORPAY_WEBHOOK');
+      expect(inventory.approvePurchaseOrder).toHaveBeenCalledWith('po-1', null, 'RAZORPAY_WEBHOOK');
     });
 
     it('credits nothing when the payment is short of the package price', async () => {

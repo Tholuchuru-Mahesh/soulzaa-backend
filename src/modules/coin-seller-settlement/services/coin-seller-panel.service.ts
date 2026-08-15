@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CoinSellerInventoryService } from './coin-seller-inventory.service';
 
@@ -64,6 +64,17 @@ export class CoinSellerPanelService {
       }),
     ]);
 
+    // The panel shows a name, not an id. Resolved here rather than sent raw:
+    // a uuid on screen tells the agency nothing about who restocked them.
+    // Null for a self-serve Razorpay purchase — nobody approved it, the agency
+    // simply bought it — which the app renders as a dash.
+    const approver = lastCredited?.approvedBy
+      ? await this.prisma.user.findUnique({
+          where: { id: lastCredited.approvedBy },
+          select: { username: true, fullName: true },
+        })
+      : null;
+
     return {
       inventoryId: inventory.id,
       country: inventory.country,
@@ -74,7 +85,7 @@ export class CoinSellerPanelService {
       soldToday: (soldToday._sum.coinAmount ?? BigInt(0)).toString(),
       soldThisMonth: (soldThisMonth._sum.coinAmount ?? BigInt(0)).toString(),
       lastRestockedAt: lastCredited?.creditedAt ?? null,
-      addedByOfficial: lastCredited?.approvedBy ?? null,
+      addedByOfficial: approver?.username ?? approver?.fullName ?? null,
     };
   }
 
@@ -130,6 +141,67 @@ export class CoinSellerPanelService {
     // be dropped in favour of older entries of the other.
     entries.sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());
 
-    return { entries: entries.slice(0, limit) };
+    const page = entries.slice(0, limit);
+
+    // Names are resolved after the trim, in one query for the whole page: the
+    // list shows a customer name per row, and a uuid is not one. Doing it per
+    // row would be a query per row.
+    const counterpartyIds = [
+      ...new Set(page.map((entry) => entry.counterpartyId).filter((id): id is string => !!id)),
+    ];
+    const users = counterpartyIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: counterpartyIds } },
+          select: { id: true, username: true, fullName: true },
+        })
+      : [];
+    const nameById = new Map(users.map((user) => [user.id, user.username ?? user.fullName]));
+
+    return {
+      entries: page.map((entry) => ({
+        ...entry,
+        // Null when the row has no counterparty to name — a coin purchase the
+        // agency made itself through Razorpay has no approving official. The
+        // app renders that as a dash rather than inventing a name.
+        counterpartyName: entry.counterpartyId
+          ? (nameById.get(entry.counterpartyId) ?? null)
+          : null,
+      })),
+    };
+  }
+
+  /**
+   * One order's payment state, for the app to poll after the buyer comes back
+   * from Razorpay's hosted page.
+   *
+   * The app cannot learn the outcome from the browser: the coins are credited
+   * by the webhook, which arrives server-to-server and may land before or after
+   * the buyer returns. So the app asks here instead of inferring anything from
+   * the redirect.
+   *
+   * Scoped to the caller's own orders — an order id is a uuid, but guessing one
+   * should still not reveal another seller's purchase.
+   */
+  async getPurchaseOrderStatus(sellerId: string, orderId: string) {
+    const order = await this.prisma.coinSellerInventoryPurchaseOrder.findFirst({
+      where: { id: orderId, sellerId },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Purchase order not found');
+    }
+
+    return {
+      purchaseOrderId: order.id,
+      status: order.status,
+      // The one field the success screen needs: coins are only in the balance
+      // once this is true, so the app polls until it flips rather than
+      // assuming payment implies credit.
+      credited: order.status === 'INVENTORY_CREDITED',
+      coinAmount: order.coinAmount.toString(),
+      priceAmount: Number(order.priceAmount),
+      priceCurrency: order.priceCurrency,
+      creditedAt: order.creditedAt,
+    };
   }
 }

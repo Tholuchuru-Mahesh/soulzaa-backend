@@ -84,6 +84,13 @@ export class CoinSellerInventoryController {
     );
   }
 
+  @ApiOperation({ summary: 'Payment state of one of this seller’s purchase orders' })
+  @Get('purchase-orders/:orderId')
+  @RequirePermissions('coin_seller.inventory.purchase')
+  async getPurchaseOrderStatus(@Req() req: any, @Param('orderId') orderId: string) {
+    return this.panelService.getPurchaseOrderStatus(req.user.id, orderId);
+  }
+
   @ApiOperation({ summary: 'Sell Gold Coins from seller inventory to a user' })
   @Post('sell')
   @RequirePermissions('coin_seller.inventory.sell')
