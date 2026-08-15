@@ -165,3 +165,50 @@ enum AgencyRewardKind {
   /// quantity. Written with `transferable = true`.
   OWNED
 }
+
+/// The one-time fee that unlocks the Coin Seller module inside an approved
+/// Agency account.
+///
+/// Coin Seller is a permission on the existing account, not a second account —
+/// so this does not create anything, it pays for a role grant. Approval alone
+/// leaves an agency able to run its community; paying adds coin inventory and
+/// selling on top.
+///
+/// One row per agency: the fee is charged once, and `paidAt` is what the whole
+/// gate turns on.
+model AgencyActivation {
+  id       String @id @default(uuid()) @db.Uuid
+  agencyId String @unique @db.Uuid
+
+  /// Charged in minor units (paise) so the amount is never a float.
+  amountMinor Int
+  currency    String @default("INR")
+
+  status AgencyActivationStatus @default(PENDING)
+
+  paymentProvider String?
+  /// Razorpay payment link id and the payment that settled it.
+  paymentLinkId   String?
+  paymentLinkUrl  String?
+  providerTxnRef  String?
+
+  paidAt DateTime?
+
+  /// Stops a repeated tap opening a second payable page for the same fee.
+  idempotencyKey String @unique
+
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("agency_activations")
+}
+
+enum AgencyActivationStatus {
+  PENDING
+  /// Paid and the COIN_SELLER role granted.
+  ACTIVATED
+  /// Payment attempted and failed or was abandoned; a new attempt may be made.
+  FAILED
+}

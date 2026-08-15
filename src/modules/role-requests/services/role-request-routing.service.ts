@@ -42,18 +42,86 @@ export class RoleRequestRoutingService {
   async resolveGeography(subjectUserId: string): Promise<RequestGeography> {
     const user = await this.prisma.user.findUnique({
       where: { id: subjectUserId },
-      select: { regionId: true, stateId: true, countryId: true },
+      select: { regionId: true, stateId: true, countryId: true, country: true },
     });
 
-    if (!user?.regionId) {
-      // Without a region there is no Official to review it, and the request
-      // would sit unroutable in a queue nobody owns.
-      throw new BadRequestException(
-        'The subject has no assigned region. Set their location before submitting a role request.',
-      );
+    if (user?.regionId) {
+      return { regionId: user.regionId, stateId: user.stateId, countryId: user.countryId };
     }
 
-    return { regionId: user.regionId, stateId: user.stateId, countryId: user.countryId };
+    // Registration captures `country` as free text and never fills the
+    // normalised hierarchy, so an ordinary account reaches here with no region
+    // and could never file a request at all. Derive it where the answer is not
+    // a guess.
+    const derived = await this.deriveRegion(subjectUserId, user);
+    if (derived) {
+      return derived;
+    }
+
+    // Without a region there is no Official to review it, and the request
+    // would sit unroutable in a queue nobody owns.
+    throw new BadRequestException(
+      'The subject has no assigned region. Set their location before submitting a role request.',
+    );
+  }
+
+  /**
+   * Resolves a region for a user who has none, from the country they gave.
+   *
+   * Only when the answer is unambiguous — a country with exactly one region.
+   * With several, guessing would file the request in the wrong territory and
+   * hand it to an Official who does not cover that user, which is worse than
+   * asking for the location to be set.
+   *
+   * The resolved location is written back, so the next flow that needs it does
+   * not have to derive it again.
+   */
+  private async deriveRegion(
+    subjectUserId: string,
+    user: { countryId: string | null; country: string | null } | null,
+  ): Promise<RequestGeography | null> {
+    if (!user) return null;
+
+    let countryId = user.countryId;
+    if (!countryId && user.country) {
+      // Free-text country, matched case-insensitively against the code or the
+      // name — "IN", "in" and "India" all name the same country.
+      const country = await this.prisma.country.findFirst({
+        where: {
+          OR: [
+            { code: { equals: user.country, mode: 'insensitive' } },
+            { name: { equals: user.country, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+      countryId = country?.id ?? null;
+    }
+    if (!countryId) return null;
+
+    const regions = await this.prisma.region.findMany({
+      where: { state: { countryId } },
+      select: { id: true, stateId: true },
+      // Two is enough to know it is ambiguous; there is no need to read them all.
+      take: 2,
+    });
+    if (regions.length !== 1) {
+      if (regions.length > 1) {
+        this.logger.warn(
+          `User ${subjectUserId} has no region and country ${countryId} has several — cannot derive one`,
+        );
+      }
+      return null;
+    }
+
+    const [region] = regions;
+    await this.prisma.user.update({
+      where: { id: subjectUserId },
+      data: { regionId: region.id, stateId: region.stateId, countryId },
+    });
+    this.logger.log(`Derived region ${region.id} for user ${subjectUserId} from their country`);
+
+    return { regionId: region.id, stateId: region.stateId, countryId };
   }
 
   /** Whether `actorId` may act on a request at `stage` in the given geography. */

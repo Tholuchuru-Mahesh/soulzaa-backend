@@ -4,10 +4,12 @@ import { TreasuryModule } from 'src/modules/treasury/treasury.module';
 import { WalletModule } from 'src/modules/wallet/wallet.module';
 import { AgencyDashboardController } from './controllers/agency-dashboard.controller';
 import { AgencyAuditLogController } from './controllers/agency-audit-log.controller';
+import { AgencyActivationController } from './controllers/agency-activation.controller';
 import { AgencyMemberController } from './controllers/agency-member.controller';
 import { AgencyOperationsController } from './controllers/agency-operations.controller';
 import { AgencySettlementController } from './controllers/agency-settlement.controller';
 import { AgencyAuditLogService } from './services/agency-audit-log.service';
+import { AgencyActivationService } from './services/agency-activation.service';
 import { AgencyMemberService } from './services/agency-member.service';
 import { AgencyRewardService } from './services/agency-reward.service';
 import { AgencyTaskService } from './services/agency-task.service';
@@ -35,6 +37,7 @@ import {
     AgencyMemberController,
     AgencyAuditLogController,
     AgencyOperationsController,
+    AgencyActivationController,
   ],
   providers: [
     AgencyConfigurationService,
@@ -53,8 +56,10 @@ import {
     AgencyAuditLogService,
     AgencyTaskService,
     AgencyRewardService,
+    AgencyActivationService,
   ],
   exports: [
+    AgencyActivationService,
     AgencyConfigurationService,
     AgencyCommissionService,
     AgencyRelationshipService,

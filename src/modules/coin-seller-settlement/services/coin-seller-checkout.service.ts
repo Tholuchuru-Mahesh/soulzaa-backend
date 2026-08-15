@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { AgencyActivationService } from 'src/modules/agencies/services/agency-activation.service';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { CoinSellerInventoryService } from './coin-seller-inventory.service';
 
@@ -39,6 +40,10 @@ export class CoinSellerCheckoutService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly inventory: CoinSellerInventoryService,
+    // Optional so the existing unit tests, which construct this service with
+    // three arguments, keep working — and so a deployment without the agencies
+    // module still processes coin purchases.
+    @Optional() private readonly activation?: AgencyActivationService,
   ) {}
 
   private credentials(): { keyId: string; keySecret: string } {
@@ -354,6 +359,14 @@ export class CoinSellerCheckoutService {
       return { handled: false, reason: 'No payment entity' };
     }
 
+    // An activation fee arrives on the same webhook as a coin purchase. It is
+    // matched first because it carries its own marker; a coin order never does.
+    const activationId = this.activation?.resolveActivationId(event) ?? null;
+    if (activationId && (await this.isActivationEvent(activationId))) {
+      await this.activation!.activate(activationId, payment.id, payment.amount);
+      return { handled: true, activationId };
+    }
+
     const purchaseOrderId = await this.resolvePurchaseOrderId(event);
     if (!purchaseOrderId) {
       this.logger.warn(`Razorpay webhook: could not match ${payment.id} to a purchase order`);
@@ -381,6 +394,20 @@ export class CoinSellerCheckoutService {
       'RAZORPAY_WEBHOOK',
     );
     return { handled: true, purchaseOrderId, status: (order as { status?: string }).status };
+  }
+
+  /**
+   * Whether the resolved id names an activation row rather than a coin order.
+   *
+   * Both flows put their own id in `reference_id`, so the id alone does not say
+   * which it is — this looks it up rather than assuming.
+   */
+  private async isActivationEvent(activationId: string): Promise<boolean> {
+    const row = await this.prisma.agencyActivation.findUnique({
+      where: { id: activationId },
+      select: { id: true },
+    });
+    return !!row;
   }
 
   /**
