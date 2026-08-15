@@ -102,11 +102,22 @@ describe('game-live-state', () => {
     it('ignores an explicit nextTurnPlayerId that does not name a real seat', () => {
       const next = applyMove(
         baseState(),
-        frame('u1', { action: 'pass', nextTurnPlayerId: 'not-a-real-seat' }),
+        frame('u1', { action: 'move_token', nextTurnPlayerId: 'not-a-real-seat' }),
       );
       // The bogus id is ignored; move_token is whitelisted (client owns turn
       // order), so the server does NOT auto-rotate — the turn stays put.
       expect(next.currentTurnUserId).toBe('u1');
+    });
+
+    it('falls back to normal rotation when a bogus id rides a non-whitelisted action', () => {
+      // The other half of "ignored": for an action the server does own, the
+      // crafted id must not freeze the turn on the sender either. It is
+      // discarded and the seat rotates as it normally would.
+      const next = applyMove(
+        baseState(),
+        frame('u1', { action: 'pass', nextTurnPlayerId: 'not-a-real-seat' }),
+      );
+      expect(next.currentTurnUserId).toBe('u2');
     });
 
     it('ignores nextTurnPlayerId on a sync_state sent by a non-turn-holder', () => {

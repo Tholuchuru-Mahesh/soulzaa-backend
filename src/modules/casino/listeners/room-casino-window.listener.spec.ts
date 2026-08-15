@@ -1,5 +1,5 @@
 import { CasinoGame, GameCode, GameSession } from '@prisma/client';
-import { EVENT_BUS, type IEventBus } from 'src/common/events';
+import { type IEventBus } from 'src/common/events';
 import { SocketManager } from 'src/infra/socket/socket.manager';
 import {
   AUDIO_ROOM_EVENTS,
@@ -9,7 +9,10 @@ import {
 } from 'src/modules/audio-rooms/events/audio-room.events';
 import { GAMES_NAMESPACE } from 'src/modules/games/constants/games.constants';
 import { GamesRepository } from 'src/modules/games/repositories/games.repository';
-import { CASINO_ROUND_BROADCAST, CasinoRoundBroadcastEvent } from '../events/casino-round-broadcast.event';
+import {
+  CASINO_ROUND_BROADCAST,
+  CasinoRoundBroadcastEvent,
+} from '../events/casino-round-broadcast.event';
 import { RoomCasinoWindowService } from '../services/room-casino-window.service';
 import { RoomCasinoWindowListener } from './room-casino-window.listener';
 
@@ -94,7 +97,11 @@ describe('RoomCasinoWindowListener — spectator mirror', () => {
 
     const payload = { roundId: 'round-9', phase: 'spinning', secondsRemaining: 10 };
     await handlers.get(CASINO_ROUND_BROADCAST)!(
-      new CasinoRoundBroadcastEvent({ game: CasinoGame.GREEDY_FOOD, event: 'greedy_food_spin', payload }),
+      new CasinoRoundBroadcastEvent({
+        game: CasinoGame.GREEDY_FOOD,
+        event: 'greedy_food_spin',
+        payload,
+      }),
     );
 
     expect(repo.listActiveRoomWindowsByCode).toHaveBeenCalledWith(GameCode.GREEDY_FOOD);
@@ -117,24 +124,28 @@ describe('RoomCasinoWindowListener — spectator mirror', () => {
     const { handlers, sockets, repo } = makeListener();
     repo.listActiveRoomWindowsByCode.mockResolvedValue([]);
     await handlers.get(CASINO_ROUND_BROADCAST)!(
-      new CasinoRoundBroadcastEvent({ game: CasinoGame.LUCKY_FRUIT, event: 'lucky_fruit_tick', payload: {} }),
+      new CasinoRoundBroadcastEvent({
+        game: CasinoGame.LUCKY_FRUIT,
+        event: 'lucky_fruit_tick',
+        payload: {},
+      }),
     );
     expect(sockets.emitToNamespaceRoom).not.toHaveBeenCalled();
   });
 });
 
 describe('RoomCasinoWindowListener — room ended', () => {
-  function endedHandler(): (e: unknown) => void | Promise<void> {
-    const { handlers } = makeListener();
-    return handlers.get(AUDIO_ROOM_EVENTS.ENDED)!;
-  }
-
   it('closes the room casino window (actorId null — no owner check)', async () => {
     const { handlers, repo, windows } = makeListener();
     repo.findActiveSessionForRoom.mockResolvedValue(windowSession({ id: 'win-1' }));
 
     await handlers.get(AUDIO_ROOM_EVENTS.ENDED)!(
-      new RoomEndedEvent({ roomId: 'room-1', actorId: 'x', ownerId: 'host-1', durationSeconds: 60 }),
+      new RoomEndedEvent({
+        roomId: 'room-1',
+        actorId: 'x',
+        ownerId: 'host-1',
+        durationSeconds: 60,
+      }),
     );
 
     expect(repo.findActiveSessionForRoom).toHaveBeenCalledWith('room-1');
@@ -143,10 +154,17 @@ describe('RoomCasinoWindowListener — room ended', () => {
 
   it('does not touch a board-game session (LUDO) on room end', async () => {
     const { handlers, repo, windows } = makeListener();
-    repo.findActiveSessionForRoom.mockResolvedValue(windowSession({ id: 'win-1', code: GameCode.LUDO }));
+    repo.findActiveSessionForRoom.mockResolvedValue(
+      windowSession({ id: 'win-1', code: GameCode.LUDO }),
+    );
 
     await handlers.get(AUDIO_ROOM_EVENTS.ENDED)!(
-      new RoomEndedEvent({ roomId: 'room-1', actorId: 'x', ownerId: 'host-1', durationSeconds: 60 }),
+      new RoomEndedEvent({
+        roomId: 'room-1',
+        actorId: 'x',
+        ownerId: 'host-1',
+        durationSeconds: 60,
+      }),
     );
 
     expect(windows.closeWindow).not.toHaveBeenCalled();
@@ -155,7 +173,12 @@ describe('RoomCasinoWindowListener — room ended', () => {
   it('is a no-op when the room has no active session', async () => {
     const { handlers, windows } = makeListener();
     await handlers.get(AUDIO_ROOM_EVENTS.ENDED)!(
-      new RoomEndedEvent({ roomId: 'room-1', actorId: 'x', ownerId: 'host-1', durationSeconds: 60 }),
+      new RoomEndedEvent({
+        roomId: 'room-1',
+        actorId: 'x',
+        ownerId: 'host-1',
+        durationSeconds: 60,
+      }),
     );
     expect(windows.closeWindow).not.toHaveBeenCalled();
   });
@@ -176,7 +199,9 @@ describe('RoomCasinoWindowListener — room deleted', () => {
 
   it('does not touch a board-game session (LUDO) on room delete', async () => {
     const { handlers, repo, windows } = makeListener();
-    repo.findActiveSessionForRoom.mockResolvedValue(windowSession({ id: 'win-1', code: GameCode.LUDO }));
+    repo.findActiveSessionForRoom.mockResolvedValue(
+      windowSession({ id: 'win-1', code: GameCode.LUDO }),
+    );
 
     await handlers.get(AUDIO_ROOM_EVENTS.DELETED)!(
       new RoomDeletedEvent({ roomId: 'room-1', actorId: 'admin', ownerId: 'host-1' }),

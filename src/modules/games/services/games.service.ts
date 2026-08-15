@@ -549,11 +549,7 @@ export class GamesService {
    */
   async repointRoomGameHost(roomId: string, newOwnerId: string): Promise<void> {
     const session = await this.repo.findActiveSessionForRoom(roomId);
-    if (
-      session &&
-      session.code !== GameCode.GREEDY_FOOD &&
-      session.code !== GameCode.LUCKY_FRUIT
-    ) {
+    if (session && session.code !== GameCode.GREEDY_FOOD && session.code !== GameCode.LUCKY_FRUIT) {
       await this.repo.updateSessionHost(session.id, newOwnerId);
       await this.repo.logEvent({
         sessionId: session.id,

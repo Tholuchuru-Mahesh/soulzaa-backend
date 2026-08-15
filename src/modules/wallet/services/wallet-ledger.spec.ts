@@ -359,9 +359,12 @@ describe('Phase 3: Enterprise Wallet & Double-Entry Ledger Infrastructure', () =
         status: WalletStatus.ACTIVE,
         availableBalance: BigInt(500),
       });
-      const p2002 = Object.assign(new Error('Unique constraint failed on the fields: (`idempotencyKey`)'), {
-        code: 'P2002',
-      });
+      const p2002 = Object.assign(
+        new Error('Unique constraint failed on the fields: (`idempotencyKey`)'),
+        {
+          code: 'P2002',
+        },
+      );
       mockPrismaService.$transaction = jest.fn().mockRejectedValue(p2002);
 
       const result = await transactionService.creditWallet({

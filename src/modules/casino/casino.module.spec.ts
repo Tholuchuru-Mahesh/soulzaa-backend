@@ -2,9 +2,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { EVENT_BUS } from 'src/common/events';
 import { LockService } from 'src/infra/redis/lock.service';
 import { SocketManager } from 'src/infra/socket/socket.manager';
-import {
-  AUDIO_ROOMS_SERVICE,
-} from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
+import { AUDIO_ROOMS_SERVICE } from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
 import { GamesRepository } from 'src/modules/games/repositories/games.repository';
 import { AudioRoomGameAuthzService } from 'src/modules/games/services/audio-room-game-authz.service';
 import { PROFILE_SERVICE } from 'src/modules/users/interfaces/profile.interface';
@@ -207,7 +205,10 @@ describe('CasinoModule — full wiring (incl. RoomCasinoWindowService/Listener/C
             authMiddleware: jest.fn(),
           },
         },
-        { provide: WALLET_SERVICE, useValue: { getBalance: jest.fn(), debit: jest.fn(), credit: jest.fn() } },
+        {
+          provide: WALLET_SERVICE,
+          useValue: { getBalance: jest.fn(), debit: jest.fn(), credit: jest.fn() },
+        },
         { provide: PROFILE_SERVICE, useValue: { resolvePublicIdentities: jest.fn() } },
         {
           provide: EVENT_BUS,

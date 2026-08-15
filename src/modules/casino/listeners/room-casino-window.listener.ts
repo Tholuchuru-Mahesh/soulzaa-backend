@@ -76,13 +76,16 @@ export class RoomCasinoWindowListener implements OnModuleInit {
         this.logger.error(`Casino window room-delete cleanup failed: ${err.message}`),
       );
     });
-    this.bus.subscribe<RoomOwnershipTransferredEvent>(AUDIO_ROOM_EVENTS.OWNERSHIP_TRANSFERRED, (e) => {
-      void this.windows
-        .onOwnerChanged(e.payload.roomId, e.payload.newOwnerId)
-        .catch((err: Error) =>
-          this.logger.error(`Casino window ownership transfer failed: ${err.message}`),
-        );
-    });
+    this.bus.subscribe<RoomOwnershipTransferredEvent>(
+      AUDIO_ROOM_EVENTS.OWNERSHIP_TRANSFERRED,
+      (e) => {
+        void this.windows
+          .onOwnerChanged(e.payload.roomId, e.payload.newOwnerId)
+          .catch((err: Error) =>
+            this.logger.error(`Casino window ownership transfer failed: ${err.message}`),
+          );
+      },
+    );
   }
 
   /** Re-emit one global casino broadcast into every active window room for that game. */

@@ -442,7 +442,9 @@ describe('GamesService', () => {
           lobby({ roomId: 'room-1', passwordHash: sha256('hunter2') }),
         );
         authz.isMember.mockResolvedValue(false);
-        await expect(service.joinLobby(OTHER_ROOM_MEMBER, 'ABCDEF', 'hunter2')).rejects.toMatchObject({
+        await expect(
+          service.joinLobby(OTHER_ROOM_MEMBER, 'ABCDEF', 'hunter2'),
+        ).rejects.toMatchObject({
           errorCode: ERROR_CODES.NOT_ROOM_MEMBER,
         });
         expect(repo.addMember).not.toHaveBeenCalled();
@@ -1641,11 +1643,7 @@ describe('GamesService', () => {
       repo.findOpenLobbyForRoom.mockResolvedValue(lobby());
       repo.getLobbyById.mockResolvedValue(lobby());
       await service.closeRoomBoundLobby('room-1');
-      expect(repo.markLobbyClosed).toHaveBeenCalledWith(
-        'lobby-1',
-        GameLobbyStatus.CANCELLED,
-        null,
-      );
+      expect(repo.markLobbyClosed).toHaveBeenCalledWith('lobby-1', GameLobbyStatus.CANCELLED, null);
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'game.lobby_cancelled' }),
       );

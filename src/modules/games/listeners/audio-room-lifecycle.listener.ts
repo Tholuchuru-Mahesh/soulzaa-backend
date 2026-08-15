@@ -75,10 +75,7 @@ export class AudioRoomLifecycleListener implements OnModuleInit {
    * they can report/cancel it). Casino windows are re-hosted by the casino
    * module's own listener; `repointRoomGameHost` skips those codes.
    */
-  private async onRoomOwnershipTransferred(
-    roomId: string,
-    newOwnerId: string,
-  ): Promise<void> {
+  private async onRoomOwnershipTransferred(roomId: string, newOwnerId: string): Promise<void> {
     try {
       await this.games.repointRoomGameHost(roomId, newOwnerId);
     } catch (err) {

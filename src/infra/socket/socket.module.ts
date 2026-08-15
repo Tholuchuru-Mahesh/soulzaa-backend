@@ -1,6 +1,9 @@
 import { Global, Module } from '@nestjs/common';
 import { WsJwtGuard } from '../../common/guards/ws-jwt.guard';
-import { ROOM_JOIN_POLICY_REGISTRY, type RoomJoinPolicyRegistry } from './room-join-policy.interface';
+import {
+  ROOM_JOIN_POLICY_REGISTRY,
+  type RoomJoinPolicyRegistry,
+} from './room-join-policy.interface';
 import { SOCKET_GATEWAYS } from './socket.gateway';
 import { SocketManager } from './socket.manager';
 

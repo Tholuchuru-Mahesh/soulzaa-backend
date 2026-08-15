@@ -1,9 +1,4 @@
-import {
-  WalletCurrency,
-  WalletEntryType,
-  WalletStatus,
-  WalletTxnReason,
-} from '@prisma/client';
+import { WalletCurrency, WalletEntryType, WalletStatus, WalletTxnReason } from '@prisma/client';
 import { WalletRepository } from './wallet.repository';
 
 describe('WalletRepository.applyMovement (Path A money-safety)', () => {

@@ -94,79 +94,81 @@ export class WalletTransactionService {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-      // Row-level pessimistic locking
-      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
-      const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
-      if (!freshWallet) throw new NotFoundException(`Wallet not found`);
-      this.validationService.validateWalletActive(freshWallet);
+        // Row-level pessimistic locking
+        await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
+        const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
+        if (!freshWallet) throw new NotFoundException(`Wallet not found`);
+        this.validationService.validateWalletActive(freshWallet);
 
-      const balanceBefore = freshWallet.availableBalance;
-      const balanceAfter = balanceBefore + amountBig;
+        const balanceBefore = freshWallet.availableBalance;
+        const balanceAfter = balanceBefore + amountBig;
 
-      // Create transaction header
-      const transaction = await tx.walletTransaction.create({
-        data: {
-          transactionType: TransactionType.DEPOSIT,
-          status: TransactionStatus.COMPLETED,
-          destinationWalletId: wallet.id,
+        // Create transaction header
+        const transaction = await tx.walletTransaction.create({
+          data: {
+            transactionType: TransactionType.DEPOSIT,
+            status: TransactionStatus.COMPLETED,
+            destinationWalletId: wallet.id,
+            currency: dto.currency ?? WalletCurrency.GOLD,
+            amount: amountBig,
+            idempotencyKey: dto.idempotencyKey,
+            referenceType: dto.referenceType,
+            referenceId: dto.referenceId,
+            createdBy: actorId,
+          },
+        });
+
+        // Update wallet balance
+        const updatedWallet = await tx.wallet.update({
+          where: { id: wallet.id },
+          data: {
+            availableBalance:
+              dto.currency === WalletCurrency.GOLD ? { increment: amountBig } : undefined,
+            goldBalance:
+              dto.currency === WalletCurrency.GOLD ? { increment: amountBig } : undefined,
+            gameBalance:
+              dto.currency === WalletCurrency.GAME ? { increment: amountBig } : undefined,
+            diamondBalance:
+              dto.currency === WalletCurrency.DIAMOND ? { increment: amountBig } : undefined,
+            version: { increment: 1 },
+          },
+        });
+
+        // Append immutable ledger entry
+        await this.ledgerService.appendLedgerEntry(tx, {
+          transactionId: transaction.id,
+          walletId: wallet.id,
+          type: WalletEntryType.CREDIT,
           currency: dto.currency ?? WalletCurrency.GOLD,
+          reason: dto.reason ?? WalletTxnReason.ADMIN_CREDIT,
           amount: amountBig,
-          idempotencyKey: dto.idempotencyKey,
+          balanceBefore,
+          balanceAfter,
           referenceType: dto.referenceType,
           referenceId: dto.referenceId,
-          createdBy: actorId,
-        },
+          description: dto.description ?? 'Wallet Credited',
+          actorId,
+        });
+
+        await this.auditService.logAudit(
+          wallet.id,
+          'TRANSACTION_CREATED',
+          { transactionId: transaction.id, type: 'CREDIT', amount: amountBig.toString() },
+          actorId,
+        );
+
+        return {
+          transactionId: transaction.id,
+          idempotencyKey: transaction.idempotencyKey,
+          type: 'CREDIT',
+          amount: amountBig.toString(),
+          balanceBefore: balanceBefore.toString(),
+          balanceAfter: balanceAfter.toString(),
+          availableBalance: updatedWallet.availableBalance.toString(),
+          status: transaction.status,
+          createdAt: transaction.createdAt,
+        };
       });
-
-      // Update wallet balance
-      const updatedWallet = await tx.wallet.update({
-        where: { id: wallet.id },
-        data: {
-          availableBalance:
-            dto.currency === WalletCurrency.GOLD ? { increment: amountBig } : undefined,
-          goldBalance: dto.currency === WalletCurrency.GOLD ? { increment: amountBig } : undefined,
-          gameBalance: dto.currency === WalletCurrency.GAME ? { increment: amountBig } : undefined,
-          diamondBalance:
-            dto.currency === WalletCurrency.DIAMOND ? { increment: amountBig } : undefined,
-          version: { increment: 1 },
-        },
-      });
-
-      // Append immutable ledger entry
-      await this.ledgerService.appendLedgerEntry(tx, {
-        transactionId: transaction.id,
-        walletId: wallet.id,
-        type: WalletEntryType.CREDIT,
-        currency: dto.currency ?? WalletCurrency.GOLD,
-        reason: dto.reason ?? WalletTxnReason.ADMIN_CREDIT,
-        amount: amountBig,
-        balanceBefore,
-        balanceAfter,
-        referenceType: dto.referenceType,
-        referenceId: dto.referenceId,
-        description: dto.description ?? 'Wallet Credited',
-        actorId,
-      });
-
-      await this.auditService.logAudit(
-        wallet.id,
-        'TRANSACTION_CREATED',
-        { transactionId: transaction.id, type: 'CREDIT', amount: amountBig.toString() },
-        actorId,
-      );
-
-      return {
-        transactionId: transaction.id,
-        idempotencyKey: transaction.idempotencyKey,
-        type: 'CREDIT',
-        amount: amountBig.toString(),
-        balanceBefore: balanceBefore.toString(),
-        balanceAfter: balanceAfter.toString(),
-        availableBalance: updatedWallet.availableBalance.toString(),
-        status: transaction.status,
-        createdAt: transaction.createdAt,
-      };
-    });
 
       await this.publishMovement(WalletEntryType.CREDIT, {
         userId: dto.userId,
@@ -210,81 +212,83 @@ export class WalletTransactionService {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-      // Row-level pessimistic locking
-      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
-      const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
-      if (!freshWallet) throw new NotFoundException(`Wallet not found`);
-      this.validationService.validateWalletActive(freshWallet);
-      this.validationService.validateSufficientBalance(freshWallet, amountBig, dto.currency);
+        // Row-level pessimistic locking
+        await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
+        const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
+        if (!freshWallet) throw new NotFoundException(`Wallet not found`);
+        this.validationService.validateWalletActive(freshWallet);
+        this.validationService.validateSufficientBalance(freshWallet, amountBig, dto.currency);
 
-      const balanceBefore = freshWallet.availableBalance;
-      const balanceAfter = balanceBefore - amountBig;
+        const balanceBefore = freshWallet.availableBalance;
+        const balanceAfter = balanceBefore - amountBig;
 
-      // Create transaction header
-      const transaction = await tx.walletTransaction.create({
-        data: {
-          transactionType: TransactionType.WITHDRAWAL,
-          status: TransactionStatus.COMPLETED,
-          sourceWalletId: wallet.id,
+        // Create transaction header
+        const transaction = await tx.walletTransaction.create({
+          data: {
+            transactionType: TransactionType.WITHDRAWAL,
+            status: TransactionStatus.COMPLETED,
+            sourceWalletId: wallet.id,
+            currency: dto.currency ?? WalletCurrency.GOLD,
+            amount: amountBig,
+            idempotencyKey: dto.idempotencyKey,
+            referenceType: dto.referenceType,
+            referenceId: dto.referenceId,
+            createdBy: actorId,
+          },
+        });
+
+        // Update wallet balance
+        const updatedWallet = await tx.wallet.update({
+          where: { id: wallet.id },
+          data: {
+            availableBalance:
+              dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
+            totalSpent: { increment: amountBig },
+            goldBalance:
+              dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
+            gameBalance:
+              dto.currency === WalletCurrency.GAME ? { decrement: amountBig } : undefined,
+            diamondBalance:
+              dto.currency === WalletCurrency.DIAMOND ? { decrement: amountBig } : undefined,
+            version: { increment: 1 },
+          },
+        });
+
+        // Append immutable ledger entry
+        await this.ledgerService.appendLedgerEntry(tx, {
+          transactionId: transaction.id,
+          walletId: wallet.id,
+          type: WalletEntryType.DEBIT,
           currency: dto.currency ?? WalletCurrency.GOLD,
+          reason: dto.reason ?? WalletTxnReason.ADMIN_DEBIT,
           amount: amountBig,
-          idempotencyKey: dto.idempotencyKey,
+          balanceBefore,
+          balanceAfter,
           referenceType: dto.referenceType,
           referenceId: dto.referenceId,
-          createdBy: actorId,
-        },
+          description: dto.description ?? 'Wallet Debited',
+          actorId,
+        });
+
+        await this.auditService.logAudit(
+          wallet.id,
+          'TRANSACTION_CREATED',
+          { transactionId: transaction.id, type: 'DEBIT', amount: amountBig.toString() },
+          actorId,
+        );
+
+        return {
+          transactionId: transaction.id,
+          idempotencyKey: transaction.idempotencyKey,
+          type: 'DEBIT',
+          amount: amountBig.toString(),
+          balanceBefore: balanceBefore.toString(),
+          balanceAfter: balanceAfter.toString(),
+          availableBalance: updatedWallet.availableBalance.toString(),
+          status: transaction.status,
+          createdAt: transaction.createdAt,
+        };
       });
-
-      // Update wallet balance
-      const updatedWallet = await tx.wallet.update({
-        where: { id: wallet.id },
-        data: {
-          availableBalance:
-            dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
-          totalSpent: { increment: amountBig },
-          goldBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
-          gameBalance: dto.currency === WalletCurrency.GAME ? { decrement: amountBig } : undefined,
-          diamondBalance:
-            dto.currency === WalletCurrency.DIAMOND ? { decrement: amountBig } : undefined,
-          version: { increment: 1 },
-        },
-      });
-
-      // Append immutable ledger entry
-      await this.ledgerService.appendLedgerEntry(tx, {
-        transactionId: transaction.id,
-        walletId: wallet.id,
-        type: WalletEntryType.DEBIT,
-        currency: dto.currency ?? WalletCurrency.GOLD,
-        reason: dto.reason ?? WalletTxnReason.ADMIN_DEBIT,
-        amount: amountBig,
-        balanceBefore,
-        balanceAfter,
-        referenceType: dto.referenceType,
-        referenceId: dto.referenceId,
-        description: dto.description ?? 'Wallet Debited',
-        actorId,
-      });
-
-      await this.auditService.logAudit(
-        wallet.id,
-        'TRANSACTION_CREATED',
-        { transactionId: transaction.id, type: 'DEBIT', amount: amountBig.toString() },
-        actorId,
-      );
-
-      return {
-        transactionId: transaction.id,
-        idempotencyKey: transaction.idempotencyKey,
-        type: 'DEBIT',
-        amount: amountBig.toString(),
-        balanceBefore: balanceBefore.toString(),
-        balanceAfter: balanceAfter.toString(),
-        availableBalance: updatedWallet.availableBalance.toString(),
-        status: transaction.status,
-        createdAt: transaction.createdAt,
-      };
-    });
 
       await this.publishMovement(WalletEntryType.DEBIT, {
         userId: dto.userId,
@@ -353,75 +357,77 @@ export class WalletTransactionService {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
-      const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
-      if (!freshWallet) throw new NotFoundException(`Wallet not found`);
+        await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${wallet.id}::uuid FOR UPDATE`;
+        const freshWallet = await tx.wallet.findUnique({ where: { id: wallet.id } });
+        if (!freshWallet) throw new NotFoundException(`Wallet not found`);
 
-      const balanceBefore = freshWallet.availableBalance;
-      const balanceAfter = balanceBefore - amountBig;
+        const balanceBefore = freshWallet.availableBalance;
+        const balanceAfter = balanceBefore - amountBig;
 
-      const transaction = await tx.walletTransaction.create({
-        data: {
-          transactionType: TransactionType.WITHDRAWAL,
-          status: TransactionStatus.COMPLETED,
-          sourceWalletId: wallet.id,
+        const transaction = await tx.walletTransaction.create({
+          data: {
+            transactionType: TransactionType.WITHDRAWAL,
+            status: TransactionStatus.COMPLETED,
+            sourceWalletId: wallet.id,
+            currency: dto.currency ?? WalletCurrency.GOLD,
+            amount: amountBig,
+            idempotencyKey: dto.idempotencyKey,
+            referenceType: dto.referenceType,
+            referenceId: dto.referenceId,
+            createdBy: actorId,
+          },
+        });
+
+        const updatedWallet = await tx.wallet.update({
+          where: { id: wallet.id },
+          data: {
+            availableBalance:
+              dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
+            totalSpent: { increment: amountBig },
+            goldBalance:
+              dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
+            gameBalance:
+              dto.currency === WalletCurrency.GAME ? { decrement: amountBig } : undefined,
+            diamondBalance:
+              dto.currency === WalletCurrency.DIAMOND ? { decrement: amountBig } : undefined,
+            version: { increment: 1 },
+          },
+        });
+
+        await this.ledgerService.appendLedgerEntry(tx, {
+          transactionId: transaction.id,
+          walletId: wallet.id,
+          type: WalletEntryType.DEBIT,
           currency: dto.currency ?? WalletCurrency.GOLD,
+          reason,
           amount: amountBig,
-          idempotencyKey: dto.idempotencyKey,
+          balanceBefore,
+          balanceAfter,
           referenceType: dto.referenceType,
           referenceId: dto.referenceId,
-          createdBy: actorId,
-        },
+          description: dto.description ?? 'Purchase reversed',
+          actorId,
+        });
+
+        await this.auditService.logAudit(
+          wallet.id,
+          'TRANSACTION_CREATED',
+          { transactionId: transaction.id, type: 'REVERSAL', amount: amountBig.toString() },
+          actorId,
+        );
+
+        return {
+          transactionId: transaction.id,
+          idempotencyKey: transaction.idempotencyKey,
+          type: 'DEBIT' as const,
+          amount: amountBig.toString(),
+          balanceBefore: balanceBefore.toString(),
+          balanceAfter: balanceAfter.toString(),
+          availableBalance: updatedWallet.availableBalance.toString(),
+          status: transaction.status,
+          createdAt: transaction.createdAt,
+        };
       });
-
-      const updatedWallet = await tx.wallet.update({
-        where: { id: wallet.id },
-        data: {
-          availableBalance:
-            dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
-          totalSpent: { increment: amountBig },
-          goldBalance: dto.currency === WalletCurrency.GOLD ? { decrement: amountBig } : undefined,
-          gameBalance: dto.currency === WalletCurrency.GAME ? { decrement: amountBig } : undefined,
-          diamondBalance:
-            dto.currency === WalletCurrency.DIAMOND ? { decrement: amountBig } : undefined,
-          version: { increment: 1 },
-        },
-      });
-
-      await this.ledgerService.appendLedgerEntry(tx, {
-        transactionId: transaction.id,
-        walletId: wallet.id,
-        type: WalletEntryType.DEBIT,
-        currency: dto.currency ?? WalletCurrency.GOLD,
-        reason,
-        amount: amountBig,
-        balanceBefore,
-        balanceAfter,
-        referenceType: dto.referenceType,
-        referenceId: dto.referenceId,
-        description: dto.description ?? 'Purchase reversed',
-        actorId,
-      });
-
-      await this.auditService.logAudit(
-        wallet.id,
-        'TRANSACTION_CREATED',
-        { transactionId: transaction.id, type: 'REVERSAL', amount: amountBig.toString() },
-        actorId,
-      );
-
-      return {
-        transactionId: transaction.id,
-        idempotencyKey: transaction.idempotencyKey,
-        type: 'DEBIT' as const,
-        amount: amountBig.toString(),
-        balanceBefore: balanceBefore.toString(),
-        balanceAfter: balanceAfter.toString(),
-        availableBalance: updatedWallet.availableBalance.toString(),
-        status: transaction.status,
-        createdAt: transaction.createdAt,
-      };
-    });
 
       await this.publishMovement(WalletEntryType.DEBIT, {
         userId: dto.userId,
@@ -474,129 +480,129 @@ export class WalletTransactionService {
 
     try {
       const result = await this.prisma.$transaction(async (tx) => {
-      if (isSelfTransfer) {
-        await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${senderWallet.id}::uuid FOR UPDATE`;
-      } else {
-        // Prevent deadlocks by sorting the IDs lexicographically before acquiring row locks
-        const [firstId, secondId] = [senderWallet.id, recipientWallet.id].sort();
-        await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${firstId}::uuid FOR UPDATE`;
-        await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${secondId}::uuid FOR UPDATE`;
-      }
+        if (isSelfTransfer) {
+          await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${senderWallet.id}::uuid FOR UPDATE`;
+        } else {
+          // Prevent deadlocks by sorting the IDs lexicographically before acquiring row locks
+          const [firstId, secondId] = [senderWallet.id, recipientWallet.id].sort();
+          await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${firstId}::uuid FOR UPDATE`;
+          await tx.$queryRaw`SELECT id FROM wallets WHERE id = ${secondId}::uuid FOR UPDATE`;
+        }
 
-      const freshSender = await tx.wallet.findUnique({ where: { id: senderWallet.id } });
-      const freshRecipient = isSelfTransfer
-        ? freshSender
-        : await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
+        const freshSender = await tx.wallet.findUnique({ where: { id: senderWallet.id } });
+        const freshRecipient = isSelfTransfer
+          ? freshSender
+          : await tx.wallet.findUnique({ where: { id: recipientWallet.id } });
 
-      if (!freshSender || !freshRecipient) {
-        throw new NotFoundException('One or both transfer wallets not found');
-      }
+        if (!freshSender || !freshRecipient) {
+          throw new NotFoundException('One or both transfer wallets not found');
+        }
 
-      this.validationService.validateWalletActive(freshSender);
-      if (!isSelfTransfer) {
-        this.validationService.validateWalletActive(freshRecipient);
-      }
-      this.validationService.validateSufficientBalance(freshSender, amountBig);
+        this.validationService.validateWalletActive(freshSender);
+        if (!isSelfTransfer) {
+          this.validationService.validateWalletActive(freshRecipient);
+        }
+        this.validationService.validateSufficientBalance(freshSender, amountBig);
 
-      const senderBefore = freshSender.availableBalance;
-      const senderAfter = senderBefore - amountBig;
+        const senderBefore = freshSender.availableBalance;
+        const senderAfter = senderBefore - amountBig;
 
-      const recipientBefore = freshRecipient.availableBalance;
-      const recipientAfter = isSelfTransfer ? senderAfter : recipientBefore + amountBig;
+        const recipientBefore = freshRecipient.availableBalance;
+        const recipientAfter = isSelfTransfer ? senderAfter : recipientBefore + amountBig;
 
-      // 1. Transaction header
-      const transaction = await tx.walletTransaction.create({
-        data: {
-          transactionType: TransactionType.TRANSFER,
-          status: TransactionStatus.COMPLETED,
-          sourceWalletId: senderWallet.id,
-          destinationWalletId: recipientWallet.id,
+        // 1. Transaction header
+        const transaction = await tx.walletTransaction.create({
+          data: {
+            transactionType: TransactionType.TRANSFER,
+            status: TransactionStatus.COMPLETED,
+            sourceWalletId: senderWallet.id,
+            destinationWalletId: recipientWallet.id,
+            currency: dto.currency ?? WalletCurrency.GOLD,
+            amount: amountBig,
+            idempotencyKey: dto.idempotencyKey,
+            referenceType: dto.referenceType,
+            referenceId: dto.referenceId,
+            createdBy: actorId,
+          },
+        });
+
+        // 2. Mutate sender & recipient balances
+        const updatedSender = await tx.wallet.update({
+          where: { id: senderWallet.id },
+          data: {
+            availableBalance: { decrement: amountBig },
+            totalSpent: { increment: amountBig },
+            version: { increment: 1 },
+          },
+        });
+
+        const updatedRecipient = isSelfTransfer
+          ? updatedSender
+          : await tx.wallet.update({
+              where: { id: recipientWallet.id },
+              data: {
+                availableBalance: { increment: amountBig },
+                version: { increment: 1 },
+              },
+            });
+
+        // 3. Paired Double-Entry Ledger Records
+        // DEBIT on sender
+        await this.ledgerService.appendLedgerEntry(tx, {
+          transactionId: transaction.id,
+          walletId: senderWallet.id,
+          type: WalletEntryType.DEBIT,
           currency: dto.currency ?? WalletCurrency.GOLD,
+          reason: WalletTxnReason.SYSTEM_TRANSFER,
           amount: amountBig,
-          idempotencyKey: dto.idempotencyKey,
+          balanceBefore: senderBefore,
+          balanceAfter: senderAfter,
           referenceType: dto.referenceType,
           referenceId: dto.referenceId,
-          createdBy: actorId,
-        },
+          description: dto.description ?? `Transfer to ${recipientWallet.userId}`,
+          actorId,
+        });
+
+        // CREDIT on recipient
+        await this.ledgerService.appendLedgerEntry(tx, {
+          transactionId: transaction.id,
+          walletId: recipientWallet.id,
+          type: WalletEntryType.CREDIT,
+          currency: dto.currency ?? WalletCurrency.GOLD,
+          reason: WalletTxnReason.SYSTEM_TRANSFER,
+          amount: amountBig,
+          balanceBefore: recipientBefore,
+          balanceAfter: recipientAfter,
+          referenceType: dto.referenceType,
+          referenceId: dto.referenceId,
+          description: dto.description ?? `Transfer from ${senderWallet.userId}`,
+          actorId,
+        });
+
+        await this.auditService.logAudit(
+          senderWallet.id,
+          'TRANSACTION_CREATED',
+          { transactionId: transaction.id, type: 'TRANSFER_OUT', amount: amountBig.toString() },
+          actorId,
+        );
+        await this.auditService.logAudit(
+          recipientWallet.id,
+          'TRANSACTION_CREATED',
+          { transactionId: transaction.id, type: 'TRANSFER_IN', amount: amountBig.toString() },
+          actorId,
+        );
+
+        return {
+          transactionId: transaction.id,
+          idempotencyKey: transaction.idempotencyKey,
+          type: 'TRANSFER',
+          amount: amountBig.toString(),
+          senderAvailableBalance: updatedSender.availableBalance.toString(),
+          recipientAvailableBalance: updatedRecipient.availableBalance.toString(),
+          status: transaction.status,
+          createdAt: transaction.createdAt,
+        };
       });
-
-      // 2. Mutate sender & recipient balances
-      const updatedSender = await tx.wallet.update({
-        where: { id: senderWallet.id },
-        data: {
-          availableBalance: { decrement: amountBig },
-          totalSpent: { increment: amountBig },
-          version: { increment: 1 },
-        },
-      });
-
-      const updatedRecipient = isSelfTransfer
-        ? updatedSender
-        : await tx.wallet.update({
-            where: { id: recipientWallet.id },
-            data: {
-              availableBalance: { increment: amountBig },
-              version: { increment: 1 },
-            },
-          });
-
-      // 3. Paired Double-Entry Ledger Records
-      // DEBIT on sender
-      await this.ledgerService.appendLedgerEntry(tx, {
-        transactionId: transaction.id,
-        walletId: senderWallet.id,
-        type: WalletEntryType.DEBIT,
-        currency: dto.currency ?? WalletCurrency.GOLD,
-        reason: WalletTxnReason.SYSTEM_TRANSFER,
-        amount: amountBig,
-        balanceBefore: senderBefore,
-        balanceAfter: senderAfter,
-        referenceType: dto.referenceType,
-        referenceId: dto.referenceId,
-        description: dto.description ?? `Transfer to ${recipientWallet.userId}`,
-        actorId,
-      });
-
-      // CREDIT on recipient
-      await this.ledgerService.appendLedgerEntry(tx, {
-        transactionId: transaction.id,
-        walletId: recipientWallet.id,
-        type: WalletEntryType.CREDIT,
-        currency: dto.currency ?? WalletCurrency.GOLD,
-        reason: WalletTxnReason.SYSTEM_TRANSFER,
-        amount: amountBig,
-        balanceBefore: recipientBefore,
-        balanceAfter: recipientAfter,
-        referenceType: dto.referenceType,
-        referenceId: dto.referenceId,
-        description: dto.description ?? `Transfer from ${senderWallet.userId}`,
-        actorId,
-      });
-
-      await this.auditService.logAudit(
-        senderWallet.id,
-        'TRANSACTION_CREATED',
-        { transactionId: transaction.id, type: 'TRANSFER_OUT', amount: amountBig.toString() },
-        actorId,
-      );
-      await this.auditService.logAudit(
-        recipientWallet.id,
-        'TRANSACTION_CREATED',
-        { transactionId: transaction.id, type: 'TRANSFER_IN', amount: amountBig.toString() },
-        actorId,
-      );
-
-      return {
-        transactionId: transaction.id,
-        idempotencyKey: transaction.idempotencyKey,
-        type: 'TRANSFER',
-        amount: amountBig.toString(),
-        senderAvailableBalance: updatedSender.availableBalance.toString(),
-        recipientAvailableBalance: updatedRecipient.availableBalance.toString(),
-        status: transaction.status,
-        createdAt: transaction.createdAt,
-      };
-    });
 
       await this.publishMovement(WalletEntryType.DEBIT, {
         userId: dto.senderUserId,

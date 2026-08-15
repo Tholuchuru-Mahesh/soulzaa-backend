@@ -1,10 +1,7 @@
 import { HttpStatus } from '@nestjs/common';
 import { RoomMemberRole } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
-import {
-  AUDIO_ROOMS_SERVICE,
-  type IAudioRoomsService,
-} from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
+import { type IAudioRoomsService } from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
 import { AudioRoomGameAuthzService } from './audio-room-game-authz.service';
 
 const ROOM = 'room-1';

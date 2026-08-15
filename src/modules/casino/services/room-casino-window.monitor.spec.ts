@@ -50,7 +50,7 @@ describe('RoomCasinoWindowMonitor — orphan-window sweep', () => {
   });
 
   it('does not run a sweep concurrently while a previous one is in flight', async () => {
-    const { monitor, windows, locks } = makeMonitor();
+    const { monitor, windows } = makeMonitor();
     let releaseSweep!: () => void;
     windows.sweepOrphanWindows.mockImplementation(
       () =>

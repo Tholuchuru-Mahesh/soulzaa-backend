@@ -2,13 +2,10 @@ import { HttpStatus } from '@nestjs/common';
 import { CasinoGame, GameCode, GameSession, GameSessionStatus } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { LockService } from 'src/infra/redis/lock.service';
-import {
-  AUDIO_ROOMS_SERVICE,
-  type IAudioRoomsService,
-} from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
+import { type IAudioRoomsService } from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
 import { GamesRepository } from 'src/modules/games/repositories/games.repository';
 import { AudioRoomGameAuthzService } from 'src/modules/games/services/audio-room-game-authz.service';
-import { WALLET_SERVICE, type IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
+import { type IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import { CasinoRepository } from '../repositories/casino.repository';
 import { CasinoLoopService } from './casino-loop.service';
 import { CasinoError, CasinoService } from './casino.service';
@@ -86,9 +83,7 @@ function makeService() {
   };
 
   const casino = {
-    placeBet: jest
-      .fn()
-      .mockResolvedValue({ balanceAfter: 9900, betId: 'bet-1' }),
+    placeBet: jest.fn().mockResolvedValue({ balanceAfter: 9900, betId: 'bet-1' }),
   };
 
   const loop = {

@@ -283,69 +283,70 @@ export class CasinoService {
     return this.locks.withLock(
       casinoRoundLockKey(roundId),
       async () => {
-    const placed = await this.repo.listPlacedBets(roundId);
-    const computed = placed.map((bet) => ({
-      bet,
-      payout: Number(bet.betAmount) * this.effectiveMultiplier(game, bet.betItem, winningOutcome),
-    }));
-    const creditedUserIds = computed.filter((c) => c.payout > 0).map((c) => c.bet.userId);
+        const placed = await this.repo.listPlacedBets(roundId);
+        const computed = placed.map((bet) => ({
+          bet,
+          payout:
+            Number(bet.betAmount) * this.effectiveMultiplier(game, bet.betItem, winningOutcome),
+        }));
+        const creditedUserIds = computed.filter((c) => c.payout > 0).map((c) => c.bet.userId);
 
-    const payouts: Record<string, number> = {};
-    try {
-      await this.withWalletLocks(creditedUserIds, () =>
-        this.repo.runInTransaction(async (tx) => {
-          for (const { bet, payout } of computed) {
-            if (payout > 0) {
-              const credit = await this.wallet.credit(
-                {
-                  userId: bet.userId,
-                  currency: WalletCurrency.GOLD,
-                  amount: payout,
-                  reason: WalletTxnReason.CASINO_WIN,
-                  idempotencyKey: casinoWinIdempotencyKey(roundId, bet.id),
-                  referenceType: 'casino_round',
-                  referenceId: roundId,
-                  metadata: { gameCode: game, item: bet.betItem, outcome: winningOutcome },
-                },
-                tx,
-              );
-              await this.repo.updateBet(
-                bet.id,
-                {
-                  status: CasinoBetStatus.WON,
-                  payoutAmount: payout,
-                  winTxnId: credit.transactionId,
-                  settledAt: new Date(),
-                },
-                tx,
-              );
-              payouts[bet.userId] = (payouts[bet.userId] ?? 0) + payout;
-            } else {
-              await this.repo.updateBet(
-                bet.id,
-                { status: CasinoBetStatus.LOST, settledAt: new Date() },
-                tx,
-              );
-            }
-          }
-          await this.repo.closeRound(roundId, CasinoRoundStatus.SETTLED, winningOutcome, tx);
-        }),
-      );
-    } catch (err) {
-      this.logger.error(
-        `Casino settlement failed for round ${roundId} (${game}), outcome=${winningOutcome}: ` +
-          `${(err as Error).message}. Refunding all placed bets.`,
-      );
-      await this.refundRound(game, roundId, placed);
-      return { winningOutcome, payouts: {}, winners: [], aborted: true };
-    }
+        const payouts: Record<string, number> = {};
+        try {
+          await this.withWalletLocks(creditedUserIds, () =>
+            this.repo.runInTransaction(async (tx) => {
+              for (const { bet, payout } of computed) {
+                if (payout > 0) {
+                  const credit = await this.wallet.credit(
+                    {
+                      userId: bet.userId,
+                      currency: WalletCurrency.GOLD,
+                      amount: payout,
+                      reason: WalletTxnReason.CASINO_WIN,
+                      idempotencyKey: casinoWinIdempotencyKey(roundId, bet.id),
+                      referenceType: 'casino_round',
+                      referenceId: roundId,
+                      metadata: { gameCode: game, item: bet.betItem, outcome: winningOutcome },
+                    },
+                    tx,
+                  );
+                  await this.repo.updateBet(
+                    bet.id,
+                    {
+                      status: CasinoBetStatus.WON,
+                      payoutAmount: payout,
+                      winTxnId: credit.transactionId,
+                      settledAt: new Date(),
+                    },
+                    tx,
+                  );
+                  payouts[bet.userId] = (payouts[bet.userId] ?? 0) + payout;
+                } else {
+                  await this.repo.updateBet(
+                    bet.id,
+                    { status: CasinoBetStatus.LOST, settledAt: new Date() },
+                    tx,
+                  );
+                }
+              }
+              await this.repo.closeRound(roundId, CasinoRoundStatus.SETTLED, winningOutcome, tx);
+            }),
+          );
+        } catch (err) {
+          this.logger.error(
+            `Casino settlement failed for round ${roundId} (${game}), outcome=${winningOutcome}: ` +
+              `${(err as Error).message}. Refunding all placed bets.`,
+          );
+          await this.refundRound(game, roundId, placed);
+          return { winningOutcome, payouts: {}, winners: [], aborted: true };
+        }
 
-    const winners = Object.entries(payouts)
-      .map(([userId, amount]) => ({ userId, amount }))
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, TOP_WINNERS);
+        const winners = Object.entries(payouts)
+          .map(([userId, amount]) => ({ userId, amount }))
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, TOP_WINNERS);
 
-    return { winningOutcome, payouts, winners };
+        return { winningOutcome, payouts, winners };
       },
       { ttlMs: 30_000 },
     );

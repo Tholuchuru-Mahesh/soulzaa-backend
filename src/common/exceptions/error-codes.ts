@@ -405,9 +405,9 @@ export const ERROR_CODES = {
   GAME_LOBBY_BAD_PASSWORD: 'GAME_LOBBY_BAD_PASSWORD',
   GAME_NOT_LOBBY_MEMBER: 'GAME_NOT_LOBBY_MEMBER',
   // Audio-room integration
-    GAME_ROOM_ALREADY_ACTIVE: 'GAME_ROOM_ALREADY_ACTIVE',
-    /** A casino bet placed through the room-window path failed validation/balance. */
-    CASINO_BET_INVALID: 'CASINO_BET_INVALID',
+  GAME_ROOM_ALREADY_ACTIVE: 'GAME_ROOM_ALREADY_ACTIVE',
+  /** A casino bet placed through the room-window path failed validation/balance. */
+  CASINO_BET_INVALID: 'CASINO_BET_INVALID',
 
   // ---- Lucky Packets (AR-14) ----
   LUCKY_PACKET_NOT_AUTHORIZED: 'LUCKY_PACKET_NOT_AUTHORIZED',

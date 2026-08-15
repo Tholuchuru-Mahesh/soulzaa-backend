@@ -1,5 +1,5 @@
 import { GameLobbyStatus, GameSessionStatus } from '@prisma/client';
-import { ROOM_JOIN_POLICY_REGISTRY, type RoomJoinPolicyRegistry } from 'src/infra/socket/room-join-policy.interface';
+import { type RoomJoinPolicyRegistry } from 'src/infra/socket/room-join-policy.interface';
 import { GAMES_NAMESPACE } from '../constants/games.constants';
 import { GamesRepository } from '../repositories/games.repository';
 import { AudioRoomGameAuthzService } from '../services/audio-room-game-authz.service';

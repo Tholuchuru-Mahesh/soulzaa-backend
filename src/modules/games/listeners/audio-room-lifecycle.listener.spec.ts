@@ -1,5 +1,5 @@
 import { GameCode, GameSessionStatus } from '@prisma/client';
-import { EVENT_BUS, type IEventBus } from 'src/common/events';
+import { type IEventBus } from 'src/common/events';
 import {
   AUDIO_ROOM_EVENTS,
   RoomEndedEvent,
