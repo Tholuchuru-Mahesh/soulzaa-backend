@@ -50,20 +50,42 @@ export class AgencyCommunityService {
     const monthAgo = new Date(now.getTime() - 30 * DAY_MS);
     const twoMonthsAgo = new Date(now.getTime() - 60 * DAY_MS);
 
-    const [totalNow, totalThen, dailyNow, dailyThen, monthlyNow, monthlyThen] = await Promise.all([
+    const [
+      totalNow,
+      totalThen,
+      dailyNow,
+      dailyThen,
+      monthlyNow,
+      monthlyThen,
+      joinedNow,
+      joinedThen,
+    ] = await Promise.all([
       this.countMembersAt(agencyId, now),
       this.countMembersAt(agencyId, monthAgo),
       this.countActiveHosts(hostIds, dayAgo, now),
       this.countActiveHosts(hostIds, twoDaysAgo, dayAgo),
       this.countActiveHosts(hostIds, monthAgo, now),
       this.countActiveHosts(hostIds, twoMonthsAgo, monthAgo),
+      this.countJoinedBetween(agencyId, monthAgo, now),
+      this.countJoinedBetween(agencyId, twoMonthsAgo, monthAgo),
     ]);
 
     return {
       totalUsers: this.toMetric(totalNow, totalThen, 'LAST_MONTH'),
       dailyActive: this.toMetric(dailyNow, dailyThen, 'YESTERDAY'),
       monthlyActive: this.toMetric(monthlyNow, monthlyThen, 'LAST_MONTH'),
+      // Joiners in the window, not the change in headcount: a month that gained
+      // 40 and lost 39 saw 40 new members, and reporting 1 would hide the churn
+      // the agency is being measured on.
+      newMembers: this.toMetric(joinedNow, joinedThen, 'LAST_MONTH'),
     };
+  }
+
+  /** Relationships that began inside the half-open window `[from, to)`. */
+  private countJoinedBetween(agencyId: string, from: Date, to: Date): Promise<number> {
+    return this.prisma.agencyRelationship.count({
+      where: { agencyId, effectiveFrom: { gte: from, lt: to } },
+    });
   }
 
   /** Daily member count across the trailing window for `range`. */

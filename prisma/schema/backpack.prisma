@@ -51,6 +51,8 @@ enum BackpackItemType {
 
 /// Where an item came from (drives history + audit).
 enum BackpackItemSource {
+  /// Distributed by an agency to one of its members.
+  AGENCY
   TREASURE_BOX
   ROCKET
   GIFT

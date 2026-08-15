@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  NotFoundException,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -63,6 +64,19 @@ export class SupportTicketController {
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
   ) {
     return this.query.listBySubmitter(userId, limit, offset);
+  }
+
+  @ApiOperation({ summary: 'Read one of my own tickets, with its conversation' })
+  @ApiResponse({ status: 404, description: 'Not found, or not raised by the caller' })
+  @Get('mine/:id')
+  async myTicket(@CurrentUser('id') userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    // Declared before the staff `@Get(':id')` so the literal `mine` segment is
+    // matched first; otherwise this path would be captured as an id.
+    const ticket = await this.query.findOwnById(id, userId);
+    if (!ticket) {
+      throw new NotFoundException('Ticket not found');
+    }
+    return ticket;
   }
 
   // ── Official routes (scoped to territory) ────────────────────────────

@@ -90,6 +90,22 @@ export class SupportTicketQueryService {
     });
   }
 
+  /**
+   * One ticket, readable only by the person who raised it.
+   *
+   * Separate from `findById`, which is the staff read and returns any ticket:
+   * this is what the submitter's own detail screen uses, so the submitter id is
+   * part of the query rather than a check applied afterwards. Internal audit
+   * rows are deliberately excluded — they record staff handling and are not the
+   * submitter's to see.
+   */
+  async findOwnById(ticketId: string, submitterId: string) {
+    return this.prisma.supportTicket.findFirst({
+      where: { id: ticketId, submitterId },
+      include: { messages: { orderBy: { createdAt: 'asc' } } },
+    });
+  }
+
   /** Count open tickets in an Official's territory (used by dashboard). */
   async countOpenInScope(officialId: string): Promise<number> {
     const scopeWhere = await this.scope.userScopeFilter(officialId);

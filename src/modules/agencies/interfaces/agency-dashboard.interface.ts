@@ -24,6 +24,8 @@ export interface CommunityOverview {
   totalUsers: MetricDelta;
   dailyActive: MetricDelta;
   monthlyActive: MetricDelta;
+  /** Members whose relationship began inside the last 30 days. */
+  newMembers: MetricDelta;
 }
 
 /** How far back the growth chart looks. */

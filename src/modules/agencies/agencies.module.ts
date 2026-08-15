@@ -3,7 +3,14 @@ import { PlatformConfigurationModule } from 'src/modules/platform-configuration/
 import { TreasuryModule } from 'src/modules/treasury/treasury.module';
 import { WalletModule } from 'src/modules/wallet/wallet.module';
 import { AgencyDashboardController } from './controllers/agency-dashboard.controller';
+import { AgencyAuditLogController } from './controllers/agency-audit-log.controller';
+import { AgencyMemberController } from './controllers/agency-member.controller';
+import { AgencyOperationsController } from './controllers/agency-operations.controller';
 import { AgencySettlementController } from './controllers/agency-settlement.controller';
+import { AgencyAuditLogService } from './services/agency-audit-log.service';
+import { AgencyMemberService } from './services/agency-member.service';
+import { AgencyRewardService } from './services/agency-reward.service';
+import { AgencyTaskService } from './services/agency-task.service';
 import {
   AgencyAuditService,
   AgencyCommissionService,
@@ -22,7 +29,13 @@ import {
 @Global()
 @Module({
   imports: [PlatformConfigurationModule, TreasuryModule, WalletModule],
-  controllers: [AgencySettlementController, AgencyDashboardController],
+  controllers: [
+    AgencySettlementController,
+    AgencyDashboardController,
+    AgencyMemberController,
+    AgencyAuditLogController,
+    AgencyOperationsController,
+  ],
   providers: [
     AgencyConfigurationService,
     AgencyCommissionService,
@@ -36,6 +49,10 @@ import {
     AgencyEventService,
     AgencyCommunityService,
     AgencyDashboardService,
+    AgencyMemberService,
+    AgencyAuditLogService,
+    AgencyTaskService,
+    AgencyRewardService,
   ],
   exports: [
     AgencyConfigurationService,

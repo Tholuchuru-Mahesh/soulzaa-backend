@@ -1,0 +1,167 @@
+// Agency operations: the tasks Officials set an agency, and the reward stock
+// an agency holds and distributes to its members.
+//
+// DESIGN NOTES (chosen defaults — see AgencyTaskMetric / AgencyRewardKind)
+//
+//  * Tasks are *assigned to* an agency by an Official, which is what makes them
+//    different from the `tasks` module — that one is user gamification
+//    (missions, claims, per-user progress). Nothing is shared between them.
+//
+//  * Progress auto-evaluates where the metric maps to a figure the platform
+//    already computes (active users, new members, coin sales). `MANUAL` exists
+//    for targets nothing can measure — "conduct an agency event" — and only
+//    those need an Official to mark them done. Storing a metric rather than a
+//    free-text goal is what allows the first kind at all.
+//
+//  * Reward distribution reuses `BackpackItem` for the recipient's copy rather
+//    than adding a parallel user inventory. The spec's Assigned rewards are
+//    exactly a backpack item with `transferable = false`; Owned rewards are the
+//    same table with `transferable = true`. One inventory, one equip path, one
+//    audit trail.
+
+/// A target an Official sets for an agency, over a period.
+model AgencyTask {
+  id          String  @id @default(uuid()) @db.Uuid
+  agencyId    String  @db.Uuid
+  /// The Official who set it. Null once that account is gone — the task
+  /// outlives whoever assigned it.
+  assignedById String? @db.Uuid
+
+  title       String
+  description String?
+
+  metric      AgencyTaskMetric
+  /// What the metric has to reach. Null for MANUAL targets, which have no
+  /// number to hit.
+  targetValue BigInt?
+
+  /// The window the metric is measured over. Progress outside it does not count.
+  periodStart DateTime
+  periodEnd   DateTime
+
+  status   AgencyTaskStatus   @default(ACTIVE)
+  priority AgencyTaskPriority @default(MEDIUM)
+
+  /// Set only when a MANUAL task is marked done, or when an auto task is
+  /// completed early. Auto tasks otherwise derive completion from the metric.
+  completedAt DateTime?
+  completedBy String?   @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agencyId, status])
+  @@index([agencyId, periodEnd])
+  @@map("agency_tasks")
+}
+
+/// What a task measures. Each non-MANUAL value maps to a figure the platform
+/// already computes, which is what lets progress update without anyone
+/// reporting it.
+enum AgencyTaskMetric {
+  /// Members active in the period.
+  ACTIVE_MEMBERS
+  /// Members who joined in the period.
+  NEW_MEMBERS
+  /// Coins the agency sold to users in the period.
+  COIN_SALES
+  /// Gift coin value across the agency's members in the period.
+  GIFT_REVENUE
+  /// Rewards the agency distributed in the period.
+  REWARDS_DISTRIBUTED
+  /// No computable figure — an Official marks it complete.
+  MANUAL
+}
+
+enum AgencyTaskStatus {
+  ACTIVE
+  COMPLETED
+  /// Period ended without the target being met.
+  EXPIRED
+  CANCELLED
+}
+
+enum AgencyTaskPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+/// Reward stock an Official has allocated to an agency to hand out.
+///
+/// Distinct from the recipient's copy: this is the agency's shelf, and
+/// `quantity` is decremented as it distributes.
+model AgencyRewardInventory {
+  id       String @id @default(uuid()) @db.Uuid
+  agencyId String @db.Uuid
+
+  /// Mirrors BackpackItemType, so a distributed item lands in the recipient's
+  /// backpack as the same kind of thing.
+  itemType String
+  /// Id into the source catalog (frame/theme/effect), when the item has one.
+  refId    String?
+  name     String
+
+  /// Stock on the shelf now.
+  quantity      Int @default(0)
+  /// Everything ever allocated, so the panel can show usage against supply.
+  allocatedTotal Int @default(0)
+  distributedTotal Int @default(0)
+
+  /// The Official who allocated it.
+  allocatedBy String?  @db.Uuid
+  expiresAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  distributions AgencyRewardDistribution[]
+
+  @@unique([agencyId, itemType, refId])
+  @@index([agencyId])
+  @@map("agency_reward_inventories")
+}
+
+/// One reward sent from an agency's shelf to one of its members.
+///
+/// Append-only: a sent reward is permanently linked to the recipient, so there
+/// is no update or delete path.
+model AgencyRewardDistribution {
+  id          String @id @default(uuid()) @db.Uuid
+  agencyId    String @db.Uuid
+  inventoryId String @db.Uuid
+  recipientId String @db.Uuid
+
+  itemType String
+  refId    String?
+  name     String
+  quantity Int    @default(1)
+
+  kind AgencyRewardKind @default(ASSIGNED)
+
+  /// The backpack row created for the recipient, so the two sides can be
+  /// reconciled.
+  backpackItemId String? @db.Uuid
+  /// Idempotency for the send action — a replayed request maps to this row.
+  idempotencyKey String  @unique
+
+  note      String?
+  createdAt DateTime @default(now())
+
+  inventory AgencyRewardInventory @relation(fields: [inventoryId], references: [id])
+
+  @@index([agencyId, createdAt])
+  @@index([recipientId, createdAt])
+  @@map("agency_reward_distributions")
+}
+
+/// Which of the spec's two reward models a distribution follows.
+enum AgencyRewardKind {
+  /// Activates immediately, permanently bound to the recipient, cannot be
+  /// gifted, transferred, traded or sold. Written as a backpack item with
+  /// `transferable = false`.
+  ASSIGNED
+  /// Sits in the recipient's backpack and may be gifted on, subject to
+  /// quantity. Written with `transferable = true`.
+  OWNED
+}
