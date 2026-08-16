@@ -301,6 +301,33 @@ export class AgencyJoinRequestService {
     };
   }
 
+  /**
+   * Invitations this agency has sent, newest first.
+   *
+   * Separate from the inbound queue because they need no decision from the
+   * agency — this is a record of who was asked and what they said.
+   */
+  async listSentInvitations(agencyId: string) {
+    const rows = await this.prisma.agencyJoinRequest.findMany({
+      where: { agencyId, initiatedBy: 'AGENCY' },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    const identities = await this.profiles.resolvePublicIdentities(rows.map((r) => r.userId));
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        userId: row.userId,
+        displayName: identities.get(row.userId)?.displayName ?? null,
+        avatarUrl: identities.get(row.userId)?.avatarUrl ?? null,
+        status: row.status,
+        invitedAt: row.createdAt,
+        decidedAt: row.decidedAt,
+      })),
+      total: rows.length,
+    };
+  }
+
   /** How many are waiting — for the badge on Community Management. */
   pendingCount(agencyId: string): Promise<number> {
     return this.prisma.agencyJoinRequest.count({

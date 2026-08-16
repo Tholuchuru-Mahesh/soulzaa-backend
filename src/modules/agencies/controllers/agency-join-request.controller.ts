@@ -124,6 +124,12 @@ export class AgencyJoinReviewController {
     return this.joins.pendingCount(user.id).then((pending) => ({ pending }));
   }
 
+  @Get('sent')
+  @ApiOperation({ summary: 'Invitations this agency has sent, with their status' })
+  sent(@CurrentUser() user: AuthenticatedUser) {
+    return this.joins.listSentInvitations(user.id);
+  }
+
   @Get('invitable')
   @ApiOperation({ summary: 'Users in your country who can be invited' })
   invitable(@CurrentUser() user: AuthenticatedUser, @Query() query: JoinRequestQueryDto) {
