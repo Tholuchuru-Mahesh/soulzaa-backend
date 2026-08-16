@@ -14,7 +14,8 @@ describe('CoinSellerPanelService.getPurchaseOrderStatus', () => {
     const prisma = {
       coinSellerInventoryPurchaseOrder: { findFirst },
     };
-    return new CoinSellerPanelService(prisma as never, {} as never);
+    const profiles = { resolvePublicIdentities: jest.fn().mockResolvedValue(new Map()) };
+    return new CoinSellerPanelService(prisma as never, {} as never, profiles as never);
   }
 
   it('scopes the lookup to the calling seller', async () => {

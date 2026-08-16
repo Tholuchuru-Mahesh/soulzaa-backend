@@ -91,6 +91,13 @@ export class CoinSellerInventoryController {
     return this.panelService.getPurchaseOrderStatus(req.user.id, orderId);
   }
 
+  @ApiOperation({ summary: 'Find a buyer by user id or username, within your country' })
+  @Get('buyer-lookup')
+  @RequirePermissions('coin_seller.inventory.sell')
+  async lookupBuyer(@Req() req: any, @Query('query') query: string) {
+    return this.panelService.lookupBuyer(req.user.id, query ?? '');
+  }
+
   @ApiOperation({ summary: 'Sell Gold Coins from seller inventory to a user' })
   @Post('sell')
   @RequirePermissions('coin_seller.inventory.sell')

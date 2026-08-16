@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
+import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
+import { resolveUserCountryCode } from '../utils/resolve-user-country';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CoinSellerInventoryService } from './coin-seller-inventory.service';
 
@@ -15,6 +21,7 @@ export class CoinSellerPanelService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventory: CoinSellerInventoryService,
+    @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
   ) {}
 
   /** The wholesale tiers, in the order the panel shows them. */
@@ -167,6 +174,96 @@ export class CoinSellerPanelService {
           ? (nameById.get(entry.counterpartyId) ?? null)
           : null,
       })),
+    };
+  }
+
+  /**
+   * Finds a buyer to sell coins to, by the id or username the seller was given.
+   *
+   * Restricted to the seller's own country (PRD §20): coin sales are
+   * country-bound, so a buyer elsewhere is reported as not found rather than
+   * shown and then refused at the point of sale. That is also why this returns
+   * nothing rather than "wrong country" — the seller has no business learning
+   * which country a stranger is in.
+   *
+   * Accepts a full uuid, the leading block the app displays, or a username.
+   */
+  async lookupBuyer(sellerId: string, query: string) {
+    const trimmed = query.trim();
+    if (trimmed.length < 4) {
+      throw new BusinessException(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Enter at least 4 characters of the user id or username',
+      );
+    }
+
+    const sellerCountry = await resolveUserCountryCode(this.prisma, sellerId);
+    if (!sellerCountry) {
+      throw new BusinessException(
+        ERROR_CODES.VALIDATION_ERROR,
+        'Set your own country before selling coins',
+      );
+    }
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+
+    // A uuid column cannot be LIKE-matched directly — Postgres rejects it — so
+    // the prefix search casts to text in raw SQL. The app shows users the
+    // leading block of their uuid as their id, so that prefix is exactly what a
+    // seller is given to type.
+    const prefixMatches = isUuid
+      ? []
+      : await this.prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM users
+          WHERE id::text LIKE ${`${trimmed.toLowerCase()}%`}
+            AND id <> ${sellerId}::uuid
+          LIMIT 5`;
+
+    const candidates = await this.prisma.user.findMany({
+      where: {
+        AND: [
+          { id: { not: sellerId } },
+          isUuid
+            ? { id: trimmed }
+            : {
+                OR: [
+                  { username: { equals: trimmed, mode: 'insensitive' as const } },
+                  { id: { in: prefixMatches.map((row) => row.id) } },
+                ],
+              },
+        ],
+      },
+      select: { id: true, username: true, fullName: true, country: true, countryId: true },
+      // More than a handful means the seller has not typed enough to be
+      // unambiguous.
+      take: 5,
+    });
+
+    const sameCountry = [];
+    for (const candidate of candidates) {
+      const country = await resolveUserCountryCode(this.prisma, candidate.id);
+      if (country === sellerCountry) sameCountry.push({ ...candidate, country });
+    }
+
+    if (sameCountry.length === 0) {
+      throw new NotFoundException('No user in your country matches that id');
+    }
+    if (sameCountry.length > 1) {
+      throw new BusinessException(
+        ERROR_CODES.VALIDATION_ERROR,
+        'That id matches more than one user — enter more characters',
+      );
+    }
+
+    const [buyer] = sameCountry;
+    const identity = (await this.profiles.resolvePublicIdentities([buyer.id])).get(buyer.id);
+
+    return {
+      userId: buyer.id,
+      username: buyer.username,
+      displayName: identity?.displayName ?? buyer.fullName ?? buyer.username,
+      avatarUrl: identity?.avatarUrl ?? null,
+      country: buyer.country,
     };
   }
 
