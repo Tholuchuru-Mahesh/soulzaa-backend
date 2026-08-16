@@ -224,7 +224,14 @@ model AgencyJoinRequest {
   userId   String @db.Uuid
 
   status  AgencyJoinRequestStatus @default(PENDING)
-  /// Optional note from the applicant.
+
+  /// Who started it. A USER request is accepted by the agency; an AGENCY
+  /// invitation is accepted by the user. Same row, same statuses — only the
+  /// side that may decide differs, which is what avoids a second table and a
+  /// second accept path that could drift from this one.
+  initiatedBy AgencyJoinInitiator @default(USER)
+
+  /// Optional note from whichever side started it.
   message String?
 
   decidedAt DateTime?
@@ -239,6 +246,11 @@ model AgencyJoinRequest {
   @@index([agencyId, status])
   @@index([userId, status])
   @@map("agency_join_requests")
+}
+
+enum AgencyJoinInitiator {
+  USER
+  AGENCY
 }
 
 enum AgencyJoinRequestStatus {

@@ -26,6 +26,12 @@ export class RequestToJoinDto {
 }
 
 export class JoinRequestQueryDto {
+  @ApiPropertyOptional({ description: 'Narrows the invitable list by username.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  search?: string;
+
   @ApiPropertyOptional({ enum: ['PENDING', 'ACCEPTED', 'DECLINED'], default: 'PENDING' })
   @IsOptional()
   @IsIn(['PENDING', 'ACCEPTED', 'DECLINED'])
@@ -57,6 +63,30 @@ export class AgencyJoinController {
   @ApiOperation({ summary: "The caller's own outstanding request, if any" })
   mine(@CurrentUser() user: AuthenticatedUser) {
     return this.joins.myRequest(user.id);
+  }
+
+  @Get('invitations/mine')
+  @ApiOperation({ summary: 'Agency invitations waiting on the caller' })
+  myInvitations(@CurrentUser() user: AuthenticatedUser) {
+    return this.joins.listMyInvitations(user.id);
+  }
+
+  @Post('invitations/:requestId/accept')
+  @ApiOperation({ summary: 'Accept an invitation and join the agency' })
+  acceptInvitation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+  ) {
+    return this.joins.acceptInvitation(user.id, requestId);
+  }
+
+  @Post('invitations/:requestId/decline')
+  @ApiOperation({ summary: 'Decline an invitation' })
+  declineInvitation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+  ) {
+    return this.joins.declineInvitation(user.id, requestId);
   }
 
   @Post('join-requests/:requestId/cancel')
@@ -92,6 +122,22 @@ export class AgencyJoinReviewController {
   // Before `:requestId`, so the literal segment wins.
   count(@CurrentUser() user: AuthenticatedUser) {
     return this.joins.pendingCount(user.id).then((pending) => ({ pending }));
+  }
+
+  @Get('invitable')
+  @ApiOperation({ summary: 'Users in your country who can be invited' })
+  invitable(@CurrentUser() user: AuthenticatedUser, @Query() query: JoinRequestQueryDto) {
+    return this.joins.listInvitable(user.id, { search: (query as { search?: string }).search });
+  }
+
+  @Post('invite/:userId')
+  @ApiOperation({ summary: 'Invite a user to join your agency' })
+  invite(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: RequestToJoinDto,
+  ) {
+    return this.joins.invite(user.id, userId, dto.message);
   }
 
   @Post(':requestId/accept')
