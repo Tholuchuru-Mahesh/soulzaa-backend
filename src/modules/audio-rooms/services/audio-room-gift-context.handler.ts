@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable, OnModuleInit } from '@nestjs/common';
-import { GiftContextType, PkStatus, Prisma, WalletCurrency, WalletTxnReason } from '@prisma/client';
+import { GiftContextType, Prisma, WalletCurrency, WalletTxnReason } from '@prisma/client';
 import type { DomainEvent } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { GIFT_WALLET_REFERENCE_TYPE } from 'src/modules/gifts/constants/gifts.constants';
@@ -29,7 +29,6 @@ import {
   AUDIO_ROOMS_SERVICE,
   type IAudioRoomsService,
 } from '../interfaces/audio-rooms.service.interface';
-import { PkReceiverBonusEvent } from '../events/audio-room-pk.events';
 
 /** Share of the accepted contribution credited to the room host. Set to 0 to prevent duplicate 10% additions to Creator Earnings. */
 const HOST_REWARD_RATE = 0;
@@ -190,58 +189,17 @@ export class AudioRoomGiftContextHandler implements IGiftContextHandler, OnModul
       );
     }
 
-    // High-Value Gift Bonus during an active PK Battle (Rule 1 & Rule 2)
-    // Applies when totalCoinValue > 1000 and receiver is a PK battle participant.
-    if (ctx.totalCoinValue > 1000 && tx?.pkBattle) {
-      const activeBattle = await tx.pkBattle.findFirst({
-        where: { roomId: ctx.contextId, status: PkStatus.ACTIVE },
-      });
-      if (activeBattle && tx?.pkParticipant) {
-        const participant = await tx.pkParticipant.findUnique({
-          where: { battleId_userId: { battleId: activeBattle.id, userId: receiverId } },
-        });
-        if (participant) {
-          const bonusCoins = Math.floor((ctx.totalCoinValue * 10) / 100);
-          if (bonusCoins > 0) {
-            const bonusCredit = await this.wallet.credit(
-              {
-                userId: receiverId,
-                currency: WalletCurrency.GOLD,
-                amount: bonusCoins,
-                reason: WalletTxnReason.PK_BATTLE_RECEIVER_BONUS,
-                idempotencyKey: `pk-receiver-bonus:${ctx.idempotencyKey}:${receiverId}`,
-                referenceType: GIFT_WALLET_REFERENCE_TYPE,
-                referenceId: ctx.transactionId,
-                metadata: {
-                  senderId: ctx.senderId,
-                  receiverId,
-                  roomId: ctx.contextId,
-                  pkBattleId: activeBattle.id,
-                  giftId: ctx.gift.id,
-                  originalGiftValue: ctx.totalCoinValue,
-                  bonusPercentage: 10,
-                  bonusCoins,
-                },
-                actorId: ctx.senderId,
-              },
-              tx,
-            );
-            events.push(
-              new PkReceiverBonusEvent({
-                roomId: ctx.contextId,
-                battleId: activeBattle.id,
-                senderId: ctx.senderId,
-                receiverId,
-                giftId: ctx.gift.id,
-                originalGiftValue: ctx.totalCoinValue,
-                bonusCoins,
-                walletTxnId: bonusCredit.transactionId,
-              }),
-            );
-          }
-        }
-      }
-    }
+    // The receiver's cashback is settled once, by `GiftService` (Step 3b), at the
+    // configured `gift.receiver_cashback_percentage`. A PK battle does not change
+    // what a gift is worth to its recipient, so nothing extra is credited here.
+    //
+    // A `PK_BATTLE_RECEIVER_BONUS` credit of a further 10% used to fire at this
+    // point whenever the receiver was a participant in an active battle. It
+    // stacked on top of the standard cashback rather than replacing it, so the
+    // same gift paid out twice: a 10,000-coin gift put 2,000 in the wallet
+    // instead of 1,000. Earnings and analytics were never involved — both read
+    // the gift's full value — so the discrepancy showed up only as spendable
+    // balance, which is the hardest place to notice it.
 
     return {
       acceptedAmount: contribution.acceptedAmount,

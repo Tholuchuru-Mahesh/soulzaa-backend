@@ -1,3 +1,4 @@
+import { AUDIO_ROOM_PK_EVENTS } from '../events/audio-room-pk.events';
 import { GiftContextType } from '@prisma/client';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { AudioRoomGiftContextHandler } from './audio-room-gift-context.handler';
@@ -269,63 +270,27 @@ describe('AudioRoomGiftContextHandler.onSend (treasure + host reward + refund)',
       expect(tx.pkBattle.findFirst).not.toHaveBeenCalled();
     });
 
-    it('credits 10% bonus when gift value > 1000 and receiver is active PK participant', async () => {
-      const activeBattle = { id: 'battle-123' };
-      const participant = { id: 'part-1', userId: 'receiver-1' };
+    it('credits no receiver bonus, however large the gift or however active the battle', async () => {
+      // Replaces two tests that asserted a 10% PK_BATTLE_RECEIVER_BONUS on top
+      // of the standard cashback. That double-credit was the bug: the receiver's
+      // 10% is settled once by GiftService, and stacking a second slice here
+      // paid 20% on every PK gift over the threshold.
       const tx = {
-        pkBattle: { findFirst: jest.fn().mockResolvedValue(activeBattle) },
-        pkParticipant: { findUnique: jest.fn().mockResolvedValue(participant) },
+        pkBattle: { findFirst: jest.fn().mockResolvedValue({ id: 'battle-123' }) },
+        pkParticipant: {
+          findUnique: jest.fn().mockResolvedValue({ id: 'part-1', userId: 'receiver-1' }),
+        },
       } as any;
-      const ctx = { ...CTX, totalCoinValue: 5000 };
 
-      const effects = await handler.onSend(tx, ctx as never);
+      for (const totalCoinValue of [1001, 5000, 10000]) {
+        wallet.credit.mockClear();
+        await handler.onSend(tx, { ...CTX, totalCoinValue } as never);
 
-      expect(tx.pkBattle.findFirst).toHaveBeenCalledWith({
-        where: { roomId: 'room-1', status: 'ACTIVE' },
-      });
-      expect(tx.pkParticipant.findUnique).toHaveBeenCalledWith({
-        where: { battleId_userId: { battleId: 'battle-123', userId: 'receiver-1' } },
-      });
-      expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'receiver-1',
-          currency: 'GOLD',
-          amount: 500,
-          reason: 'PK_BATTLE_RECEIVER_BONUS',
-          metadata: expect.objectContaining({
-            senderId: 'sender-1',
-            receiverId: 'receiver-1',
-            roomId: 'room-1',
-            pkBattleId: 'battle-123',
-            originalGiftValue: 5000,
-            bonusPercentage: 10,
-            bonusCoins: 500,
-          }),
-        }),
-        tx,
-      );
-      expect(effects.events.map((e) => e.name)).toContain('audio_room.pk_receiver_bonus');
-    });
-
-    it('rounds bonus down using integer coin policy (e.g., 1001 coins -> 100 bonus)', async () => {
-      const activeBattle = { id: 'battle-123' };
-      const participant = { id: 'part-1', userId: 'receiver-1' };
-      const tx = {
-        pkBattle: { findFirst: jest.fn().mockResolvedValue(activeBattle) },
-        pkParticipant: { findUnique: jest.fn().mockResolvedValue(participant) },
-      } as any;
-      const ctx = { ...CTX, totalCoinValue: 1001 };
-
-      await handler.onSend(tx, ctx as never);
-
-      expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'receiver-1',
-          amount: 100,
-          reason: 'PK_BATTLE_RECEIVER_BONUS',
-        }),
-        tx,
-      );
+        expect(wallet.credit).not.toHaveBeenCalledWith(
+          expect.objectContaining({ reason: 'PK_BATTLE_RECEIVER_BONUS' }),
+          tx,
+        );
+      }
     });
 
     it('does NOT credit bonus if receiver is not a PK participant', async () => {
@@ -359,5 +324,89 @@ describe('AudioRoomGiftContextHandler.onSend (treasure + host reward + refund)',
         tx,
       );
     });
+  });
+});
+
+/**
+ * The receiver's cashback is settled once, by `GiftService` (Step 3b), at the
+ * configured 10%. This handler must not add a second slice on top.
+ *
+ * It used to: a `PK_BATTLE_RECEIVER_BONUS` credit of another 10% fired whenever
+ * the receiver was a participant in an active battle, so the same gift paid out
+ * twice and a 10,000-coin gift landed 2,000 in the wallet instead of 1,000.
+ * Earnings and analytics were never affected — only the spendable balance.
+ */
+describe('AudioRoomGiftContextHandler.onSend during an active PK battle', () => {
+  const CTX = {
+    ...REQ,
+    transactionId: 'txn-pk',
+    batchId: 'batch-pk',
+    idempotencyKey: 'idem-pk',
+    totalCoinValue: 10000,
+  };
+
+  let wallet: Record<string, jest.Mock>;
+  let handler: AudioRoomGiftContextHandler;
+  let tx: Record<string, unknown>;
+
+  beforeEach(() => {
+    wallet = {
+      credit: jest.fn().mockResolvedValue({ transactionId: 'w-credit', duplicate: false }),
+    };
+    // An active battle with the receiver as a participant — the exact state the
+    // duplicate bonus used to trigger on.
+    tx = {
+      pkBattle: { findFirst: jest.fn().mockResolvedValue({ id: 'battle-1' }) },
+      pkParticipant: {
+        findUnique: jest.fn().mockResolvedValue({ battleId: 'battle-1', userId: 'receiver-1' }),
+      },
+    };
+    handler = new AudioRoomGiftContextHandler(
+      {
+        isRoomLive: jest.fn().mockResolvedValue(true),
+        assertMember: jest.fn().mockResolvedValue(undefined),
+        isMember: jest.fn().mockResolvedValue(true),
+        // No host, so the only credits that can appear are receiver-facing ones.
+        getOwnerId: jest.fn().mockResolvedValue(null),
+      } as never,
+      { findById: jest.fn() } as never,
+      { register: jest.fn() } as never,
+      wallet as never,
+      {
+        processTreasureContribution: jest.fn().mockResolvedValue({
+          acceptedAmount: 10000,
+          refundAmount: 0,
+          events: [],
+          boxId: 'box-1',
+          level: 1,
+          postCommit: undefined,
+        }),
+      } as never,
+    );
+  });
+
+  it('does not credit the receiver a second cashback slice', async () => {
+    await handler.onSend(tx as never, CTX as never);
+
+    const receiverCredits = wallet.credit.mock.calls.filter(
+      (call: [{ userId: string }]) => call[0].userId === 'receiver-1',
+    );
+    expect(receiverCredits).toEqual([]);
+  });
+
+  it('emits no PK receiver-bonus event', async () => {
+    const effects = await handler.onSend(tx as never, CTX as never);
+
+    // Asserted against the event's real `name` (AUDIO_ROOM_PK_EVENTS.RECEIVER_BONUS),
+    // not its class name — matching on the class name passed even while the
+    // event was still being emitted, which is a test that proves nothing.
+    const names = effects.events.map((e) => (e as { name: string }).name);
+    expect(names).not.toContain(AUDIO_ROOM_PK_EVENTS.RECEIVER_BONUS);
+  });
+
+  it('still routes the gift through the treasure box', async () => {
+    // The bonus is going away; nothing else about a PK-battle send changes.
+    const effects = await handler.onSend(tx as never, CTX as never);
+    expect(effects.acceptedAmount).toBe(10000);
   });
 });
