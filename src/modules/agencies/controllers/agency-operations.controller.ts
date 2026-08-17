@@ -14,7 +14,11 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { RequireRoles } from 'src/modules/authorization/decorators/authorization.decorators';
 import { RbacRolesGuard } from 'src/modules/authorization/guards/rbac-roles.guard';
-import { AgencyTaskQueryDto, DistributeRewardDto } from '../dto/agency-operations.dto';
+import {
+  AgencyDistributionQueryDto,
+  AgencyTaskQueryDto,
+  DistributeRewardDto,
+} from '../dto/agency-operations.dto';
 import { AgencyRewardService } from '../services/agency-reward.service';
 import { AgencyTaskService } from '../services/agency-task.service';
 
@@ -62,10 +66,19 @@ export class AgencyOperationsController {
     return this.rewards.listInventory(user.id);
   }
 
+  @Get('rewards/stats')
+  @ApiOperation({ summary: 'How many rewards this agency has sent' })
+  rewardStats(@CurrentUser() user: AuthenticatedUser) {
+    return this.rewards.getStats(user.id);
+  }
+
   @Get('rewards/distributions')
   @ApiOperation({ summary: 'Rewards the agency has sent, newest first' })
-  distributions(@CurrentUser() user: AuthenticatedUser) {
-    return this.rewards.listDistributions(user.id);
+  distributions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: AgencyDistributionQueryDto,
+  ) {
+    return this.rewards.listDistributions(user.id, query);
   }
 
   @Post('rewards/distribute')

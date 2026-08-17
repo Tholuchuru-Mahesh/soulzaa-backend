@@ -28,7 +28,8 @@ describe('AgencyRewardService.distribute', () => {
       },
       $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)),
     };
-    return { service: new AgencyRewardService(prisma), prisma, tx };
+    const profiles = { resolvePublicIdentities: jest.fn().mockResolvedValue(new Map()) };
+    return { service: new AgencyRewardService(prisma, profiles as never), prisma, tx };
   }
 
   const shelfRow = {
@@ -154,5 +155,145 @@ describe('AgencyRewardService.distribute', () => {
       message: expect.stringContaining('expired'),
     });
     expect(tx.backpackItem.create).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The history screen and the distribution screen's header.
+ *
+ * Both read the same table, so the rule that matters most is scoping: an
+ * agency sees what it sent, never what a rival gave the same member.
+ */
+describe('AgencyRewardService reads', () => {
+  const AGENCY = 'agency-1';
+
+  function build(rewards: Record<string, unknown>[] = []) {
+    const prisma: any = {
+      agencyRewardDistribution: {
+        findMany: jest.fn().mockResolvedValue(rewards),
+        count: jest.fn().mockResolvedValue(rewards.length),
+      },
+    };
+    const profiles = {
+      resolvePublicIdentities: jest
+        .fn()
+        .mockResolvedValue(
+          new Map([['u1', { displayName: 'balayya', avatarUrl: 'https://cdn/a.png' }]]),
+        ),
+    };
+    const service = new AgencyRewardService(prisma, profiles as never);
+    return { service, prisma, profiles };
+  }
+
+  function rows(count: number) {
+    return Array.from({ length: count }, (_, i) => ({
+      id: `r${i}`,
+      recipientId: 'u1',
+      itemType: 'MEDAL',
+      name: 'Premium medal',
+      quantity: 1,
+      kind: 'ASSIGNED',
+      note: null,
+      createdAt: new Date('2026-06-20T00:00:00Z'),
+    }));
+  }
+
+  describe('listDistributions', () => {
+    it('scopes to the calling agency', async () => {
+      const { service, prisma } = build(rows(1));
+
+      await service.listDistributions(AGENCY);
+
+      expect(prisma.agencyRewardDistribution.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ agencyId: AGENCY }) }),
+      );
+    });
+
+    it('resolves the recipient identity in one bulk call', async () => {
+      const { service, profiles } = build(rows(3));
+
+      const res = await service.listDistributions(AGENCY);
+
+      expect(profiles.resolvePublicIdentities).toHaveBeenCalledTimes(1);
+      expect(res.items[0].recipientName).toBe('balayya');
+      expect(res.items[0].recipientAvatarUrl).toBe('https://cdn/a.png');
+    });
+
+    it('returns a null identity rather than failing when the profile seam has nothing', async () => {
+      const { service, profiles } = build(rows(1));
+      profiles.resolvePublicIdentities.mockResolvedValue(new Map());
+
+      const res = await service.listDistributions(AGENCY);
+
+      expect(res.items[0].recipientName).toBeNull();
+      expect(res.items[0].recipientAvatarUrl).toBeNull();
+    });
+
+    it('pages', async () => {
+      const { service, prisma } = build(rows(20));
+      prisma.agencyRewardDistribution.count.mockResolvedValue(45);
+
+      const res = await service.listDistributions(AGENCY, { page: 2, limit: 20 });
+
+      expect(res).toMatchObject({ page: 2, limit: 20, total: 45, totalPages: 3 });
+      expect(prisma.agencyRewardDistribution.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 20, take: 20 }),
+      );
+    });
+
+    it('applies no date bound for range=all', async () => {
+      const { service, prisma } = build(rows(1));
+
+      await service.listDistributions(AGENCY, { range: 'all' });
+
+      expect(
+        prisma.agencyRewardDistribution.findMany.mock.calls[0][0].where.createdAt,
+      ).toBeUndefined();
+    });
+
+    it.each(['today', 'week', 'month'] as const)('bounds range=%s', async (range) => {
+      const { service, prisma } = build(rows(1));
+
+      await service.listDistributions(AGENCY, { range });
+
+      const where = prisma.agencyRewardDistribution.findMany.mock.calls[0][0].where;
+      expect(where.createdAt.gte).toBeInstanceOf(Date);
+      expect(where.createdAt.gte.getTime()).toBeLessThanOrEqual(Date.now());
+    });
+
+    it('clamps an absurd page size', async () => {
+      const { service, prisma } = build(rows(1));
+
+      await service.listDistributions(AGENCY, { limit: 100_000 });
+
+      expect(prisma.agencyRewardDistribution.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 100 }),
+      );
+    });
+  });
+
+  describe('getStats', () => {
+    it('counts all-time, today and this month, scoped to the agency', async () => {
+      const { service, prisma } = build();
+      prisma.agencyRewardDistribution.count
+        .mockResolvedValueOnce(1248)
+        .mockResolvedValueOnce(24)
+        .mockResolvedValueOnce(378);
+
+      const res = await service.getStats(AGENCY);
+
+      expect(res).toEqual({ totalSent: 1248, today: 24, thisMonth: 378 });
+      for (const call of prisma.agencyRewardDistribution.count.mock.calls) {
+        expect(call[0].where.agencyId).toBe(AGENCY);
+      }
+    });
+
+    it('reports real zeros for an agency that has sent nothing', async () => {
+      // Zero is the true answer here, not a missing one.
+      const { service, prisma } = build();
+      prisma.agencyRewardDistribution.count.mockResolvedValue(0);
+
+      expect(await service.getStats(AGENCY)).toEqual({ totalSent: 0, today: 0, thisMonth: 0 });
+    });
   });
 });

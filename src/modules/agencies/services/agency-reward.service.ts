@@ -1,8 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
 
 const MAX_PAGE_SIZE = 100;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** How far back each chip on the history screen looks. */
+export type AgencyDistributionRange = 'all' | 'today' | 'week' | 'month';
 
 /**
  * The agency's reward shelf, and sending from it.
@@ -17,7 +25,13 @@ const MAX_PAGE_SIZE = 100;
  */
 @Injectable()
 export class AgencyRewardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // The history rows render a recipient thumbnail, which a bare id cannot
+    // fill. Identity comes from the profile seam for the same reason as
+    // everywhere else: it honours the hidden-account rules.
+    @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
+  ) {}
 
   /** What the agency currently holds. */
   async listInventory(agencyId: string) {
@@ -48,18 +62,36 @@ export class AgencyRewardService {
   }
 
   /** What the agency has sent, newest first. */
-  async listDistributions(agencyId: string, options: { limit?: number } = {}) {
-    const limit = Math.min(Math.max(options.limit ?? 25, 1), MAX_PAGE_SIZE);
-    const rows = await this.prisma.agencyRewardDistribution.findMany({
-      where: { agencyId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
+  async listDistributions(
+    agencyId: string,
+    options: { page?: number; limit?: number; range?: AgencyDistributionRange } = {},
+  ) {
+    const limit = Math.min(Math.max(options.limit ?? 20, 1), MAX_PAGE_SIZE);
+    const page = Math.max(options.page ?? 1, 1);
+    const where = { agencyId, ...this.rangeFilter(options.range ?? 'all') };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.agencyRewardDistribution.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.agencyRewardDistribution.count({ where }),
+    ]);
+
+    // One bulk call for the whole page, deduplicated: a member rewarded five
+    // times is one lookup, not five.
+    const identities = await this.profiles.resolvePublicIdentities([
+      ...new Set(rows.map((r) => r.recipientId)),
+    ]);
 
     return {
       items: rows.map((row) => ({
         id: row.id,
         recipientId: row.recipientId,
+        recipientName: identities.get(row.recipientId)?.displayName ?? null,
+        recipientAvatarUrl: identities.get(row.recipientId)?.avatarUrl ?? null,
         itemType: row.itemType,
         name: row.name,
         quantity: row.quantity,
@@ -67,7 +99,49 @@ export class AgencyRewardService {
         note: row.note,
         occurredAt: row.createdAt,
       })),
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * The three figures above the distribution screen's member list.
+   *
+   * Its own method rather than a block on `listDistributions`: the screen that
+   * needs these wants no rows at all, and the screen that wants rows needs no
+   * stats.
+   */
+  async getStats(agencyId: string) {
+    const [totalSent, today, thisMonth] = await Promise.all([
+      this.prisma.agencyRewardDistribution.count({ where: { agencyId } }),
+      this.prisma.agencyRewardDistribution.count({
+        where: { agencyId, ...this.rangeFilter('today') },
+      }),
+      this.prisma.agencyRewardDistribution.count({
+        where: { agencyId, ...this.rangeFilter('month') },
+      }),
+    ]);
+    return { totalSent, today, thisMonth };
+  }
+
+  /**
+   * `all` has no bound. `today` is the calendar day; the other two are rolling
+   * windows, which is what "this week" means to someone looking at a list of
+   * what they just sent.
+   */
+  private rangeFilter(range: AgencyDistributionRange) {
+    if (range === 'all') return {};
+
+    const now = new Date();
+    if (range === 'today') {
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+      return { createdAt: { gte: start } };
+    }
+
+    const days = range === 'week' ? 7 : 30;
+    return { createdAt: { gte: new Date(now.getTime() - days * DAY_MS) } };
   }
 
   /**

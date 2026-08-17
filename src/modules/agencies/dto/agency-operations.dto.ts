@@ -54,3 +54,27 @@ export class DistributeRewardDto {
   @MaxLength(120)
   idempotencyKey!: string;
 }
+
+const DISTRIBUTION_RANGES = ['all', 'today', 'week', 'month'] as const;
+
+/** Query for the distribution history screen. */
+export class AgencyDistributionQueryDto {
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit?: number;
+
+  @ApiPropertyOptional({ enum: DISTRIBUTION_RANGES, default: 'all' })
+  @IsOptional()
+  @IsIn(DISTRIBUTION_RANGES)
+  range?: (typeof DISTRIBUTION_RANGES)[number];
+}
