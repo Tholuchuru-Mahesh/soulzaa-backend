@@ -11,6 +11,7 @@ import { VoiceController } from './controllers/voice.controller';
 import { WatchPartyController } from './controllers/watch-party.controller';
 import { AudioRoomsAdminController } from './controllers/audio-rooms-admin.controller';
 import { InvestigationRecordingModule } from 'src/modules/investigation-recording/investigation-recording.module';
+import { ModerationApprovalModule } from 'src/modules/moderation-approval/moderation-approval.module';
 import { ModeratorPerformanceModule } from 'src/modules/moderator-performance/moderator-performance.module';
 import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shift.module';
 import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-warning.module';
@@ -25,6 +26,7 @@ import { ChatSocketListener } from './listeners/chat-socket.listener';
 import { GiftSocketListener } from './listeners/gift-socket.listener';
 import { LuckyPacketSocketListener } from './listeners/lucky-packet-socket.listener';
 import { ModerationSocketListener } from './listeners/moderation-socket.listener';
+import { AudioRoomModerationApprovalListener } from './listeners/moderation-approval.listener';
 import { RoomUtilitiesSocketListener } from './listeners/room-utilities-socket.listener';
 import { PkGiftListener } from './listeners/pk-gift.listener';
 import { PkSocketListener } from './listeners/pk-socket.listener';
@@ -97,6 +99,7 @@ import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workf
 @Module({
   imports: [
     InvestigationRecordingModule,
+    ModerationApprovalModule,
     ModeratorPerformanceModule,
     ModeratorShiftModule,
     ModeratorWarningModule,
@@ -150,6 +153,7 @@ import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workf
     VoiceSeatSyncListener,
     VoiceLifecycleListener,
     ModerationSocketListener,
+    AudioRoomModerationApprovalListener,
     ChatSocketListener,
     GiftSocketListener,
     TreasureSocketListener,

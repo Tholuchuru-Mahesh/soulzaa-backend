@@ -44,6 +44,7 @@ function createData(overrides: Partial<CreateVideoRoomData> = {}): CreateVideoRo
     maxParticipants: 12,
     maxViewers: 500,
     creationSource: VideoRoomCreationSource.APP,
+    region: null,
     ...overrides,
   };
 }

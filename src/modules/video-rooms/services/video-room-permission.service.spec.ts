@@ -160,6 +160,34 @@ describe('VideoRoomPermissionService', () => {
         false,
       );
     });
+
+    it('lets a bare platform Moderator (no in-room role) review reports', async () => {
+      const ok = await service.hasPermission(
+        actor('mod-1', [PlatformRole.MODERATOR]),
+        room,
+        VideoRoomPermission.REVIEW_REPORTS,
+      );
+      expect(ok).toBe(true);
+      // The bypass short-circuits before any in-room role lookup.
+      expect(roles.findActive).not.toHaveBeenCalled();
+    });
+
+    it('does not let a bare platform Moderator manage seats or settings (bypass is narrow)', async () => {
+      expect(
+        await service.hasPermission(
+          actor('mod-1', [PlatformRole.MODERATOR]),
+          room,
+          VideoRoomPermission.MANAGE_SEATS,
+        ),
+      ).toBe(false);
+      expect(
+        await service.hasPermission(
+          actor('mod-1', [PlatformRole.MODERATOR]),
+          room,
+          VideoRoomPermission.MANAGE_PARTICIPANTS,
+        ),
+      ).toBe(false);
+    });
   });
 
   describe('assertPermission', () => {

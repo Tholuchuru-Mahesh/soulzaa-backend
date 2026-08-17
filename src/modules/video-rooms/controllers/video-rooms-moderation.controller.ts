@@ -20,6 +20,7 @@ import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import { ShiftActiveGuard } from 'src/modules/moderator-shift/guards/shift-active.guard';
 import { SuspendedGuard } from 'src/modules/moderator-warning/guards/suspended.guard';
 import {
+  AssignReportDto,
   BlockVideoRoomUserDto,
   ForceDisconnectDto,
   KickVideoRoomUsersDto,
@@ -287,7 +288,7 @@ export class VideoRoomsModerationController {
   escalate(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) roomId: string,
-    @Body() dto: { targetUserId: string; reason: string },
+    @Body() dto: { targetUserId: string; reason: string; severity: 'HIGH' | 'CRITICAL' | 'EMERGENCY' },
     @RequestMeta() meta: RequestMetadata,
   ) {
     return this.moderation.escalateViolation(
@@ -295,6 +296,7 @@ export class VideoRoomsModerationController {
       roomId,
       dto.targetUserId,
       dto.reason,
+      dto.severity,
       meta,
     );
   }
@@ -376,6 +378,52 @@ export class VideoRoomsModerationController {
     @RequestMeta() meta: RequestMetadata,
   ) {
     return this.reports.reviewReport(this.actor(user), roomId, reportId, dto, meta);
+  }
+
+  @Post(':id/reports/:reportId/assign')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Assign a pending report to a moderator for investigation' })
+  @ApiParam({ name: 'id', description: 'Video room id (uuid)' })
+  @ApiParam({ name: 'reportId', description: 'The report id (uuid)' })
+  async assignReport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Param('reportId', ParseUuidPipe) reportId: string,
+    @Body() dto: AssignReportDto,
+  ) {
+    await this.reports.assignReport(this.actor(user), roomId, reportId, dto.assigneeId);
+    return { assigned: true };
+  }
+
+  @Post(':id/reports/:reportId/dismiss')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Dismiss a false report (moderator)' })
+  @ApiParam({ name: 'id', description: 'Video room id (uuid)' })
+  @ApiParam({ name: 'reportId', description: 'The report id (uuid)' })
+  dismissReport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Param('reportId', ParseUuidPipe) reportId: string,
+    @Body() dto: { reason?: string },
+  ) {
+    return this.reports.dismissReport(this.actor(user), roomId, reportId, dto.reason);
+  }
+
+  @Post(':id/reports/:reportId/notes')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Add investigation notes to a report (moderator)' })
+  @ApiParam({ name: 'id', description: 'Video room id (uuid)' })
+  @ApiParam({ name: 'reportId', description: 'The report id (uuid)' })
+  addReportNotes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Param('reportId', ParseUuidPipe) reportId: string,
+    @Body() dto: { notes: string },
+  ) {
+    return this.reports.addReportNotes(this.actor(user), roomId, reportId, dto.notes);
   }
 
   // ======================= Reads (elevated) =======================

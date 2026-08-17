@@ -34,6 +34,8 @@ export enum VideoRoomPermission {
   MUTE_USERS = 'MUTE_USERS',
   /** Mute/unmute the whole room. */
   ROOM_MUTE = 'ROOM_MUTE',
+  /** Review/dismiss reports, add investigation notes, list the report queue. */
+  REVIEW_REPORTS = 'REVIEW_REPORTS',
   /** Pin chat messages (chat phase consumes this). */
   PIN_MESSAGES = 'PIN_MESSAGES',
   /**
@@ -77,6 +79,7 @@ const MODERATOR_PERMISSIONS: readonly VideoRoomPermission[] = [
   VideoRoomPermission.ROOM_MUTE,
   VideoRoomPermission.PIN_MESSAGES,
   VideoRoomPermission.MANAGE_ANNOUNCEMENTS,
+  VideoRoomPermission.REVIEW_REPORTS,
 ];
 
 /**

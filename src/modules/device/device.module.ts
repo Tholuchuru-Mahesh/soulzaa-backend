@@ -14,6 +14,8 @@ import { FcmPushProvider } from './services/push/providers/fcm-push.provider';
 
 import { ModeratorDeviceChangeController } from './controllers/moderator-device-change.controller';
 import { ModeratorDeviceBindingService } from './services/moderator-device-binding.service';
+import { StaffAllowedIpController } from './controllers/staff-allowed-ip.controller';
+import { StaffIpAllowlistService } from './services/staff-ip-allowlist.service';
 
 /**
  * Device Management domain — the device registry, trust ledger and audit trail
@@ -28,7 +30,7 @@ import { ModeratorDeviceBindingService } from './services/moderator-device-bindi
 @Global()
 @Module({
   imports: [BullModule.registerQueue({ name: DEVICE_QUEUES.PUSH })],
-  controllers: [DeviceController, ModeratorDeviceChangeController],
+  controllers: [DeviceController, ModeratorDeviceChangeController, StaffAllowedIpController],
   providers: [
     DeviceRepository,
     DeviceService,
@@ -39,8 +41,15 @@ import { ModeratorDeviceBindingService } from './services/moderator-device-bindi
     ApnsPushProvider,
     PushProcessor,
     ModeratorDeviceBindingService,
+    StaffIpAllowlistService,
     { provide: DEVICE_SERVICE, useExisting: DeviceService },
   ],
-  exports: [DEVICE_SERVICE, DeviceRepository, PushDispatcher, ModeratorDeviceBindingService],
+  exports: [
+    DEVICE_SERVICE,
+    DeviceRepository,
+    PushDispatcher,
+    ModeratorDeviceBindingService,
+    StaffIpAllowlistService,
+  ],
 })
 export class DeviceModule {}

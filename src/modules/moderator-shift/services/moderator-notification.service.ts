@@ -1,7 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { NotificationType } from '@prisma/client';
+import {
+  NOTIFICATION_SERVICE,
+  type INotificationService,
+} from 'src/modules/notification/interfaces/notification.interface';
 
 /**
  * Task 27 — Wire up dead notification types.
@@ -14,12 +18,20 @@ import { NotificationType } from '@prisma/client';
  *   - MODERATOR_OFFICIAL_MESSAGE (Official -> assigned moderators)
  *   - MODERATOR_MANAGER_INSTRUCTION (Manager -> assigned moderators)
  *   - MODERATOR_SYSTEM_ANNOUNCEMENT (Admin -> all moderators)
+ *
+ * Every notification here goes through NOTIFICATION_SERVICE.create() rather
+ * than a raw `prisma.notification.create()` — that's what fires
+ * NotificationCreatedEvent for realtime Push/In-App delivery. Writing the
+ * row directly only produces a pollable DB record, no realtime delivery.
  */
 @Injectable()
 export class ModeratorNotificationService {
   private readonly logger = new Logger(ModeratorNotificationService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(NOTIFICATION_SERVICE) private readonly notifications: INotificationService,
+  ) {}
 
   // ---- Task 27: MODERATOR_TASK_DUE_SOON cron ----
 
@@ -40,25 +52,28 @@ export class ModeratorNotificationService {
         },
       });
 
-      for (const assignment of dueAssignments) {
-        // Fetch task name separately — no direct relation on moderator_task_assignments
-        const taskDef = await this.prisma.taskDefinition.findUnique({
-          where: { id: assignment.taskId },
-          select: { name: true },
-        });
-        await this.prisma.notification.create({
-          data: {
+      // Fetch task names in one batched query — no direct relation on moderator_task_assignments
+      const taskIds = Array.from(new Set(dueAssignments.map((a) => a.taskId)));
+      const taskDefs = await this.prisma.taskDefinition.findMany({
+        where: { id: { in: taskIds } },
+        select: { id: true, name: true },
+      });
+      const taskNameById = new Map(taskDefs.map((t) => [t.id, t.name]));
+
+      await Promise.all(
+        dueAssignments.map(async (assignment) => {
+          await this.notifications.create({
             userId: assignment.moderatorId,
             type: NotificationType.MODERATOR_TASK_DUE_SOON,
             data: {
               assignmentId: assignment.id,
-              taskName: taskDef?.name ?? 'Task',
+              taskName: taskNameById.get(assignment.taskId) ?? 'Task',
               dueAt: assignment.dueAt?.toISOString() ?? null,
             },
-          },
-        });
-        this.logger.debug(`TASK_DUE_SOON reminder sent to ${assignment.moderatorId}`);
-      }
+          });
+          this.logger.debug(`TASK_DUE_SOON reminder sent to ${assignment.moderatorId}`);
+        }),
+      );
     } catch (err) {
       this.logger.error(`Task due-soon reminder error: ${(err as Error).message}`);
     }
@@ -70,35 +85,44 @@ export class ModeratorNotificationService {
    * Notify a moderator when a high-priority report is assigned or created.
    * Called from the report service when severity is critical.
    */
-  async notifyHighPriorityReport(
-    moderatorId: string,
-    reportId: string,
-    reason: string,
-  ): Promise<void> {
-    await this.prisma.notification.create({
-      data: {
-        userId: moderatorId,
-        type: NotificationType.MODERATOR_HIGH_PRIORITY_REPORT,
-        data: { reportId, reason },
-      },
+  async notifyHighPriorityReport(moderatorId: string, reportId: string, reason: string): Promise<void> {
+    await this.notifications.create({
+      userId: moderatorId,
+      type: NotificationType.MODERATOR_HIGH_PRIORITY_REPORT,
+      data: { reportId, reason },
     });
   }
 
   // ---- Task 27: MODERATOR_REPORT_ASSIGNED ----
 
   /** Notify a moderator when a report is assigned to them. */
-  async notifyReportAssigned(
-    moderatorId: string,
-    reportId: string,
-    assignedBy: string,
-  ): Promise<void> {
-    await this.prisma.notification.create({
-      data: {
-        userId: moderatorId,
-        type: NotificationType.MODERATOR_REPORT_ASSIGNED,
-        data: { reportId, assignedBy },
-      },
+  async notifyReportAssigned(moderatorId: string, reportId: string, assignedBy: string): Promise<void> {
+    await this.notifications.create({
+      userId: moderatorId,
+      type: NotificationType.MODERATOR_REPORT_ASSIGNED,
+      actorId: assignedBy,
+      data: { reportId, assignedBy },
     });
+  }
+
+  // ---- Shared broadcast helpers ----
+
+  /** All userIds currently holding the MODERATOR role — the "everyone" audience for admin broadcasts. */
+  private async allModeratorIds(): Promise<string[]> {
+    const moderators = await this.prisma.userRole.findMany({
+      where: { role: { name: 'MODERATOR' } },
+      select: { userId: true },
+    });
+    return moderators.map(({ userId }) => userId);
+  }
+
+  private async broadcastToModerators(
+    userIds: string[],
+    type: NotificationType,
+    actorId: string,
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    await Promise.all(userIds.map((userId) => this.notifications.create({ userId, type, actorId, data })));
   }
 
   // ---- Task 27: MODERATOR_EMERGENCY_REQUEST ----
@@ -110,39 +134,26 @@ export class ModeratorNotificationService {
     message: string,
     regionId?: string,
   ): Promise<void> {
-    for (const userId of recipientModeratorIds) {
-      await this.prisma.notification.create({
-        data: {
-          userId,
-          type: NotificationType.MODERATOR_EMERGENCY_REQUEST,
-          data: { senderId, message, regionId: regionId ?? null },
-        },
-      });
-    }
-    this.logger.log(
-      `EMERGENCY_REQUEST sent to ${recipientModeratorIds.length} moderator(s) by ${senderId}`,
+    await this.broadcastToModerators(
+      recipientModeratorIds,
+      NotificationType.MODERATOR_EMERGENCY_REQUEST,
+      senderId,
+      { senderId, message, regionId: regionId ?? null },
     );
+    this.logger.log(`EMERGENCY_REQUEST sent to ${recipientModeratorIds.length} moderator(s) by ${senderId}`);
   }
 
   // ---- Task 27: MODERATOR_POLICY_UPDATE ----
 
   /** Admin broadcasts a policy update to all active moderators. */
   async broadcastPolicyUpdate(adminId: string, title: string, body: string): Promise<void> {
-    const moderators = await this.prisma.userRole.findMany({
-      where: { role: { name: 'MODERATOR' } },
-      select: { userId: true },
+    const moderatorIds = await this.allModeratorIds();
+    await this.broadcastToModerators(moderatorIds, NotificationType.MODERATOR_POLICY_UPDATE, adminId, {
+      adminId,
+      title,
+      body,
     });
-
-    for (const { userId } of moderators) {
-      await this.prisma.notification.create({
-        data: {
-          userId,
-          type: NotificationType.MODERATOR_POLICY_UPDATE,
-          data: { adminId, title, body },
-        },
-      });
-    }
-    this.logger.log(`POLICY_UPDATE broadcast to ${moderators.length} moderator(s) by ${adminId}`);
+    this.logger.log(`POLICY_UPDATE broadcast to ${moderatorIds.length} moderator(s) by ${adminId}`);
   }
 
   // ---- Task 33: MODERATOR_OFFICIAL_MESSAGE ----
@@ -154,18 +165,13 @@ export class ModeratorNotificationService {
     title: string,
     message: string,
   ): Promise<void> {
-    for (const userId of recipientModeratorIds) {
-      await this.prisma.notification.create({
-        data: {
-          userId,
-          type: NotificationType.MODERATOR_OFFICIAL_MESSAGE,
-          data: { officialId, title, message },
-        },
-      });
-    }
-    this.logger.log(
-      `OFFICIAL_MESSAGE sent to ${recipientModeratorIds.length} moderator(s) by official ${officialId}`,
+    await this.broadcastToModerators(
+      recipientModeratorIds,
+      NotificationType.MODERATOR_OFFICIAL_MESSAGE,
+      officialId,
+      { officialId, title, message },
     );
+    this.logger.log(`OFFICIAL_MESSAGE sent to ${recipientModeratorIds.length} moderator(s) by official ${officialId}`);
   }
 
   // ---- Task 33: MODERATOR_MANAGER_INSTRUCTION ----
@@ -178,40 +184,25 @@ export class ModeratorNotificationService {
     instruction: string,
     priority?: 'NORMAL' | 'URGENT',
   ): Promise<void> {
-    for (const userId of recipientModeratorIds) {
-      await this.prisma.notification.create({
-        data: {
-          userId,
-          type: NotificationType.MODERATOR_MANAGER_INSTRUCTION,
-          data: { managerId, title, instruction, priority: priority ?? 'NORMAL' },
-        },
-      });
-    }
-    this.logger.log(
-      `MANAGER_INSTRUCTION sent to ${recipientModeratorIds.length} moderator(s) by manager ${managerId}`,
+    await this.broadcastToModerators(
+      recipientModeratorIds,
+      NotificationType.MODERATOR_MANAGER_INSTRUCTION,
+      managerId,
+      { managerId, title, instruction, priority: priority ?? 'NORMAL' },
     );
+    this.logger.log(`MANAGER_INSTRUCTION sent to ${recipientModeratorIds.length} moderator(s) by manager ${managerId}`);
   }
 
   // ---- Task 33: MODERATOR_SYSTEM_ANNOUNCEMENT ----
 
   /** Admin broadcasts a system-wide announcement to all active moderators. */
   async broadcastSystemAnnouncement(adminId: string, title: string, body: string): Promise<void> {
-    const moderators = await this.prisma.userRole.findMany({
-      where: { role: { name: 'MODERATOR' } },
-      select: { userId: true },
+    const moderatorIds = await this.allModeratorIds();
+    await this.broadcastToModerators(moderatorIds, NotificationType.MODERATOR_SYSTEM_ANNOUNCEMENT, adminId, {
+      adminId,
+      title,
+      body,
     });
-
-    for (const { userId } of moderators) {
-      await this.prisma.notification.create({
-        data: {
-          userId,
-          type: NotificationType.MODERATOR_SYSTEM_ANNOUNCEMENT,
-          data: { adminId, title, body },
-        },
-      });
-    }
-    this.logger.log(
-      `SYSTEM_ANNOUNCEMENT broadcast to ${moderators.length} moderator(s) by ${adminId}`,
-    );
+    this.logger.log(`SYSTEM_ANNOUNCEMENT broadcast to ${moderatorIds.length} moderator(s) by ${adminId}`);
   }
 }

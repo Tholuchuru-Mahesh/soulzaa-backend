@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { forwardRef, HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Prisma,
@@ -62,7 +62,15 @@ import {
 } from './video-room-permission.service';
 import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
 import { AuditLogService } from 'src/modules/authorization/services/audit-log.service';
-import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import {
+  WorkforceScopeService,
+  type EscalationSeverity,
+} from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import { recordEscalationOutcome } from 'src/modules/mobile-workforce/services/escalation-recorder.util';
+import {
+  NOTIFICATION_SERVICE,
+  type INotificationService,
+} from 'src/modules/notification/interfaces/notification.interface';
 import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
 
 /** Omitting `channels` on mute/unmute/muteAll/unmuteAll means "both" — see `MuteChannel`. */
@@ -101,12 +109,14 @@ export class VideoRoomModerationService {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly media: VideoRoomMediaService,
     private readonly warningRepo: VideoRoomWarningRepository,
+    @Inject(forwardRef(() => VideoRoomReportService))
     private readonly reportService: VideoRoomReportService,
     private readonly config: ConfigService,
-    private readonly investigationRecording?: InvestigationRecordingService,
-    private readonly auditLog?: AuditLogService,
-    private readonly scopeService?: WorkforceScopeService,
-    private readonly performanceStats?: ModeratorPerformanceService,
+    private readonly scopeService: WorkforceScopeService,
+    @Optional() private readonly investigationRecording?: InvestigationRecordingService,
+    @Optional() private readonly auditLog?: AuditLogService,
+    @Optional() private readonly performanceStats?: ModeratorPerformanceService,
+    @Optional() @Inject(NOTIFICATION_SERVICE) private readonly notifications?: INotificationService,
   ) {}
 
   // ======================= Kick =======================
@@ -150,22 +160,29 @@ export class VideoRoomModerationService {
         metadata: this.auditMetadata(undefined, requestMeta),
       });
 
+      let evidenceId: string | undefined;
       if (this.investigationRecording) {
-        void this.investigationRecording
-          .beginRecording({
+        const violationReason = reason ?? 'Video room kick';
+        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, {
+          roomId: ref.id,
+        });
+        const rec =
+          existing ??
+          (await this.investigationRecording.beginRecording({
             moderatorId: actor.id,
             targetUserId,
             roomId: ref.id,
-            violationReason: reason ?? 'Video room kick',
+            violationReason,
             evidencePayload: { roomId: ref.id, action: 'KICK' },
-          })
-          .then((rec) => {
-            if (rec)
-              void this.investigationRecording?.completeRecording({
-                recordingId: rec.id,
-                actionTaken: 'KICK',
-              });
+          }));
+        if (rec) {
+          evidenceId = rec.evidenceId;
+          void this.investigationRecording.completeRecording({
+            recordingId: rec.id,
+            actionTaken: 'KICK',
+            violationReason,
           });
+        }
       }
       if (this.auditLog) {
         void this.auditLog.logAction({
@@ -173,6 +190,11 @@ export class VideoRoomModerationService {
           action: 'video_room.kick',
           resource: 'video_room',
           resourceId: ref.id,
+          targetUserId,
+          violationReason: reason,
+          evidenceId,
+          ipAddress: requestMeta?.ip,
+          userAgent: requestMeta?.userAgent,
           details: { targetUserId, reason: reason ?? null },
         });
       }
@@ -289,22 +311,29 @@ export class VideoRoomModerationService {
         metadata: this.auditMetadata({ blockId: block.id }, requestMeta),
       });
 
+      let evidenceId: string | undefined;
       if (this.investigationRecording) {
-        void this.investigationRecording
-          .beginRecording({
+        const violationReason = reason ?? 'Video room blacklist';
+        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, {
+          roomId: ref.id,
+        });
+        const rec =
+          existing ??
+          (await this.investigationRecording.beginRecording({
             moderatorId: actor.id,
             targetUserId,
             roomId: ref.id,
-            violationReason: reason ?? 'Video room blacklist',
+            violationReason,
             evidencePayload: { roomId: ref.id, action: 'BLOCK', blockId: block.id },
-          })
-          .then((rec) => {
-            if (rec)
-              void this.investigationRecording?.completeRecording({
-                recordingId: rec.id,
-                actionTaken: 'BLOCK',
-              });
+          }));
+        if (rec) {
+          evidenceId = rec.evidenceId;
+          void this.investigationRecording.completeRecording({
+            recordingId: rec.id,
+            actionTaken: 'BLOCK',
+            violationReason,
           });
+        }
       }
       if (this.auditLog) {
         void this.auditLog.logAction({
@@ -312,6 +341,11 @@ export class VideoRoomModerationService {
           action: 'video_room.blacklist',
           resource: 'video_room',
           resourceId: ref.id,
+          targetUserId,
+          violationReason: reason,
+          evidenceId,
+          ipAddress: requestMeta?.ip,
+          userAgent: requestMeta?.userAgent,
           details: { targetUserId, reason: reason ?? null },
         });
       }
@@ -346,6 +380,11 @@ export class VideoRoomModerationService {
   ): Promise<void> {
     const ref = await this.requireRoom(roomId);
     await this.permissions.assertPermission(actor, ref, VideoRoomPermission.BLOCK_USERS);
+
+    const room = await this.rooms.findById(roomId);
+    if (room?.region) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    }
 
     const block = await this.moderationRepo.findActiveBlock(ref.id, targetUserId);
     if (!block) {
@@ -439,22 +478,29 @@ export class VideoRoomModerationService {
         ),
       });
 
+      let evidenceId: string | undefined;
       if (this.investigationRecording) {
-        void this.investigationRecording
-          .beginRecording({
+        const violationReason = dto.reason ?? 'Video room mute';
+        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, {
+          roomId: ref.id,
+        });
+        const rec =
+          existing ??
+          (await this.investigationRecording.beginRecording({
             moderatorId: actor.id,
             targetUserId,
             roomId: ref.id,
-            violationReason: dto.reason ?? 'Video room mute',
+            violationReason,
             evidencePayload: { roomId: ref.id, action: 'MUTE', channels },
-          })
-          .then((rec) => {
-            if (rec)
-              void this.investigationRecording?.completeRecording({
-                recordingId: rec.id,
-                actionTaken: 'MUTE',
-              });
+          }));
+        if (rec) {
+          evidenceId = rec.evidenceId;
+          void this.investigationRecording.completeRecording({
+            recordingId: rec.id,
+            actionTaken: 'MUTE',
+            violationReason,
           });
+        }
       }
       if (this.auditLog) {
         void this.auditLog.logAction({
@@ -462,12 +508,12 @@ export class VideoRoomModerationService {
           action: `video_room.mute_${dto.type.toLowerCase()}`,
           resource: 'video_room',
           resourceId: ref.id,
-          details: {
-            targetUserId,
-            channels,
-            reason: dto.reason ?? null,
-            expiresAt: expiresAt?.toISOString() ?? null,
-          },
+          targetUserId,
+          violationReason: dto.reason,
+          evidenceId,
+          ipAddress: requestMeta?.ip,
+          userAgent: requestMeta?.userAgent,
+          details: { targetUserId, channels, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
         });
       }
     });
@@ -509,6 +555,11 @@ export class VideoRoomModerationService {
     const chans = channels ?? DEFAULT_MUTE_CHANNELS;
     const ref = await this.requireRoom(roomId);
     await this.permissions.assertPermission(actor, ref, VideoRoomPermission.MUTE_USERS);
+
+    const room = await this.rooms.findById(roomId);
+    if (room?.region) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    }
 
     await this.locks.withLock(moderationLockKey(ref.id), async () => {
       if (chans.includes('chat')) {
@@ -789,14 +840,46 @@ export class VideoRoomModerationService {
         reason,
         metadata: this.auditMetadata(metadata, requestMeta),
       });
+      let evidenceId: string | undefined;
+      if (this.investigationRecording) {
+        const violationReason = reason;
+        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, {
+          roomId: ref.id,
+        });
+        const rec =
+          existing ??
+          (await this.investigationRecording.beginRecording({
+            moderatorId: actor.id,
+            targetUserId,
+            roomId: ref.id,
+            violationReason,
+            evidencePayload: metadata,
+          }));
+        if (rec) {
+          evidenceId = rec.evidenceId;
+          void this.investigationRecording.completeRecording({
+            recordingId: rec.id,
+            actionTaken: 'WARN',
+            violationReason,
+          });
+        }
+      }
       if (this.auditLog) {
         void this.auditLog.logAction({
           actorId: actor.id,
           action: 'video_room.warn',
           resource: 'video_room',
           resourceId: ref.id,
+          targetUserId,
+          violationReason: reason,
+          evidenceId,
+          ipAddress: requestMeta?.ip,
+          userAgent: requestMeta?.userAgent,
           details: { targetUserId, reason },
         });
+      }
+      if (this.performanceStats) {
+        void this.performanceStats.recordAction(actor.id, 'WARN');
       }
     });
 
@@ -852,6 +935,10 @@ export class VideoRoomModerationService {
           action: 'video_room.force_disconnect',
           resource: 'video_room',
           resourceId: ref.id,
+          targetUserId,
+          violationReason: reason,
+          ipAddress: requestMeta?.ip,
+          userAgent: requestMeta?.userAgent,
           details: { targetUserId, reason: reason ?? null },
         });
       }
@@ -1072,11 +1159,9 @@ export class VideoRoomModerationService {
     const ref = await this.requireRoom(roomId);
     await this.permissions.assertPermission(actor, ref, permission);
 
-    if (this.scopeService) {
-      const room = await this.rooms.findById(roomId);
-      if (room?.region) {
-        await this.scopeService.assertModeratorInScope(actor.id, room.region);
-      }
+    const room = await this.rooms.findById(roomId);
+    if (room?.region) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.region);
     }
 
     if (!this.isPlatformStaff(actor)) {
@@ -1241,6 +1326,7 @@ export class VideoRoomModerationService {
     roomId: string,
     targetUserId: string,
     reason: string,
+    severity: EscalationSeverity,
     requestMeta?: RequestMetadata,
   ): Promise<void> {
     const ref = await this.assertPrereqs(
@@ -1256,22 +1342,25 @@ export class VideoRoomModerationService {
       targetUserId,
       action: VideoRoomModerationActionType.REPORT_REVIEWED,
       reason: `CRITICAL_ESCALATION: ${reason}`,
-      metadata: this.auditMetadata({ escalated: true, targetUserId }, requestMeta),
+      metadata: this.auditMetadata({ escalated: true, targetUserId, severity }, requestMeta),
     });
 
-    if (this.performanceStats) {
-      await this.performanceStats.recordAction(actor.id, 'REPORT_ESCALATED' as any);
-    }
-
-    if (this.auditLog) {
-      void this.auditLog.logAction({
-        actorId: actor.id,
-        action: 'video_room.escalate_critical_violation',
-        resource: 'video_room',
-        resourceId: ref.id,
-        details: { targetUserId, reason },
-      });
-    }
+    const room = await this.rooms.findById(roomId);
+    await recordEscalationOutcome({
+      actorId: actor.id,
+      targetUserId,
+      reason,
+      severity,
+      auditAction: 'video_room.escalate_critical_violation',
+      resource: 'video_room',
+      resourceId: ref.id,
+      region: room?.region ?? null,
+      requestMeta,
+      performanceStats: this.performanceStats,
+      auditLog: this.auditLog,
+      scopeService: this.scopeService,
+      notifications: this.notifications,
+    });
   }
 
   private async notifyUser(

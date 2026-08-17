@@ -12,6 +12,8 @@ export const DEVICE_EVENTS = {
   REMOVED: 'device.removed',
   VERIFIED: 'device.verified',
   SUSPICIOUS_LOGIN: 'device.suspicious_login',
+  MODERATOR_DEVICE_CHANGE_REQUESTED: 'device.moderator_change_requested',
+  MODERATOR_DEVICE_CHANGE_APPROVED: 'device.moderator_change_approved',
 } as const;
 
 export class DeviceRegisteredEvent extends DomainEvent<{
@@ -39,4 +41,30 @@ export class SuspiciousLoginDetectedEvent extends DomainEvent<{
   country: string | null;
 }> {
   readonly name = DEVICE_EVENTS.SUSPICIOUS_LOGIN;
+}
+
+/**
+ * A Moderator's device-change request was filed (either self-submitted, or
+ * auto-filed by staffLogin when a bound Moderator is rejected from an
+ * unrecognized device). Admin/Super Admin need to act on it.
+ */
+export class ModeratorDeviceChangeRequestedEvent extends DomainEvent<{
+  requestId: string;
+  moderatorId: string;
+  reason: string | null;
+}> {
+  readonly name = DEVICE_EVENTS.MODERATOR_DEVICE_CHANGE_REQUESTED;
+}
+
+/**
+ * Admin approved a Moderator's device-change request. The one-device-per-
+ * Moderator rule means the previously bound device must be force-logged-out
+ * immediately, not just marked revoked in a column nothing re-checks.
+ */
+export class ModeratorDeviceChangeApprovedEvent extends DomainEvent<{
+  requestId: string;
+  moderatorId: string;
+  approvedBy: string;
+}> {
+  readonly name = DEVICE_EVENTS.MODERATOR_DEVICE_CHANGE_APPROVED;
 }

@@ -1,9 +1,16 @@
+import { ForbiddenException } from '@nestjs/common';
 import { ModerationBanType, ModerationMuteType } from '@prisma/client';
 import { IEventBus } from 'src/common/events';
 import { BusinessException } from 'src/common/exceptions';
 import { LockService } from 'src/infra/redis/lock.service';
 import { PresenceService } from 'src/infra/redis/presence.service';
 import { QueueService } from 'src/infra/queue/queue.service';
+import type { AuditLogService } from 'src/modules/authorization/services/audit-log.service';
+import type { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
+import type { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import type { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
+import type { ModerationApprovalService } from 'src/modules/moderation-approval/services/moderation-approval.service';
+import type { INotificationService } from 'src/modules/notification/interfaces/notification.interface';
 import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repository';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
@@ -57,6 +64,9 @@ describe('ModerationService', () => {
       getReport: jest.fn(),
       findOpenReport: jest.fn().mockResolvedValue(null),
       reviewReport: jest.fn().mockResolvedValue(undefined),
+      assignReport: jest.fn().mockResolvedValue(undefined),
+      updateReportNotes: jest.fn().mockResolvedValue(undefined),
+      dismissReport: jest.fn().mockResolvedValue(undefined),
       createAppeal: jest.fn().mockResolvedValue({ id: 'appeal-1' }),
       getAppeal: jest.fn(),
       findPendingAppeal: jest.fn().mockResolvedValue(null),
@@ -97,6 +107,7 @@ describe('ModerationService', () => {
       locks as unknown as LockService,
       queue as unknown as QueueService,
       bus,
+      { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as unknown as WorkforceScopeService,
     );
   });
 
@@ -336,6 +347,95 @@ describe('ModerationService', () => {
         } as never),
       ).rejects.toBeInstanceOf(BusinessException);
     });
+  });
+
+  describe('reviewReport — recommendedAction', () => {
+    beforeEach(() => {
+      repo.getReport.mockResolvedValue({
+        id: 'report-1',
+        roomId: 'r',
+        status: 'PENDING',
+        targetUserId: TARGET,
+      });
+    });
+
+    it('executes the recommended action immediately, tagged as a report-review decision', async () => {
+      await service.reviewReport(MOD, 'r', 'report-1', {
+        status: 'ACTIONED',
+        recommendedAction: 'KICK',
+        resolution: 'confirmed harassment',
+      } as never);
+
+      expect(repo.createKick).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reason: '[Report #report-1 review] confirmed harassment',
+        }),
+      );
+    });
+
+    it('does nothing beyond recording the review when no action is recommended', async () => {
+      await service.reviewReport(MOD, 'r', 'report-1', { status: 'DISMISSED' } as never);
+
+      expect(repo.createKick).not.toHaveBeenCalled();
+      expect(repo.createMute).not.toHaveBeenCalled();
+      expect(repo.createBan).not.toHaveBeenCalled();
+    });
+
+    describe('BAN recommendation goes through approval', () => {
+      let approvalService: { propose: jest.Mock };
+      let approvingService: ModerationService;
+
+      beforeEach(() => {
+        approvalService = { propose: jest.fn().mockResolvedValue({ id: 'approval-1' }) };
+        rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+        approvingService = new ModerationService(
+          repo as unknown as ModerationRepository,
+          permissions as unknown as RoomPermissionService,
+          rooms as unknown as AudioRoomsRepository,
+          seats as unknown as AudioRoomSeatsRepository,
+          presence as unknown as PresenceService,
+          voice as unknown as VoiceService,
+          locks as unknown as LockService,
+          queue as unknown as QueueService,
+          bus,
+          { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as unknown as WorkforceScopeService,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          approvalService as unknown as ModerationApprovalService,
+        );
+      });
+
+      it('proposes the ban for approval instead of executing it', async () => {
+        await approvingService.reviewReport(MOD, 'r', 'report-1', {
+          status: 'ACTIONED',
+          recommendedAction: 'BAN',
+          resolution: 'confirmed harassment',
+        } as never);
+
+        expect(approvalService.propose).toHaveBeenCalledWith(
+          expect.objectContaining({
+            roomType: 'AUDIO_ROOM',
+            roomId: 'r',
+            reportId: 'report-1',
+            proposedBy: MOD.id,
+            targetUserId: TARGET,
+            regionId: 'region-eu-west',
+          }),
+        );
+        expect(repo.createBan).not.toHaveBeenCalled();
+      });
+
+      it('leaves the recommendation unactioned when no approval service is wired', async () => {
+        await service.reviewReport(MOD, 'r', 'report-1', {
+          status: 'ACTIONED',
+          recommendedAction: 'BAN',
+        } as never);
+        expect(repo.createBan).not.toHaveBeenCalled();
+      });
+    });
 
     it('rejects reporting yourself', async () => {
       await expect(
@@ -372,6 +472,122 @@ describe('ModerationService', () => {
         }),
       ).rejects.toBeInstanceOf(BusinessException);
     });
+
+    describe('false-moderation tracking (upheld appeal)', () => {
+      let performanceStats: { recordFalseModeration: jest.Mock; recordAction: jest.Mock };
+      let trackedService: ModerationService;
+
+      beforeEach(() => {
+        performanceStats = {
+          recordFalseModeration: jest.fn().mockResolvedValue(undefined),
+          recordAction: jest.fn().mockResolvedValue(undefined),
+        };
+        trackedService = new ModerationService(
+          repo as unknown as ModerationRepository,
+          permissions as unknown as RoomPermissionService,
+          rooms as unknown as AudioRoomsRepository,
+          seats as unknown as AudioRoomSeatsRepository,
+          presence as unknown as PresenceService,
+          voice as unknown as VoiceService,
+          locks as unknown as LockService,
+          queue as unknown as QueueService,
+          bus,
+          { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as unknown as WorkforceScopeService,
+          undefined,
+          performanceStats as unknown as ModeratorPerformanceService,
+        );
+      });
+
+      it('credits the ORIGINAL banning moderator, not the appeal resolver', async () => {
+        repo.getAppeal.mockResolvedValue({
+          id: 'appeal-1',
+          roomId: 'r',
+          userId: TARGET,
+          banId: 'ban-1',
+          muteId: null,
+          status: 'PENDING',
+        });
+        repo.getBan.mockResolvedValue({
+          id: 'ban-1',
+          roomId: 'r',
+          userId: TARGET,
+          status: 'ACTIVE',
+          moderatorId: 'original-mod',
+        });
+
+        await trackedService.resolveAppeal(MOD, 'r', 'appeal-1', { approve: true });
+
+        expect(performanceStats.recordFalseModeration).toHaveBeenCalledWith('original-mod');
+        expect(performanceStats.recordFalseModeration).not.toHaveBeenCalledWith(MOD.id);
+      });
+
+      it('credits the original muting moderator on an upheld mute appeal', async () => {
+        repo.getAppeal.mockResolvedValue({
+          id: 'appeal-2',
+          roomId: 'r',
+          userId: TARGET,
+          banId: null,
+          muteId: 'mute-1',
+          status: 'PENDING',
+        });
+        repo.getMute.mockResolvedValue({
+          id: 'mute-1',
+          roomId: 'r',
+          userId: TARGET,
+          status: 'ACTIVE',
+          moderatorId: 'original-mod-2',
+        });
+
+        await trackedService.resolveAppeal(MOD, 'r', 'appeal-2', { approve: true });
+
+        expect(performanceStats.recordFalseModeration).toHaveBeenCalledWith('original-mod-2');
+      });
+
+      it('does not record false moderation on a rejected appeal', async () => {
+        repo.getAppeal.mockResolvedValue({
+          id: 'appeal-3',
+          roomId: 'r',
+          userId: TARGET,
+          banId: 'ban-1',
+          muteId: null,
+          status: 'PENDING',
+        });
+        repo.getBan.mockResolvedValue({
+          id: 'ban-1',
+          roomId: 'r',
+          userId: TARGET,
+          status: 'ACTIVE',
+          moderatorId: 'original-mod',
+        });
+
+        await trackedService.resolveAppeal(MOD, 'r', 'appeal-3', { approve: false });
+
+        expect(performanceStats.recordFalseModeration).not.toHaveBeenCalled();
+      });
+
+      it('still credits the original moderator even if the ban already expired/was lifted', async () => {
+        repo.getAppeal.mockResolvedValue({
+          id: 'appeal-4',
+          roomId: 'r',
+          userId: TARGET,
+          banId: 'ban-1',
+          muteId: null,
+          status: 'PENDING',
+        });
+        repo.getBan.mockResolvedValue({
+          id: 'ban-1',
+          roomId: 'r',
+          userId: TARGET,
+          status: 'EXPIRED',
+          moderatorId: 'original-mod',
+        });
+
+        await trackedService.resolveAppeal(MOD, 'r', 'appeal-4', { approve: true });
+
+        expect(repo.liftBan).not.toHaveBeenCalled();
+        expect(performanceStats.recordFalseModeration).toHaveBeenCalledWith('original-mod');
+      });
+    });
   });
 
   describe('expiry', () => {
@@ -384,6 +600,417 @@ describe('ModerationService', () => {
       } as never);
       expect(repo.liftBan).toHaveBeenCalledWith('ban-1', MOD.id, 'EXPIRED');
       expect(repo.removeBanCache).toHaveBeenCalledWith('r', TARGET);
+    });
+  });
+
+  describe('region scope enforcement', () => {
+    let scopeService: { assertModeratorInScope: jest.Mock };
+    let scopedService: ModerationService;
+
+    beforeEach(() => {
+      scopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
+      scopedService = new ModerationService(
+        repo as unknown as ModerationRepository,
+        permissions as unknown as RoomPermissionService,
+        rooms as unknown as AudioRoomsRepository,
+        seats as unknown as AudioRoomSeatsRepository,
+        presence as unknown as PresenceService,
+        voice as unknown as VoiceService,
+        locks as unknown as LockService,
+        queue as unknown as QueueService,
+        bus,
+        scopeService as unknown as WorkforceScopeService,
+      );
+    });
+
+    it("passes the room's real region to the scope check instead of a hardcoded null", async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      await scopedService.kick(MOD, 'r', TARGET, 'spam');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+    });
+
+    it("rejects a moderator acting outside the room's assigned region", async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      scopeService.assertModeratorInScope.mockRejectedValue(
+        new ForbiddenException('You are not authorized to perform moderation in this region.'),
+      );
+      await expect(scopedService.kick(MOD, 'r', TARGET, 'spam')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(repo.createKick).not.toHaveBeenCalled();
+    });
+
+    // A room that EXISTS but carries no region is the documented safety
+    // valve: the assertion is still invoked (with null), and
+    // `assertModeratorInScope` permits on a null target region. That is
+    // deliberately different from a room that does not exist at all, which
+    // now 404s — see "missing room 404s before the action runs".
+    it('permits the action when the room exists but has no region set', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: null });
+      await scopedService.kick(MOD, 'r', TARGET, 'spam');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, null);
+      expect(repo.createKick).toHaveBeenCalled();
+    });
+
+    it('unkick checks the room region before lifting the kick', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      repo.findActiveKick.mockResolvedValue({ id: 'kick-1' });
+      await scopedService.unkick(MOD, 'r', TARGET);
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+    });
+
+    it('unkick rejects a moderator outside the room region', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      repo.findActiveKick.mockResolvedValue({ id: 'kick-1' });
+      scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
+      await expect(scopedService.unkick(MOD, 'r', TARGET)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(repo.liftKick).not.toHaveBeenCalled();
+    });
+
+    it('unban checks the room region before lifting the ban', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      repo.findActiveBan.mockResolvedValue({ id: 'ban-1', status: 'ACTIVE' });
+      await scopedService.unban(MOD, 'r', TARGET);
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+    });
+
+    it('unmute checks the room region before lifting the mute', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      repo.findActiveMute.mockResolvedValue({ id: 'mute-1', status: 'ACTIVE' });
+      await scopedService.unmute(MOD, 'r', TARGET);
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+    });
+  });
+
+  describe('report/appeal lifecycle region scope enforcement', () => {
+    let scopeService: { assertModeratorInScope: jest.Mock };
+    let scopedService: ModerationService;
+
+    beforeEach(() => {
+      scopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
+      scopedService = new ModerationService(
+        repo as unknown as ModerationRepository,
+        permissions as unknown as RoomPermissionService,
+        rooms as unknown as AudioRoomsRepository,
+        seats as unknown as AudioRoomSeatsRepository,
+        presence as unknown as PresenceService,
+        voice as unknown as VoiceService,
+        locks as unknown as LockService,
+        queue as unknown as QueueService,
+        bus,
+        scopeService as unknown as WorkforceScopeService,
+      );
+    });
+
+    it('assignReport checks the room region', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'r', status: 'PENDING' });
+      await scopedService.assignReport(MOD, 'r', 'rep-1', 'assignee-1');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+    });
+
+    it('addReportNotes checks the room region', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'r' });
+      await scopedService.addReportNotes(MOD, 'r', 'rep-1', 'notes');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+      expect(repo.updateReportNotes).toHaveBeenCalledWith('rep-1', MOD.id, 'notes');
+    });
+
+    it('dismissReport checks the room region', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'r', createdAt: new Date() });
+      await scopedService.dismissReport(MOD, 'r', 'rep-1', 'reason');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+    });
+
+    it('resolveAppeal checks the room region', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      repo.getAppeal.mockResolvedValue({ id: 'appeal-1', roomId: 'r', status: 'PENDING', userId: TARGET });
+      await scopedService.resolveAppeal(MOD, 'r', 'appeal-1', { approve: false });
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+    });
+
+    it('reviewReport checks the room region even for a bare dismiss (no recommendedAction)', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'r', status: 'PENDING', targetUserId: TARGET, createdAt: new Date() });
+      await scopedService.reviewReport(MOD, 'r', 'rep-1', { status: 'REVIEWED' } as never);
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+    });
+
+    it('reviewReport rejects a moderator outside scope before touching the report', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
+      await expect(
+        scopedService.reviewReport(MOD, 'r', 'rep-1', { status: 'REVIEWED' } as never),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(repo.reviewReport).not.toHaveBeenCalled();
+    });
+
+    // The scope check authorizes the roomId in the URL. Without binding the
+    // reportId to that same room, a moderator scoped to room "r" could pass
+    // an out-of-scope room's reportId alongside "r" and mutate it unchecked.
+    describe('reportId is bound to the roomId that was scope-checked', () => {
+      beforeEach(() => {
+        rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      });
+
+      it('addReportNotes 404s when the report belongs to a different room', async () => {
+        repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'other-room' });
+        await expect(
+          scopedService.addReportNotes(MOD, 'r', 'rep-1', 'notes'),
+        ).rejects.toBeInstanceOf(BusinessException);
+        expect(repo.updateReportNotes).not.toHaveBeenCalled();
+      });
+
+      it('addReportNotes 404s when the report does not exist', async () => {
+        repo.getReport.mockResolvedValue(null);
+        await expect(
+          scopedService.addReportNotes(MOD, 'r', 'missing', 'notes'),
+        ).rejects.toBeInstanceOf(BusinessException);
+        expect(repo.updateReportNotes).not.toHaveBeenCalled();
+      });
+
+      it('dismissReport 404s when the report belongs to a different room', async () => {
+        repo.getReport.mockResolvedValue({
+          id: 'rep-1',
+          roomId: 'other-room',
+          createdAt: new Date(),
+        });
+        await expect(
+          scopedService.dismissReport(MOD, 'r', 'rep-1', 'reason'),
+        ).rejects.toBeInstanceOf(BusinessException);
+        expect(repo.dismissReport).not.toHaveBeenCalled();
+      });
+
+      it('dismissReport 404s when the report does not exist', async () => {
+        repo.getReport.mockResolvedValue(null);
+        await expect(
+          scopedService.dismissReport(MOD, 'r', 'missing', 'reason'),
+        ).rejects.toBeInstanceOf(BusinessException);
+        expect(repo.dismissReport).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  // A `null` room used to make `if (room?.region)` simply not fire, so the
+  // region-scope check was skipped entirely and the action proceeded against
+  // a room that does not exist. Video Rooms (`requireRoom`) and Live
+  // Streaming (`getStream`) always 404 first; audio rooms now match.
+  describe('missing room 404s before the action runs', () => {
+    beforeEach(() => {
+      rooms.findRoomRow.mockResolvedValue(null);
+    });
+
+    it('kick 404s instead of proceeding unscoped', async () => {
+      await expect(service.kick(MOD, 'missing-room', TARGET, 'spam')).rejects.toBeInstanceOf(
+        BusinessException,
+      );
+      expect(repo.createKick).not.toHaveBeenCalled();
+    });
+
+    it('unkick 404s instead of proceeding unscoped', async () => {
+      repo.findActiveKick.mockResolvedValue({ id: 'kick-1', roomId: 'r', userId: TARGET });
+      await expect(service.unkick(MOD, 'missing-room', TARGET)).rejects.toBeInstanceOf(
+        BusinessException,
+      );
+      expect(repo.liftKick).not.toHaveBeenCalled();
+    });
+
+    it('dismissReport 404s instead of proceeding unscoped', async () => {
+      repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'missing-room', createdAt: new Date() });
+      await expect(
+        service.dismissReport(MOD, 'missing-room', 'rep-1', 'reason'),
+      ).rejects.toBeInstanceOf(BusinessException);
+      expect(repo.dismissReport).not.toHaveBeenCalled();
+    });
+
+    it('resolveAppeal 404s instead of proceeding unscoped', async () => {
+      repo.getAppeal.mockResolvedValue({
+        id: 'appeal-1',
+        roomId: 'missing-room',
+        status: 'PENDING',
+        userId: TARGET,
+      });
+      await expect(
+        service.resolveAppeal(MOD, 'missing-room', 'appeal-1', { approve: true }),
+      ).rejects.toBeInstanceOf(BusinessException);
+      expect(repo.resolveAppeal).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('escalateViolation', () => {
+    let scopeService: { assertModeratorInScope: jest.Mock; resolveEscalationRecipients: jest.Mock };
+    let notifications: { create: jest.Mock };
+    let escalatingService: ModerationService;
+
+    beforeEach(() => {
+      scopeService = {
+        assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
+        resolveEscalationRecipients: jest.fn().mockResolvedValue(['official-1']),
+      };
+      notifications = { create: jest.fn().mockResolvedValue({}) };
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      escalatingService = new ModerationService(
+        repo as unknown as ModerationRepository,
+        permissions as unknown as RoomPermissionService,
+        rooms as unknown as AudioRoomsRepository,
+        seats as unknown as AudioRoomSeatsRepository,
+        presence as unknown as PresenceService,
+        voice as unknown as VoiceService,
+        locks as unknown as LockService,
+        queue as unknown as QueueService,
+        bus,
+        scopeService as unknown as WorkforceScopeService,
+        undefined,
+        undefined,
+        undefined,
+        notifications as unknown as INotificationService,
+      );
+    });
+
+    it('routes a HIGH escalation through resolveEscalationRecipients and notifies each recipient', async () => {
+      await escalatingService.escalateViolation(MOD, 'r', TARGET, 'repeated harassment', 'HIGH');
+
+      expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith('HIGH', 'region-eu-west');
+      expect(notifications.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'official-1',
+          type: 'MODERATION_CASE_ESCALATED',
+          actorId: MOD.id,
+          entityType: 'audio_room',
+          entityId: 'r',
+        }),
+      );
+    });
+
+    it('notifies every resolved recipient, not just the first', async () => {
+      scopeService.resolveEscalationRecipients.mockResolvedValue(['official-1', 'official-2']);
+      await escalatingService.escalateViolation(MOD, 'r', TARGET, 'reason', 'CRITICAL');
+      expect(notifications.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not attempt notification dispatch when notifications is not wired', async () => {
+      const bareService = new ModerationService(
+        repo as unknown as ModerationRepository,
+        permissions as unknown as RoomPermissionService,
+        rooms as unknown as AudioRoomsRepository,
+        seats as unknown as AudioRoomSeatsRepository,
+        presence as unknown as PresenceService,
+        voice as unknown as VoiceService,
+        locks as unknown as LockService,
+        queue as unknown as QueueService,
+        bus,
+        { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as unknown as WorkforceScopeService,
+      );
+      await expect(
+        bareService.escalateViolation(MOD, 'r', TARGET, 'reason', 'EMERGENCY'),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('request metadata + evidence in audit logging', () => {
+    let investigationRecording: {
+      beginRecording: jest.Mock;
+      completeRecording: jest.Mock;
+      findActiveRecording: jest.Mock;
+    };
+    let auditLog: { logAction: jest.Mock };
+    let auditedService: ModerationService;
+    const REQUEST_META = { ip: '1.2.3.4', userAgent: 'Mozilla/5.0 Chrome/1.0', timestamp: 'now' };
+
+    beforeEach(() => {
+      investigationRecording = {
+        beginRecording: jest.fn().mockResolvedValue({ id: 'rec-1', evidenceId: 'EVD-TEST0001' }),
+        completeRecording: jest.fn().mockResolvedValue(undefined),
+        findActiveRecording: jest.fn().mockResolvedValue(null),
+      };
+      auditLog = { logAction: jest.fn().mockResolvedValue(undefined) };
+      auditedService = new ModerationService(
+        repo as unknown as ModerationRepository,
+        permissions as unknown as RoomPermissionService,
+        rooms as unknown as AudioRoomsRepository,
+        seats as unknown as AudioRoomSeatsRepository,
+        presence as unknown as PresenceService,
+        voice as unknown as VoiceService,
+        locks as unknown as LockService,
+        queue as unknown as QueueService,
+        bus,
+        { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as unknown as WorkforceScopeService,
+        investigationRecording as unknown as InvestigationRecordingService,
+        undefined,
+        auditLog as unknown as AuditLogService,
+      );
+    });
+
+    it('kick: forwards ip/user-agent from requestMeta and the evidenceId from investigation recording', async () => {
+      await auditedService.kick(MOD, 'r', TARGET, 'spam', REQUEST_META);
+
+      expect(investigationRecording.beginRecording).toHaveBeenCalled();
+      expect(auditLog.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ipAddress: '1.2.3.4',
+          userAgent: 'Mozilla/5.0 Chrome/1.0',
+          targetUserId: TARGET,
+          violationReason: 'spam',
+          evidenceId: 'EVD-TEST0001',
+        }),
+      );
+    });
+
+    it('mute: forwards ip/user-agent from requestMeta and the evidenceId from investigation recording', async () => {
+      await auditedService.mute(
+        MOD,
+        'r',
+        TARGET,
+        { type: ModerationMuteType.PERMANENT, reason: 'harassment' },
+        REQUEST_META,
+      );
+
+      expect(investigationRecording.beginRecording).toHaveBeenCalled();
+      expect(auditLog.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ipAddress: '1.2.3.4',
+          userAgent: 'Mozilla/5.0 Chrome/1.0',
+          targetUserId: TARGET,
+          violationReason: 'harassment',
+          evidenceId: 'EVD-TEST0001',
+        }),
+      );
+    });
+
+    it('kick: completes an already-open (join-triggered) recording instead of opening a new one', async () => {
+      investigationRecording.findActiveRecording.mockResolvedValue({
+        id: 'rec-open-at-join',
+        evidenceId: 'EVD-JOIN0001',
+      });
+      await auditedService.kick(MOD, 'r', TARGET, 'spam', REQUEST_META);
+
+      expect(investigationRecording.findActiveRecording).toHaveBeenCalledWith(MOD.id, TARGET, { roomId: 'r' });
+      expect(investigationRecording.beginRecording).not.toHaveBeenCalled();
+      expect(investigationRecording.completeRecording).toHaveBeenCalledWith(
+        expect.objectContaining({ recordingId: 'rec-open-at-join', actionTaken: 'KICK', violationReason: 'spam' }),
+      );
+      expect(auditLog.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({ evidenceId: 'EVD-JOIN0001' }),
+      );
+    });
+
+    it('escalateViolation: forwards ip/user-agent + targetUserId but no evidenceId (no investigation recording hook)', async () => {
+      await auditedService.escalateViolation(MOD, 'r', TARGET, 'repeated abuse', 'CRITICAL', REQUEST_META);
+
+      expect(investigationRecording.beginRecording).not.toHaveBeenCalled();
+      expect(auditLog.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ipAddress: '1.2.3.4',
+          userAgent: 'Mozilla/5.0 Chrome/1.0',
+          targetUserId: TARGET,
+          violationReason: 'repeated abuse',
+        }),
+      );
+      expect(auditLog.logAction).not.toHaveBeenCalledWith(
+        expect.objectContaining({ evidenceId: expect.anything() }),
+      );
     });
   });
 });

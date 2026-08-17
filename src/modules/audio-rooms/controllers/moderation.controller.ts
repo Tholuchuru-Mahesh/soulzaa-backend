@@ -12,11 +12,14 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { NotGuest } from 'src/common/decorators/not-guest.decorator';
+import { RequestMeta } from 'src/common/decorators/request-meta.decorator';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
+import type { RequestMetadata } from 'src/common/interfaces/request-metadata.interface';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import {
   AddNoteDto,
   AppealDto,
+  AssignReportDto,
   BanDto,
   KickDto,
   ListModerationDto,
@@ -60,12 +63,14 @@ export class ModerationController {
     @Param('id', ParseUuidPipe) id: string,
     @Param('userId', ParseUuidPipe) userId: string,
     @Body() dto: KickDto,
+    @RequestMeta() meta: RequestMetadata,
   ) {
-    await this.moderation.kick(this.actor(user), id, userId, dto.reason);
+    await this.moderation.kick(this.actor(user), id, userId, dto.reason, meta);
     return { kicked: true };
   }
 
   @Post(':id/moderation/unkick/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Restore a kicked user (remove them from the kick list)' })
   async unkick(
@@ -86,11 +91,13 @@ export class ModerationController {
     @Param('id', ParseUuidPipe) id: string,
     @Param('userId', ParseUuidPipe) userId: string,
     @Body() dto: BanDto,
+    @RequestMeta() meta: RequestMetadata,
   ) {
-    return this.moderation.ban(this.actor(user), id, userId, dto);
+    return this.moderation.ban(this.actor(user), id, userId, dto, meta);
   }
 
   @Post(':id/moderation/unban/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Lift a ban' })
   async unban(
@@ -111,11 +118,13 @@ export class ModerationController {
     @Param('id', ParseUuidPipe) id: string,
     @Param('userId', ParseUuidPipe) userId: string,
     @Body() dto: MuteDto,
+    @RequestMeta() meta: RequestMetadata,
   ) {
-    return this.moderation.mute(this.actor(user), id, userId, dto);
+    return this.moderation.mute(this.actor(user), id, userId, dto, meta);
   }
 
   @Post(':id/moderation/unmute/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Lift a mute' })
   async unmute(
@@ -136,8 +145,9 @@ export class ModerationController {
     @Param('id', ParseUuidPipe) id: string,
     @Param('userId', ParseUuidPipe) userId: string,
     @Body() dto: WarnDto,
+    @RequestMeta() meta: RequestMetadata,
   ) {
-    await this.moderation.warn(this.actor(user), id, userId, dto.reason);
+    await this.moderation.warn(this.actor(user), id, userId, dto.reason, meta);
     return { warned: true };
   }
 
@@ -148,9 +158,17 @@ export class ModerationController {
   async escalate(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) id: string,
-    @Body() dto: { targetUserId: string; reason: string },
+    @Body() dto: { targetUserId: string; reason: string; severity: 'HIGH' | 'CRITICAL' | 'EMERGENCY' },
+    @RequestMeta() meta: RequestMetadata,
   ) {
-    await this.moderation.escalateViolation(this.actor(user), id, dto.targetUserId, dto.reason);
+    await this.moderation.escalateViolation(
+      this.actor(user),
+      id,
+      dto.targetUserId,
+      dto.reason,
+      dto.severity,
+      meta,
+    );
     return { escalated: true };
   }
 
@@ -169,6 +187,7 @@ export class ModerationController {
   }
 
   @Post(':id/moderation/reports/:reportId/review')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Review/resolve a report (moderator)' })
   async reviewReport(
@@ -179,6 +198,48 @@ export class ModerationController {
   ) {
     await this.moderation.reviewReport(this.actor(user), id, reportId, dto);
     return { reviewed: true };
+  }
+
+  @Post(':id/moderation/reports/:reportId/assign')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Assign a pending report to a moderator for investigation' })
+  async assignReport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('reportId', ParseUuidPipe) reportId: string,
+    @Body() dto: AssignReportDto,
+  ) {
+    await this.moderation.assignReport(this.actor(user), id, reportId, dto.assigneeId);
+    return { assigned: true };
+  }
+
+  @Post(':id/moderation/reports/:reportId/dismiss')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Dismiss a false report (moderator)' })
+  async dismissReport(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('reportId', ParseUuidPipe) reportId: string,
+    @Body() dto: { reason?: string },
+  ) {
+    await this.moderation.dismissReport(this.actor(user), id, reportId, dto.reason);
+    return { dismissed: true };
+  }
+
+  @Post(':id/moderation/reports/:reportId/notes')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Add investigation notes to a report (moderator)' })
+  async addReportNotes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('reportId', ParseUuidPipe) reportId: string,
+    @Body() dto: { notes: string },
+  ) {
+    await this.moderation.addReportNotes(this.actor(user), id, reportId, dto.notes);
+    return { noted: true };
   }
 
   // ---- Notes ----
@@ -210,6 +271,7 @@ export class ModerationController {
   }
 
   @Post(':id/moderation/appeals/:appealId/resolve')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resolve an appeal (moderator)' })
   async resolveAppeal(

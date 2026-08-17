@@ -79,6 +79,7 @@ import { ReportProcessingProcessor } from './processors/report-processing.proces
 // ---- VR-16 moderation engine (Task 24): remaining providers ----
 import { VideoRoomsModerationController } from './controllers/video-rooms-moderation.controller';
 import { VideoRoomModerationSocketListener } from './listeners/video-room-moderation-socket.listener';
+import { VideoRoomModerationApprovalListener } from './listeners/video-room-moderation-approval.listener';
 import { VideoRoomAutoModerationListener } from './listeners/video-room-auto-moderation.listener';
 import { VideoRoomModerationExpiryMonitor } from './scheduler/video-room-moderation-expiry.monitor';
 import { VideoRoomModerationCleanupScheduler } from './scheduler/video-room-moderation-cleanup.scheduler';
@@ -211,6 +212,7 @@ import { VideoRoomIdentityCache } from './services/video-room-identity-cache.ser
 import { VideoRoomIdentityCacheListener } from './listeners/video-room-identity-cache.listener';
 
 import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
+import { ModerationApprovalModule } from 'src/modules/moderation-approval/moderation-approval.module';
 import { ModeratorPerformanceModule } from 'src/modules/moderator-performance/moderator-performance.module';
 import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shift.module';
 import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-warning.module';
@@ -238,6 +240,7 @@ import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-
   imports: [
     InvestigationRecordingModule,
     MobileWorkforceModule,
+    ModerationApprovalModule,
     ModeratorPerformanceModule,
     ModeratorShiftModule,
     ModeratorWarningModule,
@@ -289,11 +292,14 @@ import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-
     // VideoRoomAutoModerationService's constructor, so each must be its own
     // provider rather than instantiated internally), metrics, the 4 command/
     // query/auto-mod services, the socket + auto-mod signal listeners, and the
-    // temp-mute expiry monitor. VideoRoomReportService is injected by
-    // VideoRoomModerationService (autoFlag's system-report path) — verified
-    // no cycle: VideoRoomReportService does not depend on
-    // VideoRoomModerationService, so plain constructor injection (no
-    // forwardRef) resolves cleanly. Nothing here is consumed outside this
+    // temp-mute expiry monitor. VideoRoomModerationService and
+    // VideoRoomReportService now depend on each other — the former for
+    // autoFlag's system-report path (`createSystemReport`), the latter to
+    // execute a report review's `recommendedAction` (kick/mute/warn/ban) —
+    // a genuine cycle, resolved on both sides with `forwardRef()` in each
+    // service's constructor. Since both providers live in this same module,
+    // no `forwardRef()` is needed at the `imports`/module level, only at the
+    // constructor-injection level. Nothing here is consumed outside this
     // module, so nothing new is added to `exports`.
     VideoRoomReportRepository,
     VideoRoomWarningRepository,
@@ -308,6 +314,7 @@ import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-
     VideoRoomModerationQueryService,
     VideoRoomAutoModerationService,
     VideoRoomModerationSocketListener,
+    VideoRoomModerationApprovalListener,
     VideoRoomAutoModerationListener,
     VideoRoomModerationExpiryMonitor,
     // Producer for the CLEANUP queue (VR-16 minor fix): the queue +

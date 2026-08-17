@@ -118,7 +118,8 @@ export class ReviewReportDto {
   recommendedAction?: 'WARNING' | 'MUTE' | 'KICK' | 'BAN';
 }
 
-/** Add a moderator note about a user. */
+export { AssignReportDto } from 'src/common/dto/assign-report.dto';
+
 export class AddNoteDto {
   @ApiProperty()
   @IsUUID()

@@ -134,6 +134,19 @@ describe('ProfileService', () => {
         update: jest.fn().mockResolvedValue({}),
       },
     } as unknown as PrismaService;
+    // `resolveEquippedFrameUrl` reaches through the repository's own prisma
+    // handle (`this.users['prisma']`), not the service's — mock it there.
+    (users as any).prisma = {
+      cosmetic: {
+        upsert: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      backpackItem: {
+        count: jest.fn().mockResolvedValue(1),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
+    };
     const config = { get: () => CFG } as unknown as ConfigService;
     service = new ProfileService(
       users as unknown as UsersRepository,
@@ -199,6 +212,34 @@ describe('ProfileService', () => {
     it('returns null for an unknown user', async () => {
       users.findById.mockResolvedValue(null);
       expect(await service.getProfileView('nope')).toBeNull();
+    });
+
+    it('suppresses the profile frame for a hidden staff account', async () => {
+      const usersPrisma = (users as any).prisma;
+      users.findById.mockResolvedValue(makeUser({ isHiddenAccount: true }));
+
+      const view = await service.getProfileView('u1');
+
+      expect(view?.equippedFrameUrl).toBeNull();
+      expect(usersPrisma.backpackItem.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('still attempts to resolve the profile frame for an ordinary account', async () => {
+      const usersPrisma = (users as any).prisma;
+      usersPrisma.backpackItem.findFirst.mockResolvedValue({
+        refId: 'cosmetic-1',
+        metadata: null,
+      });
+      usersPrisma.cosmetic.findUnique.mockResolvedValue({ mediaUrl: 'frame.png' });
+      media.resolve.mockImplementation(async (key) => key ?? null);
+      users.findById.mockResolvedValue(makeUser({ isHiddenAccount: false }));
+
+      const view = await service.getProfileView('u1');
+
+      expect(view?.equippedFrameUrl).toBe('frame.png');
+      expect(usersPrisma.backpackItem.findFirst).toHaveBeenCalledWith({
+        where: { userId: 'u1', type: 'FRAME', equipped: true },
+      });
     });
   });
 
@@ -417,11 +458,11 @@ describe('ProfileService', () => {
       expect(out.get('u2')).toEqual({
         displayName: 'priya',
         avatarUrl: null,
+        equippedFrameUrl: null,
         username: 'priya',
         level: 1,
         vipLevel: 0,
         verified: false,
-        equippedFrameUrl: null,
       });
     });
 

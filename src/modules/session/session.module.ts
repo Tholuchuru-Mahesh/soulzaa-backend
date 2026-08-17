@@ -1,11 +1,13 @@
 import { Global, Module } from '@nestjs/common';
 import { SessionController } from './controllers/session.controller';
 import { SESSION_SERVICE } from './interfaces/session.interface';
+import { ModeratorDeviceChangeListener } from './listeners/moderator-device-change.listener';
 import { SessionSocketListener } from './listeners/session-socket.listener';
 import { SessionRepository } from './repositories/session.repository';
 import { LoginTelemetryService } from './services/login-telemetry.service';
 import { SessionManager } from './services/session.manager';
 import { SessionService } from './services/session.service';
+import { SessionTimeoutScheduler } from './services/session-timeout.scheduler';
 
 /**
  * Session domain — multi-device sessions with refresh-token rotation, reuse +
@@ -27,6 +29,8 @@ import { SessionService } from './services/session.service';
     SessionService,
     SessionManager,
     SessionSocketListener,
+    ModeratorDeviceChangeListener,
+    SessionTimeoutScheduler,
     { provide: SESSION_SERVICE, useExisting: SessionManager },
   ],
   exports: [SESSION_SERVICE],

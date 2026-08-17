@@ -39,6 +39,9 @@ export interface CreateRoomData {
   maxParticipants: number;
   agoraChannel: string;
   zegoRoomId: string;
+  /** Snapshot of the owner's Region (`User.regionId`) at creation — powers
+   *  moderator region-scoping. Null if the owner has no region assigned. */
+  region: string | null;
   /** Initial stage layout (owner seat is always seat 0, added automatically). */
   speakerSeatCount: number;
   premiumAdminSeatCount: number;
@@ -101,6 +104,7 @@ export class AudioRoomsRepository {
           maxParticipants: data.maxParticipants,
           agoraChannel: data.agoraChannel,
           zegoRoomId: data.zegoRoomId,
+          region: data.region,
           ...auditCreate(data.ownerId),
         },
       });
@@ -146,6 +150,22 @@ export class AudioRoomsRepository {
       });
       return room;
     });
+  }
+
+  /**
+   * The Region (`User.regionId`) currently assigned to a user, for
+   * snapshotting onto a new room at creation — mirrors
+   * `LiveStreamService.createStream`'s denormalisation of the host's
+   * location onto `LiveStream.regionId`. Returns null if the user has no
+   * region assigned (or doesn't exist); a null room region is treated as
+   * unscoped by `WorkforceScopeService.assertModeratorInScope`.
+   */
+  async getOwnerRegionId(ownerId: string): Promise<string | null> {
+    const owner = await this.prisma.user.findUnique({
+      where: { id: ownerId },
+      select: { regionId: true },
+    });
+    return owner?.regionId ?? null;
   }
 
   /** A non-deleted room row (any status), or null. */

@@ -1,4 +1,4 @@
-import { HttpStatus } from '@nestjs/common';
+import { ForbiddenException, HttpStatus } from '@nestjs/common';
 import {
   PlatformRole,
   VideoRoomChatMode,
@@ -8,6 +8,8 @@ import {
   VideoRoomReportReason,
 } from '@prisma/client';
 import { ERROR_CODES } from 'src/common/exceptions';
+import type { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import type { INotificationService } from 'src/modules/notification/interfaces/notification.interface';
 import { VIDEO_ROOM_NAMESPACE } from '../constants/video-room.constants';
 import { SYSTEM_MODERATOR_ID } from '../constants/video-room-moderation.constants';
 import { VIDEO_ROOM_CHAT_EVENTS } from '../events/video-room-chat.events';
@@ -74,6 +76,7 @@ describe('VideoRoomModerationService', () => {
   let warningRepo: any;
   let reportService: any;
   let config: any;
+  let scopeService: any;
   let subject: VideoRoomModerationService;
   let callOrder: string[];
   let published: { name: string; payload: any }[];
@@ -178,6 +181,7 @@ describe('VideoRoomModerationService', () => {
     config = {
       get: jest.fn().mockReturnValue({ moderation: { autoMuteMinutes: 15 } }),
     };
+    scopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
     subject = new VideoRoomModerationService(
       rooms,
       moderationRepo,
@@ -192,6 +196,7 @@ describe('VideoRoomModerationService', () => {
       warningRepo,
       reportService,
       config,
+      scopeService,
     );
   });
 
@@ -299,6 +304,111 @@ describe('VideoRoomModerationService', () => {
         expect.stringContaining(ROOM.id),
         expect.any(Function),
       );
+    });
+
+    // ======================= kick — audit log evidence linking =======================
+
+    describe('audit log request provenance and evidence linking', () => {
+      let auditLog: { logAction: jest.Mock };
+      let investigationRecording: {
+        beginRecording: jest.Mock;
+        completeRecording: jest.Mock;
+        findActiveRecording: jest.Mock;
+      };
+      let auditingSubject: VideoRoomModerationService;
+
+      beforeEach(() => {
+        auditLog = { logAction: jest.fn().mockResolvedValue(undefined) };
+        investigationRecording = {
+          beginRecording: jest.fn().mockResolvedValue(undefined),
+          completeRecording: jest.fn().mockResolvedValue(undefined),
+          findActiveRecording: jest.fn().mockResolvedValue(null),
+        };
+        auditingSubject = new VideoRoomModerationService(
+          rooms,
+          moderationRepo,
+          permissions,
+          session,
+          sockets,
+          locks,
+          metrics,
+          queue,
+          bus,
+          media,
+          warningRepo,
+          reportService,
+          config,
+          scopeService,
+          investigationRecording as any,
+          auditLog as any,
+        );
+      });
+
+      it('passes ipAddress/userAgent from requestMeta and the target/reason into the audit row', async () => {
+        const requestMeta = {
+          requestId: 'req-1',
+          ip: '1.2.3.4',
+          userAgent: 'test-agent/1.0',
+          timestamp: new Date().toISOString(),
+        };
+
+        await auditingSubject.kick(ACTOR, ROOM.id, TARGET, 'spamming', requestMeta);
+
+        expect(auditLog.logAction).toHaveBeenCalledWith(
+          expect.objectContaining({
+            actorId: ACTOR.id,
+            action: 'video_room.kick',
+            resource: 'video_room',
+            resourceId: ROOM.id,
+            targetUserId: TARGET,
+            violationReason: 'spamming',
+            ipAddress: '1.2.3.4',
+            userAgent: 'test-agent/1.0',
+          }),
+        );
+      });
+
+      it('links the evidenceId from investigationRecording.beginRecording into the audit row', async () => {
+        investigationRecording.beginRecording.mockResolvedValue({
+          id: 'rec-1',
+          evidenceId: 'ev-1',
+        });
+
+        await auditingSubject.kick(ACTOR, ROOM.id, TARGET, 'spamming');
+
+        expect(auditLog.logAction).toHaveBeenCalledWith(
+          expect.objectContaining({ evidenceId: 'ev-1' }),
+        );
+        expect(investigationRecording.completeRecording).toHaveBeenCalledWith(
+          expect.objectContaining({ recordingId: 'rec-1', actionTaken: 'KICK' }),
+        );
+      });
+
+      it('omits evidenceId when there is no recording to link (beginRecording resolves falsy)', async () => {
+        await auditingSubject.kick(ACTOR, ROOM.id, TARGET, 'spamming');
+
+        expect(auditLog.logAction).toHaveBeenCalledTimes(1);
+        const params = auditLog.logAction.mock.calls[0][0];
+        expect(params.evidenceId).toBeUndefined();
+        expect(investigationRecording.completeRecording).not.toHaveBeenCalled();
+      });
+
+      it('kick: completes an already-open (join-triggered) recording instead of opening a new one', async () => {
+        investigationRecording.findActiveRecording.mockResolvedValue({
+          id: 'rec-open-at-join',
+          evidenceId: 'EVD-JOIN0001',
+        });
+
+        await auditingSubject.kick(ACTOR, ROOM.id, TARGET, 'spamming');
+
+        expect(investigationRecording.beginRecording).not.toHaveBeenCalled();
+        expect(investigationRecording.completeRecording).toHaveBeenCalledWith(
+          expect.objectContaining({ recordingId: 'rec-open-at-join', actionTaken: 'KICK' }),
+        );
+        expect(auditLog.logAction).toHaveBeenCalledWith(
+          expect.objectContaining({ evidenceId: 'EVD-JOIN0001' }),
+        );
+      });
     });
   });
 
@@ -1341,6 +1451,103 @@ describe('VideoRoomModerationService', () => {
         expect.stringContaining(ROOM.id),
         expect.any(Function),
       );
+    });
+  });
+
+  describe('escalateViolation — severity-routed notifications', () => {
+    let scopeService: { assertModeratorInScope: jest.Mock; resolveEscalationRecipients: jest.Mock };
+    let notifications: { create: jest.Mock };
+    let escalatingSubject: VideoRoomModerationService;
+
+    beforeEach(() => {
+      rooms.findById.mockResolvedValue({ ...ROOM, region: 'region-eu-west' });
+      scopeService = {
+        assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
+        resolveEscalationRecipients: jest.fn().mockResolvedValue(['manager-1']),
+      };
+      notifications = { create: jest.fn().mockResolvedValue({}) };
+      escalatingSubject = new VideoRoomModerationService(
+        rooms,
+        moderationRepo,
+        permissions,
+        session,
+        sockets,
+        locks,
+        metrics,
+        queue,
+        bus,
+        media,
+        warningRepo,
+        reportService,
+        config,
+        scopeService as unknown as WorkforceScopeService,
+        undefined,
+        undefined,
+        undefined,
+        notifications as unknown as INotificationService,
+      );
+    });
+
+    it('resolves recipients from the room region and notifies each one', async () => {
+      await escalatingSubject.escalateViolation(ACTOR, ROOM.id, TARGET, 'reason', 'CRITICAL');
+
+      expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith(
+        'CRITICAL',
+        'region-eu-west',
+      );
+      expect(notifications.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'manager-1',
+          type: 'MODERATION_CASE_ESCALATED',
+          actorId: ACTOR.id,
+          entityType: 'video_room',
+          entityId: ROOM.id,
+        }),
+      );
+    });
+
+    it('notifies every resolved recipient', async () => {
+      scopeService.resolveEscalationRecipients.mockResolvedValue(['manager-1', 'manager-2']);
+      await escalatingSubject.escalateViolation(ACTOR, ROOM.id, TARGET, 'reason', 'EMERGENCY');
+      expect(notifications.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('skips notification dispatch entirely when notifications is not wired', async () => {
+      await expect(
+        subject.escalateViolation(ACTOR, ROOM.id, TARGET, 'reason', 'HIGH'),
+      ).resolves.toBeUndefined();
+    });
+  });
+
+  describe('restorative actions region scope enforcement', () => {
+    let scopeService: { assertModeratorInScope: jest.Mock };
+    let scopedSubject: VideoRoomModerationService;
+
+    beforeEach(() => {
+      rooms.findById.mockResolvedValue({ ...ROOM, region: 'region-eu-west' });
+      scopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
+      scopedSubject = new VideoRoomModerationService(
+        rooms, moderationRepo, permissions, session, sockets, locks, metrics, queue, bus,
+        media, warningRepo, reportService, config, scopeService as unknown as WorkforceScopeService,
+      );
+    });
+
+    it('unblacklist checks the room region before lifting the block', async () => {
+      moderationRepo.findActiveBlock.mockResolvedValue({ id: 'block-1' });
+      await scopedSubject.unblacklist(ACTOR, ROOM.id, TARGET);
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(ACTOR.id, 'region-eu-west');
+    });
+
+    it('unmute checks the room region before lifting the mute', async () => {
+      moderationRepo.findActiveMute.mockResolvedValue({ id: 'mute-1' });
+      await scopedSubject.unmute(ACTOR, ROOM.id, TARGET);
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(ACTOR.id, 'region-eu-west');
+    });
+
+    it('unblacklist rejects a moderator outside scope', async () => {
+      scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
+      await expect(scopedSubject.unblacklist(ACTOR, ROOM.id, TARGET)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(moderationRepo.liftBlock).not.toHaveBeenCalled();
     });
   });
 });

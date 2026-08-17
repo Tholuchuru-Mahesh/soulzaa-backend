@@ -1,5 +1,5 @@
 import type { ConfigService } from '@nestjs/config';
-import { VideoRoomLogAction, VideoRoomMemberRole } from '@prisma/client';
+import { PlatformRole, VideoRoomLogAction, VideoRoomMemberRole } from '@prisma/client';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { VideoRoomMemberService } from './video-room-member.service';
@@ -152,6 +152,14 @@ describe('VideoRoomMemberService.join', () => {
     await expectCode(service.join(actor(), ROOM, {}, ctx), ERROR_CODES.VIDEO_ROOM_BLOCKED);
   });
 
+  it('exempts a platform Moderator from the block-list, like Admin/Super Admin', async () => {
+    moderation.isActivelyBlocked.mockResolvedValue(true);
+    await expect(
+      service.join(actor('mod-1', [PlatformRole.MODERATOR]), ROOM, {}, ctx),
+    ).resolves.toBeDefined();
+    expect(moderation.isActivelyBlocked).not.toHaveBeenCalled();
+  });
+
   it('throws VIDEO_ROOM_PASSWORD_INVALID on a locked room with a wrong password', async () => {
     repo.findById.mockResolvedValue(liveRoom({ isLocked: true, passwordHash: 'h' }));
     passwords.verify.mockResolvedValue(false);
@@ -259,6 +267,74 @@ describe('VideoRoomMemberService.join', () => {
     );
   });
 
+  describe('join-triggered investigation recording', () => {
+    let investigationRecording: Record<string, jest.Mock>;
+    let reportRepo: Record<string, jest.Mock>;
+    let recordingService: VideoRoomMemberService;
+
+    beforeEach(() => {
+      investigationRecording = {
+        beginOrReuseRecording: jest.fn().mockResolvedValue({ id: 'rec-1' }),
+      };
+      reportRepo = {
+        listPendingReports: jest.fn().mockResolvedValue([]),
+      };
+      recordingService = new VideoRoomMemberService(
+        repo,
+        moderation,
+        passwords,
+        state,
+        sessions,
+        presence,
+        events,
+        eventsRepo,
+        query,
+        metrics,
+        locks,
+        configMock(),
+        seats as never,
+        identities as never,
+        undefined,
+        investigationRecording as any,
+        reportRepo as any,
+      );
+    });
+
+    it('opens/reuses a recording per pending report when a MODERATOR joins', async () => {
+      reportRepo.listPendingReports.mockResolvedValue([
+        { id: 'report-1', targetUserId: 'target-a' },
+        { id: 'report-2', targetUserId: 'target-b' },
+      ]);
+      await recordingService.join(actor('mod-1', [PlatformRole.MODERATOR]), ROOM, {}, ctx);
+      // Room-join fires the recording lookups off the awaited-in-body promise
+      // chain; flush microtasks so the fire-and-forget `.then()` resolves.
+      await new Promise((r) => setImmediate(r));
+
+      expect(investigationRecording.beginOrReuseRecording).toHaveBeenCalledWith(
+        expect.objectContaining({ moderatorId: 'mod-1', targetUserId: 'target-a', roomId: ROOM }),
+      );
+      expect(investigationRecording.beginOrReuseRecording).toHaveBeenCalledWith(
+        expect.objectContaining({ moderatorId: 'mod-1', targetUserId: 'target-b', roomId: ROOM }),
+      );
+    });
+
+    it('opens nothing for a non-moderator join', async () => {
+      reportRepo.listPendingReports.mockResolvedValue([
+        { id: 'report-1', targetUserId: 'target-a' },
+      ]);
+      await recordingService.join(actor('u1'), ROOM, {}, ctx);
+      await new Promise((r) => setImmediate(r));
+      expect(investigationRecording.beginOrReuseRecording).not.toHaveBeenCalled();
+    });
+
+    it('opens nothing when the room has no pending reports', async () => {
+      reportRepo.listPendingReports.mockResolvedValue([]);
+      await recordingService.join(actor('mod-1', [PlatformRole.MODERATOR]), ROOM, {}, ctx);
+      await new Promise((r) => setImmediate(r));
+      expect(investigationRecording.beginOrReuseRecording).not.toHaveBeenCalled();
+    });
+  });
+
   // ---- leave ----
 
   it('leave removes presence, ends the session, deactivates, and publishes UserLeft', async () => {
@@ -324,6 +400,7 @@ describe('VideoRoomMemberService.join', () => {
   // ---- listMembers ----
 
   it('listMembers maps rows to views and returns the total', async () => {
+    identities.resolve.mockResolvedValue(new Map([['u1', { displayName: 'u1', username: 'u1' }]]));
     repo.listActiveMembers.mockResolvedValue([
       {
         userId: 'u1',
@@ -395,6 +472,38 @@ describe('VideoRoomMemberService.join', () => {
       expect(out.items[0].user?.displayName).toBe('Rahul');
       expect(out.items[1].user?.level).toBe(5);
       expect(out.total).toBe(2);
+    });
+
+    it('drops a hidden staff account from the roster entirely, not just its identity', async () => {
+      repo.listActiveMembers = jest.fn().mockResolvedValue([
+        {
+          userId: 'u1',
+          role: 'VIEWER',
+          memberStatus: 'ACTIVE',
+          joinedAt: new Date(0),
+          lastActiveAt: new Date(0),
+          isActive: true,
+        },
+        {
+          userId: 'mod-1',
+          role: 'VIEWER',
+          memberStatus: 'ACTIVE',
+          joinedAt: new Date(0),
+          lastActiveAt: new Date(0),
+          isActive: true,
+        },
+      ]);
+      repo.countActiveMembers = jest.fn().mockResolvedValue(2);
+      // resolvePublicIdentities-backed cache: 'mod-1' has no entry, exactly
+      // like the real hidden-account behavior — resolution succeeded, the
+      // hidden user is just absent from the map.
+      identities.resolve = jest.fn().mockResolvedValue(
+        new Map([['u1', { displayName: 'Rahul', avatarUrl: null, username: 'rahul_92' }]]),
+      );
+
+      const out = await service.listMembers('room1', 50, 0);
+
+      expect(out.items.map((i) => i.userId)).toEqual(['u1']);
     });
 
     it('returns bare rows when identity resolution throws', async () => {

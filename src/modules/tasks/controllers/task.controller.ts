@@ -281,6 +281,15 @@ export class TaskController {
     return this.moderatorAssignmentService.getModeratorAssignments(user.id, status);
   }
 
+  @Get('moderator/my-assignments/summary')
+  @RequirePermissions('task.view.assigned')
+  @ApiOperation({
+    summary: 'Dashboard task-completion summary — Assigned/Completed/Pending/Overdue + overdue %',
+  })
+  async myAssignmentSummary(@CurrentUser() user: any) {
+    return this.queryService.moderatorAssignmentSummary(user.id);
+  }
+
   @Patch('moderator/assignments/:assignmentId')
   @RequirePermissions('task.view.assigned')
   @ApiOperation({ summary: 'Moderator updates assignment status (IN_PROGRESS / COMPLETED)' })

@@ -13,8 +13,13 @@ describe('MobileWorkforceService scope composition', () => {
 
   const prisma = {
     user: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
-    roomReport: { findMany: jest.fn().mockResolvedValue([]) },
-    videoRoomReport: { findMany: jest.fn().mockResolvedValue([]) },
+    roomReport: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+    videoRoomReport: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+    liveStreamReport: { count: jest.fn().mockResolvedValue(0) },
+    investigationRecording: { count: jest.fn().mockResolvedValue(0) },
+    audioRoom: { findMany: jest.fn().mockResolvedValue([]) },
+    videoRoom: { findMany: jest.fn().mockResolvedValue([]) },
+    liveStream: { findMany: jest.fn().mockResolvedValue([]) },
   };
   const scope = { userScopeFilter: jest.fn(), describeScope: jest.fn() };
   const scopes = { getUserScopes: jest.fn().mockResolvedValue([]) };
@@ -75,5 +80,107 @@ describe('MobileWorkforceService scope composition', () => {
     const where = prisma.roomReport.findMany.mock.calls[0][0].where;
     expect(where.reporterId).toBeUndefined();
     expect(prisma.user.findMany).not.toHaveBeenCalled();
+  });
+
+  describe('regionalDailyActivity — the Dashboard\'s "Assigned X" cards', () => {
+    it("scopes rooms by the room's own region and streams/investigations by regionId", async () => {
+      prisma.user.findMany.mockResolvedValue([{ id: 'u-1' }, { id: 'u-2' }]);
+      scope.userScopeFilter.mockResolvedValue({ OR: [{ regionId: 'r-1' }] });
+
+      await service.regionalDailyActivity('mod-1');
+
+      expect(prisma.investigationRecording.count).toHaveBeenCalledWith({
+        where: { status: 'ACTIVE', OR: [{ regionId: 'r-1' }] },
+      });
+      // The displayed room lists filter on AudioRoom/VideoRoom.region — the
+      // room's own region snapshot — never on the owner's profile geography.
+      expect(prisma.audioRoom.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { OR: [{ region: 'r-1' }], status: 'LIVE' } }),
+      );
+      expect(prisma.videoRoom.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { OR: [{ region: 'r-1' }], status: 'LIVE' } }),
+      );
+      expect(prisma.liveStream.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: 'ACTIVE', OR: [{ regionId: 'r-1' }] },
+        }),
+      );
+    });
+
+    // The bug this replaced: the display lists were filtered by
+    // `ownerId IN (users in my scope)`, so a room whose OWNER lives in my
+    // region but which itself was created in another region leaked in, and a
+    // room in my region owned by an out-of-region host went missing.
+    it("includes/excludes a room by the room's own region, not its owner's profile region", async () => {
+      scope.userScopeFilter.mockResolvedValue({ OR: [{ regionId: 'r-1' }] });
+      // The owner-scope lookup resolves an owner who is NOT the in-region
+      // room's owner — if the old ownerFilter were still in play these ids
+      // would drive the query and the assertion below would fail.
+      prisma.user.findMany.mockResolvedValue([{ id: 'owner-in-my-region' }]);
+      prisma.audioRoom.findMany.mockResolvedValue([
+        { id: 'room-in-r1', name: 'in region', status: 'LIVE', ownerId: 'owner-elsewhere' },
+      ]);
+
+      const result = await service.regionalDailyActivity('mod-1');
+
+      const displayWhere = prisma.audioRoom.findMany.mock.calls[1][0].where;
+      expect(displayWhere).toEqual({ OR: [{ region: 'r-1' }], status: 'LIVE' });
+      expect(displayWhere.ownerId).toBeUndefined();
+      // A room in my region survives even though its owner's profile is not.
+      expect(result.assignedAudioRooms.map((r: any) => r.id)).toEqual(['room-in-r1']);
+    });
+
+    it('scopes report counts by the target room/stream region, not the reporter', async () => {
+      prisma.user.findMany.mockResolvedValue([{ id: 'u-1' }, { id: 'u-2' }]);
+      scope.userScopeFilter.mockResolvedValue({ OR: [{ regionId: 'r-1' }] });
+      prisma.audioRoom.findMany.mockResolvedValue([{ id: 'room-a' }, { id: 'room-b' }]);
+      prisma.videoRoom.findMany.mockResolvedValue([{ id: 'vroom-a' }]);
+      prisma.liveStream.findMany.mockResolvedValue([{ id: 'stream-a' }]);
+
+      await service.regionalDailyActivity('mod-1');
+
+      expect(prisma.roomReport.count).toHaveBeenCalledWith({ where: { roomId: { in: ['room-a', 'room-b'] } } });
+      expect(prisma.videoRoomReport.count).toHaveBeenCalledWith({ where: { roomId: { in: ['vroom-a'] } } });
+      expect(prisma.liveStreamReport.count).toHaveBeenCalledWith({ where: { streamId: { in: ['stream-a'] } } });
+    });
+
+    it('is unrestricted for platform staff: counts all reports with no id filter', async () => {
+      scope.userScopeFilter.mockResolvedValue({});
+      await service.regionalDailyActivity('admin-1');
+      expect(prisma.roomReport.count).toHaveBeenCalledWith({ where: {} });
+      expect(prisma.videoRoomReport.count).toHaveBeenCalledWith({ where: {} });
+      expect(prisma.liveStreamReport.count).toHaveBeenCalledWith({ where: {} });
+    });
+
+    it('assignedReportsCount is the sum across all three report surfaces', async () => {
+      scope.userScopeFilter.mockResolvedValue({});
+      prisma.roomReport.count.mockResolvedValue(3);
+      prisma.videoRoomReport.count.mockResolvedValue(2);
+      prisma.liveStreamReport.count.mockResolvedValue(1);
+      const result = await service.regionalDailyActivity('admin-1');
+      expect(result.assignedReportsCount).toBe(6);
+    });
+
+    it('matches nothing (not everything) when restricted but no region predicate applies', async () => {
+      scope.userScopeFilter.mockResolvedValue({ OR: [{ stateId: 's-1' }] });
+      prisma.user.findMany.mockResolvedValue([{ id: 'u-1' }]);
+
+      await service.regionalDailyActivity('mod-1');
+
+      const investigationWhere = prisma.investigationRecording.count.mock.calls[0][0].where;
+      expect(investigationWhere.OR).toEqual([]);
+    });
+
+    it('is unrestricted for platform staff (empty scope filter)', async () => {
+      scope.userScopeFilter.mockResolvedValue({});
+
+      await service.regionalDailyActivity('admin-1');
+
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+      const investigationWhere = prisma.investigationRecording.count.mock.calls[0][0].where;
+      expect(investigationWhere.OR).toBeUndefined();
+      const roomWhere = prisma.audioRoom.findMany.mock.calls[0][0].where;
+      expect(roomWhere.ownerId).toBeUndefined();
+    });
   });
 });

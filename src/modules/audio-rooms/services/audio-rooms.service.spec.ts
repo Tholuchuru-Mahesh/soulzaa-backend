@@ -64,6 +64,7 @@ describe('AudioRoomsService', () => {
       categoryExists: jest.fn().mockResolvedValue(true),
       languageExists: jest.fn().mockResolvedValue(true),
       createRoomTx: jest.fn().mockResolvedValue(roomRow()),
+      getOwnerRegionId: jest.fn().mockResolvedValue(null),
       setCachedSnapshot: jest.fn().mockResolvedValue(undefined),
       getCachedSnapshot: jest.fn().mockResolvedValue(null),
       findRoomRow: jest.fn().mockResolvedValue(roomRow()),
@@ -121,6 +122,7 @@ describe('AudioRoomsService', () => {
       isBannedCached: jest.fn().mockResolvedValue(false),
       findActiveBan: jest.fn().mockResolvedValue(null),
       addBanCache: jest.fn().mockResolvedValue(undefined),
+      listPendingReports: jest.fn().mockResolvedValue([]),
     };
     liveSessions = {
       openSession: jest.fn().mockResolvedValue({ id: 'session-1' }),
@@ -278,6 +280,75 @@ describe('AudioRoomsService', () => {
       moderation.findActiveKick.mockResolvedValue(null);
       await service.join(OTHER, 'room-1', {});
       expect(presence.joinRoom).toHaveBeenCalledWith('room-1', OTHER.id);
+    });
+
+    describe('join-triggered investigation recording', () => {
+      let investigationRecording: Record<string, jest.Mock>;
+      let recordingService: AudioRoomsService;
+
+      beforeEach(() => {
+        investigationRecording = {
+          beginOrReuseRecording: jest.fn().mockResolvedValue({ id: 'rec-1' }),
+        };
+        const config = {
+          get: () => ({
+            defaultMaxParticipants: 50,
+            maxParticipantsCap: 500,
+            cacheTtlSeconds: 60,
+            defaultSpeakerSeats: 8,
+            defaultPremiumAdminSeats: 0,
+          }),
+        } as unknown as ConfigService;
+        recordingService = new AudioRoomsService(
+          repo as unknown as AudioRoomsRepository,
+          presence as unknown as PresenceService,
+          locks as unknown as LockService,
+          passwords as unknown as RoomPasswordService,
+          config,
+          permissions as unknown as RoomPermissionService,
+          seatsService as unknown as AudioRoomSeatsService,
+          moderation as unknown as ModerationRepository,
+          liveSessions as unknown as LiveSessionRepository,
+          media as unknown as MediaUrlResolver,
+          bus,
+          users as unknown as IUsersService,
+          profiles as unknown as IProfileService,
+          undefined,
+          investigationRecording as any,
+        );
+      });
+
+      it('opens/reuses a recording per pending report when a MODERATOR joins', async () => {
+        moderation.listPendingReports.mockResolvedValue([
+          { id: 'report-1', targetUserId: 'target-a' },
+          { id: 'report-2', targetUserId: 'target-b' },
+        ]);
+        await recordingService.join({ id: 'mod-1', roles: ['MODERATOR'] }, 'room-1', {});
+        // Room-join fires the recording lookups off the awaited-in-body promise
+        // chain; flush microtasks so the fire-and-forget `.then()` resolves.
+        await new Promise((r) => setImmediate(r));
+
+        expect(investigationRecording.beginOrReuseRecording).toHaveBeenCalledWith(
+          expect.objectContaining({ moderatorId: 'mod-1', targetUserId: 'target-a', roomId: 'room-1' }),
+        );
+        expect(investigationRecording.beginOrReuseRecording).toHaveBeenCalledWith(
+          expect.objectContaining({ moderatorId: 'mod-1', targetUserId: 'target-b', roomId: 'room-1' }),
+        );
+      });
+
+      it('opens nothing for a non-moderator join', async () => {
+        moderation.listPendingReports.mockResolvedValue([{ id: 'report-1', targetUserId: 'target-a' }]);
+        await recordingService.join(OTHER, 'room-1', {});
+        await new Promise((r) => setImmediate(r));
+        expect(investigationRecording.beginOrReuseRecording).not.toHaveBeenCalled();
+      });
+
+      it('opens nothing when the room has no pending reports', async () => {
+        moderation.listPendingReports.mockResolvedValue([]);
+        await recordingService.join({ id: 'mod-1', roles: ['MODERATOR'] }, 'room-1', {});
+        await new Promise((r) => setImmediate(r));
+        expect(investigationRecording.beginOrReuseRecording).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -532,6 +603,25 @@ describe('AudioRoomsService', () => {
       const detail = await service.getRoomDetail('room-1');
 
       expect(detail.imageUrl).toBeNull();
+    });
+
+    it('omits a hidden staff account entirely from the member roster, not just its identity', async () => {
+      const member = (userId: string) =>
+        ({ userId, role: RoomMemberRole.LISTENER, joinedAt: new Date() }) as never;
+      repo.listActiveMembers.mockResolvedValue([member('user-1'), member('mod-1'), member('user-2')]);
+      // resolvePublicIdentities already drops hidden accounts from the map —
+      // 'mod-1' has no entry, exactly like the real hidden-account behavior.
+      (profiles.resolvePublicIdentities as jest.Mock).mockResolvedValue(
+        new Map([
+          ['user-1', { username: 'u1', avatarUrl: null, equippedFrameUrl: null }],
+          ['user-2', { username: 'u2', avatarUrl: null, equippedFrameUrl: null }],
+        ]),
+      );
+
+      const detail = await service.getRoomDetail('room-1');
+
+      expect(detail.participants.map((p) => p.userId)).toEqual(['user-1', 'user-2']);
+      expect(detail.visibleParticipants).toHaveLength(2);
     });
 
     it('announces a change with the resolved URL, so clients repaint without refetching', async () => {

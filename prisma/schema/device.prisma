@@ -80,3 +80,19 @@ enum DeviceEventType {
   CHANGE_APPROVED
   CHANGE_REJECTED
 }
+
+/// Approved IP addresses / CIDR ranges for staff/moderator accounts.
+model StaffAllowedIp {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  cidr      String
+  label     String?
+  addedBy   String    @db.Uuid
+  addedAt   DateTime  @default(now())
+  removedBy String?   @db.Uuid
+  removedAt DateTime?
+  isActive  Boolean   @default(true)
+
+  @@index([userId, isActive])
+  @@map("staff_allowed_ips")
+}

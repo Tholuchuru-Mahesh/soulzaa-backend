@@ -3,6 +3,13 @@
 /// S3 object key (display picture); the client resolves a URL. `agoraChannel`
 /// is generated at creation and reserved for the voice phase. `language`
 /// references room_languages.code by value (no cross-table FK by convention).
+/// `region` snapshots the owner's assigned Region (`User.regionId`) at room
+/// creation — the same denormalise-the-owner's-location pattern as
+/// `LiveStream.regionId` — so `WorkforceScopeService.assertModeratorInScope`
+/// can confine a Moderator's kick/mute/ban actions to their assigned region.
+/// Plain nullable text (no FK), matching `VideoRoom.region`'s type; null ⇒
+/// unscoped (permit) per the safety valve in `assertModeratorInScope`, so
+/// rooms created before this column existed keep working.
 model AudioRoom {
   id              String         @id @default(uuid()) @db.Uuid
   ownerId         String         @unique @db.Uuid
@@ -25,6 +32,7 @@ model AudioRoom {
   updatedAt       DateTime       @updatedAt
   deletedAt       DateTime?
   zegoRoomId      String?        @unique
+  region          String?
 
   @@index([status])
   @@index([categoryId])

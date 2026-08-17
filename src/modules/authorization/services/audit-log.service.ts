@@ -16,6 +16,9 @@ export interface CreateAuditLogParams {
   targetUserId?: string;
   roomId?: string;
   region?: string;
+  violationReason?: string;
+  evidenceId?: string;
+  liveStreamId?: string;
 }
 
 /** Parse a browser name from a raw User-Agent string (best-effort). */
@@ -66,6 +69,9 @@ export class AuditLogService {
           targetUserId: params.targetUserId,
           roomId: params.roomId,
           region: params.region,
+          violationReason: params.violationReason,
+          evidenceId: params.evidenceId,
+          liveStreamId: params.liveStreamId,
           browser: parseBrowser(params.userAgent),
           os: parseOs(params.userAgent),
         },
@@ -113,5 +119,14 @@ export class AuditLogService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /** Every audit log entry recorded against a moderation target — powers the unified case view. */
+  async getAuditLogsForTarget(targetUserId: string, limit = 100) {
+    return this.prisma.auditLog.findMany({
+      where: { targetUserId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
   }
 }

@@ -10,15 +10,18 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { LiveStreamStatus } from '@prisma/client';
+import { LiveStreamReportReason, LiveStreamReportStatus, LiveStreamStatus } from '@prisma/client';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { RequestMeta } from 'src/common/decorators/request-meta.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
+import type { RequestMetadata } from 'src/common/interfaces/request-metadata.interface';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import { ShiftActiveGuard } from 'src/modules/moderator-shift/guards/shift-active.guard';
 import { SuspendedGuard } from 'src/modules/moderator-warning/guards/suspended.guard';
+import { LiveStreamReportService } from '../services/live-stream-report.service';
 import { LiveStreamService } from '../services/live-stream.service';
 
 class CreateStreamDto {
@@ -30,6 +33,20 @@ class ModerateStreamUserDto {
   targetUserId!: string;
   action!: 'WARN' | 'MUTE' | 'KICK' | 'BAN';
   reason?: string;
+  /** Minutes until a MUTE/BAN self-lifts. Omit for PERMANENT. */
+  durationMinutes?: number;
+}
+
+class FileReportDto {
+  targetUserId!: string;
+  reason!: LiveStreamReportReason;
+  description?: string;
+}
+
+class ReviewReportDto {
+  status!: LiveStreamReportStatus;
+  resolution?: string;
+  recommendedAction?: 'WARN' | 'MUTE' | 'KICK' | 'BAN';
 }
 
 @ApiTags('live-streaming')
@@ -37,7 +54,10 @@ class ModerateStreamUserDto {
 @UseGuards(JwtAuthGuard, RbacPermissionsGuard)
 @Controller('live-streams')
 export class LiveStreamController {
-  constructor(private readonly service: LiveStreamService) {}
+  constructor(
+    private readonly service: LiveStreamService,
+    private readonly reports: LiveStreamReportService,
+  ) {}
 
   @Post()
   @RequirePermissions('live.stream.create')
@@ -90,14 +110,19 @@ export class LiveStreamController {
     @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ModerateStreamUserDto,
+    @RequestMeta() meta: RequestMetadata,
   ) {
-    return this.service.moderateUser({
-      streamId: id,
-      moderatorId: user.id,
-      targetUserId: dto.targetUserId,
-      action: dto.action,
-      reason: dto.reason,
-    });
+    return this.service.moderateUser(
+      {
+        streamId: id,
+        moderatorId: user.id,
+        targetUserId: dto.targetUserId,
+        action: dto.action,
+        reason: dto.reason,
+        durationMinutes: dto.durationMinutes,
+      },
+      meta,
+    );
   }
 
   @Get(':id/moderation/actions')
@@ -117,9 +142,82 @@ export class LiveStreamController {
   escalate(
     @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { targetUserId: string; reason: string },
+    @Body() dto: { targetUserId: string; reason: string; severity: 'HIGH' | 'CRITICAL' | 'EMERGENCY' },
   ) {
-    return this.service.escalateViolation(id, user.id, dto.targetUserId, dto.reason);
+    return this.service.escalateViolation(id, user.id, dto.targetUserId, dto.reason, dto.severity);
+  }
+
+  // ======================= Reports =======================
+
+  @Post(':id/reports')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('live.stream.view')
+  @ApiOperation({ summary: 'Report a user in the live stream' })
+  fileReport(
+    @Param('id', ParseUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: FileReportDto,
+  ) {
+    return this.reports.fileReport({
+      streamId: id,
+      reporterId: user.id,
+      targetUserId: dto.targetUserId,
+      reason: dto.reason,
+      description: dto.description,
+    });
+  }
+
+  @Post(':id/reports/:reportId/review')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('live.stream.moderate')
+  @ApiOperation({ summary: 'Review/resolve a report, optionally executing a recommended action' })
+  async reviewReport(
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('reportId', ParseUuidPipe) reportId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ReviewReportDto,
+    @RequestMeta() meta: RequestMetadata,
+  ) {
+    await this.reports.reviewReport(
+      {
+        streamId: id,
+        reportId,
+        moderatorId: user.id,
+        status: dto.status,
+        resolution: dto.resolution,
+        recommendedAction: dto.recommendedAction,
+      },
+      meta,
+    );
+    return { reviewed: true };
+  }
+
+  @Post(':id/reports/:reportId/notes')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('live.stream.moderate')
+  @ApiOperation({ summary: 'Add investigation notes to a report' })
+  async addReportNotes(
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('reportId', ParseUuidPipe) reportId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: { notes: string },
+  ) {
+    await this.reports.addNotes(id, reportId, user.id, dto.notes);
+    return { added: true };
+  }
+
+  @Get(':id/reports')
+  @RequirePermissions('live.stream.moderate')
+  @ApiOperation({ summary: 'List reports for a live stream (optionally filter by target user)' })
+  listReports(
+    @Param('id', ParseUuidPipe) id: string,
+    @Query('targetUserId') targetUserId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.reports.listReports(id, Number(page ?? 1), Number(limit ?? 20), targetUserId);
   }
 
   // ======================= Realtime Presence (Redis-only, Anonymous Moderator) =======================

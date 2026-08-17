@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { GeographicScopeResolver } from 'src/modules/authorization/services/geographic-scope-resolver.service';
 import { RoleResolver } from 'src/modules/authorization/services/role-resolver.service';
 import { WorkforceScopeService } from './services/workforce-scope.service';
@@ -22,6 +23,7 @@ describe('geographic scope workflow', () => {
       scopes as unknown as GeographicScopeResolver,
       roles as unknown as RoleResolver,
       bridgeConfig(true),
+      {} as unknown as PrismaService,
     );
   };
 

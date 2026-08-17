@@ -1,8 +1,10 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import {
+  AudioRoom,
   ModerationActionType,
   ModerationBanType,
   ModerationMuteType,
+  ReportReason,
   RoomBan,
   RoomKick,
   RoomMute,
@@ -10,6 +12,7 @@ import {
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
+import type { RequestMetadata } from 'src/common/interfaces/request-metadata.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
 import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import { QueueService } from 'src/infra/queue/queue.service';
@@ -49,7 +52,27 @@ import { VoiceService } from './voice.service';
 import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
 import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
 import { AuditLogService } from 'src/modules/authorization/services/audit-log.service';
-import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import {
+  WorkforceScopeService,
+  type EscalationSeverity,
+} from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import { recordEscalationOutcome } from 'src/modules/mobile-workforce/services/escalation-recorder.util';
+import {
+  NOTIFICATION_SERVICE,
+  type INotificationService,
+} from 'src/modules/notification/interfaces/notification.interface';
+import { ModeratorNotificationService } from 'src/modules/moderator-shift/services/moderator-notification.service';
+import { ModerationApprovalService } from 'src/modules/moderation-approval/services/moderation-approval.service';
+import {
+  buildReportReviewReason,
+  recordReportResolutionIfConfigured,
+} from 'src/modules/moderation-approval/utils/report-review-outcome.util';
+
+/** Report reasons that page a moderator immediately rather than waiting in the normal report queue. */
+const HIGH_PRIORITY_REPORT_REASONS: ReportReason[] = [
+  ReportReason.THREATS,
+  ReportReason.SEXUAL_CONTENT,
+];
 
 /**
  * A Kick List row, hydrated with the display data the moderator UI needs: who was
@@ -87,10 +110,13 @@ export class ModerationService implements IModerationService {
     private readonly locks: LockService,
     private readonly queue: QueueService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
-    private readonly investigationRecording?: InvestigationRecordingService,
-    private readonly performanceStats?: ModeratorPerformanceService,
-    private readonly auditLog?: AuditLogService,
-    private readonly scopeService?: WorkforceScopeService,
+    private readonly scopeService: WorkforceScopeService,
+    @Optional() private readonly investigationRecording?: InvestigationRecordingService,
+    @Optional() private readonly performanceStats?: ModeratorPerformanceService,
+    @Optional() private readonly auditLog?: AuditLogService,
+    @Optional() @Inject(NOTIFICATION_SERVICE) private readonly notifications?: INotificationService,
+    @Optional() private readonly moderatorNotify?: ModeratorNotificationService,
+    @Optional() private readonly approvalService?: ModerationApprovalService,
   ) {}
 
   // ======================= Kick / restore (the Kick List) =======================
@@ -105,6 +131,7 @@ export class ModerationService implements IModerationService {
     roomId: string,
     targetUserId: string,
     reason?: string,
+    requestMeta?: RequestMetadata,
   ): Promise<void> {
     await this.assertModerationPrereqs(roomId, actor, targetUserId);
     await this.locks.withLock(moderationLockKey(roomId), async () => {
@@ -140,22 +167,31 @@ export class ModerationService implements IModerationService {
       });
 
       // Hook InvestigationRecording & Performance KPI
+      let evidenceId: string | undefined;
       if (this.investigationRecording) {
-        void this.investigationRecording
-          .beginRecording({
+        const violationReason = reason ?? 'Audio room kick';
+        const existingRecording = await this.investigationRecording.findActiveRecording(
+          actor.id,
+          targetUserId,
+          { roomId },
+        );
+        const rec =
+          existingRecording ??
+          (await this.investigationRecording.beginRecording({
             moderatorId: actor.id,
             targetUserId,
             roomId,
-            violationReason: reason ?? 'Audio room kick',
+            violationReason,
             evidencePayload: { roomId, action: 'KICK', kickId: kick.id },
-          })
-          .then((rec) => {
-            if (rec)
-              void this.investigationRecording?.completeRecording({
-                recordingId: rec.id,
-                actionTaken: 'KICK',
-              });
+          }));
+        if (rec) {
+          evidenceId = rec.evidenceId;
+          void this.investigationRecording.completeRecording({
+            recordingId: rec.id,
+            actionTaken: 'KICK',
+            violationReason,
           });
+        }
       }
       if (this.performanceStats) {
         void this.performanceStats.recordAction(actor.id, 'KICK');
@@ -166,6 +202,11 @@ export class ModerationService implements IModerationService {
           action: 'audio_room.kick',
           resource: 'audio_room',
           resourceId: roomId,
+          targetUserId,
+          violationReason: reason,
+          evidenceId,
+          ipAddress: requestMeta?.ip,
+          userAgent: requestMeta?.userAgent,
           details: { targetUserId, reason: reason ?? null },
         });
       }
@@ -189,6 +230,8 @@ export class ModerationService implements IModerationService {
    */
   async unkick(actor: RoomActor, roomId: string, targetUserId: string): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
+    const room = await this.requireRoom(roomId);
+    await this.scopeService.assertModeratorInScope(actor.id, room.region);
     const kick = await this.repo.findActiveKick(roomId, targetUserId);
     if (!kick) {
       throw new BusinessException(
@@ -220,7 +263,13 @@ export class ModerationService implements IModerationService {
 
   // ======================= Ban / unban =======================
 
-  async ban(actor: RoomActor, roomId: string, targetUserId: string, dto: BanDto): Promise<RoomBan> {
+  async ban(
+    actor: RoomActor,
+    roomId: string,
+    targetUserId: string,
+    dto: BanDto,
+    requestMeta?: RequestMetadata,
+  ): Promise<RoomBan> {
     await this.assertModerationPrereqs(roomId, actor, targetUserId);
     const expiresAt = this.resolveExpiry(
       dto.type === ModerationBanType.TEMPORARY,
@@ -265,22 +314,27 @@ export class ModerationService implements IModerationService {
         metadata: { banId: ban.id, expiresAt: expiresAt?.toISOString() ?? null },
       });
 
+      let evidenceId: string | undefined;
       if (this.investigationRecording) {
-        void this.investigationRecording
-          .beginRecording({
+        const violationReason = dto.reason ?? 'Audio room ban';
+        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, { roomId });
+        const rec =
+          existing ??
+          (await this.investigationRecording.beginRecording({
             moderatorId: actor.id,
             targetUserId,
             roomId,
-            violationReason: dto.reason ?? 'Audio room ban',
+            violationReason,
             evidencePayload: { roomId, action: 'BAN', banId: ban.id },
-          })
-          .then((rec) => {
-            if (rec)
-              void this.investigationRecording?.completeRecording({
-                recordingId: rec.id,
-                actionTaken: 'BAN',
-              });
+          }));
+        if (rec) {
+          evidenceId = rec.evidenceId;
+          void this.investigationRecording.completeRecording({
+            recordingId: rec.id,
+            actionTaken: 'BAN',
+            violationReason,
           });
+        }
       }
       if (this.performanceStats) {
         void this.performanceStats.recordAction(actor.id, 'BAN');
@@ -291,11 +345,12 @@ export class ModerationService implements IModerationService {
           action: `audio_room.ban_${dto.type.toLowerCase()}`,
           resource: 'audio_room',
           resourceId: roomId,
-          details: {
-            targetUserId,
-            reason: dto.reason ?? null,
-            expiresAt: expiresAt?.toISOString() ?? null,
-          },
+          targetUserId,
+          violationReason: dto.reason,
+          evidenceId,
+          ipAddress: requestMeta?.ip,
+          userAgent: requestMeta?.userAgent,
+          details: { targetUserId, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
         });
       }
 
@@ -320,6 +375,8 @@ export class ModerationService implements IModerationService {
 
   async unban(actor: RoomActor, roomId: string, targetUserId: string): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
+    const room = await this.requireRoom(roomId);
+    await this.scopeService.assertModeratorInScope(actor.id, room.region);
     const ban = await this.repo.findActiveBan(roomId, targetUserId);
     if (!ban) {
       throw new BusinessException(
@@ -338,6 +395,7 @@ export class ModerationService implements IModerationService {
     roomId: string,
     targetUserId: string,
     dto: MuteDto,
+    requestMeta?: RequestMetadata,
   ): Promise<RoomMute> {
     await this.assertModerationPrereqs(roomId, actor, targetUserId);
     const expiresAt = this.resolveExpiry(
@@ -379,17 +437,39 @@ export class ModerationService implements IModerationService {
         reason: dto.reason ?? null,
         metadata: { muteId: mute.id, expiresAt: expiresAt?.toISOString() ?? null },
       });
+      let evidenceId: string | undefined;
+      if (this.investigationRecording) {
+        const violationReason = dto.reason ?? 'Audio room mute violation';
+        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, { roomId });
+        const rec =
+          existing ??
+          (await this.investigationRecording.beginRecording({
+            moderatorId: actor.id,
+            targetUserId,
+            roomId,
+            violationReason,
+          }));
+        if (rec) {
+          evidenceId = rec.evidenceId;
+          void this.investigationRecording.completeRecording({
+            recordingId: rec.id,
+            actionTaken: 'MUTE',
+            violationReason,
+          });
+        }
+      }
       if (this.auditLog) {
         void this.auditLog.logAction({
           actorId: actor.id,
           action: `audio_room.mute_${dto.type.toLowerCase()}`,
           resource: 'audio_room',
           resourceId: roomId,
-          details: {
-            targetUserId,
-            reason: dto.reason ?? null,
-            expiresAt: expiresAt?.toISOString() ?? null,
-          },
+          targetUserId,
+          violationReason: dto.reason,
+          evidenceId,
+          ipAddress: requestMeta?.ip,
+          userAgent: requestMeta?.userAgent,
+          details: { targetUserId, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
         });
       }
       if (this.performanceStats) {
@@ -411,6 +491,8 @@ export class ModerationService implements IModerationService {
 
   async unmute(actor: RoomActor, roomId: string, targetUserId: string): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
+    const room = await this.requireRoom(roomId);
+    await this.scopeService.assertModeratorInScope(actor.id, room.region);
     const mute = await this.repo.findActiveMute(roomId, targetUserId);
     if (!mute) {
       throw new BusinessException(
@@ -429,8 +511,29 @@ export class ModerationService implements IModerationService {
     roomId: string,
     targetUserId: string,
     reason: string,
+    requestMeta?: RequestMetadata,
   ): Promise<void> {
     await this.assertModerationPrereqs(roomId, actor, targetUserId);
+    let evidenceId: string | undefined;
+    if (this.investigationRecording) {
+      const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, { roomId });
+      const rec =
+        existing ??
+        (await this.investigationRecording.beginRecording({
+          moderatorId: actor.id,
+          targetUserId,
+          roomId,
+          violationReason: reason,
+        }));
+      if (rec) {
+        evidenceId = rec.evidenceId;
+        void this.investigationRecording.completeRecording({
+          recordingId: rec.id,
+          actionTaken: 'WARN',
+          violationReason: reason,
+        });
+      }
+    }
     await this.repo.appendAction({
       roomId,
       moderatorId: actor.id,
@@ -444,6 +547,11 @@ export class ModerationService implements IModerationService {
         action: 'audio_room.warn',
         resource: 'audio_room',
         resourceId: roomId,
+        targetUserId,
+        violationReason: reason,
+        evidenceId,
+        ipAddress: requestMeta?.ip,
+        userAgent: requestMeta?.userAgent,
         details: { targetUserId, reason },
       });
     }
@@ -466,13 +574,7 @@ export class ModerationService implements IModerationService {
         HttpStatus.BAD_REQUEST,
       );
     }
-    if (!(await this.rooms.findRoomRow(roomId))) {
-      throw new BusinessException(
-        ERROR_CODES.ROOM_NOT_FOUND,
-        'Room not found.',
-        HttpStatus.NOT_FOUND,
-      );
-    }
+    await this.requireRoom(roomId);
     if (await this.repo.findOpenReport(roomId, reporter.id, dto.targetUserId)) {
       throw new BusinessException(
         ERROR_CODES.DUPLICATE_REPORT,
@@ -503,7 +605,45 @@ export class ModerationService implements IModerationService {
       reportId: report.id,
       recipientIds,
     });
+    if (this.moderatorNotify && HIGH_PRIORITY_REPORT_REASONS.includes(dto.reason)) {
+      await Promise.all(
+        recipientIds.map((moderatorId) =>
+          this.moderatorNotify!.notifyHighPriorityReport(moderatorId, report.id, dto.reason),
+        ),
+      );
+    }
     return report;
+  }
+
+  /** Assigns a PENDING report to a moderator, opening it as their investigation. */
+  async assignReport(
+    actor: RoomActor,
+    roomId: string,
+    reportId: string,
+    assigneeId: string,
+  ): Promise<void> {
+    await this.permissions.assertCanModerate(roomId, actor);
+    const room = await this.requireRoom(roomId);
+    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    const report = await this.repo.getReport(reportId);
+    if (!report || report.roomId !== roomId) {
+      throw new BusinessException(
+        ERROR_CODES.REPORT_NOT_FOUND,
+        'Report not found.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    if (report.status !== 'PENDING') {
+      throw new BusinessException(
+        ERROR_CODES.REPORT_NOT_FOUND,
+        'That report has already been reviewed.',
+        HttpStatus.CONFLICT,
+      );
+    }
+    await this.repo.assignReport(reportId, assigneeId);
+    if (this.moderatorNotify) {
+      await this.moderatorNotify.notifyReportAssigned(assigneeId, reportId, actor.id);
+    }
   }
 
   async reviewReport(
@@ -513,6 +653,8 @@ export class ModerationService implements IModerationService {
     dto: ReviewReportDto,
   ): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
+    const room = await this.requireRoom(roomId);
+    await this.scopeService.assertModeratorInScope(actor.id, room.region);
     const report = await this.repo.getReport(reportId);
     if (!report || report.roomId !== roomId) {
       throw new BusinessException(
@@ -539,7 +681,13 @@ export class ModerationService implements IModerationService {
     });
 
     if (dto.recommendedAction) {
-      const reason = dto.resolution ?? `Report action: ${dto.recommendedAction}`;
+      // Tagged distinctly from a live in-room action: this action was decided
+      // during asynchronous report review, not while the moderator was
+      // observing the room in real time. The moderator already has direct
+      // mute/kick/ban authority (Room Moderation section of the spec), so
+      // this executes immediately — the tag is audit-trail clarity, not a
+      // gate.
+      const reason = buildReportReviewReason(reportId, dto.resolution, dto.recommendedAction);
       if (dto.recommendedAction === 'WARNING') {
         await this.warn(actor, roomId, report.targetUserId, reason);
       } else if (dto.recommendedAction === 'MUTE') {
@@ -550,15 +698,91 @@ export class ModerationService implements IModerationService {
       } else if (dto.recommendedAction === 'KICK') {
         await this.kick(actor, roomId, report.targetUserId, reason);
       } else if (dto.recommendedAction === 'BAN') {
-        await this.ban(actor, roomId, report.targetUserId, {
-          type: ModerationBanType.PERMANENT,
-          reason,
-        });
+        // A recommended BAN is hard to reverse, so it does not auto-execute
+        // like the other three actions — it goes to the Official covering
+        // the room's region as a pending approval instead (see
+        // ModerationApprovalService). If the approval service isn't wired,
+        // the recommendation is left unactioned rather than silently
+        // executing without the review it needs.
+        if (this.approvalService) {
+          await this.approvalService.propose({
+            roomType: 'AUDIO_ROOM',
+            roomId,
+            reportId,
+            proposedBy: actor.id,
+            targetUserId: report.targetUserId,
+            reason,
+            regionId: room.region,
+          });
+        }
       }
     }
 
+    await recordReportResolutionIfConfigured(this.performanceStats, actor.id, report.createdAt);
+  }
+
+  async addReportNotes(
+    actor: RoomActor,
+    roomId: string,
+    reportId: string,
+    notes: string,
+  ): Promise<void> {
+    await this.permissions.assertCanModerate(roomId, actor);
+    const room = await this.requireRoom(roomId);
+    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    // The scope check above authorizes `roomId`, so the report being mutated
+    // must actually belong to that room — otherwise a moderator scoped to
+    // this room could pass any out-of-scope room's reportId and edit it.
+    const report = await this.repo.getReport(reportId);
+    if (!report || report.roomId !== roomId) {
+      throw new BusinessException(
+        ERROR_CODES.REPORT_NOT_FOUND,
+        'Report not found.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    await this.repo.updateReportNotes(reportId, actor.id, notes);
+    await this.repo.appendAction({
+      roomId,
+      moderatorId: actor.id,
+      targetUserId: null,
+      action: ModerationActionType.NOTE_ADDED,
+      reason: 'Report investigation notes updated',
+      metadata: { reportId, notes },
+    });
+  }
+
+  async dismissReport(
+    actor: RoomActor,
+    roomId: string,
+    reportId: string,
+    reason?: string,
+  ): Promise<void> {
+    await this.permissions.assertCanModerate(roomId, actor);
+    const room = await this.requireRoom(roomId);
+    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    // Same binding as `reviewReport`/`assignReport`: the scope check
+    // authorized `roomId`, so the report must belong to that room.
+    const report = await this.repo.getReport(reportId);
+    if (!report || report.roomId !== roomId) {
+      throw new BusinessException(
+        ERROR_CODES.REPORT_NOT_FOUND,
+        'Report not found.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    await this.repo.dismissReport(reportId, actor.id, reason);
+    await this.repo.appendAction({
+      roomId,
+      moderatorId: actor.id,
+      targetUserId: null,
+      action: ModerationActionType.REPORT_REVIEWED,
+      reason: reason ?? 'Dismissed as false report',
+      metadata: { reportId, status: 'DISMISSED' },
+    });
     if (this.performanceStats) {
-      await this.performanceStats.recordAction(actor.id, 'REPORT_ESCALATED' as any);
+      const resolutionMinutes = (Date.now() - report.createdAt.getTime()) / 60_000;
+      await this.performanceStats.recordReportResolution(actor.id, resolutionMinutes);
     }
   }
 
@@ -567,8 +791,13 @@ export class ModerationService implements IModerationService {
     roomId: string,
     targetUserId: string,
     reason: string,
+    severity: EscalationSeverity,
+    requestMeta?: RequestMetadata,
   ): Promise<void> {
+    // `assertModerationPrereqs` already 404s on a missing room via
+    // `requireRoom`, so this second read is guaranteed to resolve.
     await this.assertModerationPrereqs(roomId, actor, targetUserId);
+    const room = await this.requireRoom(roomId);
 
     await this.repo.appendAction({
       roomId,
@@ -576,22 +805,24 @@ export class ModerationService implements IModerationService {
       targetUserId,
       action: ModerationActionType.REPORT_REVIEWED,
       reason: `CRITICAL_ESCALATION: ${reason}`,
-      metadata: { escalated: true, targetUserId },
+      metadata: { escalated: true, targetUserId, severity },
     });
 
-    if (this.performanceStats) {
-      await this.performanceStats.recordAction(actor.id, 'REPORT_ESCALATED' as any);
-    }
-
-    if (this.auditLog) {
-      void this.auditLog.logAction({
-        actorId: actor.id,
-        action: 'audio_room.escalate_critical_violation',
-        resource: 'audio_room',
-        resourceId: roomId,
-        details: { targetUserId, reason },
-      });
-    }
+    await recordEscalationOutcome({
+      actorId: actor.id,
+      targetUserId,
+      reason,
+      severity,
+      auditAction: 'audio_room.escalate_critical_violation',
+      resource: 'audio_room',
+      resourceId: roomId,
+      region: room.region,
+      requestMeta,
+      performanceStats: this.performanceStats,
+      auditLog: this.auditLog,
+      scopeService: this.scopeService,
+      notifications: this.notifications,
+    });
   }
 
   // ======================= Notes =======================
@@ -682,6 +913,8 @@ export class ModerationService implements IModerationService {
     dto: ResolveAppealDto,
   ): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
+    const room = await this.requireRoom(roomId);
+    await this.scopeService.assertModeratorInScope(actor.id, room.region);
     const appeal = await this.repo.getAppeal(appealId);
     if (!appeal || appeal.roomId !== roomId) {
       throw new BusinessException(
@@ -712,12 +945,26 @@ export class ModerationService implements IModerationService {
     if (dto.approve) {
       if (appeal.banId) {
         const ban = await this.repo.getBan(appeal.banId);
-        if (ban?.status === 'ACTIVE')
-          await this.liftBanInternal(ban, actor.id, 'LIFTED', 'appeal_approved');
+        if (ban) {
+          if (ban.status === 'ACTIVE') {
+            await this.liftBanInternal(ban, actor.id, 'LIFTED', 'appeal_approved');
+          }
+          // Upheld appeal ⇒ the original ban was wrong, regardless of
+          // whether it was still active or had already expired/been lifted.
+          if (this.performanceStats) {
+            await this.performanceStats.recordFalseModeration(ban.moderatorId);
+          }
+        }
       } else if (appeal.muteId) {
         const mute = await this.repo.getMute(appeal.muteId);
-        if (mute?.status === 'ACTIVE')
-          await this.liftMuteInternal(mute, actor.id, 'LIFTED', 'appeal_approved');
+        if (mute) {
+          if (mute.status === 'ACTIVE') {
+            await this.liftMuteInternal(mute, actor.id, 'LIFTED', 'appeal_approved');
+          }
+          if (this.performanceStats) {
+            await this.performanceStats.recordFalseModeration(mute.moderatorId);
+          }
+        }
       }
     }
     await this.bus.publish(
@@ -946,12 +1193,32 @@ export class ModerationService implements IModerationService {
     }
     await this.permissions.assertCanModerate(roomId, actor);
     await this.permissions.assertOutranks(roomId, actor, targetUserId);
-    if (this.scopeService) {
-      const room = await this.rooms.findRoomRow(roomId);
-      if (room) {
-        await this.scopeService.assertModeratorInScope(actor.id, null);
-      }
+    const room = await this.requireRoom(roomId);
+    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+  }
+
+  /**
+   * Resolve the room row or 404 — the Audio Room counterpart of Video Room's
+   * `requireRoom()` and Live Streaming's `getStream()`.
+   *
+   * Every moderation call site must go through this rather than reading
+   * `findRoomRow` directly: a `null` room used to make `if (room?.region)`
+   * simply not fire, so an action against a nonexistent room skipped the
+   * region-scope check entirely and proceeded unchecked. A room that exists
+   * but carries no `region` is a *different* case — that one still legitimately
+   * permits the action (the documented safety valve), which is why the scope
+   * assertion is called unconditionally with a possibly-null `room.region`.
+   */
+  private async requireRoom(roomId: string): Promise<AudioRoom> {
+    const room = await this.rooms.findRoomRow(roomId);
+    if (!room) {
+      throw new BusinessException(
+        ERROR_CODES.ROOM_NOT_FOUND,
+        'Room not found.',
+        HttpStatus.NOT_FOUND,
+      );
     }
+    return room;
   }
 
   /** Remove a user from the room now: deactivate, drop presence, tear down voice. */

@@ -1,7 +1,10 @@
 import { ConfigService } from '@nestjs/config';
+import { ConflictException } from '@nestjs/common';
 import { IEventBus } from 'src/common/events';
 import type { IRoleSource } from 'src/common/interfaces/role-source.interface';
 import { PasswordService } from 'src/infra/auth/password.service';
+import type { ModeratorDeviceBindingService } from 'src/modules/device/services/moderator-device-binding.service';
+import type { StaffIpAllowlistService } from 'src/modules/device/services/staff-ip-allowlist.service';
 
 jest.mock('firebase-admin/app', () => ({
   initializeApp: jest.fn(),
@@ -267,6 +270,95 @@ describe('AuthService', () => {
       await expect(service.changePassword('u1', 'bad', 'N3w@Str0ng')).rejects.toMatchObject({
         errorCode: 'INVALID_CREDENTIALS',
       });
+    });
+  });
+
+  describe('staffLogin', () => {
+    function buildService(overrides: {
+      deviceBinding?: jest.Mocked<
+        Pick<ModeratorDeviceBindingService, 'assertSingleDeviceByIdentifier' | 'requestDeviceChange'>
+      >;
+      staffIpAllowlist?: jest.Mocked<Pick<StaffIpAllowlistService, 'isIpAllowed'>>;
+    }): AuthService {
+      const config = { get: () => ({ passwordResetTtlSeconds: 900 }) } as unknown as ConfigService;
+      return new AuthService(
+        users,
+        bus,
+        social,
+        otp,
+        sessions as unknown as ISessionService,
+        repo,
+        passwords as unknown as PasswordService,
+        security as unknown as LoginSecurityService,
+        firebase as unknown as FirebaseService,
+        config,
+        roleSource,
+        undefined,
+        overrides.deviceBinding as unknown as ModeratorDeviceBindingService | undefined,
+        overrides.staffIpAllowlist as unknown as StaffIpAllowlistService | undefined,
+        undefined,
+      );
+    }
+
+    beforeEach(() => {
+      users.findByEmail.mockResolvedValue(makeIdentity({ id: 'mod1' }));
+      repo.getCredential.mockResolvedValue({ passwordHash: 'HASH' } as never);
+      passwords.verify.mockResolvedValue(true);
+      roleSource.getRoleNames.mockResolvedValue(['MODERATOR']);
+    });
+
+    it('files a device-change request and rejects with DEVICE_CHANGE_PENDING on an unbound device', async () => {
+      const deviceBinding = {
+        assertSingleDeviceByIdentifier: jest
+          .fn()
+          .mockRejectedValue(new ConflictException('Moderators are restricted to one active device.')),
+        requestDeviceChange: jest.fn().mockResolvedValue({ id: 'req1' }),
+      };
+      const service = buildService({ deviceBinding });
+
+      await expect(
+        service.staffLogin(
+          { email: 'mod@example.com', password: 'Str0ng@Pass', deviceIdentifier: 'device-new' },
+          {},
+        ),
+      ).rejects.toMatchObject({ errorCode: 'DEVICE_CHANGE_PENDING' });
+
+      expect(deviceBinding.requestDeviceChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          moderatorId: 'mod1',
+          newDeviceInfo: expect.objectContaining({ deviceIdentifier: 'device-new' }),
+        }),
+      );
+    });
+
+    it('does not file a second request when one is already pending', async () => {
+      const deviceBinding = {
+        assertSingleDeviceByIdentifier: jest
+          .fn()
+          .mockRejectedValue(new ConflictException('Moderators are restricted to one active device.')),
+        requestDeviceChange: jest
+          .fn()
+          .mockRejectedValue(new ConflictException('A device change request is already pending review.')),
+      };
+      const service = buildService({ deviceBinding });
+
+      await expect(
+        service.staffLogin(
+          { email: 'mod@example.com', password: 'Str0ng@Pass', deviceIdentifier: 'device-new' },
+          {},
+        ),
+      ).rejects.toMatchObject({ errorCode: 'DEVICE_CHANGE_PENDING' });
+
+      expect(deviceBinding.requestDeviceChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a disallowed IP with STAFF_IP_NOT_ALLOWED, distinct from a non-staff role', async () => {
+      const staffIpAllowlist = { isIpAllowed: jest.fn().mockResolvedValue(false) };
+      const service = buildService({ staffIpAllowlist });
+
+      await expect(
+        service.staffLogin({ email: 'mod@example.com', password: 'Str0ng@Pass' }, { ip: '10.0.0.5' }),
+      ).rejects.toMatchObject({ errorCode: 'STAFF_IP_NOT_ALLOWED' });
     });
   });
 });

@@ -36,6 +36,15 @@ export class InvestigationRecordingController {
     return this.service.listByModerator(moderatorId, Number(page ?? 1), Number(limit ?? 20));
   }
 
+  @Get('case/:targetUserId')
+  @RequirePermissions('investigation.recording.view')
+  @ApiOperation({
+    summary: 'Unified moderation case view: every recording + audit log entry against a target user',
+  })
+  getCaseView(@Param('targetUserId', ParseUuidPipe) targetUserId: string) {
+    return this.service.getCaseView(targetUserId);
+  }
+
   @Get('evidence/:evidenceId')
   @RequirePermissions('investigation.recording.view')
   @ApiOperation({ summary: 'Get recording by evidence ID' })

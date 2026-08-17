@@ -1,2 +1,1 @@
-/** live-streaming repositories — empty until the module is implemented. */
-export {};
+export * from './live-stream-moderation.repository';

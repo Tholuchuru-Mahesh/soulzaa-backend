@@ -7,6 +7,7 @@ import { ChatNotificationListener } from './listeners/chat-notification.listener
 import { FamilyNotificationListener } from './listeners/family-notification.listener';
 import { GameNotificationListener } from './listeners/game-notification.listener';
 import { GiftNotificationListener } from './listeners/gift-notification.listener';
+import { ModeratorDeviceChangeNotificationListener } from './listeners/moderator-device-change-notification.listener';
 import { NotificationSocketListener } from './listeners/notification-socket.listener';
 import { SecurityNotificationListener } from './listeners/security-notification.listener';
 import { SocialNotificationListener } from './listeners/social-notification.listener';
@@ -84,6 +85,7 @@ const ENTERPRISE_SERVICES = [
     VipNotificationListener,
     FamilyNotificationListener,
     SecurityNotificationListener,
+    ModeratorDeviceChangeNotificationListener,
     NotificationSocketListener,
     // public token
     { provide: NOTIFICATION_SERVICE, useExisting: NotificationService },

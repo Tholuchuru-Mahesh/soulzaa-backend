@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import {
@@ -92,6 +92,9 @@ export interface RoomParticipant {
  * Concurrency-sensitive paths (per-user create limit, capacity, ownership
  * transfer) run under a distributed lock.
  */
+import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
+import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
+
 /** Succession order when an owner is removed — highest wins (OWNER never chosen). */
 const OWNER_SUCCESSION_PRIORITY: Record<RoomMemberRole, number> = {
   [RoomMemberRole.OWNER]: 6,
@@ -125,6 +128,8 @@ export class AudioRoomsService implements IAudioRoomsService {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
     @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
+    @Optional() private readonly performanceStats?: ModeratorPerformanceService,
+    @Optional() private readonly investigationRecording?: InvestigationRecordingService,
   ) {
     // Config namespaces surface raw process.env strings at runtime, so coerce.
     const cfg = this.config.get('audioRoom') as {
@@ -176,6 +181,11 @@ export class AudioRoomsService implements IAudioRoomsService {
       }
 
       const passwordHash = dto.password ? await this.passwords.hash(dto.password) : null;
+      // Snapshot the owner's assigned Region onto the room at creation —
+      // mirrors LiveStreamService.createStream's regionId denormalisation —
+      // so WorkforceScopeService.assertModeratorInScope has something real
+      // to check (null ⇒ owner has no region assigned ⇒ unscoped/permit).
+      const region = await this.repo.getOwnerRegionId(actor.id);
       const room = await this.repo.createRoomTx({
         ownerId: actor.id,
         name: dto.name,
@@ -190,6 +200,7 @@ export class AudioRoomsService implements IAudioRoomsService {
         maxParticipants: this.clampMax(dto.maxParticipants),
         agoraChannel: randomUUID(),
         zegoRoomId: randomUUID(),
+        region,
         speakerSeatCount: this.defaultSpeakerSeats,
         premiumAdminSeatCount: this.defaultPremiumAdminSeats,
         requireApprovalForSeat: true,
@@ -509,6 +520,36 @@ export class AudioRoomsService implements IAudioRoomsService {
     await this.bus.publish(
       new RoomJoinedEvent({ roomId, userId: actor.id, participantCount: count }),
     );
+    const isModerator = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
+    if (isModerator) {
+      if (this.performanceStats) {
+        void this.performanceStats.recordAction(actor.id, 'ROOM_VISITED');
+      }
+      if (this.investigationRecording) {
+        // Matches the spec's "Report Received → Moderator reviews report →
+        // Joins assigned room → Backend automatically starts secure
+        // investigation recording" flow: recording opens per pending report
+        // (not a blanket per-join recording against the room owner), with no
+        // reason yet — `completeRecording` finalizes it once the moderator's
+        // action determines one. `beginOrReuseRecording` so a reconnect or
+        // re-join doesn't stack duplicate recordings for the same report.
+        void this.moderation.listPendingReports(roomId).then((reports) =>
+          Promise.all(
+            reports.map((report) =>
+              this.investigationRecording!.beginOrReuseRecording({
+                moderatorId: actor.id,
+                targetUserId: report.targetUserId,
+                roomId,
+                evidencePayload: { roomId, reportId: report.id, trigger: 'room_join' },
+              }),
+            ),
+          ),
+        );
+      }
+    }
+
     return this.getRoomDetail(roomId);
   }
 
@@ -630,9 +671,14 @@ export class AudioRoomsService implements IAudioRoomsService {
     const room = await this.repo.findRoomRow(roomId);
     if (!room) throw this.roomNotFound();
     const view = await this.toView(room);
-    const members = await this.repo.listActiveMembers(roomId);
-    const ids = members.map((m) => m.userId);
+    const allMembers = await this.repo.listActiveMembers(roomId);
+    const ids = allMembers.map((m) => m.userId);
     const identities = await this.profiles.resolvePublicIdentities(ids);
+    // resolvePublicIdentities drops hidden staff accounts (e.g. anonymous
+    // Moderators) from the map entirely — filter their roster rows out here
+    // too, rather than returning a row with every field blanked. Anonymity
+    // means the row is absent, not present-but-empty.
+    const members = allMembers.filter((m) => identities.has(m.userId));
 
     const participants = members.map((m) => {
       const identity = identities.get(m.userId);

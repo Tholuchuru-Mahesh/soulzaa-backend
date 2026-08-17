@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { RoleRequestStage, RoleRequestStatus, RoleRequestType } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { RoleResolver } from 'src/modules/authorization/services/role-resolver.service';
 import { RoleService } from 'src/modules/authorization/services/role.service';
 import { ENTRY_STAGE, nextStage } from '../constants/role-request.constants';
 import { RoleRequestDocumentService } from './role-request-document.service';
@@ -46,6 +47,7 @@ describe('RoleRequestService', () => {
   // These tests submit without documents, so `prepare` resolving empty is the
   // whole of the contract they depend on.
   const documents = { prepare: jest.fn(), buildCreateData: jest.fn() };
+  const roles = { hasRole: jest.fn() };
 
   const openRequest = (over: Record<string, unknown> = {}) => ({
     id: 'req-1',
@@ -70,11 +72,13 @@ describe('RoleRequestService', () => {
     tx.roleRequest.update.mockImplementation(({ data }) =>
       Promise.resolve({ ...openRequest(), ...data }),
     );
+    roles.hasRole.mockResolvedValue(true);
     service = new RoleRequestService(
       prisma as unknown as PrismaService,
       routing as unknown as RoleRequestRoutingService,
       roleService as unknown as RoleService,
       documents as unknown as RoleRequestDocumentService,
+      roles as unknown as RoleResolver,
     );
   });
 
@@ -118,6 +122,45 @@ describe('RoleRequestService', () => {
       await expect(
         service.submit({ type: RoleRequestType.AGENCY, subjectUserId: 'subject-1' }, 'initiator-1'),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('refuses a Moderator request where the initiator is the subject', async () => {
+      await expect(
+        service.submit(
+          { type: RoleRequestType.MODERATOR, subjectUserId: 'user-1' },
+          'user-1',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(tx.roleRequestCounter.upsert).not.toHaveBeenCalled();
+    });
+
+    it('refuses a Moderator request initiated by a non-Official', async () => {
+      roles.hasRole.mockResolvedValue(false);
+
+      await expect(
+        service.submit(
+          { type: RoleRequestType.MODERATOR, subjectUserId: 'subject-1' },
+          'initiator-1',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(roles.hasRole).toHaveBeenCalledWith('initiator-1', 'OFFICIAL');
+      expect(tx.roleRequestCounter.upsert).not.toHaveBeenCalled();
+    });
+
+    it('accepts a Moderator request recommended by an Official for someone else', async () => {
+      tx.roleRequestCounter.upsert.mockResolvedValue({ lastSequence: 1 });
+      tx.roleRequest.create.mockImplementation(({ data }) =>
+        Promise.resolve({ id: 'req-1', ...data }),
+      );
+      roles.hasRole.mockResolvedValue(true);
+
+      await service.submit(
+        { type: RoleRequestType.MODERATOR, subjectUserId: 'subject-1' },
+        'official-1',
+      );
+
+      expect(roles.hasRole).toHaveBeenCalledWith('official-1', 'OFFICIAL');
+      expect(tx.roleRequestCounter.upsert).toHaveBeenCalled();
     });
   });
 

@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from 'src/infra/prisma/prisma.module';
+import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
 import { InvestigationRecordingController } from './controllers/investigation-recording.controller';
+import { InvestigationRecordingExpiryScheduler } from './services/investigation-recording-expiry.scheduler';
 import { InvestigationRecordingService } from './services/investigation-recording.service';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, MobileWorkforceModule],
   controllers: [InvestigationRecordingController],
-  providers: [InvestigationRecordingService],
+  providers: [InvestigationRecordingService, InvestigationRecordingExpiryScheduler],
   exports: [InvestigationRecordingService],
 })
 export class InvestigationRecordingModule {}

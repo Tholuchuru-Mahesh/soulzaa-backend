@@ -114,6 +114,30 @@ async function main(): Promise<void> {
     update: { name: 'Bengaluru Region' },
   });
 
+  const stateAP = await prisma.state.upsert({
+    where: { countryId_code: { countryId: country.id, code: 'AP' } },
+    create: { countryId: country.id, code: 'AP', name: 'Andhra Pradesh' },
+    update: { name: 'Andhra Pradesh' },
+  });
+
+  await prisma.region.upsert({
+    where: { stateId_code: { stateId: stateAP.id, code: 'VJA' } },
+    create: { stateId: stateAP.id, code: 'VJA', name: 'Vijayawada Region' },
+    update: { name: 'Vijayawada Region' },
+  });
+
+  const stateTN = await prisma.state.upsert({
+    where: { countryId_code: { countryId: country.id, code: 'TN' } },
+    create: { countryId: country.id, code: 'TN', name: 'Tamil Nadu' },
+    update: { name: 'Tamil Nadu' },
+  });
+
+  await prisma.region.upsert({
+    where: { stateId_code: { stateId: stateTN.id, code: 'CHN' } },
+    create: { stateId: stateTN.id, code: 'CHN', name: 'Chennai Region' },
+    update: { name: 'Chennai Region' },
+  });
+
   console.log('Geographic reference data seeded successfully.');
 
   // Reconcile the legacy `User.roles` column into UserRole rows. Additive only —

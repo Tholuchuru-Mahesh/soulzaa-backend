@@ -211,7 +211,8 @@ export class ReportVideoRoomUserDto {
   messageId?: string;
 }
 
-/** Moderator resolution of a report. */
+export { AssignReportDto } from 'src/common/dto/assign-report.dto';
+
 export class ReviewReportDto {
   @ApiProperty({
     enum: [

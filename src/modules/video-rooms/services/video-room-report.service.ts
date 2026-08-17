@@ -1,10 +1,13 @@
 import { InjectQueue } from '@nestjs/bullmq';
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { forwardRef, HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import {
   Prisma,
+  VideoRoomBlockType,
   VideoRoomModerationActionType,
+  VideoRoomModerationMuteType,
   VideoRoomReport,
   VideoRoomReportReason,
+  VideoRoomReportStatus,
 } from '@prisma/client';
 import type { Queue } from 'bullmq';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
@@ -36,6 +39,20 @@ import {
 } from './video-room-permission.service';
 
 import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
+import { ModeratorNotificationService } from 'src/modules/moderator-shift/services/moderator-notification.service';
+import { ModerationApprovalService } from 'src/modules/moderation-approval/services/moderation-approval.service';
+import {
+  buildReportReviewReason,
+  recordReportResolutionIfConfigured,
+} from 'src/modules/moderation-approval/utils/report-review-outcome.util';
+import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import { VideoRoomModerationService } from './video-room-moderation.service';
+
+/** Report reasons that page a moderator immediately rather than waiting in the normal report queue. */
+const HIGH_PRIORITY_REPORT_REASONS: VideoRoomReportReason[] = [
+  VideoRoomReportReason.THREATS,
+  VideoRoomReportReason.SEXUAL_CONTENT,
+];
 
 /**
  * Phase 16 reporting: a member (any active role, including audience/viewer —
@@ -43,7 +60,7 @@ import { ModeratorPerformanceService } from 'src/modules/moderator-performance/s
  * another user, optionally about a specific chat message; a moderator later
  * triages it. Mirrors the Audio Room `ModerationService`'s report/reviewReport
  * pair (`moderatorRecipients` fan-out, `appendAction(REPORT_REVIEWED)`), but
- * scoped to its own repository/events/metrics and this module's `MANAGE_PARTICIPANTS`
+ * scoped to its own repository/events/metrics and this module's `REVIEW_REPORTS`
  * gate for triage (there is no separate "notes"/appeal surface here).
  *
  * `VideoRoomsRepository` alone has no elevated-member lookup — that lives on
@@ -62,7 +79,12 @@ export class VideoRoomReportService {
     private readonly metrics: VideoRoomModerationMetrics,
     @InjectQueue(VIDEO_ROOM_MODERATION_QUEUES.REPORT) private readonly queue: Queue,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
-    private readonly performanceStats?: ModeratorPerformanceService,
+    @Inject(forwardRef(() => VideoRoomModerationService))
+    private readonly moderation: VideoRoomModerationService,
+    private readonly scopeService: WorkforceScopeService,
+    @Optional() private readonly performanceStats?: ModeratorPerformanceService,
+    @Optional() private readonly moderatorNotify?: ModeratorNotificationService,
+    @Optional() private readonly approvalService?: ModerationApprovalService,
   ) {}
 
   /**
@@ -135,7 +157,7 @@ export class VideoRoomReportService {
   }
 
   /**
-   * Moderator triage of a pending report: `MANAGE_PARTICIPANTS` gate, 404 if
+   * Moderator triage of a pending report: `REVIEW_REPORTS` gate, 404 if
    * the report doesn't exist (or belongs to a different room), conflict if
    * it's already been actioned. Records the resolution, appends the
    * immutable audit row, and publishes `ReportReviewedEvent`.
@@ -148,7 +170,12 @@ export class VideoRoomReportService {
     requestMeta?: RequestMetadata,
   ): Promise<void> {
     const ref = await this.requireRoom(roomId);
-    await this.permissions.assertPermission(actor, ref, VideoRoomPermission.MANAGE_PARTICIPANTS);
+    await this.permissions.assertPermission(actor, ref, VideoRoomPermission.REVIEW_REPORTS);
+
+    const room = await this.rooms.findById(roomId);
+    if (room?.region) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    }
 
     const report = await this.reportRepo.getById(reportId);
     if (!report || report.roomId !== ref.id) {
@@ -179,9 +206,46 @@ export class VideoRoomReportService {
       ),
     });
 
-    if (this.performanceStats) {
-      await this.performanceStats.recordAction(actor.id, 'REPORT_ESCALATED' as any);
+    if (dto.recommendedAction) {
+      // Tagged distinctly from a live in-room action: this action was decided
+      // during asynchronous report review, not while the moderator was
+      // observing the room in real time — same convention as Audio Room's
+      // `ModerationService.reviewReport`. The moderator already has direct
+      // kick/mute/ban authority, so this executes immediately; the tag is
+      // audit-trail clarity, not a separate approval gate.
+      const reason = buildReportReviewReason(reportId, dto.resolutionAction, dto.recommendedAction);
+      if (dto.recommendedAction === 'WARNING') {
+        await this.moderation.warn(actor, roomId, report.targetUserId, reason, undefined, requestMeta);
+      } else if (dto.recommendedAction === 'MUTE') {
+        await this.moderation.mute(
+          actor,
+          roomId,
+          { userId: report.targetUserId, type: VideoRoomModerationMuteType.PERMANENT, reason },
+          requestMeta,
+        );
+      } else if (dto.recommendedAction === 'KICK') {
+        await this.moderation.kick(actor, roomId, report.targetUserId, reason, requestMeta);
+      } else if (dto.recommendedAction === 'BAN') {
+        // Hard to reverse, so it does not auto-execute like the other three
+        // — it goes to the Official covering the room's region as a pending
+        // approval instead (see ModerationApprovalService). If the approval
+        // service isn't wired, the recommendation is left unactioned rather
+        // than silently executing without the review it needs.
+        if (this.approvalService) {
+          await this.approvalService.propose({
+            roomType: 'VIDEO_ROOM',
+            roomId,
+            reportId,
+            proposedBy: actor.id,
+            targetUserId: report.targetUserId,
+            reason,
+            regionId: room?.region ?? null,
+          });
+        }
+      }
     }
+
+    await recordReportResolutionIfConfigured(this.performanceStats, actor.id, report.createdAt);
 
     await this.bus.publish(
       new ReportReviewedEvent({
@@ -195,14 +259,125 @@ export class VideoRoomReportService {
     );
   }
 
-  /** Paginated report listing for moderators (`MANAGE_PARTICIPANTS`), optionally filtered by target. */
+  async addReportNotes(
+    actor: RoomActor,
+    roomId: string,
+    reportId: string,
+    notes: string,
+  ): Promise<void> {
+    const ref = await this.requireRoom(roomId);
+    await this.permissions.assertPermission(actor, ref, VideoRoomPermission.REVIEW_REPORTS);
+    const room = await this.rooms.findById(roomId);
+    if (room?.region) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    }
+    // The scope check above authorizes `roomId`, so the report being mutated
+    // must actually belong to that room — otherwise a moderator scoped to
+    // this room could pass any out-of-scope room's reportId and edit it.
+    const report = await this.reportRepo.getById(reportId);
+    if (!report || report.roomId !== ref.id) {
+      throw new ReportException(
+        ERROR_CODES.VIDEO_ROOM_REPORT_NOT_FOUND,
+        'Report not found.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    await this.reportRepo.updateNotes(reportId, actor.id, notes);
+    await this.moderationRepo.appendAction({
+      roomId: ref.id,
+      moderatorId: actor.id,
+      targetUserId: null,
+      action: VideoRoomModerationActionType.REPORT_REVIEWED,
+      reason: 'Report investigation notes updated',
+      metadata: { reportId, notes },
+    });
+  }
+
+  async dismissReport(
+    actor: RoomActor,
+    roomId: string,
+    reportId: string,
+    reason?: string,
+  ): Promise<void> {
+    const ref = await this.requireRoom(roomId);
+    await this.permissions.assertPermission(actor, ref, VideoRoomPermission.REVIEW_REPORTS);
+    const room = await this.rooms.findById(roomId);
+    if (room?.region) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    }
+    const report = await this.reportRepo.getById(reportId);
+    if (!report || report.roomId !== ref.id) {
+      throw new ReportException(
+        ERROR_CODES.VIDEO_ROOM_REPORT_NOT_FOUND,
+        'Report not found.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    await this.reportRepo.review(
+      reportId,
+      actor.id,
+      VideoRoomReportStatus.DISMISSED,
+      reason ?? 'Dismissed as false report',
+    );
+    await this.moderationRepo.appendAction({
+      roomId: ref.id,
+      moderatorId: actor.id,
+      targetUserId: null,
+      action: VideoRoomModerationActionType.REPORT_REVIEWED,
+      reason: reason ?? 'Dismissed as false report',
+      metadata: { reportId, status: 'DISMISSED' },
+    });
+    if (this.performanceStats) {
+      const resolutionMinutes = (Date.now() - report.createdAt.getTime()) / 60_000;
+      await this.performanceStats.recordReportResolution(actor.id, resolutionMinutes);
+    }
+  }
+
+  /** Assigns a PENDING report to a moderator, opening it as their investigation. */
+  async assignReport(
+    actor: RoomActor,
+    roomId: string,
+    reportId: string,
+    assigneeId: string,
+  ): Promise<void> {
+    const ref = await this.requireRoom(roomId);
+    await this.permissions.assertPermission(actor, ref, VideoRoomPermission.REVIEW_REPORTS);
+
+    const room = await this.rooms.findById(roomId);
+    if (room?.region) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    }
+
+    const report = await this.reportRepo.getById(reportId);
+    if (!report || report.roomId !== ref.id) {
+      throw new ReportException(
+        ERROR_CODES.VIDEO_ROOM_REPORT_NOT_FOUND,
+        'Report not found.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    if (report.status !== 'PENDING') {
+      throw new ReportException(
+        ERROR_CODES.VIDEO_ROOM_REPORT_NOT_PENDING,
+        'That report has already been reviewed.',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    await this.reportRepo.assign(reportId, assigneeId);
+    if (this.moderatorNotify) {
+      await this.moderatorNotify.notifyReportAssigned(assigneeId, reportId, actor.id);
+    }
+  }
+
+  /** Paginated report listing for moderators (`REVIEW_REPORTS`), optionally filtered by target. */
   async listReports(
     actor: RoomActor,
     roomId: string,
     query: ListModerationDto,
   ): Promise<Paginated<VideoRoomReport>> {
     const ref = await this.requireRoom(roomId);
-    await this.permissions.assertPermission(actor, ref, VideoRoomPermission.MANAGE_PARTICIPANTS);
+    await this.permissions.assertPermission(actor, ref, VideoRoomPermission.REVIEW_REPORTS);
 
     const [rows, total] = await this.reportRepo.list(ref.id, {
       skip: query.skip,
@@ -253,7 +428,7 @@ export class VideoRoomReportService {
     ref: PermissionRoomRef,
     report: VideoRoomReport,
     excludeUserId: string,
-  ): Promise<void> {
+  ): Promise<string[]> {
     const recipientIds = await this.elevatedRecipients(ref, excludeUserId);
 
     await this.bus.publish(
@@ -273,6 +448,15 @@ export class VideoRoomReportService {
       recipientIds,
     });
     this.metrics.incReport(report.reason);
+
+    if (this.moderatorNotify && HIGH_PRIORITY_REPORT_REASONS.includes(report.reason)) {
+      await Promise.all(
+        recipientIds.map((moderatorId) =>
+          this.moderatorNotify!.notifyHighPriorityReport(moderatorId, report.id, report.reason),
+        ),
+      );
+    }
+    return recipientIds;
   }
 
   /** Elevated grant holders + the room owner, minus `excludeUserId` (the reporter). */

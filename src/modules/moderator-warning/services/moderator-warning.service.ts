@@ -1,7 +1,11 @@
-import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ModeratorWarningLevel, ModeratorWarningStatus, NotificationType } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
+import {
+  NOTIFICATION_SERVICE,
+  type INotificationService,
+} from 'src/modules/notification/interfaces/notification.interface';
 
 export interface IssueWarningInput {
   moderatorId: string;
@@ -17,6 +21,7 @@ export class ModeratorWarningService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(NOTIFICATION_SERVICE) private readonly notifications: INotificationService,
     @Optional() private readonly performanceStats?: ModeratorPerformanceService,
   ) {}
 
@@ -45,17 +50,18 @@ export class ModeratorWarningService {
       `Warning ${input.level} issued to moderator ${input.moderatorId} by ${input.issuedBy}`,
     );
 
-    // Notify the moderator regardless of level.
-    await this.prisma.notification.create({
+    // Notify the moderator regardless of level. Goes through
+    // NOTIFICATION_SERVICE.create() (fires NotificationCreatedEvent for
+    // realtime Push/In-App delivery), not a raw prisma write.
+    await this.notifications.create({
+      userId: input.moderatorId,
+      type: NotificationType.MODERATOR_WARNING_ISSUED,
+      actorId: input.issuedBy,
       data: {
-        userId: input.moderatorId,
-        type: NotificationType.MODERATOR_WARNING_ISSUED,
-        data: {
-          warningId: warning.id,
-          level: input.level,
-          reason: input.reason,
-          requiresCountryManagerReview: isLevel2,
-        },
+        warningId: warning.id,
+        level: input.level,
+        reason: input.reason,
+        requiresCountryManagerReview: isLevel2,
       },
     });
 
@@ -64,11 +70,18 @@ export class ModeratorWarningService {
       void this.performanceStats.recordAction(input.issuedBy, 'WARN');
     }
 
-    // Level 3: suspend Moderator role by marking the UserRole as inactive
+    // Level 3: suspend Moderator role by marking UserRole suspended
     if (input.level === ModeratorWarningLevel.LEVEL_3) {
       this.logger.warn(
         `Moderator ${input.moderatorId} has received Level 3 warning — access suspended pending Admin review.`,
       );
+      const modRole = await this.prisma.role.findFirst({ where: { name: 'MODERATOR' } });
+      if (modRole) {
+        await this.prisma.userRole.updateMany({
+          where: { userId: input.moderatorId, roleId: modRole.id },
+          data: { suspendedAt: new Date(), suspendedBy: input.issuedBy },
+        });
+      }
     }
 
     return warning;
@@ -109,7 +122,7 @@ export class ModeratorWarningService {
     });
     if (!warning) throw new NotFoundException('Warning not found');
 
-    return this.prisma.moderatorWarningRecord.update({
+    const updated = await this.prisma.moderatorWarningRecord.update({
       where: { id: warningId },
       data: {
         status: ModeratorWarningStatus.RESOLVED,
@@ -118,6 +131,28 @@ export class ModeratorWarningService {
         resolution,
       },
     });
+
+    // If resolving a Level 3 warning, restore the moderator role if no other active Level 3 exists
+    if (warning.level === ModeratorWarningLevel.LEVEL_3) {
+      const remainingL3 = await this.prisma.moderatorWarningRecord.count({
+        where: {
+          moderatorId: warning.moderatorId,
+          level: ModeratorWarningLevel.LEVEL_3,
+          status: ModeratorWarningStatus.ACTIVE,
+        },
+      });
+      if (remainingL3 === 0) {
+        const modRole = await this.prisma.role.findFirst({ where: { name: 'MODERATOR' } });
+        if (modRole) {
+          await this.prisma.userRole.updateMany({
+            where: { userId: warning.moderatorId, roleId: modRole.id },
+            data: { suspendedAt: null, suspendedBy: null },
+          });
+        }
+      }
+    }
+
+    return updated;
   }
 
   async getWarnings(

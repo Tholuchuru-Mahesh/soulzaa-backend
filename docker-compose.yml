@@ -17,6 +17,27 @@ services:
       timeout: 5s
       retries: 10
 
+  # Dedicated database for `npm run seed:e2e` / e2e-spec runs — isolated from
+  # the primary dev DB so throwaway fixture accounts (see
+  # prisma/seed-e2e-fixtures.ts) never mix with real local dev data.
+  postgres-e2e:
+    image: postgres:16-alpine
+    container_name: soulzaa-postgres-e2e
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: soulzaa
+      POSTGRES_PASSWORD: soulzaa
+      POSTGRES_DB: soulzaa_e2e
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres_e2e_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U soulzaa']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   pgbouncer:
     # See docker-compose.prod.yml — bitnami/* is gone from Docker Hub.
     image: bitnamilegacy/pgbouncer:1.24.1-debian-12-r10
@@ -131,5 +152,6 @@ services:
 
 volumes:
   postgres_data:
+  postgres_e2e_data:
   redis_data:
   minio_data:

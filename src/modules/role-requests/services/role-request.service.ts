@@ -13,6 +13,7 @@ import {
   RoleRequestType,
 } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { RoleResolver } from 'src/modules/authorization/services/role-resolver.service';
 import { RoleService } from 'src/modules/authorization/services/role.service';
 import {
   ENTRY_STAGE,
@@ -62,6 +63,7 @@ export class RoleRequestService {
     private readonly routing: RoleRequestRoutingService,
     private readonly roleService: RoleService,
     private readonly documents: RoleRequestDocumentService,
+    private readonly roles: RoleResolver,
   ) {}
 
   /**
@@ -75,8 +77,23 @@ export class RoleRequestService {
    * Documents are validated and checked *before* the transaction opens: the pass
    * downloads and hashes every file, and a rejected document must abort the
    * submission without having burned a reference number.
+   *
+   * Moderator is an anonymous internal enforcement role, not a self-service
+   * application: the spec requires it be recommended by an Official, never
+   * self-registered. `role_request.submit` is a base permission every member
+   * holds (for AGENCY/COIN_SELLER self-applications), so MODERATOR needs its
+   * own gate here rather than relying on the controller's permission check.
    */
   async submit(input: SubmitRoleRequestInput, initiatedByUserId: string) {
+    if (input.type === RoleRequestType.MODERATOR) {
+      if (initiatedByUserId === input.subjectUserId) {
+        throw new ForbiddenException('Moderator accounts cannot self-register.');
+      }
+      if (!(await this.roles.hasRole(initiatedByUserId, 'OFFICIAL'))) {
+        throw new ForbiddenException('Only an Official may recommend a Moderator candidate.');
+      }
+    }
+
     // The applicant typed their country and state on the form, so hand those
     // to the resolver: they are a far better source than anything that can be
     // inferred, and without them an ordinary account has no location at all.

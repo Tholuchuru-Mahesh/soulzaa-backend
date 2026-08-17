@@ -53,6 +53,7 @@ describe('VideoRoomLifecycleService', () => {
   beforeEach(() => {
     repo = {
       countActiveByOwner: jest.fn().mockResolvedValue(0),
+      getOwnerRegionId: jest.fn().mockResolvedValue(null),
       createRoomTx: jest.fn().mockResolvedValue(fullRoom()),
       findById: jest.fn().mockResolvedValue(fullRoom()),
       findDeletedById: jest.fn().mockResolvedValue(null),
@@ -153,6 +154,19 @@ describe('VideoRoomLifecycleService', () => {
     it('clamps maxParticipants to the configured hard cap', async () => {
       await service.create(actor, { name: 'x', maxParticipants: 9999 } as any);
       expect(repo.createRoomTx.mock.calls[0][0].maxParticipants).toBe(20);
+    });
+
+    it("snapshots the owner's region onto the room at creation", async () => {
+      repo.getOwnerRegionId.mockResolvedValue('region-eu-west');
+      await service.create(actor, { name: 'x' } as any);
+      expect(repo.getOwnerRegionId).toHaveBeenCalledWith(actor.id);
+      expect(repo.createRoomTx.mock.calls[0][0].region).toBe('region-eu-west');
+    });
+
+    it('creates with a null region when the owner has none assigned', async () => {
+      repo.getOwnerRegionId.mockResolvedValue(null);
+      await service.create(actor, { name: 'x' } as any);
+      expect(repo.createRoomTx.mock.calls[0][0].region).toBeNull();
     });
   });
 

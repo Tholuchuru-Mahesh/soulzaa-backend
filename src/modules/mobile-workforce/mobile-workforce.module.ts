@@ -6,6 +6,7 @@ import { MobileWorkforceService } from './services/mobile-workforce.service';
 import { WorkforceScopeService } from './services/workforce-scope.service';
 
 import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shift.module';
+import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-warning.module';
 
 /**
  * Mobile console for the operational workforce — Country Manager, Official and
@@ -15,7 +16,7 @@ import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shif
  * query to the caller's assigned territory.
  */
 @Module({
-  imports: [PrismaModule, ModeratorShiftModule],
+  imports: [PrismaModule, ModeratorShiftModule, ModeratorWarningModule],
   controllers: [MobileWorkforceController, ModeratorLiveMonitoringController],
   providers: [MobileWorkforceService, WorkforceScopeService],
   exports: [MobileWorkforceService, WorkforceScopeService],

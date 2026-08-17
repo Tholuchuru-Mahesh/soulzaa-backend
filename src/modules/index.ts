@@ -58,6 +58,7 @@ import { ModeratorWarningModule } from './moderator-warning/moderator-warning.mo
 import { ModeratorPerformanceModule } from './moderator-performance/moderator-performance.module';
 import { SupportTicketsModule } from './support-tickets/support-tickets.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
+import { ModerationApprovalModule } from './moderation-approval/moderation-approval.module';
 
 export const DOMAIN_MODULES = [
   TreasuryModule,
@@ -124,6 +125,7 @@ export const DOMAIN_MODULES = [
   InvestigationRecordingModule,
   ModeratorWarningModule,
   ModeratorPerformanceModule,
+  ModerationApprovalModule,
   // Official Portal — support tickets lifecycle (submit, review, assign, escalate).
   SupportTicketsModule,
   // Official Portal — campaigns and community programs (territory-scoped).

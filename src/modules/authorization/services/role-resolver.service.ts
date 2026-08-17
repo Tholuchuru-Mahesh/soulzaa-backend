@@ -22,7 +22,7 @@ export class RoleResolver {
    */
   async getDirectUserRoles(userId: string): Promise<Array<{ id: string; name: string }>> {
     const userRoles = await this.prisma.userRole.findMany({
-      where: { userId },
+      where: { userId, suspendedAt: null },
       include: { role: true },
     });
     return userRoles.map((ur) => ({ id: ur.role.id, name: ur.role.name }));

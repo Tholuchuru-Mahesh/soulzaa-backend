@@ -77,7 +77,7 @@ export class ModeratorDeviceChangeController {
 
   @Put(':id/approve')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('moderator.device.review')
+  @RequirePermissions('moderator.device.approve')
   @ApiOperation({
     summary: 'Approve a device change request (Admin final approval + auto device registration)',
   })

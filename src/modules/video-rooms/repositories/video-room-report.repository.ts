@@ -71,6 +71,21 @@ export class VideoRoomReportRepository {
     });
   }
 
+  /** Every open (PENDING) report in a room — powers the join-triggered investigation recording. */
+  listPendingReports(roomId: string): Promise<VideoRoomReport[]> {
+    return this.prisma.videoRoomReport.findMany({
+      where: { roomId, status: VideoRoomReportStatus.PENDING },
+    });
+  }
+
+  /** Assigns a PENDING report to a moderator for investigation — powers `myAssignedQueue`. */
+  async assign(id: string, assigneeId: string): Promise<void> {
+    await this.prisma.videoRoomReport.update({
+      where: { id },
+      data: { assigneeId, assignedAt: new Date() },
+    });
+  }
+
   async review(
     id: string,
     reviewerId: string,
@@ -84,6 +99,16 @@ export class VideoRoomReportRepository {
         reviewedBy: reviewerId,
         reviewedAt: new Date(),
         resolutionAction: resolutionAction ?? null,
+        ...auditUpdate(reviewerId),
+      },
+    });
+  }
+
+  async updateNotes(id: string, reviewerId: string, notes: string): Promise<void> {
+    await this.prisma.videoRoomReport.update({
+      where: { id },
+      data: {
+        moderatorNotes: notes,
         ...auditUpdate(reviewerId),
       },
     });

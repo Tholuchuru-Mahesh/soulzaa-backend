@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { TaskQueryService } from 'src/modules/tasks/services/task-query.service';
 
 export type ModerationActionType =
   | 'WARN'
@@ -22,11 +23,17 @@ const SCORE_WEIGHTS: Record<ModerationActionType, number> = {
   ROOM_VISITED: 0.25,
 };
 
+/** Points deducted from today's performance score per upheld appeal (a "false moderation"). */
+const FALSE_MODERATION_PENALTY = 3;
+
 @Injectable()
 export class ModeratorPerformanceService {
   private readonly logger = new Logger(ModeratorPerformanceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly tasks?: TaskQueryService,
+  ) {}
 
   private todayKey(): string {
     const d = new Date();
@@ -71,6 +78,89 @@ export class ModeratorPerformanceService {
       void this.recalculateScore(moderatorId, dateKey);
     } catch (err) {
       this.logger.error(`Failed to record action for ${moderatorId}: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * A report was closed (reviewed, dismissed, or actioned). Increments
+   * `reportsResolved` and folds `resolutionMinutes` into today's running
+   * average for both `avgResolutionMinutes` and `avgResponseTime` — the two
+   * are currently the same computation (time from report filed to report
+   * closed) because no distinct "assigned to a moderator" timestamp exists
+   * yet to measure response latency separately from total resolution time.
+   * Owns the `reportsResolved` increment — callers should not also call
+   * `recordAction(..., 'REPORT_RESOLVED')` for the same event.
+   */
+  async recordReportResolution(moderatorId: string, resolutionMinutes: number): Promise<void> {
+    const dateKey = this.todayKey();
+    try {
+      const existing = await this.prisma.moderatorDailyStats.findUnique({
+        where: { moderatorId_dateKey: { moderatorId, dateKey } },
+      });
+      const priorCount = existing?.reportsResolved ?? 0;
+      const priorAvg = existing?.avgResolutionMinutes ?? 0;
+      const newAvg = priorAvg + (resolutionMinutes - priorAvg) / (priorCount + 1);
+
+      if (existing) {
+        await this.prisma.moderatorDailyStats.update({
+          where: { moderatorId_dateKey: { moderatorId, dateKey } },
+          data: {
+            reportsResolved: { increment: 1 },
+            avgResolutionMinutes: newAvg,
+            avgResponseTime: newAvg,
+          },
+        });
+      } else {
+        await this.prisma.moderatorDailyStats.create({
+          data: {
+            moderatorId,
+            dateKey,
+            reportsResolved: 1,
+            avgResolutionMinutes: resolutionMinutes,
+            avgResponseTime: resolutionMinutes,
+          },
+        });
+      }
+
+      void this.recalculateScore(moderatorId, dateKey);
+    } catch (err) {
+      this.logger.error(
+        `Failed to record report resolution for ${moderatorId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * An appeal against this moderator's mute/kick/ban was upheld — the
+   * original action was wrong. Increments `falseModerationCount` and applies
+   * a score penalty (clamped at 0, same clamp `recalculateScore` applies at
+   * the top end).
+   */
+  async recordFalseModeration(moderatorId: string): Promise<void> {
+    const dateKey = this.todayKey();
+    try {
+      const existing = await this.prisma.moderatorDailyStats.findUnique({
+        where: { moderatorId_dateKey: { moderatorId, dateKey } },
+      });
+
+      const stats = existing
+        ? await this.prisma.moderatorDailyStats.update({
+            where: { moderatorId_dateKey: { moderatorId, dateKey } },
+            data: { falseModerationCount: { increment: 1 } },
+          })
+        : await this.prisma.moderatorDailyStats.create({
+            data: { moderatorId, dateKey, falseModerationCount: 1 },
+          });
+
+      const penalized = Math.max(0, stats.performanceScore - FALSE_MODERATION_PENALTY);
+      await this.prisma.moderatorDailyStats.update({
+        where: { moderatorId_dateKey: { moderatorId, dateKey } },
+        data: { performanceScore: penalized },
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to record false moderation for ${moderatorId}: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -170,10 +260,26 @@ export class ModeratorPerformanceService {
         },
       );
 
+    const dailyTarget = todayStats?.dailyTarget ?? 20;
+    const weeklyTarget = todayStats?.weeklyTarget ?? 100;
+    const monthlyTarget = todayStats?.monthlyTarget ?? 400;
+    const weekAgg = aggregate(weekStats);
+    const monthAgg = aggregate(monthStats);
+
+    const taskCompletion = this.tasks
+      ? await this.tasks.moderatorAssignmentSummary(moderatorId)
+      : null;
+
     return {
       today: todayStats,
-      weekSummary: aggregate(weekStats),
-      monthSummary: aggregate(monthStats),
+      weekSummary: weekAgg,
+      monthSummary: monthAgg,
+      taskCompletion,
+      targets: {
+        daily: { target: dailyTarget, actual: todayStats?.reportsReviewed ?? 0 },
+        weekly: { target: weeklyTarget, actual: weekAgg.reportsReviewed },
+        monthly: { target: monthlyTarget, actual: monthAgg.reportsReviewed },
+      },
     };
   }
 

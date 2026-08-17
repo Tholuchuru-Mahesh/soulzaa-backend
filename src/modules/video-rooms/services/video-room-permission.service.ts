@@ -88,6 +88,7 @@ export class VideoRoomPermissionService {
     VideoRoomPermission.KICK_USERS,
     VideoRoomPermission.BLOCK_USERS,
     VideoRoomPermission.ROOM_MUTE,
+    VideoRoomPermission.REVIEW_REPORTS,
   ]);
 
   /**

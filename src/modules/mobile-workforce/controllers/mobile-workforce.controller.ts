@@ -60,6 +60,14 @@ export class MobileWorkforceController {
     return this.service.moderationQueue(userId, Number(limit) || 25);
   }
 
+  @ApiOperation({ summary: 'Investigation reports assigned specifically to current moderator' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Page size (default 25, max 100)' })
+  @ApiResponse({ status: 200, description: 'Assigned audio and video report queue' })
+  @Get('me/assigned-queue')
+  myAssignedQueue(@CurrentUser('id') userId: string, @Query('limit') limit?: string) {
+    return this.service.myAssignedQueue(userId, Number(limit) || 25);
+  }
+
   @ApiOperation({ summary: 'Complete Moderator Mobile Dashboard overview' })
   @ApiResponse({ status: 200, description: 'Aggregated scope, shift, stats, and queue' })
   @Get('me/dashboard')

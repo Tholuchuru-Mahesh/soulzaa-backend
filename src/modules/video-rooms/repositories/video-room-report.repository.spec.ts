@@ -86,6 +86,13 @@ describe('VideoRoomReportRepository', () => {
     });
   });
 
+  it('listPendingReports filters to PENDING reports in the room', async () => {
+    await repo.listPendingReports('r1');
+    expect(prisma.videoRoomReport.findMany).toHaveBeenCalledWith({
+      where: { roomId: 'r1', status: VideoRoomReportStatus.PENDING },
+    });
+  });
+
   it('review records the reviewer, status and resolution', async () => {
     await repo.review('rep1', 'mod1', VideoRoomReportStatus.REVIEWED, 'warned user');
     const data = prisma.videoRoomReport.update.mock.calls[0][0].data;

@@ -1,4 +1,4 @@
-import { HttpStatus } from '@nestjs/common';
+import { ForbiddenException, HttpStatus } from '@nestjs/common';
 import {
   PlatformRole,
   VideoRoomModerationActionType,
@@ -6,6 +6,7 @@ import {
   VideoRoomReportStatus,
 } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
+import type { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
 import { SYSTEM_MODERATOR_ID } from '../constants/video-room-moderation.constants';
 import type { ListModerationDto } from '../dto/moderation.dto';
 import { VIDEO_ROOM_MODERATION_EVENTS } from '../events/video-room-moderation.events';
@@ -30,6 +31,9 @@ describe('VideoRoomReportService', () => {
   let metrics: any;
   let queue: any;
   let bus: any;
+  let moderation: any;
+  let approvalService: any;
+  let scopeService: { assertModeratorInScope: jest.Mock };
   let subject: VideoRoomReportService;
 
   beforeEach(() => {
@@ -45,6 +49,8 @@ describe('VideoRoomReportService', () => {
       findOpen: jest.fn().mockResolvedValue(null),
       review: jest.fn().mockResolvedValue(undefined),
       list: jest.fn().mockResolvedValue([[], 0]),
+      updateNotes: jest.fn().mockResolvedValue(undefined),
+      assign: jest.fn().mockResolvedValue(undefined),
     };
     rooms = {
       findById: jest.fn().mockResolvedValue(ROOM),
@@ -82,6 +88,20 @@ describe('VideoRoomReportService', () => {
     metrics = { incReport: jest.fn() };
     queue = { add: jest.fn().mockResolvedValue(undefined) };
     bus = { publish: jest.fn().mockResolvedValue(undefined) };
+    moderation = {
+      warn: jest.fn().mockResolvedValue(undefined),
+      mute: jest.fn().mockResolvedValue(undefined),
+      kick: jest.fn().mockResolvedValue(undefined),
+      blacklist: jest.fn().mockResolvedValue(undefined),
+    };
+    approvalService = {
+      propose: jest.fn().mockResolvedValue({ id: 'approval-1' }),
+    };
+    // `ROOM` (below) carries no `region`, so `room?.region` is falsy for
+    // every pre-existing test in this file and the scope check never
+    // actually fires — this mock exists only to satisfy the now-required
+    // constructor parameter.
+    scopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
 
     subject = new VideoRoomReportService(
       reportRepo,
@@ -92,6 +112,11 @@ describe('VideoRoomReportService', () => {
       metrics,
       queue,
       bus,
+      moderation,
+      scopeService as unknown as WorkforceScopeService,
+      undefined,
+      undefined,
+      approvalService,
     );
   });
 
@@ -416,6 +441,103 @@ describe('VideoRoomReportService', () => {
       ).resolves.toBeUndefined();
       expect(reportRepo.review).toHaveBeenCalled();
     });
+
+    describe('recommendedAction execution', () => {
+      beforeEach(() => {
+        reportRepo.getById.mockResolvedValue(PENDING_REPORT);
+      });
+
+      it('executes a WARNING recommendation via VideoRoomModerationService.warn', async () => {
+        await subject.reviewReport(MODERATOR, ROOM.id, 'report-1', {
+          status: VideoRoomReportStatus.ACTIONED,
+          recommendedAction: 'WARNING',
+        });
+        expect(moderation.warn).toHaveBeenCalledWith(
+          MODERATOR,
+          ROOM.id,
+          TARGET,
+          expect.stringContaining('[Report #report-1 review]'),
+          undefined,
+          undefined,
+        );
+      });
+
+      it('executes a MUTE recommendation as a PERMANENT mute', async () => {
+        await subject.reviewReport(MODERATOR, ROOM.id, 'report-1', {
+          status: VideoRoomReportStatus.ACTIONED,
+          recommendedAction: 'MUTE',
+        });
+        expect(moderation.mute).toHaveBeenCalledWith(
+          MODERATOR,
+          ROOM.id,
+          expect.objectContaining({ userId: TARGET, type: 'PERMANENT' }),
+          undefined,
+        );
+      });
+
+      it('executes a KICK recommendation', async () => {
+        await subject.reviewReport(MODERATOR, ROOM.id, 'report-1', {
+          status: VideoRoomReportStatus.ACTIONED,
+          recommendedAction: 'KICK',
+        });
+        expect(moderation.kick).toHaveBeenCalledWith(
+          MODERATOR,
+          ROOM.id,
+          TARGET,
+          expect.stringContaining('[Report #report-1 review]'),
+          undefined,
+        );
+      });
+
+      it('proposes a BAN recommendation for approval instead of executing it', async () => {
+        await subject.reviewReport(MODERATOR, ROOM.id, 'report-1', {
+          status: VideoRoomReportStatus.ACTIONED,
+          recommendedAction: 'BAN',
+        });
+        expect(approvalService.propose).toHaveBeenCalledWith(
+          expect.objectContaining({
+            roomType: 'VIDEO_ROOM',
+            roomId: ROOM.id,
+            reportId: 'report-1',
+            proposedBy: MODERATOR.id,
+            targetUserId: TARGET,
+            reason: expect.stringContaining('[Report #report-1 review]'),
+          }),
+        );
+        expect(moderation.blacklist).not.toHaveBeenCalled();
+      });
+
+      it('leaves a BAN recommendation unactioned when no approval service is wired', async () => {
+        const noApprovalSubject = new VideoRoomReportService(
+          reportRepo,
+          rooms,
+          roles,
+          permissions,
+          moderationRepo,
+          metrics,
+          queue,
+          bus,
+          moderation,
+          scopeService as unknown as WorkforceScopeService,
+        );
+        await noApprovalSubject.reviewReport(MODERATOR, ROOM.id, 'report-1', {
+          status: VideoRoomReportStatus.ACTIONED,
+          recommendedAction: 'BAN',
+        });
+        expect(moderation.blacklist).not.toHaveBeenCalled();
+        expect(approvalService.propose).not.toHaveBeenCalled();
+      });
+
+      it('executes nothing when no recommendedAction is given', async () => {
+        await subject.reviewReport(MODERATOR, ROOM.id, 'report-1', {
+          status: VideoRoomReportStatus.DISMISSED,
+        });
+        expect(moderation.warn).not.toHaveBeenCalled();
+        expect(moderation.mute).not.toHaveBeenCalled();
+        expect(moderation.kick).not.toHaveBeenCalled();
+        expect(moderation.blacklist).not.toHaveBeenCalled();
+      });
+    });
   });
 
   // ======================= listReports =======================
@@ -525,6 +647,133 @@ describe('VideoRoomReportService', () => {
       const result = await subject.createSystemReport(ROOM.id, TARGET, VideoRoomReportReason.SPAM);
       expect(result.reporterId).toBe(SYSTEM_MODERATOR_ID);
       expect(reportRepo.create).toHaveBeenCalled();
+    });
+  });
+
+  // ======================= region scope enforcement =======================
+
+  describe('region scope enforcement', () => {
+    let scopedScopeService: { assertModeratorInScope: jest.Mock };
+    let scopedSubject: VideoRoomReportService;
+
+    beforeEach(() => {
+      // Reuses this file's shared fixtures, but with a room that DOES carry a
+      // `region` (the outer `ROOM` fixture deliberately has none, so the
+      // outer `subject`'s scope check never fires — see the comment above
+      // its construction) and a fresh `scopeService` double so assertions
+      // here don't interfere with the outer describe's tests.
+      rooms.findById.mockResolvedValue({ ...ROOM, region: 'region-eu-west' });
+      scopedScopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
+      scopedSubject = new VideoRoomReportService(
+        reportRepo,
+        rooms,
+        roles,
+        permissions,
+        moderationRepo,
+        metrics,
+        queue,
+        bus,
+        moderation,
+        scopedScopeService as unknown as WorkforceScopeService,
+        undefined,
+        undefined,
+        approvalService,
+      );
+    });
+
+    it('reviewReport checks the room region', async () => {
+      reportRepo.getById.mockResolvedValue({
+        id: 'report-1',
+        roomId: ROOM.id,
+        status: VideoRoomReportStatus.PENDING,
+        targetUserId: TARGET,
+        createdAt: new Date(),
+      });
+      await scopedSubject.reviewReport(MODERATOR, ROOM.id, 'report-1', {
+        status: VideoRoomReportStatus.REVIEWED,
+      } as any);
+      expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
+        MODERATOR.id,
+        'region-eu-west',
+      );
+    });
+
+    it('reviewReport rejects a moderator outside scope', async () => {
+      reportRepo.getById.mockResolvedValue({
+        id: 'report-1',
+        roomId: ROOM.id,
+        status: VideoRoomReportStatus.PENDING,
+        targetUserId: TARGET,
+        createdAt: new Date(),
+      });
+      scopedScopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
+      await expect(
+        scopedSubject.reviewReport(MODERATOR, ROOM.id, 'report-1', {
+          status: VideoRoomReportStatus.REVIEWED,
+        } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(reportRepo.review).not.toHaveBeenCalled();
+    });
+
+    it('addReportNotes checks the room region', async () => {
+      reportRepo.getById.mockResolvedValue({ id: 'report-1', roomId: ROOM.id });
+      await scopedSubject.addReportNotes(MODERATOR, ROOM.id, 'report-1', 'notes');
+      expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
+        MODERATOR.id,
+        'region-eu-west',
+      );
+      expect(reportRepo.updateNotes).toHaveBeenCalledWith('report-1', MODERATOR.id, 'notes');
+    });
+
+    // The scope check authorizes the roomId in the URL. Without binding the
+    // reportId to that same room, a moderator scoped to this room could pass
+    // an out-of-scope room's reportId alongside it and mutate it unchecked.
+    it('addReportNotes 404s when the report belongs to a different room', async () => {
+      reportRepo.getById.mockResolvedValue({ id: 'report-1', roomId: 'other-room' });
+      await expect(
+        scopedSubject.addReportNotes(MODERATOR, ROOM.id, 'report-1', 'notes'),
+      ).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_REPORT_NOT_FOUND,
+        status: HttpStatus.NOT_FOUND,
+      });
+      expect(reportRepo.updateNotes).not.toHaveBeenCalled();
+    });
+
+    it('addReportNotes 404s when the report does not exist', async () => {
+      reportRepo.getById.mockResolvedValue(null);
+      await expect(
+        scopedSubject.addReportNotes(MODERATOR, ROOM.id, 'missing', 'notes'),
+      ).rejects.toMatchObject({
+        errorCode: ERROR_CODES.VIDEO_ROOM_REPORT_NOT_FOUND,
+        status: HttpStatus.NOT_FOUND,
+      });
+      expect(reportRepo.updateNotes).not.toHaveBeenCalled();
+    });
+
+    it('dismissReport checks the room region', async () => {
+      reportRepo.getById.mockResolvedValue({
+        id: 'report-1',
+        roomId: ROOM.id,
+        createdAt: new Date(),
+      });
+      await scopedSubject.dismissReport(MODERATOR, ROOM.id, 'report-1', 'reason');
+      expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
+        MODERATOR.id,
+        'region-eu-west',
+      );
+    });
+
+    it('assignReport checks the room region', async () => {
+      reportRepo.getById.mockResolvedValue({
+        id: 'report-1',
+        roomId: ROOM.id,
+        status: VideoRoomReportStatus.PENDING,
+      });
+      await scopedSubject.assignReport(MODERATOR, ROOM.id, 'report-1', 'assignee-1');
+      expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
+        MODERATOR.id,
+        'region-eu-west',
+      );
     });
   });
 });

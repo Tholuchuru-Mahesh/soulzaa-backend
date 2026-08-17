@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PlatformRole, VideoRoom, VideoRoomLogAction, VideoRoomMemberRole } from '@prisma/client';
 import { BusinessException } from 'src/common/exceptions/business.exception';
@@ -23,6 +23,7 @@ import type { VideoRoomSessionRecord } from '../interfaces/room-session-manager.
 import { toVideoRoomMemberView, toVideoRoomSessionView } from '../mappers/video-room-member.mapper';
 import { VideoRoomEventsRepository } from '../repositories/video-room-events.repository';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
+import { VideoRoomReportRepository } from '../repositories/video-room-report.repository';
 import { VideoRoomSeatsRepository } from '../repositories/video-room-seats.repository';
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 import { VideoRoomsMetrics } from '../video-rooms.metrics';
@@ -34,6 +35,8 @@ import { VideoRoomPresenceService } from './video-room-presence.service';
 import { VideoRoomQueryService } from './video-room-query.service';
 import { VideoRoomSessionService } from './video-room-session.service';
 import { VideoRoomStateService } from './video-room-state.service';
+import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
+import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
 
 /** Client-supplied join fields (from JoinRoomDto) + server-derived context. */
 export interface JoinContext {
@@ -92,6 +95,9 @@ export class VideoRoomMemberService {
     config: ConfigService,
     private readonly seats: VideoRoomSeatsRepository,
     private readonly identities: VideoRoomIdentityCache,
+    @Optional() private readonly performanceStats?: ModeratorPerformanceService,
+    @Optional() private readonly investigationRecording?: InvestigationRecordingService,
+    @Optional() private readonly reportRepo?: VideoRoomReportRepository,
   ) {
     this.cfg = loadVideoRoomConfig(config);
   }
@@ -200,17 +206,48 @@ export class VideoRoomMemberService {
       // which is why clients fell through to the literal string "User".
       // Resolve real identity from the same cache the roster uses.
       const joiner = (await this.identities.resolve([actor.id]).catch(() => null))?.get(actor.id);
+      const isModerator = (actor.roles ?? []).some(
+        (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+      );
+
       await this.events.emitUserJoined({
         roomId,
         userId: actor.id,
-        username: joiner?.username,
-        name: joiner?.displayName ?? undefined,
-        avatarUrl: joiner?.avatarUrl ?? undefined,
+        username: isModerator ? undefined : joiner?.username,
+        name: isModerator ? undefined : (joiner?.displayName ?? undefined),
+        avatarUrl: isModerator ? undefined : (joiner?.avatarUrl ?? undefined),
         participantCount: liveCount,
       });
       await this.events.emitSessionCreated({ roomId, userId: actor.id, socketId: ctx.socketId });
       this.metrics.incJoin();
       this.metrics.setViewers(liveCount);
+
+      if (isModerator) {
+        if (this.performanceStats) {
+          void this.performanceStats.recordAction(actor.id, 'ROOM_VISITED');
+        }
+        if (this.investigationRecording && this.reportRepo) {
+          // Matches the spec's "Report Received → Moderator reviews report →
+          // Joins assigned room → Backend automatically starts secure
+          // investigation recording" flow: recording opens per pending report
+          // (not a blanket per-join recording against the room owner), with no
+          // reason yet — `completeRecording` finalizes it once the moderator's
+          // action determines one. `beginOrReuseRecording` so a reconnect or
+          // re-join doesn't stack duplicate recordings for the same report.
+          void this.reportRepo.listPendingReports(roomId).then((reports) =>
+            Promise.all(
+              reports.map((report) =>
+                this.investigationRecording!.beginOrReuseRecording({
+                  moderatorId: actor.id,
+                  targetUserId: report.targetUserId,
+                  roomId,
+                  evidencePayload: { roomId, reportId: report.id, trigger: 'room_join' },
+                }),
+              ),
+            ),
+          );
+        }
+      }
 
       return this.buildSyncPayload(room, roomId);
     });
@@ -350,14 +387,25 @@ export class VideoRoomMemberService {
 
     // Display-only: never fail the roster because identity lookup did.
     let identities = new Map<string, PublicIdentity>();
+    let identitiesResolved = false;
     try {
       identities = await this.identities.resolve(rows.map((r) => r.userId));
+      identitiesResolved = true;
     } catch (err) {
       this.logger.warn(`Member identity enrichment failed for room ${roomId}: ${String(err)}`);
     }
 
+    // Hidden staff accounts (e.g. anonymous Moderators) are absent from
+    // `identities` by design when resolution succeeds — drop their roster
+    // row entirely rather than returning one with every field blanked
+    // (mirrors listPresence below). When resolution itself failed, keep
+    // every row rather than emptying the roster for everyone.
+    const visibleRows = identitiesResolved
+      ? rows.filter((r) => identities.has(r.userId))
+      : rows;
+
     return {
-      items: rows.map((r) => ({ ...toVideoRoomMemberView(r), user: identities.get(r.userId) })),
+      items: visibleRows.map((r) => ({ ...toVideoRoomMemberView(r), user: identities.get(r.userId) })),
       total,
     };
   }
@@ -521,7 +569,9 @@ export class VideoRoomMemberService {
 
   protected isPlatformAdmin(actor: RoomActor): boolean {
     return (
-      actor.roles.includes(PlatformRole.ADMIN) || actor.roles.includes(PlatformRole.SUPER_ADMIN)
+      actor.roles.includes(PlatformRole.ADMIN) ||
+      actor.roles.includes(PlatformRole.SUPER_ADMIN) ||
+      actor.roles.includes(PlatformRole.MODERATOR)
     );
   }
 

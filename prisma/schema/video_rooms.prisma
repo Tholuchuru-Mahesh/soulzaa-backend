@@ -36,6 +36,11 @@ model VideoRoom {
   creationSource  VideoRoomCreationSource  @default(APP)
   isVerified      Boolean                  @default(false)
   metadata        Json?
+  /// Snapshots the owner's assigned Region (`User.regionId`) at room creation —
+  /// mirrors `AudioRoom.region` / `LiveStream.regionId` — so
+  /// `WorkforceScopeService.assertModeratorInScope` can confine a Moderator's
+  /// kick/mute/ban actions to their assigned region. Null ⇒ owner has no
+  /// region assigned ⇒ unscoped/permit.
   region          String?
   roomLevel       Int                      @default(0)
   streamingStatus VideoRoomStreamingStatus @default(IDLE)

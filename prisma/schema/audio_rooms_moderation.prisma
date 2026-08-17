@@ -119,6 +119,7 @@ model RoomReport {
   reviewedBy       String?      @db.Uuid
   reviewedAt       DateTime?
   resolutionAction String?
+  moderatorNotes   String?
   createdBy        String?      @db.Uuid
   updatedBy        String?      @db.Uuid
   createdAt        DateTime     @default(now())

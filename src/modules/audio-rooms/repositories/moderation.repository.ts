@@ -284,6 +284,19 @@ export class ModerationRepository {
     });
   }
 
+  /** Every open (PENDING) report in a room — powers the join-triggered investigation recording. */
+  listPendingReports(roomId: string): Promise<RoomReport[]> {
+    return this.prisma.roomReport.findMany({ where: { roomId, status: 'PENDING' } });
+  }
+
+  /** Assigns a PENDING report to a moderator for investigation — powers `myAssignedQueue`. */
+  assignReport(reportId: string, assigneeId: string): Promise<RoomReport> {
+    return this.prisma.roomReport.update({
+      where: { id: reportId },
+      data: { assigneeId, assignedAt: new Date() },
+    });
+  }
+
   listReports(roomId: string, skip: number, take: number): Promise<[RoomReport[], number]> {
     const where: Prisma.RoomReportWhereInput = { roomId };
     return this.prisma.$transaction([
@@ -305,6 +318,29 @@ export class ModerationRepository {
         reviewedBy: reviewerId,
         reviewedAt: new Date(),
         resolutionAction,
+        ...auditUpdate(reviewerId),
+      },
+    });
+  }
+
+  async updateReportNotes(id: string, reviewerId: string, notes: string): Promise<void> {
+    await this.prisma.roomReport.update({
+      where: { id },
+      data: {
+        moderatorNotes: notes,
+        ...auditUpdate(reviewerId),
+      },
+    });
+  }
+
+  async dismissReport(id: string, reviewerId: string, reason?: string): Promise<void> {
+    await this.prisma.roomReport.update({
+      where: { id },
+      data: {
+        status: ReportStatus.DISMISSED,
+        reviewedBy: reviewerId,
+        reviewedAt: new Date(),
+        resolutionAction: reason ?? 'Dismissed as false report',
         ...auditUpdate(reviewerId),
       },
     });

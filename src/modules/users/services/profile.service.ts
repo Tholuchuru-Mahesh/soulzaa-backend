@@ -526,7 +526,7 @@ export class ProfileService implements IProfileService {
     username: string,
   ): Promise<{ shareUrl: string; deepLink: string; title: string; description: string }> {
     const user = await this.users.findByUsername(username);
-    if (!user) {
+    if (!user || user.isHiddenAccount) {
       throw new BusinessException(ERROR_CODES.NOT_FOUND, 'User not found', HttpStatus.NOT_FOUND);
     }
     return {
@@ -675,12 +675,13 @@ export class ProfileService implements IProfileService {
   }
 
   private async resolveView(snap: CachedProfile): Promise<ProfileView> {
+    const isHidden = snap.isHiddenAccount ?? false;
     const [avatarUrl, coverUrl, equippedFrameUrl] = await Promise.all([
       this.media.resolve(snap.avatarKey),
       this.media.resolve(snap.coverKey),
-      this.resolveEquippedFrameUrl(snap.id),
+      // Task 35 / Moderator anonymity: hidden staff accounts get no profile frame.
+      isHidden ? Promise.resolve(null) : this.resolveEquippedFrameUrl(snap.id),
     ]);
-    const isHidden = snap.isHiddenAccount ?? false;
     return {
       id: snap.id,
       username: snap.username,

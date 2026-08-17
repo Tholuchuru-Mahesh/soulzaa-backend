@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { ConflictException, HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthProviderType, OtpPurpose } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
@@ -46,6 +46,11 @@ import { FirebaseService } from './firebase.service';
 import { randomToken, sha256 } from './hash.util';
 import { Admin2faService } from 'src/modules/admin-identity/services/admin-2fa.service';
 import { ModeratorDeviceBindingService } from 'src/modules/device/services/moderator-device-binding.service';
+import { StaffIpAllowlistService } from 'src/modules/device/services/staff-ip-allowlist.service';
+import {
+  NOTIFICATION_SERVICE,
+  type INotificationService,
+} from 'src/modules/notification/interfaces/notification.interface';
 
 /**
  * Auth domain orchestrator. Owns the auth flows (register/login/refresh/logout/
@@ -71,8 +76,10 @@ export class AuthService implements IAuthService {
     private readonly firebaseService: FirebaseService,
     config: ConfigService,
     @Inject(ROLE_SOURCE) private readonly roleSource: IRoleSource,
-    private readonly admin2fa?: Admin2faService,
-    private readonly deviceBinding?: ModeratorDeviceBindingService,
+    @Optional() private readonly admin2fa?: Admin2faService,
+    @Optional() private readonly deviceBinding?: ModeratorDeviceBindingService,
+    @Optional() private readonly staffIpAllowlist?: StaffIpAllowlistService,
+    @Optional() @Inject(NOTIFICATION_SERVICE) private readonly notifications?: INotificationService,
   ) {
     this.resetTtlSeconds = Number(config.get('security', { infer: true })!.passwordResetTtlSeconds);
   }
@@ -148,10 +155,10 @@ export class AuthService implements IAuthService {
   }
 
   async staffLogin(
-    input: PasswordLoginCommand & { totpCode?: string; deviceIdentifier?: string },
+    input: PasswordLoginCommand & { totpCode?: string; deviceIdentifier?: string; identifier?: string },
     ctx: AuthContext,
   ): Promise<AuthResult> {
-    const identifier = (input.email || (input as any).username || '').toLowerCase();
+    const identifier = (input.email || (input as any).username || (input as any).identifier || '').toLowerCase();
     await this.security.assertNotLocked(identifier);
 
     let user = await this.users.findByEmail(identifier);
@@ -244,7 +251,7 @@ export class AuthService implements IAuthService {
     // 3. Bound Device Verification (Task 11)
     if (this.deviceBinding && input.deviceIdentifier) {
       try {
-        await this.deviceBinding.assertSingleDevice(user.id, input.deviceIdentifier);
+        await this.deviceBinding.assertSingleDeviceByIdentifier(user.id, input.deviceIdentifier);
       } catch (err) {
         await this.security.recordFailure(identifier, {
           userId: user.id,
@@ -252,11 +259,71 @@ export class AuthService implements IAuthService {
           userAgent: ctx.userAgent,
           reason: 'UNBOUND_DEVICE',
         });
-        throw err;
+
+        if (!(err instanceof ConflictException)) throw err;
+
+        // The device is unrecognized. File a device-change request so an
+        // admin has something to approve — the caller has no session yet
+        // (this throw happens before `issue()`), so they cannot call the
+        // authenticated `POST /moderator/device-change` endpoint themselves.
+        try {
+          await this.deviceBinding.requestDeviceChange({
+            moderatorId: user.id,
+            newDeviceInfo: {
+              deviceIdentifier: input.deviceIdentifier,
+              ip: ctx.ip ?? null,
+            },
+            reason: 'Automatic: rejected login from unbound device',
+          });
+        } catch (requestErr) {
+          // A request is already pending from an earlier attempt — that is
+          // the desired end state, not a new failure.
+          if (!(requestErr instanceof ConflictException)) throw requestErr;
+        }
+
+        throw new BusinessException(
+          ERROR_CODES.DEVICE_CHANGE_PENDING,
+          "This device isn't recognized. A request has been sent for admin approval.",
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
+
+    // 4. Staff IP Allowlist Verification (Gap B1)
+    if (this.staffIpAllowlist && ctx.ip) {
+      const allowed = await this.staffIpAllowlist.isIpAllowed(user.id, ctx.ip);
+      if (!allowed) {
+        await this.security.recordFailure(identifier, {
+          userId: user.id,
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+          reason: 'UNAUTHORIZED_STAFF_IP',
+        });
+        throw new BusinessException(
+          ERROR_CODES.STAFF_IP_NOT_ALLOWED,
+          'Access denied: Login is restricted to approved IP addresses.',
+          HttpStatus.FORBIDDEN,
+        );
       }
     }
 
     await this.security.recordSuccess(identifier);
+
+    // 5. Staff Login Alert (Gap B2)
+    if (this.notifications) {
+      void this.notifications.create({
+        userId: user.id,
+        type: 'SECURITY_NEW_LOGIN' as any,
+        entityType: 'staff_session',
+        data: {
+          ip: ctx.ip ?? null,
+          userAgent: ctx.userAgent ?? null,
+          loginAt: new Date().toISOString(),
+          isStaff: true,
+        },
+      });
+    }
+
     return this.issue(user, ctx, 'PASSWORD', false);
   }
 

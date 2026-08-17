@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaModule } from 'src/infra/prisma/prisma.module';
+import { AuthorizationModule } from 'src/modules/authorization/authorization.module';
 import { RoleRequestController } from './controllers/role-request.controller';
 import { DOCUMENT_VERIFIER } from './interfaces/document-verifier.interface';
 import { KYC_PROVIDER } from './interfaces/kyc-provider.interface';
@@ -22,7 +23,7 @@ import { RoleRequestService } from './services/role-request.service';
  * photograph. Only the provider closes that gap.
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, AuthorizationModule],
   controllers: [RoleRequestController],
   providers: [
     RoleRequestService,

@@ -281,8 +281,18 @@ export const DEFAULT_PERMISSIONS = [
     description: 'Can view platform configuration change audit history',
   },
 
-  // Admin identity — provisioning hidden staff accounts. Super Admin only:
-  // whoever can mint an Admin can mint platform-wide authority.
+  // Admin identity — provisioning hidden Moderator accounts. Admin and above only:
+  // this grants the power to create anonymous accounts that can act as Moderators.
+  {
+    code: 'admin.identity.manage',
+    module: 'admin',
+    action: 'manage',
+    category: 'SYSTEM',
+    displayName: 'Manage Moderator Accounts',
+    description: 'Can create, list, suspend and restore hidden Moderator accounts; also manages staff IP allowlists',
+  },
+
+  // Super Admin only: can mint Admins (platform-wide authority).
   {
     code: 'admin.provision',
     module: 'admin',
@@ -1570,7 +1580,15 @@ export const DEFAULT_PERMISSIONS = [
     action: 'review',
     category: 'SYSTEM',
     displayName: 'Review Device Change',
-    description: 'Approve or reject moderator device change requests',
+    description: 'Manager-stage review of a moderator device change request',
+  },
+  {
+    code: 'moderator.device.approve',
+    module: 'moderator_device',
+    action: 'approve',
+    category: 'SYSTEM',
+    displayName: 'Approve Device Change',
+    description: 'Final approval of a manager-reviewed moderator device change request',
   },
   {
     code: 'investigation.recording.view',
@@ -1675,6 +1693,14 @@ export const DEFAULT_PERMISSIONS = [
     category: 'TASK',
     displayName: 'View Assigned Tasks',
     description: 'Moderator views and updates tasks assigned to them',
+  },
+  {
+    code: 'moderation.action.approve',
+    module: 'moderation_approval',
+    action: 'approve',
+    category: 'SYSTEM',
+    displayName: 'Approve Moderation Action',
+    description: 'Approve or reject a moderator-proposed ban before it executes',
   },
 ];
 
@@ -1873,6 +1899,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     // Moderator Warnings (Task 18)
     'moderator.warning.issue',
     'moderator.warning.resolve',
+    // Moderator device change — Admin can act as Manager-stage reviewer too
+    // when needed, but the final approve stage is Admin-exclusive (spec:
+    // "Approved only by Admin"); see moderator.device.approve below.
+    'moderator.device.review',
+    'moderator.device.approve',
+    'moderation.action.approve',
     // Analytics, dashboard & audit (operational scope)
     'analytics.view',
     'analytics.manage',
@@ -1891,6 +1923,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'audit.view',
     // Investigation recordings (Task 30)
     'investigation.recording.view',
+    // Moderator provisioning — Admins can create hidden Moderator accounts directly
+    'admin.identity.manage',
   ],
 
   /**
@@ -1945,6 +1979,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'user.location.view',
     'role_request.view',
     'role_request.review',
+    'content_request.review',
+    'support_ticket.review',
+    'moderation.action.approve',
     'user.view',
     'user.update',
     'user.list.view',

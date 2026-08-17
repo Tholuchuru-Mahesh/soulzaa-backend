@@ -273,4 +273,13 @@ enum NotificationType {
   MODERATOR_OFFICIAL_MESSAGE
   MODERATOR_MANAGER_INSTRUCTION
   MODERATOR_SYSTEM_ANNOUNCEMENT
+  /// A Moderator escalated a critical violation. Sent to whichever
+  /// Official/Country Manager/Admin the severity routes to — never to
+  /// moderators themselves (see MODERATOR_EMERGENCY_REQUEST for that
+  /// direction).
+  MODERATION_CASE_ESCALATED
+  /// A Moderator's device-change request needs action — either self-filed or
+  /// auto-filed by a blocked login from an unrecognized device. Sent to every
+  /// Admin/Super Admin; only they can give final approval.
+  MODERATOR_DEVICE_CHANGE_REQUESTED
 }

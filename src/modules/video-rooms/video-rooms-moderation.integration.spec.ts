@@ -10,6 +10,9 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import { REDIS_CLIENT } from 'src/infra/redis/redis.constants';
 import { SocketManager } from 'src/infra/socket/socket.manager';
+import { ModeratorShiftService } from 'src/modules/moderator-shift/services/moderator-shift.service';
+import { ModeratorWarningService } from 'src/modules/moderator-warning/services/moderator-warning.service';
+import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
 import { VideoRoomsModerationController } from './controllers/video-rooms-moderation.controller';
 import { VIDEO_ROOM_NAMESPACE } from './constants/video-room.constants';
 import { VIDEO_ROOM_MODERATION_QUEUES } from './constants/video-room-moderation.constants';
@@ -270,6 +273,7 @@ describe('VR-16 moderation engine (behavior)', () => {
       { create: jest.fn() } as never,
       { createSystemReport: jest.fn() } as never,
       config as never,
+      { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as never,
     );
 
     memberService = new VideoRoomMemberService(
@@ -472,6 +476,10 @@ describe('VR-16 moderation engine — DI graph (video-rooms.module.ts provider w
         { provide: ModeratorShiftService, useValue: {} },
         { provide: ModeratorWarningService, useValue: {} },
         {
+          provide: WorkforceScopeService,
+          useValue: { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
           provide: getQueueToken(VIDEO_ROOM_MODERATION_QUEUES.PROCESSING),
           useValue: { add: jest.fn() },
         },
@@ -479,6 +487,11 @@ describe('VR-16 moderation engine — DI graph (video-rooms.module.ts provider w
           provide: getQueueToken(VIDEO_ROOM_MODERATION_QUEUES.REPORT),
           useValue: { add: jest.fn() },
         },
+        // `@UseGuards(ShiftActiveGuard, SuspendedGuard)` on the controller's
+        // moderation routes pulls these into the DI graph at compile time
+        // even though no HTTP request is made in this spec.
+        { provide: ModeratorShiftService, useValue: { isWithinShift: jest.fn().mockResolvedValue(true) } },
+        { provide: ModeratorWarningService, useValue: { isSuspended: jest.fn().mockResolvedValue(false) } },
       ],
     }).compile();
   });
