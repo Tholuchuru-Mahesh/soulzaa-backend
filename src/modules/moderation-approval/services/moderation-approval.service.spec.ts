@@ -179,8 +179,14 @@ describe('ModerationApprovalService', () => {
     it('resolves the owner from the audio room and checks the decider is in scope', async () => {
       prisma.audioRoom = { findUnique: jest.fn().mockResolvedValue({ ownerId: 'owner-eu-west' }) };
       await service.decide('approval-1', 'official-1', 'APPROVED');
-      expect(prisma.audioRoom.findUnique).toHaveBeenCalledWith({ where: { id: 'room-1' }, select: { ownerId: true } });
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith('official-1', 'owner-eu-west');
+      expect(prisma.audioRoom.findUnique).toHaveBeenCalledWith({
+        where: { id: 'room-1' },
+        select: { ownerId: true },
+      });
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(
+        'official-1',
+        'owner-eu-west',
+      );
     });
 
     it('resolves the owner from the live stream when roomType is LIVE_STREAM', async () => {
@@ -192,8 +198,14 @@ describe('ModerationApprovalService', () => {
       });
       prisma.liveStream = { findUnique: jest.fn().mockResolvedValue({ hostId: 'owner-eu-west' }) };
       await service.decide('approval-1', 'official-1', 'APPROVED');
-      expect(prisma.liveStream.findUnique).toHaveBeenCalledWith({ where: { id: 'stream-1' }, select: { hostId: true } });
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith('official-1', 'owner-eu-west');
+      expect(prisma.liveStream.findUnique).toHaveBeenCalledWith({
+        where: { id: 'stream-1' },
+        select: { hostId: true },
+      });
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(
+        'official-1',
+        'owner-eu-west',
+      );
     });
 
     it("rejects an Official deciding outside the owner's assigned scope", async () => {

@@ -98,7 +98,10 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
   describe('MUTE on a non-host viewer', () => {
     it("moderateUser checks the stream host's scope before acting", async () => {
       await subject.moderateUser(baseInput({ action: 'MUTE' }));
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MODERATOR_ID, ACTIVE_STREAM.hostId);
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(
+        MODERATOR_ID,
+        ACTIVE_STREAM.hostId,
+      );
     });
 
     it("moderateUser rejects a moderator outside the stream host's scope", async () => {

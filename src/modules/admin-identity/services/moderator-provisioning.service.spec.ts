@@ -100,10 +100,7 @@ describe('ModeratorProvisioningService', () => {
 
     it.each([
       ['state', { ...activeState, isActive: false }],
-      [
-        'country',
-        { ...activeState, country: { ...activeState.country, isActive: false } },
-      ],
+      ['country', { ...activeState, country: { ...activeState.country, isActive: false } }],
     ])('rejects an inactive %s in the state hierarchy', async (_label, state) => {
       prisma.state.findMany.mockResolvedValue([state]);
       await expect(service.createModerator('actor-1', dto, ctx)).rejects.toBeInstanceOf(
@@ -233,8 +230,20 @@ describe('ModeratorProvisioningService', () => {
   });
 
   describe('setModeratorStates', () => {
-    const KA = { id: 'state-ka', name: 'Karnataka', isActive: true, countryId: 'country-in', country: { id: 'country-in', code: 'IN', isActive: true } };
-    const AP = { id: 'state-ap', name: 'Andhra Pradesh', isActive: true, countryId: 'country-in', country: { id: 'country-in', code: 'IN', isActive: true } };
+    const KA = {
+      id: 'state-ka',
+      name: 'Karnataka',
+      isActive: true,
+      countryId: 'country-in',
+      country: { id: 'country-in', code: 'IN', isActive: true },
+    };
+    const AP = {
+      id: 'state-ap',
+      name: 'Andhra Pradesh',
+      isActive: true,
+      countryId: 'country-in',
+      country: { id: 'country-in', code: 'IN', isActive: true },
+    };
 
     beforeEach(() => {
       roleService.assignRoleByName.mockResolvedValue({ id: 'user-role-1' });
@@ -243,23 +252,23 @@ describe('ModeratorProvisioningService', () => {
 
     it('rejects an actor who is not Admin or Super Admin', async () => {
       roles.getRoleNames.mockResolvedValue(['USER']);
-      await expect(service.setModeratorStates('mod-1', ['state-ka'], 'actor-1')).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        service.setModeratorStates('mod-1', ['state-ka'], 'actor-1'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('throws NotFoundException when a stateId does not exist', async () => {
       prisma.state.findMany = jest.fn().mockResolvedValue([]);
-      await expect(service.setModeratorStates('mod-1', ['state-ka'], 'actor-1')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.setModeratorStates('mod-1', ['state-ka'], 'actor-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('rejects an inactive state in the batch', async () => {
       prisma.state.findMany = jest.fn().mockResolvedValue([{ ...KA, isActive: false }]);
-      await expect(service.setModeratorStates('mod-1', ['state-ka'], 'actor-1')).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.setModeratorStates('mod-1', ['state-ka'], 'actor-1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('creates a RoleScope row per new state when none exist yet', async () => {
@@ -296,7 +305,9 @@ describe('ModeratorProvisioningService', () => {
 
     it('is a no-op when the target set already matches', async () => {
       prisma.state.findMany = jest.fn().mockResolvedValue([KA]);
-      prisma.roleScope.findMany = jest.fn().mockResolvedValue([{ id: 'scope-ka', stateId: 'state-ka' }]);
+      prisma.roleScope.findMany = jest
+        .fn()
+        .mockResolvedValue([{ id: 'scope-ka', stateId: 'state-ka' }]);
 
       await service.setModeratorStates('mod-1', ['state-ka'], 'actor-1');
 
@@ -315,10 +326,9 @@ describe('ModeratorProvisioningService', () => {
     it('returns the current STATE-scope state ids for the moderator', async () => {
       roles.getRoleNames.mockResolvedValue(['ADMIN']);
       prisma.userRole.findFirst = jest.fn().mockResolvedValue({ id: 'user-role-1' });
-      prisma.roleScope.findMany = jest.fn().mockResolvedValue([
-        { stateId: 'state-ka' },
-        { stateId: 'state-ap' },
-      ]);
+      prisma.roleScope.findMany = jest
+        .fn()
+        .mockResolvedValue([{ stateId: 'state-ka' }, { stateId: 'state-ap' }]);
       const result = await service.getModeratorStates('actor-1', 'mod-1');
       expect(result).toEqual({ stateIds: ['state-ka', 'state-ap'] });
     });

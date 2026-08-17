@@ -734,14 +734,25 @@ describe('ModerationService', () => {
 
     it('resolveAppeal checks the room owner', async () => {
       rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
-      repo.getAppeal.mockResolvedValue({ id: 'appeal-1', roomId: 'r', status: 'PENDING', userId: TARGET });
+      repo.getAppeal.mockResolvedValue({
+        id: 'appeal-1',
+        roomId: 'r',
+        status: 'PENDING',
+        userId: TARGET,
+      });
       await scopedService.resolveAppeal(MOD, 'r', 'appeal-1', { approve: false });
       expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
     });
 
     it('reviewReport checks the room owner even for a bare dismiss (no recommendedAction)', async () => {
       rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
-      repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'r', status: 'PENDING', targetUserId: TARGET, createdAt: new Date() });
+      repo.getReport.mockResolvedValue({
+        id: 'rep-1',
+        roomId: 'r',
+        status: 'PENDING',
+        targetUserId: TARGET,
+        createdAt: new Date(),
+      });
       await scopedService.reviewReport(MOD, 'r', 'rep-1', { status: 'REVIEWED' } as never);
       expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
     });
@@ -884,7 +895,10 @@ describe('ModerationService', () => {
     it('routes a HIGH escalation through resolveEscalationRecipients and notifies each recipient', async () => {
       await escalatingService.escalateViolation(MOD, 'r', TARGET, 'repeated harassment', 'HIGH');
 
-      expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith('HIGH', 'owner-eu-west');
+      expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith(
+        'HIGH',
+        'owner-eu-west',
+      );
       expect(notifications.create).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'official-1',

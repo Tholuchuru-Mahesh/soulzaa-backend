@@ -213,7 +213,9 @@ describe('WorkforceScopeService.assertModeratorInScope', () => {
   });
 
   it('permits when the target owner cannot be resolved (safety valve, same as an unresolved target)', async () => {
-    scopes.getUserScopes.mockResolvedValue([{ scopeType: 'STATE', stateId: 's-1', countryId: 'c-1' }]);
+    scopes.getUserScopes.mockResolvedValue([
+      { scopeType: 'STATE', stateId: 's-1', countryId: 'c-1' },
+    ]);
     prisma.user.findUnique.mockResolvedValue(null);
     await expect(service.assertModeratorInScope('mod-1', 'owner-ghost')).resolves.toBeUndefined();
   });
@@ -236,7 +238,9 @@ describe('WorkforceScopeService.assertModeratorInScope', () => {
 
     it('permits an owner located inside their state', async () => {
       prisma.user.findUnique.mockResolvedValue({ stateId: 's-ka', countryId: 'c-in' });
-      await expect(service.assertModeratorInScope('official-1', 'owner-blr')).resolves.toBeUndefined();
+      await expect(
+        service.assertModeratorInScope('official-1', 'owner-blr'),
+      ).resolves.toBeUndefined();
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { id: 'owner-blr' },
         select: { stateId: true, countryId: true },
@@ -248,29 +252,31 @@ describe('WorkforceScopeService.assertModeratorInScope', () => {
     // tests below for the same-country case and the bridge-off case.
     it('denies an owner in another state', async () => {
       prisma.user.findUnique.mockResolvedValue({ stateId: 's-ny', countryId: 'c-us' });
-      await expect(service.assertModeratorInScope('official-1', 'owner-nyc')).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        service.assertModeratorInScope('official-1', 'owner-nyc'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     // The bridge clause is `{ stateId: null, countryId }`. Its null stateId
     // must not match a real owner's stateId, but its countryId still may.
     it('does not let the migration-bridge clause widen state matching, but its country still matches', async () => {
       prisma.user.findUnique.mockResolvedValue({ stateId: 's-tn', countryId: 'c-us' });
-      await expect(service.assertModeratorInScope('official-1', 'owner-nyc')).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        service.assertModeratorInScope('official-1', 'owner-nyc'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
 
       prisma.user.findUnique.mockResolvedValue({ stateId: 's-tn', countryId: 'c-in' });
-      await expect(service.assertModeratorInScope('official-1', 'owner-chn')).resolves.toBeUndefined();
+      await expect(
+        service.assertModeratorInScope('official-1', 'owner-chn'),
+      ).resolves.toBeUndefined();
     });
 
     it('with the migration bridge off, a different state in the same country is denied', async () => {
       service = makeService(false);
       prisma.user.findUnique.mockResolvedValue({ stateId: 's-tn', countryId: 'c-in' });
-      await expect(service.assertModeratorInScope('official-1', 'owner-chn')).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        service.assertModeratorInScope('official-1', 'owner-chn'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 

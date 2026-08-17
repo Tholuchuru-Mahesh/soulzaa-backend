@@ -208,8 +208,14 @@ export class MobileWorkforceService {
         const reporterName = reporter?.fullName || reporter?.username || 'Reporter';
         const targetUserName = targetUser?.fullName || targetUser?.username || 'Target User';
         const code = `RPT-${r.id.substring(0, 4)}-${r.id.substring(r.id.length - 4)}`.toUpperCase();
-        const evCode = `EV-${r.id.substring(0, 4)}-${r.id.substring(r.id.length - 4)}`.toUpperCase();
-        const reasonText = r.reason ? r.reason.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Inappropriate content';
+        const evCode =
+          `EV-${r.id.substring(0, 4)}-${r.id.substring(r.id.length - 4)}`.toUpperCase();
+        const reasonText = r.reason
+          ? r.reason
+              .replace(/_/g, ' ')
+              .toLowerCase()
+              .replace(/\b\w/g, (c: string) => c.toUpperCase())
+          : 'Inappropriate content';
         const assignedTime = r.assignedAt
           ? new Date(r.assignedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           : new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -244,8 +250,14 @@ export class MobileWorkforceService {
         const reporterName = reporter?.fullName || reporter?.username || 'Reporter';
         const targetUserName = targetUser?.fullName || targetUser?.username || 'Target User';
         const code = `RPT-${r.id.substring(0, 4)}-${r.id.substring(r.id.length - 4)}`.toUpperCase();
-        const evCode = `EV-${r.id.substring(0, 4)}-${r.id.substring(r.id.length - 4)}`.toUpperCase();
-        const reasonText = r.reason ? r.reason.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Harassment';
+        const evCode =
+          `EV-${r.id.substring(0, 4)}-${r.id.substring(r.id.length - 4)}`.toUpperCase();
+        const reasonText = r.reason
+          ? r.reason
+              .replace(/_/g, ' ')
+              .toLowerCase()
+              .replace(/\b\w/g, (c: string) => c.toUpperCase())
+          : 'Harassment';
         const assignedTime = r.assignedAt
           ? new Date(r.assignedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
           : new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -342,7 +354,8 @@ export class MobileWorkforceService {
    * again; standalone callers omit it and it self-resolves as before.
    */
   async regionalDailyActivity(userId: string, resolvedScope?: ResolvedUserScope) {
-    const { isUnrestricted, inScopeUserIds } = resolvedScope ?? (await this.resolveUserScope(userId));
+    const { isUnrestricted, inScopeUserIds } =
+      resolvedScope ?? (await this.resolveUserScope(userId));
 
     // AudioRoom/VideoRoom/LiveStream no longer carry a territory snapshot
     // column at all — matched by owner/host instead, same as `liveMonitoring`.
@@ -395,28 +408,43 @@ export class MobileWorkforceService {
           OR: [
             {
               roomId: {
-                in: [...(inScopeAudioRoomIds ?? []), ...(inScopeVideoRoomIds ?? [])].map((r) => r.id),
+                in: [...(inScopeAudioRoomIds ?? []), ...(inScopeVideoRoomIds ?? [])].map(
+                  (r) => r.id,
+                ),
               },
             },
             { liveStreamId: { in: (inScopeLiveStreamIds ?? []).map((s) => s.id) } },
           ],
         };
 
-    const [roomReportsCount, videoRoomReportsCount, liveStreamReportsCount, assignedInvestigationQueueCount] =
-      await Promise.all([
-        this.prisma.roomReport.count({
-          where: inScopeAudioRoomIds === null ? {} : { roomId: { in: inScopeAudioRoomIds.map((r) => r.id) } },
-        }),
-        this.prisma.videoRoomReport.count({
-          where: inScopeVideoRoomIds === null ? {} : { roomId: { in: inScopeVideoRoomIds.map((r) => r.id) } },
-        }),
-        this.prisma.liveStreamReport.count({
-          where: inScopeLiveStreamIds === null ? {} : { streamId: { in: inScopeLiveStreamIds.map((r) => r.id) } },
-        }),
-        this.prisma.investigationRecording.count({
-          where: { status: 'ACTIVE', ...investigationRoomFilter },
-        }),
-      ]);
+    const [
+      roomReportsCount,
+      videoRoomReportsCount,
+      liveStreamReportsCount,
+      assignedInvestigationQueueCount,
+    ] = await Promise.all([
+      this.prisma.roomReport.count({
+        where:
+          inScopeAudioRoomIds === null
+            ? {}
+            : { roomId: { in: inScopeAudioRoomIds.map((r) => r.id) } },
+      }),
+      this.prisma.videoRoomReport.count({
+        where:
+          inScopeVideoRoomIds === null
+            ? {}
+            : { roomId: { in: inScopeVideoRoomIds.map((r) => r.id) } },
+      }),
+      this.prisma.liveStreamReport.count({
+        where:
+          inScopeLiveStreamIds === null
+            ? {}
+            : { streamId: { in: inScopeLiveStreamIds.map((r) => r.id) } },
+      }),
+      this.prisma.investigationRecording.count({
+        where: { status: 'ACTIVE', ...investigationRoomFilter },
+      }),
+    ]);
     const assignedReportsCount = roomReportsCount + videoRoomReportsCount + liveStreamReportsCount;
 
     return {
@@ -468,7 +496,10 @@ export class MobileWorkforceService {
     ]);
 
     const formattedAudio = audioRooms.map((r, i) => {
-      const sessionMinutes = Math.max(1, Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 60000));
+      const sessionMinutes = Math.max(
+        1,
+        Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 60000),
+      );
       return {
         id: r.id,
         name: r.name || `Audio Room ${i + 1}`,
@@ -489,7 +520,10 @@ export class MobileWorkforceService {
     });
 
     const formattedVideo = videoRooms.map((r, i) => {
-      const sessionMinutes = Math.max(1, Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 60000));
+      const sessionMinutes = Math.max(
+        1,
+        Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 60000),
+      );
       return {
         id: r.id,
         name: r.name || `Video Room ${i + 1}`,
@@ -510,7 +544,10 @@ export class MobileWorkforceService {
     });
 
     const formattedStreams = liveStreams.map((s, i) => {
-      const sessionMinutes = Math.max(1, Math.floor((Date.now() - new Date(s.createdAt).getTime()) / 60000));
+      const sessionMinutes = Math.max(
+        1,
+        Math.floor((Date.now() - new Date(s.createdAt).getTime()) / 60000),
+      );
       return {
         id: s.id,
         name: s.title || `Live Stream ${i + 1}`,
@@ -816,10 +853,11 @@ export class MobileWorkforceService {
     ]);
 
     const tasks = [
-      ...assignedAudio.map((r, i) => ({
+      ...assignedAudio.map((r) => ({
         id: `task-ar-${r.id}`,
         title: 'Review audio room report',
-        description: r.description || `Investigate report ${r.reason || 'violation'} in audio room.`,
+        description:
+          r.description || `Investigate report ${r.reason || 'violation'} in audio room.`,
         priority: 'High',
         taskType: 'flag',
         category: 'Audio room',
@@ -828,10 +866,11 @@ export class MobileWorkforceService {
         dueText: '45m',
         createdAt: r.createdAt.toISOString(),
       })),
-      ...assignedVideo.map((r, i) => ({
+      ...assignedVideo.map((r) => ({
         id: `task-vr-${r.id}`,
         title: 'Review video room report',
-        description: r.description || `Investigate report ${r.reason || 'violation'} in video room.`,
+        description:
+          r.description || `Investigate report ${r.reason || 'violation'} in video room.`,
         priority: 'High',
         taskType: 'warning',
         category: 'Video room',
@@ -887,12 +926,13 @@ export class MobileWorkforceService {
         orderBy: { joinedAt: 'desc' },
       });
       const memberUserIds = members.map((m) => m.userId);
-      const memberUsers = memberUserIds.length > 0
-        ? await this.prisma.user.findMany({
-            where: { id: { in: memberUserIds } },
-            select: { id: true, username: true, fullName: true },
-          })
-        : [];
+      const memberUsers =
+        memberUserIds.length > 0
+          ? await this.prisma.user.findMany({
+              where: { id: { in: memberUserIds } },
+              select: { id: true, username: true, fullName: true },
+            })
+          : [];
       const memberUserMap = new Map(memberUsers.map((u) => [u.id, u]));
       participants = members.map((m) => {
         const u = memberUserMap.get(m.userId);
@@ -925,12 +965,13 @@ export class MobileWorkforceService {
         });
 
     const reporterIds = reports.map((r) => r.reporterId);
-    const reporterUsers = reporterIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: reporterIds } },
-          select: { id: true, username: true, fullName: true },
-        })
-      : [];
+    const reporterUsers =
+      reporterIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: reporterIds } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [];
     const reporterUserMap = new Map(reporterUsers.map((u) => [u.id, u]));
 
     const formattedReports = reports.map((r) => {
@@ -956,12 +997,13 @@ export class MobileWorkforceService {
         });
 
     const senderIds = chatMessages.map((m) => m.senderId);
-    const senders = senderIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: senderIds } },
-          select: { id: true, username: true, fullName: true },
-        })
-      : [];
+    const senders =
+      senderIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: senderIds } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [];
     const senderMap = new Map(senders.map((u) => [u.id, u]));
 
     const formattedChat = chatMessages.map((m) => {
@@ -981,7 +1023,10 @@ export class MobileWorkforceService {
       : await this.prisma.videoRoomBlock.count({ where: { roomId, status: 'ACTIVE' } });
 
     const createdAt = room ? (room as any).createdAt : new Date();
-    const sessionMinutes = Math.max(1, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000));
+    const sessionMinutes = Math.max(
+      1,
+      Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000),
+    );
 
     return {
       id: roomId,
@@ -1037,7 +1082,12 @@ export class MobileWorkforceService {
   /**
    * Moderate participant in a room (mute, kick, ban).
    */
-  async moderateParticipant(userId: string, roomId: string, targetUserId: string, data: { action: string; reason?: string }) {
+  async moderateParticipant(
+    userId: string,
+    roomId: string,
+    targetUserId: string,
+    data: { action: string; reason?: string },
+  ) {
     const action = data.action.toLowerCase();
     if (action.includes('kick')) {
       await this.prisma.roomKick.create({

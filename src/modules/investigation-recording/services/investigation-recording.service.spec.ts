@@ -195,19 +195,33 @@ describe('InvestigationRecordingService', () => {
 
   describe('beginRecording owner scope (defense in depth)', () => {
     it('checks scope when an ownerId is provided', async () => {
-      await service.beginRecording({ moderatorId: 'mod-1', targetUserId: 'target-1', roomId: 'room-1', ownerId: 'owner-1' });
+      await service.beginRecording({
+        moderatorId: 'mod-1',
+        targetUserId: 'target-1',
+        roomId: 'room-1',
+        ownerId: 'owner-1',
+      });
       expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith('mod-1', 'owner-1');
     });
 
     it('permits (skips the check) when no ownerId is given', async () => {
-      await service.beginRecording({ moderatorId: 'mod-1', targetUserId: 'target-1', roomId: 'room-1' });
+      await service.beginRecording({
+        moderatorId: 'mod-1',
+        targetUserId: 'target-1',
+        roomId: 'room-1',
+      });
       expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith('mod-1', null);
     });
 
     it("rejects a moderator outside the owner's scope", async () => {
       scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
       await expect(
-        service.beginRecording({ moderatorId: 'mod-1', targetUserId: 'target-1', liveStreamId: 'stream-1', ownerId: 'owner-1' }),
+        service.beginRecording({
+          moderatorId: 'mod-1',
+          targetUserId: 'target-1',
+          liveStreamId: 'stream-1',
+          ownerId: 'owner-1',
+        }),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.investigationRecording.create).not.toHaveBeenCalled();
     });

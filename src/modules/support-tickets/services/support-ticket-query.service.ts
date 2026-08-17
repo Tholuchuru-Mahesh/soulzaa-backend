@@ -38,20 +38,19 @@ export class SupportTicketQueryService {
         const mapped = clauses
           .map((clause) => {
             const out: Record<string, unknown> = {};
-            if ('countryId' in clause && clause['countryId'] !== undefined) out['countryId'] = clause['countryId'];
-            if ('stateId' in clause && clause['stateId'] !== undefined) out['stateId'] = clause['stateId'];
-            if ('regionId' in clause && clause['regionId'] !== undefined) out['regionId'] = clause['regionId'];
+            if ('countryId' in clause && clause['countryId'] !== undefined)
+              out['countryId'] = clause['countryId'];
+            if ('stateId' in clause && clause['stateId'] !== undefined)
+              out['stateId'] = clause['stateId'];
+            if ('regionId' in clause && clause['regionId'] !== undefined)
+              out['regionId'] = clause['regionId'];
             return out;
           })
           .filter((obj) => Object.keys(obj).length > 0);
 
         if (mapped.length > 0) {
           locationFilter = {
-            OR: [
-              ...mapped,
-              { countryId: null },
-              { stateId: null },
-            ],
+            OR: [...mapped, { countryId: null }, { stateId: null }],
           };
         }
       }
@@ -91,12 +90,13 @@ export class SupportTicketQueryService {
     ]);
 
     const submitterIds = Array.from(new Set(rawItems.map((item) => item.submitterId)));
-    const users = submitterIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: submitterIds } },
-          select: { id: true, username: true, fullName: true },
-        })
-      : [];
+    const users =
+      submitterIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: submitterIds } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [];
 
     const userMap = new Map(users.map((u) => [u.id, u]));
 
@@ -104,12 +104,14 @@ export class SupportTicketQueryService {
       const user = userMap.get(item.submitterId);
       return {
         ...item,
-        submitter: user ? {
-          id: user.id,
-          username: user.username,
-          name: user.fullName || user.username,
-          avatarUrl: null,
-        } : null,
+        submitter: user
+          ? {
+              id: user.id,
+              username: user.username,
+              name: user.fullName || user.username,
+              avatarUrl: null,
+            }
+          : null,
       };
     });
 
@@ -173,20 +175,19 @@ export class SupportTicketQueryService {
         const mapped = clauses
           .map((clause) => {
             const out: Record<string, unknown> = {};
-            if ('countryId' in clause && clause['countryId'] !== undefined) out['countryId'] = clause['countryId'];
-            if ('stateId' in clause && clause['stateId'] !== undefined) out['stateId'] = clause['stateId'];
-            if ('regionId' in clause && clause['regionId'] !== undefined) out['regionId'] = clause['regionId'];
+            if ('countryId' in clause && clause['countryId'] !== undefined)
+              out['countryId'] = clause['countryId'];
+            if ('stateId' in clause && clause['stateId'] !== undefined)
+              out['stateId'] = clause['stateId'];
+            if ('regionId' in clause && clause['regionId'] !== undefined)
+              out['regionId'] = clause['regionId'];
             return out;
           })
           .filter((obj) => Object.keys(obj).length > 0);
 
         if (mapped.length > 0) {
           locationFilter = {
-            OR: [
-              ...mapped,
-              { countryId: null },
-              { stateId: null },
-            ],
+            OR: [...mapped, { countryId: null }, { stateId: null }],
           };
         }
       }

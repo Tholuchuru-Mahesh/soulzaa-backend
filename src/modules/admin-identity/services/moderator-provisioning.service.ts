@@ -183,9 +183,7 @@ export class ModeratorProvisioningService {
     }
     const inactive = states.find((s) => !s.isActive || !s.country.isActive);
     if (inactive) {
-      throw new BadRequestException(
-        `Cannot assign moderator to inactive state '${inactive.name}'`,
-      );
+      throw new BadRequestException(`Cannot assign moderator to inactive state '${inactive.name}'`);
     }
 
     const userRole = await this.roleService.assignRoleByName(userId, 'MODERATOR', actorId);
@@ -194,7 +192,9 @@ export class ModeratorProvisioningService {
       where: { userRoleId: userRole.id, scopeType: ScopeType.STATE },
     });
     const targetIds = new Set(stateIds);
-    const existingIds = new Set(existingScopes.map((s) => s.stateId).filter((id): id is string => !!id));
+    const existingIds = new Set(
+      existingScopes.map((s) => s.stateId).filter((id): id is string => !!id),
+    );
 
     const toRemove = existingScopes.filter((s) => s.stateId && !targetIds.has(s.stateId));
     const toAdd = states.filter((s) => !existingIds.has(s.id));

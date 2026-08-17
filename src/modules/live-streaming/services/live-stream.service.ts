@@ -117,11 +117,7 @@ export class LiveStreamService {
     });
   }
 
-  async listStreams(
-    filters: { status?: LiveStreamStatus },
-    page = 1,
-    limit = 20,
-  ) {
+  async listStreams(filters: { status?: LiveStreamStatus }, page = 1, limit = 20) {
     const where: Record<string, unknown> = {};
     if (filters.status) where['status'] = filters.status;
 

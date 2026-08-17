@@ -249,7 +249,10 @@ describe('LiveStreamReportService', () => {
   // ======================= owner scope enforcement =======================
 
   describe('owner scope enforcement', () => {
-    let scopedScopeService: { assertModeratorInScope: jest.Mock; resolveModeratorsInScope: jest.Mock };
+    let scopedScopeService: {
+      assertModeratorInScope: jest.Mock;
+      resolveModeratorsInScope: jest.Mock;
+    };
     let scopedService: LiveStreamReportService;
 
     beforeEach(() => {

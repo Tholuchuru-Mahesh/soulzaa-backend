@@ -36,7 +36,7 @@ export class SupportTicketService {
 
     let countryId = user.countryId;
     let stateId = user.stateId;
-    let regionId = user.regionId;
+    const regionId = user.regionId;
 
     if (!countryId) {
       const defaultCountry = await this.prisma.country.findFirst({ where: { code: 'IN' } });

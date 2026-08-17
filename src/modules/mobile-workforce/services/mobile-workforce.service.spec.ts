@@ -93,7 +93,9 @@ describe('MobileWorkforceService scope composition', () => {
       prisma.user.findMany.mockResolvedValue([{ id: 'u-1' }, { id: 'u-2' }]);
       scope.userScopeFilter.mockResolvedValue({ OR: [{ stateId: 's-ka' }] });
       prisma.audioRoom.findMany.mockResolvedValueOnce([{ id: 'room-a' }]).mockResolvedValueOnce([]);
-      prisma.liveStream.findMany.mockResolvedValueOnce([{ id: 'stream-a' }]).mockResolvedValueOnce([]);
+      prisma.liveStream.findMany
+        .mockResolvedValueOnce([{ id: 'stream-a' }])
+        .mockResolvedValueOnce([]);
 
       await service.regionalDailyActivity('mod-1');
 

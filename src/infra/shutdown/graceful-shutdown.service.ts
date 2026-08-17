@@ -1,4 +1,9 @@
-import { BeforeApplicationShutdown, Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
+import {
+  BeforeApplicationShutdown,
+  Injectable,
+  Logger,
+  OnApplicationShutdown,
+} from '@nestjs/common';
 
 /**
  * Shutdown-sequence logging only. Does **not** close Prisma or Redis itself —

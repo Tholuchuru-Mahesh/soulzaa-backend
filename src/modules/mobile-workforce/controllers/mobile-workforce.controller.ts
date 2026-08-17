@@ -100,7 +100,11 @@ export class MobileWorkforceController {
   @ApiOperation({ summary: 'Live room details, chat messages, active reports, and participants' })
   @ApiResponse({ status: 200, description: 'Live monitoring details for specific room' })
   @Get('rooms/:roomId/details')
-  roomDetails(@CurrentUser('id') userId: string, @Query('roomId') queryRoomId?: string, @Query('id') queryId?: string) {
+  roomDetails(
+    @CurrentUser('id') userId: string,
+    @Query('roomId') queryRoomId?: string,
+    @Query('id') queryId?: string,
+  ) {
     const roomId = queryRoomId || queryId || '';
     return this.service.roomDetails(userId, roomId);
   }
