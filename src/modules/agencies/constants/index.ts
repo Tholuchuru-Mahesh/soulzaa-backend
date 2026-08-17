@@ -1,2 +1,1 @@
-/** agencies constants — empty until the module is implemented. */
-export {};
+export * from './member-score.constants';

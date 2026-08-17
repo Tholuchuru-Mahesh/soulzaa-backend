@@ -28,14 +28,26 @@ describe('AgencyMemberService', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
       roomLog: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+      roomMember: { count: jest.fn().mockResolvedValue(0) },
+      videoRoomMember: { count: jest.fn().mockResolvedValue(0) },
+      badgeInventory: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        count: jest.fn().mockResolvedValue(0),
+      },
       ...overrides,
     };
     const profiles = {
       resolvePublicIdentities: jest.fn().mockResolvedValue(new Map()),
     };
     const community = { getActiveHostIds: jest.fn().mockResolvedValue([]) };
-    const service = new AgencyMemberService(prisma, community as never, profiles as never);
-    return { service, prisma, profiles };
+    const scores = { rankAgency: jest.fn().mockResolvedValue(new Map()) };
+    const service = new AgencyMemberService(
+      prisma,
+      community as never,
+      profiles as never,
+      scores as never,
+    );
+    return { service, prisma, profiles, scores };
   }
 
   describe('getMember', () => {
@@ -72,7 +84,7 @@ describe('AgencyMemberService', () => {
       });
     });
 
-    it('returns the three tabs for a genuine member', async () => {
+    it('returns the overview blocks for a genuine member', async () => {
       const { service, prisma } = build();
       const joined = new Date('2026-05-10T00:00:00Z');
       prisma.agencyRelationship.findUnique.mockResolvedValue({
@@ -90,12 +102,14 @@ describe('AgencyMemberService', () => {
         goldBalance: BigInt(7541),
         diamondBalance: BigInt(120),
       });
+      // Sent-now, sent-before, received-now, received-before.
       prisma.giftTransaction.aggregate
         .mockResolvedValueOnce({ _count: 242, _sum: { totalCoinValue: BigInt(5000) } })
+        .mockResolvedValueOnce({ _count: 121, _sum: { totalCoinValue: BigInt(2500) } })
+        .mockResolvedValueOnce({ _count: 866, _sum: { totalCoinValue: BigInt(9000) } })
         .mockResolvedValueOnce({ _count: 866, _sum: { totalCoinValue: BigInt(9000) } });
-      prisma.roomLog.count.mockResolvedValue(19);
 
-      const res = await service.getMember(AGENCY, MEMBER);
+      const res: any = await service.getMember(AGENCY, MEMBER);
 
       expect(res.profile).toMatchObject({
         username: 'ananya_21',
@@ -103,14 +117,158 @@ describe('AgencyMemberService', () => {
         joinedAgencyAt: joined,
         coins: '7541',
       });
-      expect(res.activity).toMatchObject({
-        giftsSent: 242,
-        giftsReceived: 866,
-        roomsJoined: 19,
-        // Gifts both ways plus room joins.
-        totalActivities: 242 + 866 + 19,
+      expect(res.stats.giftsSent).toEqual({
+        value: 242,
+        changePercent: 100,
+        comparedTo: 'LAST_MONTH',
       });
-      expect(res.performance).toMatchObject({ coinsSent: '5000', coinsReceived: '9000' });
+      // Identical windows are a flat 0%, which is a real measurement — unlike
+      // a null, which means the baseline could not be measured at all.
+      expect(res.stats.giftsReceived.changePercent).toBe(0);
+      expect(res.stats.coinsSent.value).toBe('5000');
+    });
+  });
+
+  describe('getMember profile fields', () => {
+    function activeMember(prisma: any, user: Record<string, unknown> = {}) {
+      prisma.agencyRelationship.findUnique.mockResolvedValue({
+        effectiveFrom: new Date('2026-05-10T00:00:00Z'),
+        status: 'ACTIVE',
+      });
+      prisma.user.findUnique.mockResolvedValue({
+        id: MEMBER,
+        username: 'balayya',
+        fullName: 'Balayya Naidu',
+        email: 'balayya@example.com',
+        gender: 'MALE',
+        preferredLanguage: 'Telugu',
+        country: 'IN',
+        createdAt: new Date('2026-04-02T00:00:00Z'),
+        ...user,
+      });
+    }
+
+    const RANKED = new Map([
+      [
+        MEMBER,
+        {
+          userId: MEMBER,
+          score: 72,
+          rank: 7,
+          totalMembers: 7541,
+          topPercent: 1,
+          grade: { min: 60, code: 'GOOD', label: 'Good', caption: 'nearly there' },
+          inputs: { loginDays: 12, roomsJoined: 18, giftsSent: 50, giftsReceived: 50 },
+        },
+      ],
+    ]);
+
+    it("returns the member's own email, name and username", async () => {
+      // The screen showed one hard-coded address for every member; these three
+      // fields are the whole point of the change.
+      const { service, prisma } = build();
+      activeMember(prisma);
+
+      const result: any = await service.getMember(AGENCY, MEMBER);
+
+      expect(result.profile.email).toBe('balayya@example.com');
+      expect(result.profile.fullName).toBe('Balayya Naidu');
+      expect(result.profile.username).toBe('balayya');
+    });
+
+    it('reports an unset gender and language as null rather than guessing', async () => {
+      const { service, prisma } = build();
+      activeMember(prisma, { gender: null, preferredLanguage: null });
+
+      const result: any = await service.getMember(AGENCY, MEMBER);
+
+      expect(result.profile.gender).toBeNull();
+      expect(result.profile.language).toBeNull();
+    });
+
+    it('returns no badge rather than an empty one when nothing is equipped', async () => {
+      const { service, prisma } = build();
+      activeMember(prisma);
+
+      const result: any = await service.getMember(AGENCY, MEMBER);
+
+      expect(result.badge).toBeNull();
+    });
+
+    it("carries the member's equipped badge with the agency percentile", async () => {
+      const { service, prisma, scores } = build();
+      activeMember(prisma);
+      prisma.badgeInventory.findFirst.mockResolvedValue({
+        badgeCode: 'AGENCY_STAR',
+        badge: { name: 'Agency star', iconUrl: 'https://cdn/star.png', tier: 'GOLD' },
+      });
+      prisma.badgeInventory.count.mockResolvedValue(7);
+      scores.rankAgency.mockResolvedValue(RANKED);
+
+      const result: any = await service.getMember(AGENCY, MEMBER);
+
+      expect(result.badge).toEqual({
+        code: 'AGENCY_STAR',
+        name: 'Agency star',
+        iconUrl: 'https://cdn/star.png',
+        tier: 'GOLD',
+        topPercent: 1,
+        totalBadges: 7,
+      });
+    });
+
+    it('carries rank, score and grade from the ranking service', async () => {
+      const { service, prisma, scores } = build();
+      activeMember(prisma);
+      scores.rankAgency.mockResolvedValue(RANKED);
+
+      const result: any = await service.getMember(AGENCY, MEMBER);
+
+      expect(result.summary).toEqual({
+        rank: 7,
+        totalMembers: 7541,
+        engagementScore: 72,
+        grade: { code: 'GOOD', label: 'Good', caption: 'nearly there' },
+      });
+    });
+
+    it('reports a null summary rather than "#0 of 0" for an unranked member', async () => {
+      const { service, prisma } = build();
+      activeMember(prisma);
+
+      const result: any = await service.getMember(AGENCY, MEMBER);
+
+      expect(result.summary).toEqual({
+        rank: null,
+        totalMembers: null,
+        engagementScore: null,
+        grade: null,
+      });
+    });
+
+    it('reports a null trend when the baseline window was empty', async () => {
+      // Growth from nothing is not a percentage; both "∞%" and "100%" lie.
+      const { service, prisma } = build();
+      activeMember(prisma);
+
+      const result: any = await service.getMember(AGENCY, MEMBER);
+
+      expect(result.stats.giftsSent.changePercent).toBeNull();
+      expect(result.stats.giftsSent.comparedTo).toBe('LAST_MONTH');
+    });
+
+    it('keeps coin figures as strings', async () => {
+      const { service, prisma } = build();
+      activeMember(prisma);
+      prisma.wallet.findUnique.mockResolvedValue({
+        goldBalance: BigInt('9007199254740993'),
+        diamondBalance: BigInt(0),
+      });
+
+      const result: any = await service.getMember(AGENCY, MEMBER);
+
+      expect(result.profile.coins).toBe('9007199254740993');
+      expect(typeof result.stats.coinsSent.value).toBe('string');
     });
   });
 

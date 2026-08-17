@@ -18,6 +18,10 @@ import { AgencyActivationService } from './services/agency-activation.service';
 import { AgencyDirectoryService } from './services/agency-directory.service';
 import { AgencyJoinRequestService } from './services/agency-join-request.service';
 import { AgencyMemberService } from './services/agency-member.service';
+import { AgencyMemberScoreService } from './services/agency-member-score.service';
+import { AgencyMemberActivityService } from './services/agency-member-activity.service';
+import { AgencyMemberPerformanceService } from './services/agency-member-performance.service';
+import { AgencyMemberHistoryService } from './services/agency-member-history.service';
 import { AgencyRewardService } from './services/agency-reward.service';
 import { AgencyTaskService } from './services/agency-task.service';
 import {
@@ -63,6 +67,10 @@ import {
     AgencyCommunityService,
     AgencyDashboardService,
     AgencyMemberService,
+    AgencyMemberScoreService,
+    AgencyMemberActivityService,
+    AgencyMemberPerformanceService,
+    AgencyMemberHistoryService,
     AgencyAuditLogService,
     AgencyTaskService,
     AgencyRewardService,
