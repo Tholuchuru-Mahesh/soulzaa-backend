@@ -18,6 +18,21 @@ const TREND_WINDOW_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_PAGE_SIZE = 100;
 
+/** What "Top performers" means: the best tenth of the agency. */
+const TOP_DECILE = 10;
+
+/**
+ * Level for a member with no `UserStatistics` row.
+ *
+ * Matches the column's own `@default(1)`. Every account starts at level 1, so 1
+ * is the true answer for someone nobody has written statistics for yet — unlike
+ * 0, which no account ever holds.
+ */
+const DEFAULT_LEVEL = 1;
+
+/** Which slice of the community the list is showing. */
+export type AgencyMemberFilter = 'all' | 'active' | 'top';
+
 /**
  * The agency's own community — the member list and one member's detail.
  *
@@ -63,7 +78,12 @@ export class AgencyMemberService {
    */
   async listMembers(
     agencyId: string,
-    options: { search?: string; page?: number; limit?: number } = {},
+    options: {
+      search?: string;
+      page?: number;
+      limit?: number;
+      filter?: AgencyMemberFilter;
+    } = {},
   ) {
     const limit = Math.min(Math.max(options.limit ?? 20, 1), MAX_PAGE_SIZE);
     const page = Math.max(options.page ?? 1, 1);
@@ -106,18 +126,28 @@ export class AgencyMemberService {
       (a, b) => (joinedAtById.get(b.id)?.getTime() ?? 0) - (joinedAtById.get(a.id)?.getTime() ?? 0),
     );
 
-    const total = users.length;
-    const pageUsers = users.slice((page - 1) * limit, page * limit);
+    // Applied to the whole member set before the page is cut. Filtering the
+    // page instead would make page 2 the filtered subset of page 2's members
+    // rather than the second page of matching members.
+    const filtered = await this.applyFilter(agencyId, users, options.filter ?? 'all');
+
+    const total = filtered.length;
+    const pageUsers = filtered.slice((page - 1) * limit, page * limit);
     const pageIds = pageUsers.map((u) => u.id);
 
-    const [wallets, activeIds, identities] = await Promise.all([
+    const [wallets, activeIds, identities, stats] = await Promise.all([
       this.prisma.wallet.findMany({
         where: { userId: { in: pageIds } },
         select: { userId: true, goldBalance: true },
       }),
       this.recentlyActiveIds(pageIds),
       this.profiles.resolvePublicIdentities(pageIds),
+      this.prisma.userStatistics.findMany({
+        where: { userId: { in: pageIds } },
+        select: { userId: true, level: true },
+      }),
     ]);
+    const levelById = new Map(stats.map((s) => [s.userId, s.level]));
     const coinsById = new Map(wallets.map((w) => [w.userId, w.goldBalance]));
 
     return {
@@ -131,12 +161,49 @@ export class AgencyMemberService {
         // String for the same BigInt reason as everywhere else in this domain.
         coins: (coinsById.get(user.id) ?? BigInt(0)).toString(),
         isActive: activeIds.has(user.id),
+        level: levelById.get(user.id) ?? DEFAULT_LEVEL,
       })),
       page,
       limit,
       total,
       totalPages: Math.ceil(total / limit),
     };
+  }
+
+  /**
+   * Narrows the member set for the Reward Distribution screen's chips.
+   *
+   * Runs over the whole set rather than a page — see the call site for why.
+   */
+  private async applyFilter<T extends { id: string }>(
+    agencyId: string,
+    users: T[],
+    filter: AgencyMemberFilter,
+  ): Promise<T[]> {
+    if (filter === 'active') {
+      const activeIds = await this.recentlyActiveIds(users.map((u) => u.id));
+      return users.filter((u) => activeIds.has(u.id));
+    }
+
+    if (filter === 'top') {
+      const ranked = await this.scores.rankAgency(agencyId);
+      const topDecile = users.filter((u) => {
+        const percent = ranked.get(u.id)?.topPercent;
+        return percent != null && percent <= TOP_DECILE;
+      });
+      if (topDecile.length > 0) return topDecile;
+
+      // Below 10 members the scoring service withholds a percentile entirely,
+      // so "top 10%" matches nobody. In a six-person agency the top performer
+      // is one person, not a tenth of one — an empty list would just look
+      // broken.
+      const best = users
+        .filter((u) => ranked.has(u.id))
+        .sort((a, b) => ranked.get(a.id)!.rank - ranked.get(b.id)!.rank)[0];
+      return best ? [best] : [];
+    }
+
+    return users;
   }
 
   /**

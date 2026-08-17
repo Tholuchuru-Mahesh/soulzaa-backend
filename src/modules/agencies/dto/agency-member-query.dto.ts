@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+
+const MEMBER_FILTERS = ['all', 'active', 'top'] as const;
 
 export class AgencyMemberQueryDto {
   @ApiPropertyOptional({
@@ -25,4 +27,13 @@ export class AgencyMemberQueryDto {
   @IsInt()
   @Min(1)
   limit?: number;
+
+  @ApiPropertyOptional({
+    enum: MEMBER_FILTERS,
+    default: 'all',
+    description: '`top` is the best tenth of the agency by engagement score.',
+  })
+  @IsOptional()
+  @IsIn(MEMBER_FILTERS)
+  filter?: (typeof MEMBER_FILTERS)[number];
 }

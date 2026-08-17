@@ -34,6 +34,7 @@ describe('AgencyMemberService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         count: jest.fn().mockResolvedValue(0),
       },
+      userStatistics: { findMany: jest.fn().mockResolvedValue([]) },
       ...overrides,
     };
     const profiles = {
@@ -320,6 +321,122 @@ describe('AgencyMemberService', () => {
 
       expect(res.limit).toBe(100);
       expect(res.items).toHaveLength(100);
+    });
+
+    function threeMembers(prisma: any) {
+      prisma.agencyRelationship.findMany.mockResolvedValue([
+        { hostId: 'a', effectiveFrom: new Date('2026-01-03') },
+        { hostId: 'b', effectiveFrom: new Date('2026-01-02') },
+        { hostId: 'c', effectiveFrom: new Date('2026-01-01') },
+      ]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'a', username: 'a', fullName: null, country: 'IN' },
+        { id: 'b', username: 'b', fullName: null, country: 'IN' },
+        { id: 'c', username: 'c', fullName: null, country: 'IN' },
+      ]);
+    }
+
+    it('returns the real level from statistics', async () => {
+      const { service, prisma } = build();
+      threeMembers(prisma);
+      prisma.userStatistics.findMany.mockResolvedValue([{ userId: 'a', level: 18 }]);
+
+      const res: any = await service.listMembers(AGENCY);
+
+      expect(res.items.find((m: any) => m.userId === 'a').level).toBe(18);
+    });
+
+    it('reports level 1 for a member with no statistics row', async () => {
+      // Every account starts at level 1, so 1 is the true answer — not 0.
+      const { service, prisma } = build();
+      threeMembers(prisma);
+
+      const res: any = await service.listMembers(AGENCY);
+
+      expect(res.items[0].level).toBe(1);
+    });
+
+    it('filters to the top decile using the agency ranking', async () => {
+      const { service, prisma, scores } = build();
+      threeMembers(prisma);
+      scores.rankAgency.mockResolvedValue(
+        new Map<string, unknown>([
+          ['a', { userId: 'a', rank: 1, totalMembers: 30, topPercent: 4, score: 90 }],
+          ['b', { userId: 'b', rank: 2, totalMembers: 30, topPercent: 7, score: 80 }],
+          ['c', { userId: 'c', rank: 25, totalMembers: 30, topPercent: 84, score: 10 }],
+        ]),
+      );
+
+      const res: any = await service.listMembers(AGENCY, { filter: 'top' });
+
+      expect(res.items.map((m: any) => m.userId).sort()).toEqual(['a', 'b']);
+      expect(res.total).toBe(2);
+    });
+
+    it('falls back to the single best member when the agency is too small for a percentile', async () => {
+      // topPercent is null below 10 members, so "top 10%" would match nobody.
+      const { service, prisma, scores } = build();
+      threeMembers(prisma);
+      scores.rankAgency.mockResolvedValue(
+        new Map<string, unknown>([
+          ['a', { userId: 'a', rank: 2, totalMembers: 3, topPercent: null, score: 40 }],
+          ['b', { userId: 'b', rank: 1, totalMembers: 3, topPercent: null, score: 70 }],
+          ['c', { userId: 'c', rank: 3, totalMembers: 3, topPercent: null, score: 10 }],
+        ]),
+      );
+
+      const res: any = await service.listMembers(AGENCY, { filter: 'top' });
+
+      expect(res.items.map((m: any) => m.userId)).toEqual(['b']);
+    });
+
+    it('filters before paginating, so page 2 is the second page of matches', async () => {
+      const { service, prisma, scores } = build();
+      prisma.agencyRelationship.findMany.mockResolvedValue(
+        Array.from({ length: 30 }, (_, i) => ({
+          hostId: `m${i}`,
+          effectiveFrom: new Date(2026, 0, 1 + i),
+        })),
+      );
+      prisma.user.findMany.mockResolvedValue(
+        Array.from({ length: 30 }, (_, i) => ({
+          id: `m${i}`,
+          username: `m${i}`,
+          fullName: null,
+          country: 'IN',
+        })),
+      );
+      // Only the first four are inside the top decile.
+      scores.rankAgency.mockResolvedValue(
+        new Map<string, unknown>(
+          Array.from({ length: 30 }, (_, i) => [
+            `m${i}`,
+            {
+              userId: `m${i}`,
+              rank: i + 1,
+              totalMembers: 30,
+              topPercent: i < 4 ? 5 : 50,
+              score: 0,
+            },
+          ]),
+        ),
+      );
+
+      const res: any = await service.listMembers(AGENCY, { filter: 'top', page: 2, limit: 3 });
+
+      expect(res.total).toBe(4);
+      expect(res.totalPages).toBe(2);
+      expect(res.items).toHaveLength(1);
+    });
+
+    it('filters to recently active members', async () => {
+      const { service, prisma } = build();
+      threeMembers(prisma);
+      prisma.userSession.findMany.mockResolvedValue([{ userId: 'b' }]);
+
+      const res: any = await service.listMembers(AGENCY, { filter: 'active' });
+
+      expect(res.items.map((m: any) => m.userId)).toEqual(['b']);
     });
 
     it('orders by join date, newest first', async () => {

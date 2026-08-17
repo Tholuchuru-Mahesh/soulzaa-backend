@@ -43,6 +43,7 @@ export class AgencyMemberController {
       search: query.search,
       page: query.page,
       limit: query.limit,
+      filter: query.filter,
     });
   }
 
