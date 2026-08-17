@@ -10,3 +10,7 @@ export * from './agency-query.service';
 export * from './agency-event.service';
 export * from './agency-community.service';
 export * from './agency-dashboard.service';
+export * from './agency-member-score.service';
+export * from './agency-member-activity.service';
+export * from './agency-member-performance.service';
+export * from './agency-member-history.service';
