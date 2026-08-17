@@ -89,51 +89,44 @@ describe('MobileWorkforceService scope composition', () => {
   });
 
   describe('regionalDailyActivity — the Dashboard\'s "Assigned X" cards', () => {
-    it("scopes rooms by the room's own region and streams/investigations by regionId", async () => {
+    it('scopes rooms/streams by the in-scope owner ids, and investigations by their resolved room/stream ids', async () => {
       prisma.user.findMany.mockResolvedValue([{ id: 'u-1' }, { id: 'u-2' }]);
-      scope.userScopeFilter.mockResolvedValue({ OR: [{ regionId: 'r-1' }] });
+      scope.userScopeFilter.mockResolvedValue({ OR: [{ stateId: 's-ka' }] });
+      prisma.audioRoom.findMany.mockResolvedValueOnce([{ id: 'room-a' }]).mockResolvedValueOnce([]);
+      prisma.liveStream.findMany.mockResolvedValueOnce([{ id: 'stream-a' }]).mockResolvedValueOnce([]);
 
       await service.regionalDailyActivity('mod-1');
 
-      expect(prisma.investigationRecording.count).toHaveBeenCalledWith({
-        where: { status: 'ACTIVE', OR: [{ regionId: 'r-1' }] },
+      // AudioRoom/VideoRoom/LiveStream carry no territory snapshot column —
+      // matched by ownerId/hostId against the resolved in-scope user ids.
+      expect(prisma.audioRoom.findMany).toHaveBeenNthCalledWith(1, {
+        where: { ownerId: { in: ['u-1', 'u-2'] } },
+        select: { id: true },
       });
-      // The displayed room lists filter on AudioRoom/VideoRoom.region — the
-      // room's own region snapshot — never on the owner's profile geography.
-      expect(prisma.audioRoom.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { OR: [{ region: 'r-1' }], status: 'LIVE' } }),
-      );
-      expect(prisma.videoRoom.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { OR: [{ region: 'r-1' }], status: 'LIVE' } }),
-      );
-      expect(prisma.liveStream.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { status: 'ACTIVE', OR: [{ regionId: 'r-1' }] },
-        }),
-      );
+      expect(prisma.liveStream.findMany).toHaveBeenNthCalledWith(1, {
+        where: { hostId: { in: ['u-1', 'u-2'] } },
+        select: { id: true },
+      });
+      expect(prisma.investigationRecording.count).toHaveBeenCalledWith({
+        where: {
+          status: 'ACTIVE',
+          OR: [{ roomId: { in: ['room-a'] } }, { liveStreamId: { in: ['stream-a'] } }],
+        },
+      });
     });
 
-    // The bug this replaced: the display lists were filtered by
-    // `ownerId IN (users in my scope)`, so a room whose OWNER lives in my
-    // region but which itself was created in another region leaked in, and a
-    // room in my region owned by an out-of-region host went missing.
-    it("includes/excludes a room by the room's own region, not its owner's profile region", async () => {
-      scope.userScopeFilter.mockResolvedValue({ OR: [{ regionId: 'r-1' }] });
-      // The owner-scope lookup resolves an owner who is NOT the in-region
-      // room's owner — if the old ownerFilter were still in play these ids
-      // would drive the query and the assertion below would fail.
-      prisma.user.findMany.mockResolvedValue([{ id: 'owner-in-my-region' }]);
+    it('assigned rooms are filtered by the same owner-scoped clause as the in-scope id lookup', async () => {
+      scope.userScopeFilter.mockResolvedValue({ OR: [{ stateId: 's-ka' }] });
+      prisma.user.findMany.mockResolvedValue([{ id: 'owner-1' }]);
       prisma.audioRoom.findMany.mockResolvedValue([
-        { id: 'room-in-r1', name: 'in region', status: 'LIVE', ownerId: 'owner-elsewhere' },
+        { id: 'room-1', name: 'in scope', status: 'LIVE', ownerId: 'owner-1' },
       ]);
 
       const result = await service.regionalDailyActivity('mod-1');
 
       const displayWhere = prisma.audioRoom.findMany.mock.calls[1][0].where;
-      expect(displayWhere).toEqual({ OR: [{ region: 'r-1' }], status: 'LIVE' });
-      expect(displayWhere.ownerId).toBeUndefined();
-      // A room in my region survives even though its owner's profile is not.
-      expect(result.assignedAudioRooms.map((r: any) => r.id)).toEqual(['room-in-r1']);
+      expect(displayWhere).toEqual({ ownerId: { in: ['owner-1'] }, status: 'LIVE' });
+      expect(result.assignedAudioRooms.map((r: any) => r.id)).toEqual(['room-1']);
     });
 
     it('scopes report counts by the target room/stream region, not the reporter', async () => {
@@ -173,14 +166,27 @@ describe('MobileWorkforceService scope composition', () => {
       expect(result.assignedReportsCount).toBe(6);
     });
 
-    it('matches nothing (not everything) when restricted but no region predicate applies', async () => {
-      scope.userScopeFilter.mockResolvedValue({ OR: [{ stateId: 's-1' }] });
-      prisma.user.findMany.mockResolvedValue([{ id: 'u-1' }]);
+    it('matches nothing (not everything) when a STATE scope resolves to zero in-scope owners', async () => {
+      // Moderators are provisioned at STATE granularity; a state with no
+      // users located in it yet must show no data, not everyone's data.
+      scope.userScopeFilter.mockResolvedValue({ OR: [{ stateId: 's-empty' }] });
+      prisma.user.findMany.mockResolvedValue([]);
+      // Earlier tests in this describe block leave these mocks holding
+      // non-empty resolved values (jest.clearAllMocks() clears call history,
+      // not implementations) — reset explicitly so this "zero owners" case
+      // isn't accidentally fed leftover rooms/streams from another test.
+      prisma.audioRoom.findMany.mockResolvedValue([]);
+      prisma.videoRoom.findMany.mockResolvedValue([]);
+      prisma.liveStream.findMany.mockResolvedValue([]);
 
       await service.regionalDailyActivity('mod-1');
 
+      expect(prisma.audioRoom.findMany).toHaveBeenNthCalledWith(1, {
+        where: { ownerId: { in: [] } },
+        select: { id: true },
+      });
       const investigationWhere = prisma.investigationRecording.count.mock.calls[0][0].where;
-      expect(investigationWhere.OR).toEqual([]);
+      expect(investigationWhere.OR).toEqual([{ roomId: { in: [] } }, { liveStreamId: { in: [] } }]);
     });
 
     it('is unrestricted for platform staff (empty scope filter)', async () => {

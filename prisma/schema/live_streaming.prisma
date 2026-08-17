@@ -2,9 +2,9 @@
 // Live Streaming — streams, participants, PK battles, goals
 // Owned by the "live_streaming" module. No cross-module FK relations —
 // reference other domains (users) by id and coordinate via the event bus.
-// `countryId`/`stateId`/`regionId` mirror the streamer's location at the
-// time the stream started so territory-scoped counts stay accurate even
-// if the streamer's profile location is updated later.
+// `countryId`/`stateId` mirror the streamer's location at the time the
+// stream started so territory-scoped counts stay accurate even if the
+// streamer's profile location is updated later.
 // ============================================================
 
 /// A live broadcast session. One stream per row; ended streams are never
@@ -27,7 +27,6 @@ model LiveStream {
   // Geographic snapshot at stream start — used for territory-scoped counts.
   countryId String? @db.Uuid
   stateId   String? @db.Uuid
-  regionId  String? @db.Uuid
 
   scheduledAt DateTime?
   startedAt   DateTime? @default(now())

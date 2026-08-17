@@ -97,11 +97,6 @@ export class VideoRoomLifecycleService {
         );
       }
       const passwordHash = dto.password ? await this.passwords.hash(dto.password) : null;
-      // Snapshot the owner's assigned Region onto the room at creation — mirrors
-      // AudioRoomsRepository.getOwnerRegionId — so
-      // WorkforceScopeService.assertModeratorInScope has something real to check
-      // (null ⇒ owner has no region assigned ⇒ unscoped/permit).
-      const region = await this.repo.getOwnerRegionId(actor.id);
 
       const data: CreateVideoRoomData = {
         ownerId: actor.id,
@@ -127,7 +122,6 @@ export class VideoRoomLifecycleService {
           this.config.maxViewersCap,
         ),
         creationSource: VideoRoomCreationSource.APP,
-        region,
         ...(this.metadataFor(dto.accessPolicy) ?? {}),
       };
 

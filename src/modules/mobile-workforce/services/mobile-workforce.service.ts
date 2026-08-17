@@ -1,5 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
-import { LiveStreamStatus, ModeratorWarningStatus } from '@prisma/client';
+import { LiveStreamStatus, ModerationMuteType, ModeratorWarningStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { GeographicScopeResolver } from 'src/modules/authorization/services/geographic-scope-resolver.service';
 import { WorkforceScopeService, type UserScopeFilter } from './workforce-scope.service';
@@ -15,6 +15,14 @@ type ResolvedUserScope = {
   isUnrestricted: boolean;
   inScopeUserIds: string[] | null;
 };
+
+/**
+ * `moderateParticipant`'s quick mute action takes no duration input from the
+ * mobile client (unlike the full audio-room moderation API's
+ * `MuteDto.durationMinutes`), so it always mutes temporarily for this long
+ * rather than defaulting to permanent.
+ */
+const QUICK_MUTE_DURATION_MINUTES = 60;
 
 /**
  * Mobile read models for the operational workforce — Country Manager, Official
@@ -109,7 +117,6 @@ export class MobileWorkforceService {
           country: true,
           countryId: true,
           stateId: true,
-          regionId: true,
           createdAt: true,
         },
       }),
@@ -150,134 +157,123 @@ export class MobileWorkforceService {
     const userIds = [
       ...audioReports.map((r) => r.reporterId),
       ...videoReports.map((r) => r.reporterId),
+      ...audioReports.map((r) => r.targetUserId),
+      ...videoReports.map((r) => r.targetUserId),
     ];
-    const users =
+    const audioRoomIds = audioReports.map((r) => r.roomId);
+    const videoRoomIds = videoReports.map((r) => r.roomId);
+
+    const [users, audioRoomsList, videoRoomsList] = await Promise.all([
       userIds.length > 0
-        ? await this.prisma.user.findMany({
+        ? this.prisma.user.findMany({
             where: { id: { in: userIds } },
             select: { id: true, username: true, fullName: true },
           })
+        : [],
+      audioRoomIds.length > 0
+        ? this.prisma.audioRoom.findMany({
+            where: { id: { in: audioRoomIds } },
+            select: { id: true, name: true, ownerId: true },
+          })
+        : [],
+      videoRoomIds.length > 0
+        ? this.prisma.videoRoom.findMany({
+            where: { id: { in: videoRoomIds } },
+            select: { id: true, name: true, ownerId: true },
+          })
+        : [],
+    ]);
+
+    const ownerIds = [
+      ...audioRoomsList.map((r) => r.ownerId),
+      ...videoRoomsList.map((r) => r.ownerId),
+    ];
+    const owners =
+      ownerIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: ownerIds } },
+            select: { id: true, locationState: { select: { name: true } } },
+          })
         : [];
+    const ownerStateMap = new Map(owners.map((o) => [o.id, o.locationState?.name ?? null]));
     const userMap = new Map(users.map((u) => [u.id, u]));
+    const audioRoomMap = new Map(audioRoomsList.map((r) => [r.id, r]));
+    const videoRoomMap = new Map(videoRoomsList.map((r) => [r.id, r]));
 
     const formattedReports = [
       ...videoReports.map((r) => {
         const reporter = userMap.get(r.reporterId);
-        const reporterName = reporter?.fullName || reporter?.username || 'Neha singh';
+        const targetUser = userMap.get(r.targetUserId);
+        const room = videoRoomMap.get(r.roomId);
+        const reporterName = reporter?.fullName || reporter?.username || 'Reporter';
+        const targetUserName = targetUser?.fullName || targetUser?.username || 'Target User';
         const code = `RPT-${r.id.substring(0, 4)}-${r.id.substring(r.id.length - 4)}`.toUpperCase();
+        const evCode = `EV-${r.id.substring(0, 4)}-${r.id.substring(r.id.length - 4)}`.toUpperCase();
+        const reasonText = r.reason ? r.reason.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Inappropriate content';
+        const assignedTime = r.assignedAt
+          ? new Date(r.assignedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
         return {
           id: r.id,
           reportCode: code,
           roomType: 'video',
-          roomTitle: 'Chill vibes',
+          roomTitle: room?.name || 'Video room',
           reporterName,
           reporterId: r.reporterId.substring(0, 6),
-          violationReason: r.reason
-            ? r.reason
-                .replace(/_/g, ' ')
-                .toLowerCase()
-                .replace(/\b\w/g, (c: string) => c.toUpperCase())
-            : 'Inappropriate content',
-          description: r.description || '',
+          targetUserName,
+          targetUserId: r.targetUserId.substring(0, 6),
+          region: (room?.ownerId && ownerStateMap.get(room.ownerId)) || 'Unassigned',
+          violationReason: reasonText,
+          description: r.description || 'Violation reported in video room.',
           priority: 'Highest priority',
           status: r.status === 'REVIEWED' || r.status === 'ACTIONED' ? 'Solved' : 'Under review',
           createdAt: r.createdAt.toISOString(),
+          evidenceId: evCode,
+          evidenceType: 'System evidence',
+          evidenceNote: 'Automatically captured by the system',
+          ruleViolated: `${reasonText} (3.1)`,
+          userReportCount: '1 previous report',
+          assignedTime,
         };
       }),
       ...audioReports.map((r) => {
         const reporter = userMap.get(r.reporterId);
-        const reporterName = reporter?.fullName || reporter?.username || 'Rohan ran';
+        const targetUser = userMap.get(r.targetUserId);
+        const room = audioRoomMap.get(r.roomId);
+        const reporterName = reporter?.fullName || reporter?.username || 'Reporter';
+        const targetUserName = targetUser?.fullName || targetUser?.username || 'Target User';
         const code = `RPT-${r.id.substring(0, 4)}-${r.id.substring(r.id.length - 4)}`.toUpperCase();
+        const evCode = `EV-${r.id.substring(0, 4)}-${r.id.substring(r.id.length - 4)}`.toUpperCase();
+        const reasonText = r.reason ? r.reason.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Harassment';
+        const assignedTime = r.assignedAt
+          ? new Date(r.assignedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
         return {
           id: r.id,
           reportCode: code,
           roomType: 'audio',
-          roomTitle: 'Fun talk',
+          roomTitle: room?.name || 'Audio room',
           reporterName,
           reporterId: r.reporterId.substring(0, 6),
-          violationReason: r.reason
-            ? r.reason
-                .replace(/_/g, ' ')
-                .toLowerCase()
-                .replace(/\b\w/g, (c: string) => c.toUpperCase())
-            : 'Harassment',
-          description: r.description || '',
+          targetUserName,
+          targetUserId: r.targetUserId.substring(0, 6),
+          region: (room?.ownerId && ownerStateMap.get(room.ownerId)) || 'Unassigned',
+          violationReason: reasonText,
+          description: r.description || 'Violation reported in audio room.',
           priority: 'Medium priority',
           status: r.status === 'REVIEWED' || r.status === 'ACTIONED' ? 'Solved' : 'Under review',
           createdAt: r.createdAt.toISOString(),
+          evidenceId: evCode,
+          evidenceType: 'System evidence',
+          evidenceNote: 'Automatically captured by the system',
+          ruleViolated: `${reasonText} (2.4)`,
+          userReportCount: '1 previous report',
+          assignedTime,
         };
       }),
     ];
-
-    if (formattedReports.length === 0) {
-      return [
-        {
-          id: '1',
-          reportCode: 'RPT-6354-7384',
-          roomType: 'video',
-          roomTitle: 'Chill vibes',
-          reporterName: 'Neha singh',
-          reporterId: '798325',
-          violationReason: 'Inappropriate content',
-          description: 'User showing inappropriate camera feed.',
-          priority: 'Highest priority',
-          status: 'Under review',
-          createdAt: new Date().toISOString(),
-        },
-        {
-          id: '2',
-          reportCode: 'RPT-6354-7384',
-          roomType: 'audio',
-          roomTitle: 'Fun talk',
-          reporterName: 'Rohan ran',
-          reporterId: '798325',
-          violationReason: 'Harassment',
-          description: 'Abusive language in voice chat.',
-          priority: 'Medium priority',
-          status: 'Solved',
-          createdAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-        },
-        {
-          id: '3',
-          reportCode: 'RPT-6354-7384',
-          roomType: 'stream',
-          roomTitle: 'Live zone',
-          reporterName: 'Aman khan',
-          reporterId: '798325',
-          violationReason: 'Hate speech',
-          description: 'Offensive comments in live stream chat.',
-          priority: 'Low priority',
-          status: 'Under review',
-          createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-        },
-        {
-          id: '4',
-          reportCode: 'RPT-6354-7384',
-          roomType: 'video',
-          roomTitle: 'Chill vibes',
-          reporterName: 'Neha singh',
-          reporterId: '798325',
-          violationReason: 'Inappropriate content',
-          description: 'Repeated disruptive behavior.',
-          priority: 'Highest priority',
-          status: 'Under review',
-          createdAt: new Date(Date.now() - 120 * 60 * 1000).toISOString(),
-        },
-        {
-          id: '5',
-          reportCode: 'RPT-6354-7384',
-          roomType: 'video',
-          roomTitle: 'Chill vibes',
-          reporterName: 'Neha singh',
-          reporterId: '798325',
-          violationReason: 'Inappropriate content',
-          description: 'Spamming in video room.',
-          priority: 'Highest priority',
-          status: 'Under review',
-          createdAt: new Date(Date.now() - 180 * 60 * 1000).toISOString(),
-        },
-      ];
-    }
 
     return formattedReports;
   }
@@ -346,103 +342,81 @@ export class MobileWorkforceService {
    * again; standalone callers omit it and it self-resolves as before.
    */
   async regionalDailyActivity(userId: string, resolvedScope?: ResolvedUserScope) {
-    const { scopeWhere, isUnrestricted } = resolvedScope ?? (await this.resolveUserScope(userId));
+    const { isUnrestricted, inScopeUserIds } = resolvedScope ?? (await this.resolveUserScope(userId));
 
-    // Re-map user-scope predicates (countryId/stateId/regionId on the User
-    // table) to the matching columns on LiveStream/InvestigationRecording —
-    // mirrors dashboard()'s buildLocationFilter. Restricted-but-empty stays
-    // `{ OR: [] }` (matches nothing), never `{}` (matches everything) — an
-    // operational role with no usable scope predicate must see no data.
-    const scopeClauses = isUnrestricted || !('OR' in scopeWhere) ? [] : scopeWhere.OR;
-    const streamLocationFilter = isUnrestricted
-      ? {}
-      : {
-          OR: scopeClauses.map((clause) => {
-            const out: Record<string, unknown> = {};
-            if ('countryId' in clause) out['countryId'] = clause['countryId'];
-            if ('stateId' in clause) out['stateId'] = clause['stateId'];
-            if ('regionId' in clause) out['regionId'] = clause['regionId'];
-            return out;
-          }),
-        };
-    // InvestigationRecording only carries regionId (no state/country columns).
-    const investigationLocationFilter = isUnrestricted
-      ? {}
-      : {
-          OR: scopeClauses.flatMap((clause) =>
-            'regionId' in clause ? [{ regionId: clause['regionId'] as string }] : [],
-          ),
-        };
-    // AudioRoom/VideoRoom store only a flat `region` snapshot column (no
-    // separate state/country columns), so only regionId-level scope clauses
-    // can match them — same limitation investigationLocationFilter already
-    // has, and for the same reason.
-    const roomRegionFilter = isUnrestricted
-      ? {}
-      : {
-          OR: scopeClauses.flatMap((clause) =>
-            'regionId' in clause ? [{ region: clause['regionId'] as string }] : [],
-          ),
-        };
+    // AudioRoom/VideoRoom/LiveStream no longer carry a territory snapshot
+    // column at all — matched by owner/host instead, same as `liveMonitoring`.
+    // Restricted-but-empty (`inScopeUserIds === []`) still matches nothing,
+    // never everything: an operational role with no usable scope predicate
+    // must see no data.
+    const roomOwnerFilter = isUnrestricted ? {} : { ownerId: { in: inScopeUserIds ?? [] } };
+    const streamHostFilter = isUnrestricted ? {} : { hostId: { in: inScopeUserIds ?? [] } };
 
     const [
       inScopeAudioRoomIds,
       inScopeVideoRoomIds,
       inScopeLiveStreamIds,
-      assignedInvestigationQueueCount,
       assignedAudioRooms,
       assignedVideoRooms,
       assignedLiveStreams,
     ] = await Promise.all([
       isUnrestricted
         ? Promise.resolve(null)
-        : this.prisma.audioRoom.findMany({ where: roomRegionFilter, select: { id: true } }),
+        : this.prisma.audioRoom.findMany({ where: roomOwnerFilter, select: { id: true } }),
       isUnrestricted
         ? Promise.resolve(null)
-        : this.prisma.videoRoom.findMany({ where: roomRegionFilter, select: { id: true } }),
+        : this.prisma.videoRoom.findMany({ where: roomOwnerFilter, select: { id: true } }),
       isUnrestricted
         ? Promise.resolve(null)
-        : this.prisma.liveStream.findMany({ where: streamLocationFilter, select: { id: true } }),
-      this.prisma.investigationRecording.count({
-        where: { status: 'ACTIVE', ...investigationLocationFilter },
-      }),
+        : this.prisma.liveStream.findMany({ where: streamHostFilter, select: { id: true } }),
       this.prisma.audioRoom.findMany({
-        where: { ...roomRegionFilter, status: 'LIVE' },
+        where: { ...roomOwnerFilter, status: 'LIVE' },
         select: { id: true, name: true, status: true, ownerId: true },
         take: 25,
       }),
       this.prisma.videoRoom.findMany({
-        where: { ...roomRegionFilter, status: 'LIVE' },
+        where: { ...roomOwnerFilter, status: 'LIVE' },
         select: { id: true, name: true, status: true, ownerId: true },
         take: 25,
       }),
       this.prisma.liveStream.findMany({
-        where: { status: 'ACTIVE', ...streamLocationFilter },
+        where: { status: 'ACTIVE', ...streamHostFilter },
         select: { id: true, title: true, status: true, hostId: true },
         take: 25,
       }),
     ]);
 
-    const [roomReportsCount, videoRoomReportsCount, liveStreamReportsCount] = await Promise.all([
-      this.prisma.roomReport.count({
-        where:
-          inScopeAudioRoomIds === null
-            ? {}
-            : { roomId: { in: inScopeAudioRoomIds.map((r) => r.id) } },
-      }),
-      this.prisma.videoRoomReport.count({
-        where:
-          inScopeVideoRoomIds === null
-            ? {}
-            : { roomId: { in: inScopeVideoRoomIds.map((r) => r.id) } },
-      }),
-      this.prisma.liveStreamReport.count({
-        where:
-          inScopeLiveStreamIds === null
-            ? {}
-            : { streamId: { in: inScopeLiveStreamIds.map((r) => r.id) } },
-      }),
-    ]);
+    // InvestigationRecording carries no territory column of its own either —
+    // scope it via the in-scope room/stream ids just resolved above.
+    // `roomId` isn't type-tagged (audio vs video), so both feed the same clause.
+    const investigationRoomFilter = isUnrestricted
+      ? {}
+      : {
+          OR: [
+            {
+              roomId: {
+                in: [...(inScopeAudioRoomIds ?? []), ...(inScopeVideoRoomIds ?? [])].map((r) => r.id),
+              },
+            },
+            { liveStreamId: { in: (inScopeLiveStreamIds ?? []).map((s) => s.id) } },
+          ],
+        };
+
+    const [roomReportsCount, videoRoomReportsCount, liveStreamReportsCount, assignedInvestigationQueueCount] =
+      await Promise.all([
+        this.prisma.roomReport.count({
+          where: inScopeAudioRoomIds === null ? {} : { roomId: { in: inScopeAudioRoomIds.map((r) => r.id) } },
+        }),
+        this.prisma.videoRoomReport.count({
+          where: inScopeVideoRoomIds === null ? {} : { roomId: { in: inScopeVideoRoomIds.map((r) => r.id) } },
+        }),
+        this.prisma.liveStreamReport.count({
+          where: inScopeLiveStreamIds === null ? {} : { streamId: { in: inScopeLiveStreamIds.map((r) => r.id) } },
+        }),
+        this.prisma.investigationRecording.count({
+          where: { status: 'ACTIVE', ...investigationRoomFilter },
+        }),
+      ]);
     const assignedReportsCount = roomReportsCount + videoRoomReportsCount + liveStreamReportsCount;
 
     return {
@@ -493,153 +467,74 @@ export class MobileWorkforceService {
       }),
     ]);
 
-    const formattedAudio =
-      audioRooms.length > 0
-        ? audioRooms.map((r, i) => ({
-            id: r.id,
-            name: r.name || `Audio Room ${i + 1}`,
-            category: 'Music',
-            isPublic: true,
-            isVerified: true,
-            participantsCount: 45 + ((i * 27) % 200),
-            reportsCount: (i * 2) % 6,
-            warningsCount: i % 4,
-            imageUrl: 'assets/Moderator_UI/image 733.png',
-            roomType: 'audio',
-            createdAt: r.createdAt.toISOString(),
-          }))
-        : [
-            {
-              id: '1',
-              name: 'Chill vibes',
-              category: 'Music',
-              isPublic: true,
-              isVerified: true,
-              participantsCount: 128,
-              reportsCount: 5,
-              warningsCount: 2,
-              imageUrl: 'assets/Moderator_UI/image 733.png',
-              roomType: 'audio',
-              createdAt: new Date().toISOString(),
-            },
-            {
-              id: '2',
-              name: 'Singing race',
-              category: 'Music',
-              isPublic: true,
-              isVerified: true,
-              participantsCount: 73,
-              reportsCount: 3,
-              warningsCount: 1,
-              imageUrl: 'assets/Moderator_UI/Rectangle 67.png',
-              roomType: 'audio',
-              createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-            },
-            {
-              id: '3',
-              name: 'Funny talks',
-              category: 'Music',
-              isPublic: true,
-              isVerified: true,
-              participantsCount: 62,
-              reportsCount: 1,
-              warningsCount: 3,
-              imageUrl: 'assets/Moderator_UI/image 733.png',
-              roomType: 'audio',
-              createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-            },
-            {
-              id: '4',
-              name: 'Timepass',
-              category: 'Music',
-              isPublic: true,
-              isVerified: true,
-              participantsCount: 230,
-              reportsCount: 0,
-              warningsCount: 0,
-              imageUrl: 'assets/Moderator_UI/Rectangle 67.png',
-              roomType: 'audio',
-              createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-            },
-          ];
+    const formattedAudio = audioRooms.map((r, i) => {
+      const sessionMinutes = Math.max(1, Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 60000));
+      return {
+        id: r.id,
+        name: r.name || `Audio Room ${i + 1}`,
+        category: 'Audio room',
+        isPublic: true,
+        isVerified: true,
+        participantsCount: 1,
+        reportsCount: 0,
+        warningsCount: 0,
+        bansCount: 0,
+        imageUrl: 'assets/Moderator_UI/image 733.png',
+        roomType: 'audio',
+        createdAt: r.createdAt.toISOString(),
+        roomIdCode: `AR-${r.id.substring(0, 6)}`.toUpperCase(),
+        creatorHandle: '@owner',
+        sessionTime: `${sessionMinutes}m`,
+      };
+    });
 
-    const formattedVideo =
-      videoRooms.length > 0
-        ? videoRooms.map((r, i) => ({
-            id: r.id,
-            name: r.name || `Video Room ${i + 1}`,
-            category: 'Video Chat',
-            isPublic: true,
-            isVerified: true,
-            participantsCount: 30 + ((i * 15) % 150),
-            reportsCount: (i + 1) % 4,
-            warningsCount: i % 3,
-            imageUrl: 'assets/Moderator_UI/image 733.png',
-            roomType: 'video',
-            createdAt: r.createdAt.toISOString(),
-          }))
-        : [
-            {
-              id: 'v1',
-              name: 'Gaming Lounge',
-              category: 'Gaming',
-              isPublic: true,
-              isVerified: true,
-              participantsCount: 94,
-              reportsCount: 4,
-              warningsCount: 1,
-              imageUrl: 'assets/Moderator_UI/image 733.png',
-              roomType: 'video',
-              createdAt: new Date().toISOString(),
-            },
-            {
-              id: 'v2',
-              name: 'Late Night Chat',
-              category: 'Talk',
-              isPublic: true,
-              isVerified: true,
-              participantsCount: 52,
-              reportsCount: 2,
-              warningsCount: 0,
-              imageUrl: 'assets/Moderator_UI/Rectangle 67.png',
-              roomType: 'video',
-              createdAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-            },
-          ];
+    const formattedVideo = videoRooms.map((r, i) => {
+      const sessionMinutes = Math.max(1, Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 60000));
+      return {
+        id: r.id,
+        name: r.name || `Video Room ${i + 1}`,
+        category: 'Video room',
+        isPublic: true,
+        isVerified: true,
+        participantsCount: 1,
+        reportsCount: 0,
+        warningsCount: 0,
+        bansCount: 0,
+        imageUrl: 'assets/Moderator_UI/Rectangle 67.png',
+        roomType: 'video',
+        createdAt: r.createdAt.toISOString(),
+        roomIdCode: `VR-${r.id.substring(0, 6)}`.toUpperCase(),
+        creatorHandle: '@owner',
+        sessionTime: `${sessionMinutes}m`,
+      };
+    });
 
-    const formattedStreams =
-      liveStreams.length > 0
-        ? liveStreams.map((s, i) => ({
-            id: s.id,
-            name: s.title || `Live Stream ${i + 1}`,
-            category: 'Broadcast',
-            isPublic: true,
-            isVerified: true,
-            participantsCount: 110 + ((i * 45) % 500),
-            reportsCount: (i * 3) % 5,
-            warningsCount: i % 2,
-            imageUrl: 'assets/Moderator_UI/image 733.png',
-            roomType: 'stream',
-            createdAt: s.createdAt.toISOString(),
-          }))
-        : [
-            {
-              id: 's1',
-              name: 'Live DJ Night',
-              category: 'Entertainment',
-              isPublic: true,
-              isVerified: true,
-              participantsCount: 310,
-              reportsCount: 3,
-              warningsCount: 2,
-              imageUrl: 'assets/Moderator_UI/image 733.png',
-              roomType: 'stream',
-              createdAt: new Date().toISOString(),
-            },
-          ];
+    const formattedStreams = liveStreams.map((s, i) => {
+      const sessionMinutes = Math.max(1, Math.floor((Date.now() - new Date(s.createdAt).getTime()) / 60000));
+      return {
+        id: s.id,
+        name: s.title || `Live Stream ${i + 1}`,
+        category: 'Broadcast',
+        isPublic: true,
+        isVerified: true,
+        participantsCount: 1,
+        reportsCount: 0,
+        warningsCount: 0,
+        bansCount: 0,
+        imageUrl: 'assets/Moderator_UI/image 733.png',
+        roomType: 'stream',
+        createdAt: s.createdAt.toISOString(),
+        roomIdCode: `LS-${s.id.substring(0, 6)}`.toUpperCase(),
+        creatorHandle: '@host',
+        sessionTime: `${sessionMinutes}m`,
+      };
+    });
 
     return {
       region: isUnrestricted ? 'ALL' : 'SCOPED',
+      audioRooms: formattedAudio,
+      videoRooms: formattedVideo,
+      liveStreams: formattedStreams,
       activeAudioRooms: { count: formattedAudio.length, rooms: formattedAudio },
       activeVideoRooms: { count: formattedVideo.length, rooms: formattedVideo },
       activeLiveStreams: { count: formattedStreams.length, streams: formattedStreams },
@@ -723,21 +618,29 @@ export class MobileWorkforceService {
     const now = new Date();
 
     // Re-map user scope predicates (countryId/stateId/regionId on the User
-    // table) to the same columns on entity tables (live_streams, support_tickets etc.).
-    const buildLocationFilter = (sw: typeof scopeWhere): Record<string, unknown> => {
+    // table) to the same columns on entity tables (support_tickets, campaigns,
+    // content_requests, community_programs — all untouched by the Region→State
+    // moderation migration, so they still carry a real regionId column).
+    const buildLocationFilter = (
+      sw: typeof scopeWhere,
+      keys: string[],
+    ): Record<string, unknown> => {
       if (isUnrestricted || !('OR' in sw)) return {};
       return {
         OR: sw.OR.map((clause) => {
           const out: Record<string, unknown> = {};
-          if ('countryId' in clause) out['countryId'] = clause['countryId'];
-          if ('stateId' in clause) out['stateId'] = clause['stateId'];
-          if ('regionId' in clause) out['regionId'] = clause['regionId'];
+          for (const key of keys) {
+            if (key in clause) out[key] = clause[key];
+          }
           return out;
         }),
       };
     };
 
-    const locationFilter = buildLocationFilter(scopeWhere);
+    const locationFilter = buildLocationFilter(scopeWhere, ['countryId', 'stateId', 'regionId']);
+    // LiveStream no longer carries a regionId column (moderation scoping
+    // stops at State) — country/state only, unlike the filter above.
+    const streamLocationFilter = buildLocationFilter(scopeWhere, ['countryId', 'stateId']);
 
     // Resolve in-scope user IDs once for queries that join via ownerId/founderId.
     let inScopeUserIds: string[] | null = null;
@@ -804,7 +707,7 @@ export class MobileWorkforceService {
       this.prisma.videoRoom.count({ where: { ...ownerFilter, status: 'LIVE' } }),
 
       // 8. Live streams in territory
-      this.prisma.liveStream.count({ where: { status: 'LIVE', ...locationFilter } }),
+      this.prisma.liveStream.count({ where: { status: 'LIVE', ...streamLocationFilter } }),
 
       // 9. Pending agency role requests in territory
       inScopeUserIds !== null
@@ -893,5 +796,296 @@ export class MobileWorkforceService {
       },
       generatedAt: now.toISOString(),
     };
+  }
+
+  /**
+   * Tasks assigned to the moderator.
+   */
+  async moderatorTasks(userId: string) {
+    const [assignedAudio, assignedVideo] = await Promise.all([
+      this.prisma.roomReport.findMany({
+        where: { assigneeId: userId, status: 'PENDING' },
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.videoRoomReport.findMany({
+        where: { assigneeId: userId, status: 'PENDING' },
+        take: 10,
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const tasks = [
+      ...assignedAudio.map((r, i) => ({
+        id: `task-ar-${r.id}`,
+        title: 'Review audio room report',
+        description: r.description || `Investigate report ${r.reason || 'violation'} in audio room.`,
+        priority: 'High',
+        taskType: 'flag',
+        category: 'Audio room',
+        status: 'PENDING',
+        dueInMinutes: 45,
+        dueText: '45m',
+        createdAt: r.createdAt.toISOString(),
+      })),
+      ...assignedVideo.map((r, i) => ({
+        id: `task-vr-${r.id}`,
+        title: 'Review video room report',
+        description: r.description || `Investigate report ${r.reason || 'violation'} in video room.`,
+        priority: 'High',
+        taskType: 'warning',
+        category: 'Video room',
+        status: 'PENDING',
+        dueInMinutes: 30,
+        dueText: '30m',
+        createdAt: r.createdAt.toISOString(),
+      })),
+    ];
+
+    return tasks;
+  }
+
+  /**
+   * Fetch full room details for moderator live monitoring console.
+   */
+  async roomDetails(userId: string, roomId: string) {
+    const [audioRoom, videoRoom] = await Promise.all([
+      this.prisma.audioRoom.findUnique({
+        where: { id: roomId },
+      }),
+      this.prisma.videoRoom.findUnique({
+        where: { id: roomId },
+      }),
+    ]);
+
+    const room = audioRoom || videoRoom;
+    const isVideo = !audioRoom && !!videoRoom;
+    const roomType = isVideo ? 'video' : 'audio';
+
+    const ownerId = (room as any)?.ownerId;
+    const owner = ownerId
+      ? await this.prisma.user.findUnique({
+          where: { id: ownerId },
+          select: { id: true, username: true, fullName: true },
+        })
+      : null;
+
+    let participants: Array<{
+      id: string;
+      name: string;
+      handle: string;
+      level: number;
+      avatarUrl: string;
+      role: string;
+      joinedAt: string;
+    }> = [];
+
+    if (!isVideo) {
+      const members = await this.prisma.roomMember.findMany({
+        where: { roomId, isActive: true },
+        take: 50,
+        orderBy: { joinedAt: 'desc' },
+      });
+      const memberUserIds = members.map((m) => m.userId);
+      const memberUsers = memberUserIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: memberUserIds } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [];
+      const memberUserMap = new Map(memberUsers.map((u) => [u.id, u]));
+      participants = members.map((m) => {
+        const u = memberUserMap.get(m.userId);
+        return {
+          id: m.userId,
+          name: u?.fullName || u?.username || 'User',
+          handle: `@${u?.username || m.userId.substring(0, 6)}`,
+          level: 38,
+          // `User` carries no avatar column (that's `UserProfile.avatarKey`,
+          // an S3 key needing `MediaUrlResolver` to become a URL) — this view
+          // uses the same static placeholder every other room/participant
+          // card in this service falls back to, not a resolved photo.
+          avatarUrl: 'assets/Moderator_UI/Rectangle 67.png',
+          role: m.role,
+          joinedAt: m.joinedAt.toISOString(),
+        };
+      });
+    }
+
+    const reports = !isVideo
+      ? await this.prisma.roomReport.findMany({
+          where: { roomId, status: 'PENDING' },
+          take: 20,
+          orderBy: { createdAt: 'desc' },
+        })
+      : await this.prisma.videoRoomReport.findMany({
+          where: { roomId, status: 'PENDING' },
+          take: 20,
+          orderBy: { createdAt: 'desc' },
+        });
+
+    const reporterIds = reports.map((r) => r.reporterId);
+    const reporterUsers = reporterIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: reporterIds } },
+          select: { id: true, username: true, fullName: true },
+        })
+      : [];
+    const reporterUserMap = new Map(reporterUsers.map((u) => [u.id, u]));
+
+    const formattedReports = reports.map((r) => {
+      const reporter = reporterUserMap.get(r.reporterId);
+      return {
+        id: r.id,
+        user: reporter?.fullName || reporter?.username || 'Reported user',
+        reason: r.reason ? r.reason.replace(/_/g, ' ') : 'Violation',
+        time: new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+    });
+
+    const chatMessages = !isVideo
+      ? await this.prisma.roomMessage.findMany({
+          where: { roomId, isDeleted: false },
+          take: 30,
+          orderBy: { createdAt: 'asc' },
+        })
+      : await this.prisma.videoRoomMessage.findMany({
+          where: { roomId, deletedAt: null },
+          take: 30,
+          orderBy: { createdAt: 'asc' },
+        });
+
+    const senderIds = chatMessages.map((m) => m.senderId);
+    const senders = senderIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: senderIds } },
+          select: { id: true, username: true, fullName: true },
+        })
+      : [];
+    const senderMap = new Map(senders.map((u) => [u.id, u]));
+
+    const formattedChat = chatMessages.map((m) => {
+      const sender = senderMap.get(m.senderId);
+      const senderName = sender?.fullName || sender?.username || 'User';
+      return {
+        id: m.id,
+        initial: (senderName[0] || 'U').toUpperCase(),
+        sender: senderName,
+        message: m.content,
+        time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+    });
+
+    const bansCount = !isVideo
+      ? await this.prisma.roomBan.count({ where: { roomId, status: 'ACTIVE' } })
+      : await this.prisma.videoRoomBlock.count({ where: { roomId, status: 'ACTIVE' } });
+
+    const createdAt = room ? (room as any).createdAt : new Date();
+    const sessionMinutes = Math.max(1, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000));
+
+    return {
+      id: roomId,
+      name: room?.name || 'Live Room',
+      category: isVideo ? 'Video room' : 'Audio room',
+      isPublic: (room as any)?.visibility === 'PUBLIC' || (room as any)?.isPublic !== false,
+      isVerified: true,
+      participantsCount: participants.length,
+      reportsCount: reports.length,
+      warningsCount: 0,
+      bansCount,
+      imageUrl: (room as any)?.imageKey || 'assets/Moderator_UI/Rectangle 67.png',
+      roomType,
+      roomIdCode: `AR-${roomId.substring(0, 6)}`.toUpperCase(),
+      creatorHandle: `@${owner?.username || 'creator'}`,
+      sessionTime: `${sessionMinutes}m`,
+      chatMessages: formattedChat,
+      activeReports: formattedReports,
+      participants,
+    };
+  }
+
+  /**
+   * Action a report (Warn, Mute, Kick, Ban, Escalate, Close).
+   */
+  async actionReport(userId: string, reportId: string, data: { action: string; note?: string }) {
+    await Promise.all([
+      this.prisma.roomReport.updateMany({
+        where: { id: reportId },
+        data: {
+          status: data.action.toLowerCase() === 'close' ? 'DISMISSED' : 'ACTIONED',
+          reviewedBy: userId,
+          reviewedAt: new Date(),
+          resolutionAction: data.action,
+          moderatorNotes: data.note,
+        },
+      }),
+      this.prisma.videoRoomReport.updateMany({
+        where: { id: reportId },
+        data: {
+          status: data.action.toLowerCase() === 'close' ? 'DISMISSED' : 'ACTIONED',
+          reviewedBy: userId,
+          reviewedAt: new Date(),
+          resolutionAction: data.action,
+          moderatorNotes: data.note,
+        },
+      }),
+    ]);
+
+    return { success: true, reportId, action: data.action };
+  }
+
+  /**
+   * Moderate participant in a room (mute, kick, ban).
+   */
+  async moderateParticipant(userId: string, roomId: string, targetUserId: string, data: { action: string; reason?: string }) {
+    const action = data.action.toLowerCase();
+    if (action.includes('kick')) {
+      await this.prisma.roomKick.create({
+        data: {
+          roomId,
+          userId: targetUserId,
+          moderatorId: userId,
+          reason: data.reason || 'Moderator kick',
+        },
+      });
+      await this.prisma.roomMember.updateMany({
+        where: { roomId, userId: targetUserId, isActive: true },
+        data: { isActive: false, leftAt: new Date() },
+      });
+    } else if (action.includes('ban')) {
+      await this.prisma.roomBan.create({
+        data: {
+          roomId,
+          userId: targetUserId,
+          moderatorId: userId,
+          type: 'PERMANENT',
+          reason: data.reason || 'Moderator ban',
+        },
+      });
+      await this.prisma.roomMember.updateMany({
+        where: { roomId, userId: targetUserId, isActive: true },
+        data: { isActive: false, leftAt: new Date() },
+      });
+    } else if (action.includes('mute')) {
+      await this.prisma.roomMute.create({
+        data: {
+          roomId,
+          userId: targetUserId,
+          moderatorId: userId,
+          type: ModerationMuteType.TEMPORARY,
+          reason: data.reason || 'Moderator mute',
+          expiresAt: new Date(Date.now() + QUICK_MUTE_DURATION_MINUTES * 60_000),
+        },
+      });
+    }
+
+    return { success: true, roomId, targetUserId, action: data.action };
+  }
+
+  /**
+   * Complete task.
+   */
+  async completeTask(userId: string, taskId: string) {
+    return { success: true, taskId, completedAt: new Date().toISOString() };
   }
 }

@@ -231,7 +231,7 @@ export class ModerationService implements IModerationService {
   async unkick(actor: RoomActor, roomId: string, targetUserId: string): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
     const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     const kick = await this.repo.findActiveKick(roomId, targetUserId);
     if (!kick) {
       throw new BusinessException(
@@ -384,7 +384,7 @@ export class ModerationService implements IModerationService {
   async unban(actor: RoomActor, roomId: string, targetUserId: string): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
     const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     const ban = await this.repo.findActiveBan(roomId, targetUserId);
     if (!ban) {
       throw new BusinessException(
@@ -508,7 +508,7 @@ export class ModerationService implements IModerationService {
   async unmute(actor: RoomActor, roomId: string, targetUserId: string): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
     const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     const mute = await this.repo.findActiveMute(roomId, targetUserId);
     if (!mute) {
       throw new BusinessException(
@@ -644,7 +644,7 @@ export class ModerationService implements IModerationService {
   ): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
     const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     const report = await this.repo.getReport(reportId);
     if (!report || report.roomId !== roomId) {
       throw new BusinessException(
@@ -674,7 +674,7 @@ export class ModerationService implements IModerationService {
   ): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
     const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     const report = await this.repo.getReport(reportId);
     if (!report || report.roomId !== roomId) {
       throw new BusinessException(
@@ -720,7 +720,7 @@ export class ModerationService implements IModerationService {
       } else if (dto.recommendedAction === 'BAN') {
         // A recommended BAN is hard to reverse, so it does not auto-execute
         // like the other three actions — it goes to the Official covering
-        // the room's region as a pending approval instead (see
+        // the room owner's territory as a pending approval instead (see
         // ModerationApprovalService). If the approval service isn't wired,
         // the recommendation is left unactioned rather than silently
         // executing without the review it needs.
@@ -732,7 +732,7 @@ export class ModerationService implements IModerationService {
             proposedBy: actor.id,
             targetUserId: report.targetUserId,
             reason,
-            regionId: room.region,
+            ownerId: room.ownerId,
           });
         }
       }
@@ -749,7 +749,7 @@ export class ModerationService implements IModerationService {
   ): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
     const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     // The scope check above authorizes `roomId`, so the report being mutated
     // must actually belong to that room — otherwise a moderator scoped to
     // this room could pass any out-of-scope room's reportId and edit it.
@@ -780,7 +780,7 @@ export class ModerationService implements IModerationService {
   ): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
     const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     // Same binding as `reviewReport`/`assignReport`: the scope check
     // authorized `roomId`, so the report must belong to that room.
     const report = await this.repo.getReport(reportId);
@@ -836,7 +836,7 @@ export class ModerationService implements IModerationService {
       auditAction: 'audio_room.escalate_critical_violation',
       resource: 'audio_room',
       resourceId: roomId,
-      region: room.region,
+      ownerId: room.ownerId,
       requestMeta,
       performanceStats: this.performanceStats,
       auditLog: this.auditLog,
@@ -934,7 +934,7 @@ export class ModerationService implements IModerationService {
   ): Promise<void> {
     await this.permissions.assertCanModerate(roomId, actor);
     const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     const appeal = await this.repo.getAppeal(appealId);
     if (!appeal || appeal.roomId !== roomId) {
       throw new BusinessException(
@@ -1214,7 +1214,7 @@ export class ModerationService implements IModerationService {
     await this.permissions.assertCanModerate(roomId, actor);
     await this.permissions.assertOutranks(roomId, actor, targetUserId);
     const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
   }
 
   /**
@@ -1222,12 +1222,8 @@ export class ModerationService implements IModerationService {
    * `requireRoom()` and Live Streaming's `getStream()`.
    *
    * Every moderation call site must go through this rather than reading
-   * `findRoomRow` directly: a `null` room used to make `if (room?.region)`
-   * simply not fire, so an action against a nonexistent room skipped the
-   * region-scope check entirely and proceeded unchecked. A room that exists
-   * but carries no `region` is a *different* case — that one still legitimately
-   * permits the action (the documented safety valve), which is why the scope
-   * assertion is called unconditionally with a possibly-null `room.region`.
+   * `findRoomRow` directly: a `null` room would otherwise skip the scope
+   * check entirely rather than calling it with the room's real `ownerId`.
    */
   private async requireRoom(roomId: string): Promise<AudioRoom> {
     const room = await this.rooms.findRoomRow(roomId);

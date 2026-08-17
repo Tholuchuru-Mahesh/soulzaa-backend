@@ -42,11 +42,11 @@ describe('LiveStreamReportService', () => {
       listReports: jest.fn().mockResolvedValue([[], 0]),
     };
     liveStream = {
-      // No `regionId` here by default, so `stream?.regionId ?? null` is null
+      // No `hostId` here by default, so `stream?.hostId ?? null` is null
       // for every pre-existing test in this file and the scope check never
       // actually fires — this mock exists only to satisfy the now-required
-      // constructor parameter. See the "region scope enforcement" describe
-      // below for the tests that exercise a stream carrying a regionId.
+      // constructor parameter. See the "owner scope enforcement" describe
+      // below for the tests that exercise a stream carrying a hostId.
       getStream: jest.fn().mockResolvedValue({ id: STREAM_ID }),
       moderateUser: jest.fn().mockResolvedValue({}),
     };
@@ -157,7 +157,7 @@ describe('LiveStreamReportService', () => {
 
       beforeEach(() => {
         approvalService = { propose: jest.fn().mockResolvedValue({ id: 'approval-1' }) };
-        liveStream.getStream.mockResolvedValue({ id: STREAM_ID, regionId: 'region-eu-west' });
+        liveStream.getStream.mockResolvedValue({ id: STREAM_ID, hostId: 'host-eu-west' });
         approvingService = new LiveStreamReportService(
           reportRepo,
           liveStream,
@@ -186,7 +186,7 @@ describe('LiveStreamReportService', () => {
             reportId: REPORT_ID,
             proposedBy: MODERATOR_ID,
             targetUserId: TARGET_ID,
-            regionId: 'region-eu-west',
+            ownerId: 'host-eu-west',
           }),
         );
         expect(liveStream.moderateUser).not.toHaveBeenCalled();
@@ -246,23 +246,20 @@ describe('LiveStreamReportService', () => {
     });
   });
 
-  // ======================= region scope enforcement =======================
+  // ======================= owner scope enforcement =======================
 
-  describe('region scope enforcement', () => {
-    let scopedScopeService: {
-      assertModeratorInScope: jest.Mock;
-      resolveModeratorsInScope: jest.Mock;
-    };
+  describe('owner scope enforcement', () => {
+    let scopedScopeService: { assertModeratorInScope: jest.Mock; resolveModeratorsInScope: jest.Mock };
     let scopedService: LiveStreamReportService;
 
     beforeEach(() => {
       // Reuses this file's shared fixtures, but with a stream that DOES carry
-      // a `regionId` (the outer `liveStream` fixture deliberately has none,
+      // a `hostId` (the outer `liveStream` fixture deliberately has none,
       // so the outer `service`'s scope check never actually fires against a
-      // real region — see the comment above its construction) and a fresh
+      // real owner — see the comment above its construction) and a fresh
       // `scopeService` double so assertions here don't interfere with the
       // outer describe's tests.
-      liveStream.getStream.mockResolvedValue({ id: STREAM_ID, regionId: 'region-eu-west' });
+      liveStream.getStream.mockResolvedValue({ id: STREAM_ID, hostId: 'host-eu-west' });
       scopedScopeService = {
         assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
         resolveModeratorsInScope: jest.fn().mockResolvedValue([]),
@@ -276,7 +273,7 @@ describe('LiveStreamReportService', () => {
       );
     });
 
-    it('reviewReport checks the stream region', async () => {
+    it('reviewReport checks the stream owner', async () => {
       reportRepo.getReport.mockResolvedValue({ ...PENDING_REPORT });
       await scopedService.reviewReport({
         streamId: STREAM_ID,
@@ -286,7 +283,7 @@ describe('LiveStreamReportService', () => {
       } as any);
       expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
         MODERATOR_ID,
-        'region-eu-west',
+        'host-eu-west',
       );
     });
 
@@ -304,12 +301,12 @@ describe('LiveStreamReportService', () => {
       expect(reportRepo.reviewReport).not.toHaveBeenCalled();
     });
 
-    it('addNotes checks the stream region', async () => {
+    it('addNotes checks the stream owner', async () => {
       reportRepo.getReport.mockResolvedValue({ id: REPORT_ID, streamId: STREAM_ID });
       await scopedService.addNotes(STREAM_ID, REPORT_ID, MODERATOR_ID, 'notes');
       expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
         MODERATOR_ID,
-        'region-eu-west',
+        'host-eu-west',
       );
     });
 

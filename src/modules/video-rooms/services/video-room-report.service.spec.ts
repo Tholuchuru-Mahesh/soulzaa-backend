@@ -97,10 +97,10 @@ describe('VideoRoomReportService', () => {
     approvalService = {
       propose: jest.fn().mockResolvedValue({ id: 'approval-1' }),
     };
-    // `ROOM` (below) carries no `region`, so `room?.region` is falsy for
-    // every pre-existing test in this file and the scope check never
-    // actually fires — this mock exists only to satisfy the now-required
-    // constructor parameter.
+    // `ROOM` (above) carries an `ownerId`, so every pre-existing test in this
+    // file exercises the scope check with the default permissive mock below —
+    // see the "owner scope enforcement" describe for the tests asserting on
+    // the exact owner id and the deny path.
     scopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
 
     subject = new VideoRoomReportService(
@@ -650,19 +650,17 @@ describe('VideoRoomReportService', () => {
     });
   });
 
-  // ======================= region scope enforcement =======================
+  // ======================= owner scope enforcement =======================
 
-  describe('region scope enforcement', () => {
+  describe('owner scope enforcement', () => {
     let scopedScopeService: { assertModeratorInScope: jest.Mock };
     let scopedSubject: VideoRoomReportService;
 
     beforeEach(() => {
-      // Reuses this file's shared fixtures, but with a room that DOES carry a
-      // `region` (the outer `ROOM` fixture deliberately has none, so the
-      // outer `subject`'s scope check never fires — see the comment above
-      // its construction) and a fresh `scopeService` double so assertions
+      // Reuses this file's shared fixtures (the outer `ROOM` already carries
+      // an `ownerId`), just with a fresh `scopeService` double so assertions
       // here don't interfere with the outer describe's tests.
-      rooms.findById.mockResolvedValue({ ...ROOM, region: 'region-eu-west' });
+      rooms.findById.mockResolvedValue({ ...ROOM });
       scopedScopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
       scopedSubject = new VideoRoomReportService(
         reportRepo,
@@ -681,7 +679,7 @@ describe('VideoRoomReportService', () => {
       );
     });
 
-    it('reviewReport checks the room region', async () => {
+    it('reviewReport checks the room owner', async () => {
       reportRepo.getById.mockResolvedValue({
         id: 'report-1',
         roomId: ROOM.id,
@@ -694,7 +692,7 @@ describe('VideoRoomReportService', () => {
       } as any);
       expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
         MODERATOR.id,
-        'region-eu-west',
+        ROOM.ownerId,
       );
     });
 
@@ -715,12 +713,12 @@ describe('VideoRoomReportService', () => {
       expect(reportRepo.review).not.toHaveBeenCalled();
     });
 
-    it('addReportNotes checks the room region', async () => {
+    it('addReportNotes checks the room owner', async () => {
       reportRepo.getById.mockResolvedValue({ id: 'report-1', roomId: ROOM.id });
       await scopedSubject.addReportNotes(MODERATOR, ROOM.id, 'report-1', 'notes');
       expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
         MODERATOR.id,
-        'region-eu-west',
+        ROOM.ownerId,
       );
       expect(reportRepo.updateNotes).toHaveBeenCalledWith('report-1', MODERATOR.id, 'notes');
     });
@@ -750,7 +748,7 @@ describe('VideoRoomReportService', () => {
       expect(reportRepo.updateNotes).not.toHaveBeenCalled();
     });
 
-    it('dismissReport checks the room region', async () => {
+    it('dismissReport checks the room owner', async () => {
       reportRepo.getById.mockResolvedValue({
         id: 'report-1',
         roomId: ROOM.id,
@@ -759,11 +757,11 @@ describe('VideoRoomReportService', () => {
       await scopedSubject.dismissReport(MODERATOR, ROOM.id, 'report-1', 'reason');
       expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
         MODERATOR.id,
-        'region-eu-west',
+        ROOM.ownerId,
       );
     });
 
-    it('assignReport checks the room region', async () => {
+    it('assignReport checks the room owner', async () => {
       reportRepo.getById.mockResolvedValue({
         id: 'report-1',
         roomId: ROOM.id,
@@ -772,7 +770,7 @@ describe('VideoRoomReportService', () => {
       await scopedSubject.assignReport(MODERATOR, ROOM.id, 'report-1', 'assignee-1');
       expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
         MODERATOR.id,
-        'region-eu-west',
+        ROOM.ownerId,
       );
     });
   });

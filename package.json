@@ -32,6 +32,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "prisma:format": "prisma format",
+    "seed:geography": "npx ts-node -r tsconfig-paths/register prisma/seed-geography.ts",
     "seed:e2e": "dotenv -e .env.e2e -- npx prisma db push --skip-generate && dotenv -e .env.e2e -- npx ts-node -r tsconfig-paths/register prisma/seed-rbac.ts && dotenv -e .env.e2e -- npx ts-node -r tsconfig-paths/register prisma/seed-e2e-fixtures.ts"
   },
   "dependencies": {

@@ -3,27 +3,22 @@ import { DayOfWeek } from '@prisma/client';
 import { ModeratorProvisioningService } from './moderator-provisioning.service';
 
 /**
- * Spec: provisioning takes only email/password/region/shift from the admin.
+ * Spec: provisioning takes only email/password/state/shift from the admin.
  * Everything else — username, full name, country, the State/Country FKs, and
- * the RBAC region scope that actually gates moderator visibility — must be
+ * the RBAC state scope that actually gates moderator visibility — must be
  * derived without any further admin input.
  */
 describe('ModeratorProvisioningService', () => {
-  const activeRegion = {
-    id: 'region-1',
-    name: 'Bengaluru Region',
+  const activeState = {
+    id: 'state-1',
+    name: 'Karnataka',
     isActive: true,
-    stateId: 'state-1',
-    state: {
-      id: 'state-1',
-      isActive: true,
-      countryId: 'country-1',
-      country: { id: 'country-1', code: 'IN', isActive: true },
-    },
+    countryId: 'country-1',
+    country: { id: 'country-1', code: 'IN', isActive: true },
   };
 
   const prisma = {
-    region: { findMany: jest.fn() },
+    state: { findMany: jest.fn() },
     role: { findUnique: jest.fn() },
     user: { findFirst: jest.fn(), update: jest.fn() },
     userCredential: { upsert: jest.fn() },
@@ -52,7 +47,7 @@ describe('ModeratorProvisioningService', () => {
   const dto = {
     email: 'raviteja@gmail.com',
     password: 'a-long-password',
-    regionIds: ['region-1'],
+    stateIds: ['state-1'],
     shiftStartHour: 9,
     shiftStartMinute: 0,
     shiftEndHour: 15,
@@ -63,7 +58,7 @@ describe('ModeratorProvisioningService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     roles.getRoleNames.mockResolvedValue(['ADMIN']);
-    prisma.region.findMany.mockResolvedValue([activeRegion]);
+    prisma.state.findMany.mockResolvedValue([activeState]);
     prisma.user.findFirst.mockResolvedValue(null);
     users.isUsernameTaken.mockResolvedValue(false);
     users.createIdentity.mockResolvedValue({ id: 'new-1' });
@@ -93,31 +88,24 @@ describe('ModeratorProvisioningService', () => {
       await expect(service.createModerator('actor-1', dto, ctx)).rejects.toBeInstanceOf(
         ForbiddenException,
       );
-      expect(prisma.region.findMany).not.toHaveBeenCalled();
+      expect(prisma.state.findMany).not.toHaveBeenCalled();
     });
 
-    it('throws NotFoundException when the region does not exist', async () => {
-      prisma.region.findMany.mockResolvedValue([]);
+    it('throws NotFoundException when the state does not exist', async () => {
+      prisma.state.findMany.mockResolvedValue([]);
       await expect(service.createModerator('actor-1', dto, ctx)).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
 
     it.each([
-      ['region', { ...activeRegion, isActive: false }],
-      ['state', { ...activeRegion, state: { ...activeRegion.state, isActive: false } }],
+      ['state', { ...activeState, isActive: false }],
       [
         'country',
-        {
-          ...activeRegion,
-          state: {
-            ...activeRegion.state,
-            country: { ...activeRegion.state.country, isActive: false },
-          },
-        },
+        { ...activeState, country: { ...activeState.country, isActive: false } },
       ],
-    ])('rejects an inactive %s in the region hierarchy', async (_label, region) => {
-      prisma.region.findMany.mockResolvedValue([region]);
+    ])('rejects an inactive %s in the state hierarchy', async (_label, state) => {
+      prisma.state.findMany.mockResolvedValue([state]);
       await expect(service.createModerator('actor-1', dto, ctx)).rejects.toBeInstanceOf(
         BadRequestException,
       );
@@ -177,10 +165,10 @@ describe('ModeratorProvisioningService', () => {
       expect(updateArgs.data.country).toBeUndefined();
     });
 
-    it('grants a REGION role scope for every region in regionIds via setModeratorRegions', async () => {
-      await service.createModerator('actor-1', { ...dto, regionIds: ['region-1'] }, ctx);
+    it('grants a STATE role scope for every state in stateIds via setModeratorStates', async () => {
+      await service.createModerator('actor-1', { ...dto, stateIds: ['state-1'] }, ctx);
       expect(roleService.assignRoleScope).toHaveBeenCalledWith(
-        expect.objectContaining({ regionId: 'region-1' }),
+        expect.objectContaining({ scopeType: 'STATE', stateId: 'state-1' }),
       );
     });
 
@@ -224,7 +212,7 @@ describe('ModeratorProvisioningService', () => {
       );
     });
 
-    it('hides the account and writes an audit entry with the resulting regionIds', async () => {
+    it('hides the account and writes an audit entry with the resulting stateIds', async () => {
       await service.createModerator('actor-1', dto, ctx);
       expect(identity.syncHiddenState).toHaveBeenCalledWith('new-1');
       expect(audit.logAction).toHaveBeenCalledWith(
@@ -232,7 +220,7 @@ describe('ModeratorProvisioningService', () => {
           actorId: 'actor-1',
           action: 'moderator.created',
           resourceId: 'new-1',
-          details: expect.objectContaining({ regionIds: ['region-1'] }),
+          details: expect.objectContaining({ stateIds: ['state-1'] }),
         }),
       );
     });
@@ -244,31 +232,9 @@ describe('ModeratorProvisioningService', () => {
     });
   });
 
-  describe('setModeratorRegions', () => {
-    const BLR = {
-      id: 'region-blr',
-      name: 'Bengaluru Region',
-      isActive: true,
-      stateId: 'state-ka',
-      state: {
-        id: 'state-ka',
-        isActive: true,
-        countryId: 'country-in',
-        country: { id: 'country-in', code: 'IN', isActive: true },
-      },
-    };
-    const VJA = {
-      id: 'region-vja',
-      name: 'Vijayawada Region',
-      isActive: true,
-      stateId: 'state-ap',
-      state: {
-        id: 'state-ap',
-        isActive: true,
-        countryId: 'country-in',
-        country: { id: 'country-in', code: 'IN', isActive: true },
-      },
-    };
+  describe('setModeratorStates', () => {
+    const KA = { id: 'state-ka', name: 'Karnataka', isActive: true, countryId: 'country-in', country: { id: 'country-in', code: 'IN', isActive: true } };
+    const AP = { id: 'state-ap', name: 'Andhra Pradesh', isActive: true, countryId: 'country-in', country: { id: 'country-in', code: 'IN', isActive: true } };
 
     beforeEach(() => {
       roleService.assignRoleByName.mockResolvedValue({ id: 'user-role-1' });
@@ -277,98 +243,91 @@ describe('ModeratorProvisioningService', () => {
 
     it('rejects an actor who is not Admin or Super Admin', async () => {
       roles.getRoleNames.mockResolvedValue(['USER']);
-      await expect(
-        service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1'),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.setModeratorStates('mod-1', ['state-ka'], 'actor-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
 
-    it('throws NotFoundException when a regionId does not exist', async () => {
-      prisma.region.findMany = jest.fn().mockResolvedValue([]);
-      await expect(
-        service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1'),
-      ).rejects.toBeInstanceOf(NotFoundException);
+    it('throws NotFoundException when a stateId does not exist', async () => {
+      prisma.state.findMany = jest.fn().mockResolvedValue([]);
+      await expect(service.setModeratorStates('mod-1', ['state-ka'], 'actor-1')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
-    it('rejects an inactive region in the batch', async () => {
-      prisma.region.findMany = jest.fn().mockResolvedValue([{ ...BLR, isActive: false }]);
-      await expect(
-        service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1'),
-      ).rejects.toBeInstanceOf(BadRequestException);
+    it('rejects an inactive state in the batch', async () => {
+      prisma.state.findMany = jest.fn().mockResolvedValue([{ ...KA, isActive: false }]);
+      await expect(service.setModeratorStates('mod-1', ['state-ka'], 'actor-1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     });
 
-    it('creates a RoleScope row per new region when none exist yet', async () => {
-      prisma.region.findMany = jest.fn().mockResolvedValue([BLR, VJA]);
-      await service.setModeratorRegions('mod-1', ['region-blr', 'region-vja'], 'actor-1');
+    it('creates a RoleScope row per new state when none exist yet', async () => {
+      prisma.state.findMany = jest.fn().mockResolvedValue([KA, AP]);
+      await service.setModeratorStates('mod-1', ['state-ka', 'state-ap'], 'actor-1');
 
       expect(roleService.assignRoleScope).toHaveBeenCalledWith({
         userRoleId: 'user-role-1',
-        scopeType: 'REGION',
+        scopeType: 'STATE',
         countryId: 'country-in',
         stateId: 'state-ka',
-        regionId: 'region-blr',
       });
       expect(roleService.assignRoleScope).toHaveBeenCalledWith({
         userRoleId: 'user-role-1',
-        scopeType: 'REGION',
+        scopeType: 'STATE',
         countryId: 'country-in',
         stateId: 'state-ap',
-        regionId: 'region-vja',
       });
     });
 
-    it('removes RoleScope rows for regions no longer in the target set', async () => {
-      prisma.region.findMany = jest.fn().mockResolvedValue([BLR]);
+    it('removes RoleScope rows for states no longer in the target set', async () => {
+      prisma.state.findMany = jest.fn().mockResolvedValue([KA]);
       prisma.roleScope.findMany = jest.fn().mockResolvedValue([
-        { id: 'scope-blr', regionId: 'region-blr' },
-        { id: 'scope-vja', regionId: 'region-vja' },
+        { id: 'scope-ka', stateId: 'state-ka' },
+        { id: 'scope-ap', stateId: 'state-ap' },
       ]);
 
-      await service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1');
+      await service.setModeratorStates('mod-1', ['state-ka'], 'actor-1');
 
-      expect(roleService.removeRoleScope).toHaveBeenCalledWith('scope-vja');
-      expect(roleService.removeRoleScope).not.toHaveBeenCalledWith('scope-blr');
+      expect(roleService.removeRoleScope).toHaveBeenCalledWith('scope-ap');
+      expect(roleService.removeRoleScope).not.toHaveBeenCalledWith('scope-ka');
       expect(roleService.assignRoleScope).not.toHaveBeenCalled();
     });
 
     it('is a no-op when the target set already matches', async () => {
-      prisma.region.findMany = jest.fn().mockResolvedValue([BLR]);
-      prisma.roleScope.findMany = jest
-        .fn()
-        .mockResolvedValue([{ id: 'scope-blr', regionId: 'region-blr' }]);
+      prisma.state.findMany = jest.fn().mockResolvedValue([KA]);
+      prisma.roleScope.findMany = jest.fn().mockResolvedValue([{ id: 'scope-ka', stateId: 'state-ka' }]);
 
-      await service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1');
+      await service.setModeratorStates('mod-1', ['state-ka'], 'actor-1');
 
       expect(roleService.assignRoleScope).not.toHaveBeenCalled();
       expect(roleService.removeRoleScope).not.toHaveBeenCalled();
     });
 
-    it('returns the resulting region id list', async () => {
-      prisma.region.findMany = jest.fn().mockResolvedValue([BLR, VJA]);
-      const result = await service.setModeratorRegions(
-        'mod-1',
-        ['region-blr', 'region-vja'],
-        'actor-1',
-      );
-      expect(result).toEqual({ regionIds: ['region-blr', 'region-vja'] });
+    it('returns the resulting state id list', async () => {
+      prisma.state.findMany = jest.fn().mockResolvedValue([KA, AP]);
+      const result = await service.setModeratorStates('mod-1', ['state-ka', 'state-ap'], 'actor-1');
+      expect(result).toEqual({ stateIds: ['state-ka', 'state-ap'] });
     });
   });
 
-  describe('getModeratorRegions', () => {
-    it('returns the current REGION-scope region ids for the moderator', async () => {
+  describe('getModeratorStates', () => {
+    it('returns the current STATE-scope state ids for the moderator', async () => {
       roles.getRoleNames.mockResolvedValue(['ADMIN']);
       prisma.userRole.findFirst = jest.fn().mockResolvedValue({ id: 'user-role-1' });
-      prisma.roleScope.findMany = jest
-        .fn()
-        .mockResolvedValue([{ regionId: 'region-blr' }, { regionId: 'region-vja' }]);
-      const result = await service.getModeratorRegions('actor-1', 'mod-1');
-      expect(result).toEqual({ regionIds: ['region-blr', 'region-vja'] });
+      prisma.roleScope.findMany = jest.fn().mockResolvedValue([
+        { stateId: 'state-ka' },
+        { stateId: 'state-ap' },
+      ]);
+      const result = await service.getModeratorStates('actor-1', 'mod-1');
+      expect(result).toEqual({ stateIds: ['state-ka', 'state-ap'] });
     });
 
     it('returns an empty list when the moderator has no UserRole yet', async () => {
       roles.getRoleNames.mockResolvedValue(['ADMIN']);
       prisma.userRole.findFirst = jest.fn().mockResolvedValue(null);
-      const result = await service.getModeratorRegions('actor-1', 'mod-1');
-      expect(result).toEqual({ regionIds: [] });
+      const result = await service.getModeratorStates('actor-1', 'mod-1');
+      expect(result).toEqual({ stateIds: [] });
     });
   });
 });

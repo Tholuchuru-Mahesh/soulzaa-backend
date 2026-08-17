@@ -27,6 +27,9 @@ import {
   VerificationRequestDto,
 } from '../dto';
 import { ProfileService } from '../services/profile.service';
+import { DetectLocationDto } from 'src/modules/organization/dto/detect-location.dto';
+import { LocationDetectionService } from 'src/modules/organization/services/location-detection.service';
+import { UserLocationService } from 'src/modules/organization/services/user-location.service';
 
 /**
  * User Domain HTTP surface. Authenticated routes manage the caller's own profile;
@@ -37,7 +40,11 @@ import { ProfileService } from '../services/profile.service';
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly profile: ProfileService) {}
+  constructor(
+    private readonly profile: ProfileService,
+    private readonly userLocation: UserLocationService,
+    private readonly locationDetection: LocationDetectionService,
+  ) {}
 
   // ---- Self ----
 
@@ -55,6 +62,25 @@ export class UsersController {
   @ApiOperation({ summary: 'Update my profile' })
   update(@CurrentUser('id') userId: string, @Body() dto: UpdateProfileDto) {
     return this.profile.updateProfile(userId, dto);
+  }
+
+  // ---- Location (self-service) ----
+
+  @ApiBearerAuth()
+  @Get('me/location')
+  @ApiOperation({ summary: 'Read my own Country/State/Region assignment' })
+  getMyLocation(@CurrentUser('id') userId: string) {
+    return this.userLocation.getLocation(userId);
+  }
+
+  @ApiBearerAuth()
+  @Post('me/location')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Set my own location, from GPS coordinates (reverse-geocoded) or a manual pick',
+  })
+  detectMyLocation(@CurrentUser('id') userId: string, @Body() dto: DetectLocationDto) {
+    return this.locationDetection.detectAndAssign(userId, dto);
   }
 
   // ---- Avatar / cover ----

@@ -181,11 +181,6 @@ export class AudioRoomsService implements IAudioRoomsService {
       }
 
       const passwordHash = dto.password ? await this.passwords.hash(dto.password) : null;
-      // Snapshot the owner's assigned Region onto the room at creation —
-      // mirrors LiveStreamService.createStream's regionId denormalisation —
-      // so WorkforceScopeService.assertModeratorInScope has something real
-      // to check (null ⇒ owner has no region assigned ⇒ unscoped/permit).
-      const region = await this.repo.getOwnerRegionId(actor.id);
       const room = await this.repo.createRoomTx({
         ownerId: actor.id,
         name: dto.name,
@@ -200,7 +195,6 @@ export class AudioRoomsService implements IAudioRoomsService {
         maxParticipants: this.clampMax(dto.maxParticipants),
         agoraChannel: randomUUID(),
         zegoRoomId: randomUUID(),
-        region,
         speakerSeatCount: this.defaultSpeakerSeats,
         premiumAdminSeatCount: this.defaultPremiumAdminSeats,
         requireApprovalForSeat: true,

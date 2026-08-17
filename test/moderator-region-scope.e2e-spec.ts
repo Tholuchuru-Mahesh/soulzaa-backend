@@ -6,32 +6,38 @@ import { PrismaClient } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 
 /**
- * Proves RoleScope — not User.regionId — gates Moderator access, across
- * one-region, multi-region, and revoked-region cases. Requires `npm run
+ * Proves RoleScope — not User.stateId — gates Moderator access, across
+ * one-state, multi-state, and revoked-state cases. Requires `npm run
  * seed:e2e` to have run against .env.e2e first (the e2e Postgres on port
  * 5433 — never the primary dev DB); this suite is idempotent but not
  * self-seeding.
+ *
+ * Moderator RoleScope allocation stops at State (Region was removed from
+ * moderation scoping — see WorkforceScopeService, ModeratorProvisioningService).
+ * Rooms carry no territory snapshot column either: scope checks resolve the
+ * room OWNER's stateId/countryId live, so each fixture room owner's own
+ * location IS the room's effective territory (see seed-e2e-fixtures.ts).
  */
 // Route params bound with `ParseUuidPipe` are validated as UUID v4
 // specifically (13th hex digit must be '4', 17th must be 8/9/a/b — see
 // src/common/pipes/parse-uuid.pipe.ts). The brief's placeholder
 // '00000000-0000-0000-0000-000000000e2e' does NOT satisfy that (its 3rd
 // group is '0000', not '4xxx') so it fails pipe validation with 400 before
-// the handler — and therefore before the region-scope check — ever runs,
+// the handler — and therefore before the owner-scope check — ever runs,
 // which would silently invalidate every 403 assertion built on it. This
 // placeholder is v4-shaped so the request reaches the scope check, while
 // still not colliding with any seeded fixture user.
 const PLACEHOLDER_TARGET_USER_ID = '00000000-0000-4000-8e2e-000000000000';
 
-describe('Moderator region scope enforcement (e2e)', () => {
+describe('Moderator state scope enforcement (e2e)', () => {
   let app: INestApplication;
   let moderatorToken: string;
   let officialToken: string;
   let adminToken: string;
-  let roomIds: { blr: string; vja: string; chn: string };
+  let roomIds: { ka: string; ap: string; tn: string };
   let moderatorId: string;
   let adminId: string;
-  let regionIds: { blr: string; vja: string; chn: string };
+  let stateIds: { ka: string; ap: string; tn: string };
 
   const prisma = new PrismaClient();
 
@@ -55,13 +61,13 @@ describe('Moderator region scope enforcement (e2e)', () => {
     adminToken = await loginAs('admin@e2e.test');
 
     const rooms = await prisma.audioRoom.findMany({
-      where: { agoraChannel: { in: ['e2e-room-blr', 'e2e-room-vja', 'e2e-room-chn'] } },
+      where: { agoraChannel: { in: ['e2e-room-ka', 'e2e-room-ap', 'e2e-room-tn'] } },
       select: { id: true, agoraChannel: true },
     });
     roomIds = {
-      blr: rooms.find((r) => r.agoraChannel === 'e2e-room-blr')!.id,
-      vja: rooms.find((r) => r.agoraChannel === 'e2e-room-vja')!.id,
-      chn: rooms.find((r) => r.agoraChannel === 'e2e-room-chn')!.id,
+      ka: rooms.find((r) => r.agoraChannel === 'e2e-room-ka')!.id,
+      ap: rooms.find((r) => r.agoraChannel === 'e2e-room-ap')!.id,
+      tn: rooms.find((r) => r.agoraChannel === 'e2e-room-tn')!.id,
     };
 
     const moderatorUser = await prisma.user.findUnique({ where: { email: 'moderator@e2e.test' } });
@@ -69,10 +75,11 @@ describe('Moderator region scope enforcement (e2e)', () => {
     moderatorId = moderatorUser!.id;
     adminId = adminUser!.id;
 
-    const blrRegion = await prisma.region.findFirst({ where: { code: 'BLR' } });
-    const vjaRegion = await prisma.region.findFirst({ where: { code: 'VJA' } });
-    const chnRegion = await prisma.region.findFirst({ where: { code: 'CHN' } });
-    regionIds = { blr: blrRegion!.id, vja: vjaRegion!.id, chn: chnRegion!.id };
+    const country = await prisma.country.findUnique({ where: { code: 'IN' } });
+    const stateKA = await prisma.state.findFirst({ where: { countryId: country!.id, code: 'KA' } });
+    const stateAP = await prisma.state.findFirst({ where: { countryId: country!.id, code: 'AP' } });
+    const stateTN = await prisma.state.findFirst({ where: { countryId: country!.id, code: 'TN' } });
+    stateIds = { ka: stateKA!.id, ap: stateAP!.id, tn: stateTN!.id };
 
     // rooms/moderation/{kick,unkick,warn}/:userId and .../reports/:reportId/dismiss
     // are gated by ShiftActiveGuard + SuspendedGuard for MODERATOR actors.
@@ -108,114 +115,110 @@ describe('Moderator region scope enforcement (e2e)', () => {
     await app?.close();
   });
 
-  describe('scenarios 1-3: profile independence, single and multi region access', () => {
-    it('1. moderator profile geography (BLR) does not by itself explain VJA access — see scenario 4', async () => {
+  describe('scenarios 1-3: provisioned states and single-state access', () => {
+    it("1. GET /states reflects exactly the moderator's provisioned states (Karnataka + Andhra Pradesh)", async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/organization/users/${moderatorId}/location`)
-        .set('Authorization', `Bearer ${moderatorToken}`);
+        .get(`/api/admin-identity/moderators/${moderatorId}/states`)
+        .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(200);
-      // Profile geography reflects only the moderator's first RoleScope entry
-      // (BLR) — it was never told about VJA. Scenario 4 proves the moderator
-      // can still act on VJA anyway, which can only be explained by RoleScope,
-      // not by this profile field. That is the actual independence proof:
-      // operational access exceeds what profile geography alone would grant.
-      expect(res.body.data.regionId).toBe(regionIds.blr);
-      expect(res.body.data.regionId).not.toBe(regionIds.vja);
+      const ids: string[] = res.body.data.stateIds;
+      expect(ids.sort()).toEqual([stateIds.ap, stateIds.ka].sort());
+      expect(ids).not.toContain(stateIds.tn);
     });
 
-    it('2 & 3. moderator can view the Bengaluru room (assigned region)', async () => {
+    it('2 & 3. moderator can view the Karnataka room (assigned state)', async () => {
       const res = await request(app.getHttpServer())
-        .get(`/api/rooms/${roomIds.blr}`)
+        .get(`/api/rooms/${roomIds.ka}`)
         .set('Authorization', `Bearer ${moderatorToken}`);
       expect(res.status).toBe(200);
     });
   });
 
-  describe('scenarios 4-6: multi-region access, deny, and revoke', () => {
-    it('4. moderator can act on the Vijayawada room (second assigned region, absent from profile geography)', async () => {
+  describe('scenarios 4-6: multi-state access, deny, and revoke', () => {
+    it('4. moderator can act on the Andhra Pradesh room (second assigned state)', async () => {
       const res = await request(app.getHttpServer())
-        .post(`/api/rooms/${roomIds.vja}/moderation/warn/${PLACEHOLDER_TARGET_USER_ID}`)
+        .post(`/api/rooms/${roomIds.ap}/moderation/warn/${PLACEHOLDER_TARGET_USER_ID}`)
         .set('Authorization', `Bearer ${moderatorToken}`)
         .send({ reason: 'e2e scenario 4' });
       // Target-user-not-found errors are acceptable (404/400) — a 403
-      // ForbiddenException specifically would mean the region check itself
-      // rejected the assigned region, which is what this test guards against.
+      // ForbiddenException specifically would mean the scope check itself
+      // rejected the assigned state, which is what this test guards against.
       expect(res.status).not.toBe(403);
     });
 
-    it('5. moderator cannot act on the Chennai room (unassigned region)', async () => {
+    it('5. moderator cannot act on the Tamil Nadu room (unassigned state)', async () => {
       const res = await request(app.getHttpServer())
-        .post(`/api/rooms/${roomIds.chn}/moderation/warn/${PLACEHOLDER_TARGET_USER_ID}`)
+        .post(`/api/rooms/${roomIds.tn}/moderation/warn/${PLACEHOLDER_TARGET_USER_ID}`)
         .set('Authorization', `Bearer ${moderatorToken}`)
         .send({ reason: 'e2e scenario 5' });
       expect(res.status).toBe(403);
     });
 
-    it('6. removing the Vijayawada RoleScope immediately revokes access', async () => {
+    it('6. removing Andhra Pradesh from the moderator states immediately revokes access', async () => {
       await request(app.getHttpServer())
-        .put(`/api/admin-identity/moderators/${moderatorId}/regions`)
+        .put(`/api/admin-identity/moderators/${moderatorId}/states`)
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ regionIds: [regionIds.blr] });
+        .send({ stateIds: [stateIds.ka] });
 
       const res = await request(app.getHttpServer())
-        .post(`/api/rooms/${roomIds.vja}/moderation/warn/${PLACEHOLDER_TARGET_USER_ID}`)
+        .post(`/api/rooms/${roomIds.ap}/moderation/warn/${PLACEHOLDER_TARGET_USER_ID}`)
         .set('Authorization', `Bearer ${moderatorToken}`)
         .send({ reason: 'e2e scenario 6 — should now be denied' });
       expect(res.status).toBe(403);
 
       // Restore full scope so later scenarios/re-runs aren't affected by ordering.
-      // Verified against ModeratorProvisioningService.setModeratorRegions: it
-      // fully reconciles the RoleScope REGION set to exactly the given
-      // regionIds (removes scopes not in the new set, adds ones missing) —
-      // a true replace, not additive — so sending [blr] alone above really
-      // did narrow scope to BLR-only, and this restores both.
+      // Verified against ModeratorProvisioningService.setModeratorStates: it
+      // fully reconciles the RoleScope STATE set to exactly the given
+      // stateIds (removes scopes not in the new set, adds ones missing) —
+      // a true replace, not additive — so sending [ka] alone above really
+      // did narrow scope to Karnataka-only, and this restores both.
       await request(app.getHttpServer())
-        .put(`/api/admin-identity/moderators/${moderatorId}/regions`)
+        .put(`/api/admin-identity/moderators/${moderatorId}/states`)
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ regionIds: [regionIds.blr, regionIds.vja] });
+        .send({ stateIds: [stateIds.ka, stateIds.ap] });
     });
   });
 
   describe('scenarios 7-9: moderation actions, reports, and restorative actions all enforce scope', () => {
-    it('7. kick on the unassigned Chennai room is denied', async () => {
+    it('7. kick on the unassigned Tamil Nadu room is denied', async () => {
       const res = await request(app.getHttpServer())
-        .post(`/api/rooms/${roomIds.chn}/moderation/kick/${PLACEHOLDER_TARGET_USER_ID}`)
+        .post(`/api/rooms/${roomIds.tn}/moderation/kick/${PLACEHOLDER_TARGET_USER_ID}`)
         .set('Authorization', `Bearer ${moderatorToken}`)
         .send({ reason: 'e2e scenario 7' });
       expect(res.status).toBe(403);
     });
 
-    it('8. dismissing a report on the unassigned Chennai room is denied', async () => {
+    it('8. dismissing a report on the unassigned Tamil Nadu room is denied', async () => {
       const res = await request(app.getHttpServer())
-        .post(`/api/rooms/${roomIds.chn}/moderation/reports/${PLACEHOLDER_TARGET_USER_ID}/dismiss`)
+        .post(`/api/rooms/${roomIds.tn}/moderation/reports/${PLACEHOLDER_TARGET_USER_ID}/dismiss`)
         .set('Authorization', `Bearer ${moderatorToken}`)
         .send({ reason: 'e2e scenario 8' });
       expect(res.status).toBe(403);
     });
 
-    it('9. unkick on the unassigned Chennai room is denied (restorative action regression guard)', async () => {
+    it('9. unkick on the unassigned Tamil Nadu room is denied (restorative action regression guard)', async () => {
       const res = await request(app.getHttpServer())
-        .post(`/api/rooms/${roomIds.chn}/moderation/unkick/${PLACEHOLDER_TARGET_USER_ID}`)
+        .post(`/api/rooms/${roomIds.tn}/moderation/unkick/${PLACEHOLDER_TARGET_USER_ID}`)
         .set('Authorization', `Bearer ${moderatorToken}`);
       expect(res.status).toBe(403);
     });
   });
 
   describe('scenarios 10-11: approval decisions and investigation recording respect scope', () => {
-    it('10. an Official scoped to Karnataka cannot decide an approval whose room is in Chennai (Tamil Nadu)', async () => {
-      // Seed a PENDING approval row directly for roomIds.chn — bypasses the
+    it('10. an Official scoped to Karnataka cannot decide an approval whose room is owned in Tamil Nadu', async () => {
+      // Seed a PENDING approval row directly for roomIds.tn — bypasses the
       // full report-review -> propose() flow per the brief's explicit
       // shortcut authorization for this scenario. Field shapes verified
       // against prisma/schema/moderation_approval.prisma and
-      // ModerationApprovalService.propose(): roomType/roomId identify the
-      // resource decide() -> resolveRegion() looks up; reportId,
-      // proposedBy and targetUserId are required non-null columns with no
-      // enforced FK relation in the schema, so any well-formed UUID works —
-      // moderatorId/adminId are real seeded users, used here for realism.
+      // ModerationApprovalService.propose()/decide(): roomType/roomId
+      // identify the resource decide() -> resolveOwnerId() looks up;
+      // reportId, proposedBy and targetUserId are required non-null columns
+      // with no enforced FK relation in the schema, so any well-formed UUID
+      // works — moderatorId/adminId are real seeded users, used here for realism.
       const approval = await prisma.moderationActionApproval.create({
         data: {
           roomType: 'AUDIO_ROOM',
-          roomId: roomIds.chn,
+          roomId: roomIds.tn,
           reportId: '00000000-0000-4000-8000-000000000001',
           proposedBy: moderatorId,
           targetUserId: PLACEHOLDER_TARGET_USER_ID,
@@ -234,7 +237,7 @@ describe('Moderator region scope enforcement (e2e)', () => {
 
     it('11. investigation recordings created via a scoped action are retrievable by an Admin and carry no bypass', async () => {
       const kickRes = await request(app.getHttpServer())
-        .post(`/api/rooms/${roomIds.blr}/moderation/kick/${PLACEHOLDER_TARGET_USER_ID}`)
+        .post(`/api/rooms/${roomIds.ka}/moderation/kick/${PLACEHOLDER_TARGET_USER_ID}`)
         .set('Authorization', `Bearer ${moderatorToken}`)
         .send({ reason: 'e2e scenario 11' });
       expect(kickRes.status).not.toBe(403);
@@ -242,12 +245,12 @@ describe('Moderator region scope enforcement (e2e)', () => {
       // `kick` opens its recording INSIDE the room lock, after an active-
       // membership check the placeholder target cannot satisfy, so it stops at
       // 409 before any recording row exists. `warn` has no membership
-      // precondition — it records unconditionally once the region-scope check
+      // precondition — it records unconditionally once the owner-scope check
       // passes — so it is the action that actually produces the row this
-      // scenario then asserts on. Both are region-scope gated identically;
-      // the kick above still proves BLR is in scope.
+      // scenario then asserts on. Both are owner-scope gated identically;
+      // the kick above still proves Karnataka is in scope.
       const warnRes = await request(app.getHttpServer())
-        .post(`/api/rooms/${roomIds.blr}/moderation/warn/${PLACEHOLDER_TARGET_USER_ID}`)
+        .post(`/api/rooms/${roomIds.ka}/moderation/warn/${PLACEHOLDER_TARGET_USER_ID}`)
         .set('Authorization', `Bearer ${moderatorToken}`)
         .send({ reason: 'e2e scenario 11 — warn produces the recording' });
       expect(warnRes.status).not.toBe(403);
@@ -257,7 +260,7 @@ describe('Moderator region scope enforcement (e2e)', () => {
       // confirmed by prior research). Use the admin-only listing route instead,
       // passing the moderator's own id — this still proves the recording was
       // created and is retrievable without a scope bypass; it does not itself
-      // exercise region-scope enforcement on the read path (Admin is
+      // exercise owner-scope enforcement on the read path (Admin is
       // unrestricted by design).
       const listRes = await request(app.getHttpServer())
         .get(`/api/admin/investigation-recordings/moderator/${moderatorId}`)
@@ -271,7 +274,7 @@ describe('Moderator region scope enforcement (e2e)', () => {
       // room it was taken in and the user it was taken against.
       const match = items.find(
         (r: any) =>
-          r.roomId === roomIds.blr &&
+          r.roomId === roomIds.ka &&
           r.targetUserId === PLACEHOLDER_TARGET_USER_ID &&
           r.moderatorId === moderatorId,
       );
@@ -283,8 +286,8 @@ describe('Moderator region scope enforcement (e2e)', () => {
     // Fixed ids so the pair can be torn down and re-created deterministically
     // on every run — the assertion below is a delta, so a leftover row from a
     // previous run would fold into the baseline and hide a regression.
-    const BLR_REPORT_ID = '00000000-0000-4000-8000-0000000012b1';
-    const CHN_REPORT_ID = '00000000-0000-4000-8000-0000000012c1';
+    const KA_REPORT_ID = '00000000-0000-4000-8000-0000000012b1';
+    const TN_REPORT_ID = '00000000-0000-4000-8000-0000000012c1';
 
     const dashboard = async () => {
       const res = await request(app.getHttpServer())
@@ -294,14 +297,14 @@ describe('Moderator region scope enforcement (e2e)', () => {
       return res.body.data;
     };
 
-    it('12. moderator dashboard reflects only Bengaluru + Vijayawada, never Chennai', async () => {
+    it('12. moderator dashboard reflects only Karnataka + Andhra Pradesh, never Tamil Nadu', async () => {
       const data = await dashboard();
       const roomIdsInDashboard = (data.assignedAudioRooms ?? []).map((r: any) => r.id);
-      expect(roomIdsInDashboard).not.toContain(roomIds.chn);
-      // The list is scoped by the ROOM's own `region` column, so the in-scope
-      // Bengaluru room must actually be present — "not Chennai" alone is also
-      // satisfied by an empty list.
-      expect(roomIdsInDashboard).toContain(roomIds.blr);
+      expect(roomIdsInDashboard).not.toContain(roomIds.tn);
+      // The list is scoped by the room OWNER's live state, so the in-scope
+      // Karnataka room must actually be present — "not Tamil Nadu" alone is
+      // also satisfied by an empty list.
+      expect(roomIdsInDashboard).toContain(roomIds.ka);
     });
 
     it("12b. assignedReportsCount counts the in-scope room's report and not the out-of-scope room's", async () => {
@@ -312,7 +315,7 @@ describe('Moderator region scope enforcement (e2e)', () => {
       // reporterId/targetUserId carry no declared FK relation, so any
       // well-formed UUID works — real seeded ids are used for realism.
       await prisma.roomReport.deleteMany({
-        where: { id: { in: [BLR_REPORT_ID, CHN_REPORT_ID] } },
+        where: { id: { in: [KA_REPORT_ID, TN_REPORT_ID] } },
       });
 
       const before = await dashboard();
@@ -322,32 +325,32 @@ describe('Moderator region scope enforcement (e2e)', () => {
       await prisma.roomReport.createMany({
         data: [
           {
-            id: BLR_REPORT_ID,
-            roomId: roomIds.blr,
+            id: KA_REPORT_ID,
+            roomId: roomIds.ka,
             reporterId: adminId,
             targetUserId: PLACEHOLDER_TARGET_USER_ID,
             reason: 'SPAM',
-            description: 'e2e scenario 12 — in-scope (Bengaluru)',
+            description: 'e2e scenario 12 — in-scope (Karnataka)',
           },
           {
-            id: CHN_REPORT_ID,
-            roomId: roomIds.chn,
+            id: TN_REPORT_ID,
+            roomId: roomIds.tn,
             reporterId: adminId,
             targetUserId: PLACEHOLDER_TARGET_USER_ID,
             reason: 'SPAM',
-            description: 'e2e scenario 12 — out-of-scope (Chennai)',
+            description: 'e2e scenario 12 — out-of-scope (Tamil Nadu)',
           },
         ],
       });
 
       const after = await dashboard();
-      // Exactly one of the two new reports may be counted: the Bengaluru one.
-      // A +2 delta would mean the Chennai report leaked past region scope; a
+      // Exactly one of the two new reports may be counted: the Karnataka one.
+      // A +2 delta would mean the Tamil Nadu report leaked past state scope; a
       // +0 delta would mean the in-scope report was wrongly excluded.
       expect(after.assignedReportsCount).toBe(baseline + 1);
 
       await prisma.roomReport.deleteMany({
-        where: { id: { in: [BLR_REPORT_ID, CHN_REPORT_ID] } },
+        where: { id: { in: [KA_REPORT_ID, TN_REPORT_ID] } },
       });
     });
   });

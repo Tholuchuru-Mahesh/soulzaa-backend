@@ -390,8 +390,8 @@ export class VideoRoomModerationService {
     await this.permissions.assertPermission(actor, ref, VideoRoomPermission.BLOCK_USERS);
 
     const room = await this.rooms.findById(roomId);
-    if (room?.region) {
-      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    if (room?.ownerId) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     }
 
     const block = await this.moderationRepo.findActiveBlock(ref.id, targetUserId);
@@ -574,8 +574,8 @@ export class VideoRoomModerationService {
     await this.permissions.assertPermission(actor, ref, VideoRoomPermission.MUTE_USERS);
 
     const room = await this.rooms.findById(roomId);
-    if (room?.region) {
-      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    if (room?.ownerId) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     }
 
     await this.locks.withLock(moderationLockKey(ref.id), async () => {
@@ -1181,8 +1181,8 @@ export class VideoRoomModerationService {
     await this.permissions.assertPermission(actor, ref, permission);
 
     const room = await this.rooms.findById(roomId);
-    if (room?.region) {
-      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    if (room?.ownerId) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     }
 
     if (!this.isPlatformStaff(actor)) {
@@ -1375,7 +1375,7 @@ export class VideoRoomModerationService {
       auditAction: 'video_room.escalate_critical_violation',
       resource: 'video_room',
       resourceId: ref.id,
-      region: room?.region ?? null,
+      ownerId: room?.ownerId ?? null,
       requestMeta,
       performanceStats: this.performanceStats,
       auditLog: this.auditLog,

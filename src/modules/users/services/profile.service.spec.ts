@@ -133,6 +133,15 @@ describe('ProfileService', () => {
       user: {
         update: jest.fn().mockResolvedValue({}),
       },
+      country: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      state: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      region: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
     } as unknown as PrismaService;
     // `resolveEquippedFrameUrl` reaches through the repository's own prisma
     // handle (`this.users['prisma']`), not the service's — mock it there.

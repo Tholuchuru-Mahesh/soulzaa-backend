@@ -75,7 +75,7 @@ export class LiveStreamService {
     // Get host location details if available to populate scope fields
     const host = await this.prisma.user.findUnique({
       where: { id: input.hostId },
-      select: { regionId: true, stateId: true, countryId: true },
+      select: { stateId: true, countryId: true },
     });
 
     return this.prisma.liveStream.create({
@@ -85,7 +85,6 @@ export class LiveStreamService {
         streamerId: input.hostId,
         title: input.title ?? 'Live Stream',
         description: input.description,
-        regionId: host?.regionId ?? null,
         stateId: host?.stateId ?? null,
         countryId: host?.countryId ?? null,
         status: LiveStreamStatus.ACTIVE,
@@ -119,13 +118,12 @@ export class LiveStreamService {
   }
 
   async listStreams(
-    filters: { status?: LiveStreamStatus; regionId?: string },
+    filters: { status?: LiveStreamStatus },
     page = 1,
     limit = 20,
   ) {
     const where: Record<string, unknown> = {};
     if (filters.status) where['status'] = filters.status;
-    if (filters.regionId) where['regionId'] = filters.regionId;
 
     const skip = (page - 1) * limit;
     const [items, total] = await Promise.all([
@@ -151,7 +149,7 @@ export class LiveStreamService {
       throw new BadRequestException('Cannot moderate a closed stream');
     }
 
-    await this.scopeService.assertModeratorInScope(input.moderatorId, stream.regionId);
+    await this.scopeService.assertModeratorInScope(input.moderatorId, stream.hostId);
 
     // 1. Reuse an already-open recording from when the moderator joined to
     // investigate a pending report, if one exists; otherwise open a fresh one.
@@ -167,7 +165,7 @@ export class LiveStreamService {
         moderatorId: input.moderatorId,
         targetUserId: input.targetUserId,
         liveStreamId: input.streamId,
-        regionId: stream.regionId ?? undefined,
+        ownerId: stream.hostId ?? undefined,
         violationReason,
         evidencePayload: {
           streamId: input.streamId,
@@ -210,7 +208,6 @@ export class LiveStreamService {
         resourceId: input.streamId,
         liveStreamId: input.streamId,
         targetUserId: input.targetUserId,
-        region: stream.regionId ?? undefined,
         evidenceId: recording.evidenceId,
         violationReason: input.reason,
         ipAddress: requestMeta?.ip,
@@ -384,7 +381,7 @@ export class LiveStreamService {
     severity: EscalationSeverity,
   ) {
     const stream = await this.getStream(streamId);
-    await this.scopeService.assertModeratorInScope(moderatorId, stream.regionId);
+    await this.scopeService.assertModeratorInScope(moderatorId, stream.hostId);
 
     const actionRow = await this.prisma.live_stream_moderation_actions.create({
       data: {
@@ -405,8 +402,7 @@ export class LiveStreamService {
       auditAction: 'live_stream.escalate_critical_violation',
       resource: 'live_stream',
       resourceId: streamId,
-      region: stream.regionId,
-      auditRegion: stream.regionId ?? undefined,
+      ownerId: stream.hostId,
       performanceStats: this.performanceStats,
       auditLog: this.auditLog,
       scopeService: this.scopeService,
@@ -446,7 +442,7 @@ export class LiveStreamService {
                 moderatorId: user.id,
                 targetUserId: report.targetUserId,
                 liveStreamId: streamId,
-                regionId: stream.regionId ?? undefined,
+                ownerId: stream.hostId ?? undefined,
                 evidencePayload: { streamId, reportId: report.id, trigger: 'stream_join' },
               }),
             ),

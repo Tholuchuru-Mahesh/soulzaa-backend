@@ -3,6 +3,7 @@ import { AgoraModule } from './agora/agora.module';
 import { AuthInfraModule } from './auth/auth-infra.module';
 import { FeatureFlagService } from './flags/feature-flag.service';
 import { HealthModule } from './health/health.module';
+import { GeocodingModule } from './geocoding/geocoding.module';
 import { ExceptionAnalyticsService } from './observability/exception-analytics.service';
 import { MetricsModule } from './observability/metrics.module';
 import { TracingInterceptor } from './observability/tracing.interceptor';
@@ -41,6 +42,7 @@ import { ZegoModule } from './zego/zego.module';
     StorageModule,
     AgoraModule,
     ZegoModule,
+    GeocodingModule,
     AuthInfraModule,
     SocketModule,
     HealthModule,

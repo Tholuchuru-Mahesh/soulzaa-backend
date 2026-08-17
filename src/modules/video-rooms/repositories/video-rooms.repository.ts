@@ -102,9 +102,6 @@ export interface CreateVideoRoomData {
   creationSource: VideoRoomCreationSource;
   /** Optional metadata payload (e.g. { accessPolicy }); omitted → column stays null. */
   metadata?: Prisma.InputJsonValue;
-  /** Snapshot of the owner's Region (`User.regionId`) at creation — powers
-   *  moderator region-scoping. Null if the owner has no region assigned. */
-  region: string | null;
 }
 
 /** Persistable subset of a room edit / lifecycle transition (nulls clear the column). */
@@ -156,14 +153,6 @@ export class VideoRoomsRepository {
   /** A room by id (excludes soft-deleted), or null. */
   async findById(id: string): Promise<VideoRoom | null> {
     return this.prisma.videoRoom.findFirst({ where: { id, deletedAt: null } });
-  }
-
-  async getOwnerRegionId(ownerId: string): Promise<string | null> {
-    const owner = await this.prisma.user.findUnique({
-      where: { id: ownerId },
-      select: { regionId: true },
-    });
-    return owner?.regionId ?? null;
   }
 
   /** All of an owner's non-deleted rooms, newest first. */
@@ -403,7 +392,6 @@ export class VideoRoomsRepository {
           maxParticipants: data.maxParticipants,
           maxViewers: data.maxViewers,
           creationSource: data.creationSource,
-          region: data.region,
           ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
           ...auditCreate(data.ownerId),
         },

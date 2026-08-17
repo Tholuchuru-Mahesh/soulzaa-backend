@@ -20,7 +20,8 @@ export interface ProposeApprovalInput {
   proposedBy: string;
   targetUserId: string;
   reason?: string;
-  regionId?: string | null;
+  /** The room/stream owner's id — routes the HIGH-severity notification to the Official covering their territory. */
+  ownerId?: string | null;
 }
 
 export type ApprovalDecision = 'APPROVED' | 'REJECTED';
@@ -62,7 +63,7 @@ export class ModerationApprovalService {
     if (this.notifications) {
       const recipients = await this.scopeService.resolveEscalationRecipients(
         'HIGH',
-        input.regionId ?? null,
+        input.ownerId ?? null,
       );
       await Promise.all(
         recipients.map((userId) =>
@@ -100,44 +101,35 @@ export class ModerationApprovalService {
   }
 
   /**
-   * Resolves the region snapshot for the approval's target resource so
-   * `decide()` can enforce `assertModeratorInScope`. A `null` return is only
-   * legitimate when `roomId`/`liveStreamId` is itself absent on the approval
-   * row (no region snapshot exists for this resource type) — that's the
-   * genuine "unscoped, permit" case `assertModeratorInScope` treats as a
-   * safety valve. When `roomId`/`liveStreamId` IS present (proving the
-   * resource existed at `propose()` time) but the lookup now returns
-   * nothing, that's a vanished row, not an unscoped one — throw rather than
-   * silently falling through to the same permit path.
+   * Resolves the owner id of the approval's target resource so `decide()`
+   * can enforce `assertModeratorInScope`. A `null` return is only legitimate
+   * when `roomId`/`liveStreamId` is itself absent on the approval row (no
+   * resource to resolve an owner for) — that's the genuine "unscoped,
+   * permit" case `assertModeratorInScope` treats as a safety valve. When
+   * `roomId`/`liveStreamId` IS present (proving the resource existed at
+   * `propose()` time) but the lookup now returns nothing, that's a vanished
+   * row, not an unscoped one — throw rather than silently falling through to
+   * the same permit path.
    */
-  private async resolveRegion(
+  private async resolveOwnerId(
     roomType: ModerationApprovalRoomType,
     roomId: string | null,
     liveStreamId: string | null,
   ): Promise<string | null> {
     if (roomType === 'AUDIO_ROOM' && roomId) {
-      const room = await this.prisma.audioRoom.findUnique({
-        where: { id: roomId },
-        select: { region: true },
-      });
+      const room = await this.prisma.audioRoom.findUnique({ where: { id: roomId }, select: { ownerId: true } });
       if (!room) throw new NotFoundException('Audio room not found');
-      return room.region ?? null;
+      return room.ownerId ?? null;
     }
     if (roomType === 'VIDEO_ROOM' && roomId) {
-      const room = await this.prisma.videoRoom.findUnique({
-        where: { id: roomId },
-        select: { region: true },
-      });
+      const room = await this.prisma.videoRoom.findUnique({ where: { id: roomId }, select: { ownerId: true } });
       if (!room) throw new NotFoundException('Video room not found');
-      return room.region ?? null;
+      return room.ownerId ?? null;
     }
     if (roomType === 'LIVE_STREAM' && liveStreamId) {
-      const stream = await this.prisma.liveStream.findUnique({
-        where: { id: liveStreamId },
-        select: { regionId: true },
-      });
+      const stream = await this.prisma.liveStream.findUnique({ where: { id: liveStreamId }, select: { hostId: true } });
       if (!stream) throw new NotFoundException('Live stream not found');
-      return stream.regionId ?? null;
+      return stream.hostId ?? null;
     }
     return null;
   }
@@ -153,12 +145,8 @@ export class ModerationApprovalService {
       throw new ConflictException('This approval request has already been decided');
     }
 
-    const region = await this.resolveRegion(
-      approval.roomType,
-      approval.roomId,
-      approval.liveStreamId,
-    );
-    await this.scopeService.assertModeratorInScope(deciderId, region);
+    const ownerId = await this.resolveOwnerId(approval.roomType, approval.roomId, approval.liveStreamId);
+    await this.scopeService.assertModeratorInScope(deciderId, ownerId);
 
     const updated = await this.prisma.moderationActionApproval.update({
       where: { id: approvalId },

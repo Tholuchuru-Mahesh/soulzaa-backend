@@ -19,7 +19,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { CreateModeratorDto } from '../dto/create-moderator.dto';
 import { SetAdminStatusDto } from '../dto/set-admin-status.dto';
-import { SetModeratorRegionsDto } from '../dto/set-moderator-regions.dto';
+import { SetModeratorStatesDto } from '../dto/set-moderator-states.dto';
 import { ModeratorProvisioningService } from '../services/moderator-provisioning.service';
 
 /**
@@ -75,21 +75,21 @@ export class ModeratorProvisioningAdminController {
     return this.service.setModeratorStatus(actorId, targetId, dto.status);
   }
 
-  @ApiOperation({ summary: "Get a Moderator's current operational regions (Admin only)" })
-  @ApiResponse({ status: 200, description: 'Current RoleScope region ids' })
-  @Get(':id/regions')
-  getRegions(@CurrentUser('id') actorId: string, @Param('id') targetId: string) {
-    return this.service.getModeratorRegions(actorId, targetId);
+  @ApiOperation({ summary: "Get a Moderator's current operational states (Admin only)" })
+  @ApiResponse({ status: 200, description: 'Current RoleScope state ids' })
+  @Get(':id/states')
+  getStates(@CurrentUser('id') actorId: string, @Param('id') targetId: string) {
+    return this.service.getModeratorStates(actorId, targetId);
   }
 
-  @ApiOperation({ summary: "Replace a Moderator's operational regions (Admin only)" })
-  @ApiResponse({ status: 200, description: 'Regions reconciled' })
-  @Put(':id/regions')
-  setRegions(
+  @ApiOperation({ summary: "Replace a Moderator's operational states (Admin only)" })
+  @ApiResponse({ status: 200, description: 'States reconciled' })
+  @Put(':id/states')
+  setStates(
     @CurrentUser('id') actorId: string,
     @Param('id') targetId: string,
-    @Body() dto: SetModeratorRegionsDto,
+    @Body() dto: SetModeratorStatesDto,
   ) {
-    return this.service.setModeratorRegions(targetId, dto.regionIds, actorId);
+    return this.service.setModeratorStates(targetId, dto.stateIds, actorId);
   }
 }

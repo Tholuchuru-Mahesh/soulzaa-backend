@@ -40,7 +40,7 @@ export class LiveStreamingController {
   async start(@CurrentUser('id') streamerId: string, @Body() dto: StartStreamDto) {
     const user = await this.prisma.user.findUnique({
       where: { id: streamerId },
-      select: { countryId: true, stateId: true, regionId: true },
+      select: { countryId: true, stateId: true },
     });
 
     return this.service.startStream({
@@ -49,7 +49,6 @@ export class LiveStreamingController {
       description: dto.description,
       countryId: user?.countryId,
       stateId: user?.stateId,
-      regionId: user?.regionId,
     });
   }
 

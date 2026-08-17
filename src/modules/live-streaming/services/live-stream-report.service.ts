@@ -86,7 +86,7 @@ export class LiveStreamReportService {
     });
 
     if (this.moderatorNotify && HIGH_PRIORITY_REPORT_REASONS.includes(input.reason)) {
-      const moderatorIds = await this.scopeService.resolveModeratorsInScope(stream.regionId);
+      const moderatorIds = await this.scopeService.resolveModeratorsInScope(stream.hostId);
       await Promise.all(
         moderatorIds.map((moderatorId) =>
           this.moderatorNotify!.notifyHighPriorityReport(moderatorId, report.id, input.reason),
@@ -110,7 +110,7 @@ export class LiveStreamReportService {
     }
 
     const stream = await this.liveStream.getStream(input.streamId);
-    await this.scopeService.assertModeratorInScope(input.moderatorId, stream?.regionId ?? null);
+    await this.scopeService.assertModeratorInScope(input.moderatorId, stream?.hostId ?? null);
 
     await this.reportRepo.reviewReport(
       input.reportId,
@@ -128,10 +128,10 @@ export class LiveStreamReportService {
       );
       if (input.recommendedAction === 'BAN') {
         // Hard to reverse, so it does not auto-execute like WARN/MUTE/KICK —
-        // it goes to the Official covering the stream's region as a pending
-        // approval instead (see ModerationApprovalService). If the approval
-        // service isn't wired, the recommendation is left unactioned rather
-        // than silently executing without the review it needs.
+        // it goes to the Official covering the stream host's territory as a
+        // pending approval instead (see ModerationApprovalService). If the
+        // approval service isn't wired, the recommendation is left
+        // unactioned rather than silently executing without the review it needs.
         if (this.approvalService) {
           await this.approvalService.propose({
             roomType: 'LIVE_STREAM',
@@ -140,7 +140,7 @@ export class LiveStreamReportService {
             proposedBy: input.moderatorId,
             targetUserId: report.targetUserId,
             reason,
-            regionId: stream?.regionId ?? null,
+            ownerId: stream?.hostId ?? null,
           });
         }
       } else {
@@ -190,7 +190,7 @@ export class LiveStreamReportService {
       throw new NotFoundException('Report not found.');
     }
     const stream = await this.liveStream.getStream(streamId);
-    await this.scopeService.assertModeratorInScope(moderatorId, stream?.regionId ?? null);
+    await this.scopeService.assertModeratorInScope(moderatorId, stream?.hostId ?? null);
     await this.reportRepo.addNotes(reportId, notes);
   }
 

@@ -16,7 +16,7 @@ interface Fixture {
   username: string;
   email: string;
   role: string | null;
-  scopes?: Array<{ type: ScopeType; countryCode?: string; stateCode?: string; regionCode?: string }>;
+  scopes?: Array<{ type: ScopeType; countryCode?: string; stateCode?: string }>;
   note: string;
 }
 
@@ -41,11 +41,13 @@ const FIXTURES: Fixture[] = [
     username: 'e2e_moderator',
     email: 'moderator@e2e.test',
     role: 'MODERATOR',
+    // Moderator RoleScope allocation stops at State (Region was removed from
+    // moderation scoping) — see WorkforceScopeService.
     scopes: [
-      { type: ScopeType.REGION, regionCode: 'BLR' },
-      { type: ScopeType.REGION, regionCode: 'VJA' },
+      { type: ScopeType.STATE, stateCode: 'KA' },
+      { type: ScopeType.STATE, stateCode: 'AP' },
     ],
-    note: 'scoped to Bengaluru + Vijayawada',
+    note: 'scoped to Karnataka + Andhra Pradesh',
   },
   { username: 'e2e_member', email: 'member@e2e.test', role: 'USER', note: 'no console access' },
 ];
@@ -56,29 +58,22 @@ async function main(): Promise<void> {
   const country = await prisma.country.findUnique({ where: { code: 'IN' } });
   if (!country) throw new Error('Run seed-rbac.ts first — country IN is missing.');
   const state = await prisma.state.findFirst({ where: { countryId: country.id, code: 'KA' } });
-  const region = await prisma.region.findFirst({ where: { stateId: state!.id, code: 'BLR' } });
   const stateAP = await prisma.state.findFirst({ where: { countryId: country.id, code: 'AP' } });
-  const regionVJA = await prisma.region.findFirst({ where: { stateId: stateAP!.id, code: 'VJA' } });
   const stateTN = await prisma.state.findFirst({ where: { countryId: country.id, code: 'TN' } });
-  const regionCHN = await prisma.region.findFirst({ where: { stateId: stateTN!.id, code: 'CHN' } });
-  if (!regionVJA || !regionCHN) throw new Error('Run seed-rbac.ts first — Vijayawada/Chennai regions are missing.');
+  if (!state || !stateAP || !stateTN) throw new Error('Run seed-rbac.ts first — KA/AP/TN states are missing.');
+  const region = await prisma.region.findFirst({ where: { stateId: state.id, code: 'BLR' } });
 
-  const REGION_BY_CODE: Record<string, { id: string; stateId: string; countryId: string }> = {
-    BLR: { id: region!.id, stateId: state!.id, countryId: country.id },
-    VJA: { id: regionVJA.id, stateId: stateAP!.id, countryId: country.id },
-    CHN: { id: regionCHN.id, stateId: stateTN!.id, countryId: country.id },
-  };
   const STATE_BY_CODE: Record<string, { id: string; countryId: string }> = {
-    KA: { id: state!.id, countryId: country.id },
-    AP: { id: stateAP!.id, countryId: country.id },
-    TN: { id: stateTN!.id, countryId: country.id },
+    KA: { id: state.id, countryId: country.id },
+    AP: { id: stateAP.id, countryId: country.id },
+    TN: { id: stateTN.id, countryId: country.id },
   };
 
   // Population the scoped operators will actually see. Spread across the
   // hierarchy so an Official's view is provably narrower than a Manager's.
   const population = [
-    { username: 'e2e_pop_blr', email: 'pop.blr@e2e.test', regionId: region!.id, stateId: state!.id, countryId: country.id },
-    { username: 'e2e_pop_ka', email: 'pop.ka@e2e.test', regionId: null, stateId: state!.id, countryId: country.id },
+    { username: 'e2e_pop_blr', email: 'pop.blr@e2e.test', regionId: region!.id, stateId: state.id, countryId: country.id },
+    { username: 'e2e_pop_ka', email: 'pop.ka@e2e.test', regionId: null, stateId: state.id, countryId: country.id },
     { username: 'e2e_pop_in', email: 'pop.in@e2e.test', regionId: null, stateId: null, countryId: country.id },
     { username: 'e2e_pop_nowhere', email: 'pop.none@e2e.test', regionId: null, stateId: null, countryId: null },
   ];
@@ -106,14 +101,9 @@ async function main(): Promise<void> {
   for (const fixture of FIXTURES) {
     const primaryScope = fixture.scopes?.[0];
     // Resolved per the fixture's own primary scope code, not hardcoded to
-    // BLR/KA — a fixture whose first scope entry is VJA/CHN or a non-KA
-    // state must get ITS OWN region/state here, not Bengaluru's.
-    const primaryStateId = primaryScope?.regionCode
-      ? REGION_BY_CODE[primaryScope.regionCode].stateId
-      : primaryScope?.stateCode
-        ? STATE_BY_CODE[primaryScope.stateCode].id
-        : null;
-    const primaryRegionId = primaryScope?.regionCode ? REGION_BY_CODE[primaryScope.regionCode].id : null;
+    // KA — a fixture whose first scope entry is AP/TN must get ITS OWN
+    // state here, not Karnataka's.
+    const primaryStateId = primaryScope?.stateCode ? STATE_BY_CODE[primaryScope.stateCode].id : null;
     const user = await prisma.user.upsert({
       where: { email: fixture.email },
       create: {
@@ -122,7 +112,6 @@ async function main(): Promise<void> {
         country: 'IN',
         countryId: country.id,
         stateId: primaryStateId,
-        regionId: primaryRegionId,
       },
       // Re-sync on every run (matches the `population` loop's pattern above)
       // so a fixture-definition change actually takes effect on already-
@@ -130,7 +119,6 @@ async function main(): Promise<void> {
       update: {
         countryId: country.id,
         stateId: primaryStateId,
-        regionId: primaryRegionId,
       },
     });
 
@@ -157,7 +145,7 @@ async function main(): Promise<void> {
         where: {
           userRoleId: userRole.id,
           scopeType: scopeEntry.type,
-          ...(scopeEntry.regionCode ? { regionId: REGION_BY_CODE[scopeEntry.regionCode].id } : {}),
+          ...(scopeEntry.stateCode ? { stateId: STATE_BY_CODE[scopeEntry.stateCode].id } : {}),
         },
       });
       if (existing) continue;
@@ -166,8 +154,7 @@ async function main(): Promise<void> {
           userRoleId: userRole.id,
           scopeType: scopeEntry.type,
           countryId: scopeEntry.countryCode ? country.id : null,
-          stateId: scopeEntry.stateCode ? state!.id : scopeEntry.regionCode ? REGION_BY_CODE[scopeEntry.regionCode].stateId : null,
-          regionId: scopeEntry.regionCode ? REGION_BY_CODE[scopeEntry.regionCode].id : null,
+          stateId: scopeEntry.stateCode ? STATE_BY_CODE[scopeEntry.stateCode].id : null,
         },
       });
     }
@@ -175,10 +162,14 @@ async function main(): Promise<void> {
     console.log(`  ${fixture.email.padEnd(26)} ${(fixture.role ?? '—').padEnd(16)} ${fixture.note}`);
   }
 
+  // AudioRoom carries no territory snapshot column — moderator scope checks
+  // resolve the room owner's stateId/countryId live (see
+  // WorkforceScopeService.resolveOwnerLocation), so each owner's own
+  // location IS the room's effective territory. One owner per state.
   const roomOwners = [
-    { username: 'e2e_room_owner_blr', email: 'roomowner.blr@e2e.test', regionId: region!.id, stateId: state!.id, countryId: country.id },
-    { username: 'e2e_room_owner_vja', email: 'roomowner.vja@e2e.test', regionId: regionVJA.id, stateId: stateAP!.id, countryId: country.id },
-    { username: 'e2e_room_owner_chn', email: 'roomowner.chn@e2e.test', regionId: regionCHN.id, stateId: stateTN!.id, countryId: country.id },
+    { username: 'e2e_room_owner_ka', email: 'roomowner.ka@e2e.test', stateId: state.id, countryId: country.id },
+    { username: 'e2e_room_owner_ap', email: 'roomowner.ap@e2e.test', stateId: stateAP.id, countryId: country.id },
+    { username: 'e2e_room_owner_tn', email: 'roomowner.tn@e2e.test', stateId: stateTN.id, countryId: country.id },
   ];
   for (const owner of roomOwners) {
     await prisma.user.upsert({
@@ -189,21 +180,19 @@ async function main(): Promise<void> {
         country: 'IN',
         countryId: owner.countryId,
         stateId: owner.stateId,
-        regionId: owner.regionId,
       },
       update: {
         countryId: owner.countryId,
         stateId: owner.stateId,
-        regionId: owner.regionId,
       },
     });
   }
   console.log(`Room owners seeded: ${roomOwners.length}`);
 
   const ROOMS = [
-    { slug: 'blr', region: region!.id, ownerEmail: 'roomowner.blr@e2e.test' },
-    { slug: 'vja', region: regionVJA.id, ownerEmail: 'roomowner.vja@e2e.test' },
-    { slug: 'chn', region: regionCHN.id, ownerEmail: 'roomowner.chn@e2e.test' },
+    { slug: 'ka', ownerEmail: 'roomowner.ka@e2e.test' },
+    { slug: 'ap', ownerEmail: 'roomowner.ap@e2e.test' },
+    { slug: 'tn', ownerEmail: 'roomowner.tn@e2e.test' },
   ];
   for (const r of ROOMS) {
     const owner = await prisma.user.findUnique({ where: { email: r.ownerEmail } });
@@ -216,12 +205,11 @@ async function main(): Promise<void> {
         maxParticipants: 10,
         agoraChannel: `e2e-room-${r.slug}`,
         status: 'LIVE',
-        region: r.region,
       },
-      update: { region: r.region, status: 'LIVE' },
+      update: { status: 'LIVE' },
     });
   }
-  console.log(`Rooms seeded: ${ROOMS.length} (one per region)`);
+  console.log(`Rooms seeded: ${ROOMS.length} (one per owner state)`);
 
   console.log(`\nAll fixtures share the password: ${PASSWORD}`);
 }

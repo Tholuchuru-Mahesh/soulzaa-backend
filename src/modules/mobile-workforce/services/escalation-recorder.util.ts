@@ -19,7 +19,7 @@ export interface EscalationRecorderDeps {
   scopeService?: {
     resolveEscalationRecipients(
       severity: EscalationSeverity,
-      region: string | null,
+      ownerId: string | null,
     ): Promise<string[]>;
   };
   notifications?: { create(input: any): Promise<unknown> };
@@ -36,12 +36,13 @@ export interface EscalationRecorderParams extends EscalationRecorderDeps {
   resource: string;
   /** The room/stream id — becomes both the audit log `resourceId` and the notification `entityId`. */
   resourceId: string;
-  /** Region used to route escalation recipients (all three domains resolve this the same way). */
-  region: string | null;
+  /** The resource owner's id — used to resolve escalation recipients by their state/country (all three domains resolve this the same way). */
+  ownerId: string | null;
   /**
-   * Only set this when the domain's current audit-log entry also records the
-   * region (live-stream does; audio/video rooms don't) — omitting it keeps
-   * the audit payload identical to each domain's existing behavior.
+   * `AuditLog.region` is a free-text field untouched by the Region→State
+   * scoping migration; nothing here has a region value to put in it anymore,
+   * so no caller sets this and the column stays null for these entries —
+   * same as audio/video rooms already left it before this changed.
    */
   auditRegion?: string | null;
   requestMeta?: { ip?: string; userAgent?: string };
@@ -74,7 +75,7 @@ export async function recordEscalationOutcome(params: EscalationRecorderParams):
   if (params.scopeService && params.notifications) {
     const recipients = await params.scopeService.resolveEscalationRecipients(
       params.severity,
-      params.region,
+      params.ownerId,
     );
     await Promise.all(
       recipients.map((userId) =>

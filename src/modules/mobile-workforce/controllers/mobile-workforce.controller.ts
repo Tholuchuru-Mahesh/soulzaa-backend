@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
@@ -68,6 +68,13 @@ export class MobileWorkforceController {
     return this.service.myAssignedQueue(userId, Number(limit) || 25);
   }
 
+  @ApiOperation({ summary: 'Tasks assigned to the current moderator' })
+  @ApiResponse({ status: 200, description: 'List of moderator tasks' })
+  @Get('me/tasks')
+  moderatorTasks(@CurrentUser('id') userId: string) {
+    return this.service.moderatorTasks(userId);
+  }
+
   @ApiOperation({ summary: 'Complete Moderator Mobile Dashboard overview' })
   @ApiResponse({ status: 200, description: 'Aggregated scope, shift, stats, and queue' })
   @Get('me/dashboard')
@@ -88,5 +95,43 @@ export class MobileWorkforceController {
   @Get('dashboard')
   dashboard(@CurrentUser('id') userId: string) {
     return this.service.dashboard(userId);
+  }
+
+  @ApiOperation({ summary: 'Live room details, chat messages, active reports, and participants' })
+  @ApiResponse({ status: 200, description: 'Live monitoring details for specific room' })
+  @Get('rooms/:roomId/details')
+  roomDetails(@CurrentUser('id') userId: string, @Query('roomId') queryRoomId?: string, @Query('id') queryId?: string) {
+    const roomId = queryRoomId || queryId || '';
+    return this.service.roomDetails(userId, roomId);
+  }
+
+  @ApiOperation({ summary: 'Submit moderation decision on report' })
+  @ApiResponse({ status: 200, description: 'Moderation decision applied' })
+  @Post('reports/:reportId/decision')
+  actionReport(
+    @CurrentUser('id') userId: string,
+    @Param('reportId') reportId: string,
+    @Body() body: { action: string; note?: string },
+  ) {
+    return this.service.actionReport(userId, reportId, body);
+  }
+
+  @ApiOperation({ summary: 'Apply moderation action to room participant' })
+  @ApiResponse({ status: 200, description: 'Participant moderation action applied' })
+  @Post('rooms/:roomId/participants/:targetUserId/action')
+  moderateParticipant(
+    @CurrentUser('id') userId: string,
+    @Param('roomId') roomId: string,
+    @Param('targetUserId') targetUserId: string,
+    @Body() body: { action: string; reason?: string },
+  ) {
+    return this.service.moderateParticipant(userId, roomId, targetUserId, body);
+  }
+
+  @ApiOperation({ summary: 'Mark moderator task as completed' })
+  @ApiResponse({ status: 200, description: 'Task marked as completed' })
+  @Post('tasks/:taskId/complete')
+  completeTask(@CurrentUser('id') userId: string, @Param('taskId') taskId: string) {
+    return this.service.completeTask(userId, taskId);
   }
 }

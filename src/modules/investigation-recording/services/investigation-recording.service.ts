@@ -10,7 +10,8 @@ export interface BeginRecordingInput {
   targetUserId: string;
   roomId?: string;
   liveStreamId?: string;
-  regionId?: string;
+  /** The room/stream owner's id — used to check the moderator's scope covers them. */
+  ownerId?: string;
   /** Omit when opened at room-join time, before the moderator has selected a
    *  reason — `completeRecording` finalizes it. */
   violationReason?: string;
@@ -45,7 +46,7 @@ export class InvestigationRecordingService {
    * Returns the recording row so callers can pass `evidenceId` to the audit log.
    */
   async beginRecording(input: BeginRecordingInput) {
-    await this.scopeService.assertModeratorInScope(input.moderatorId, input.regionId ?? null);
+    await this.scopeService.assertModeratorInScope(input.moderatorId, input.ownerId ?? null);
 
     const evidenceId = `EVD-${randomUUID().toUpperCase().replace(/-/g, '').slice(0, 16)}`;
 
@@ -56,7 +57,6 @@ export class InvestigationRecordingService {
         targetUserId: input.targetUserId,
         roomId: input.roomId ?? null,
         liveStreamId: input.liveStreamId ?? null,
-        regionId: input.regionId ?? null,
         violationReason: input.violationReason ?? null,
         evidencePayload: (input.evidencePayload as Prisma.InputJsonValue) ?? undefined,
         status: 'ACTIVE',
@@ -210,10 +210,9 @@ export class InvestigationRecordingService {
     return this.listRecordings({ moderatorId }, page, limit);
   }
 
-  async listAll(filters: { status?: string; regionId?: string }, page = 1, limit = 20) {
+  async listAll(filters: { status?: string }, page = 1, limit = 20) {
     const where: Record<string, unknown> = {};
     if (filters.status) where['status'] = filters.status;
-    if (filters.regionId) where['regionId'] = filters.regionId;
 
     const skip = (page - 1) * limit;
     const [items, total] = await Promise.all([

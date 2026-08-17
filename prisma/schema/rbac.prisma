@@ -123,6 +123,13 @@ model State {
 }
 
 /// Geographic Region / District entity
+/// `roleScopes`/`locatedUsers` restored — turned out to be used well beyond
+/// Moderator scoping (super-admin Official/Country-Manager RoleScope
+/// assignment, and User.regionId is read by role-request routing, campaigns,
+/// events, content-requests, support tickets). Moderator RoleScope itself
+/// still stops at State (see `WorkforceScopeService`) — this column existing
+/// again doesn't change that, it just stops breaking everything else that
+/// was never moderation-specific to begin with.
 model Region {
   id             String              @id @default(uuid()) @db.Uuid
   stateId        String              @db.Uuid
@@ -144,7 +151,11 @@ model Region {
   @@map("regions")
 }
 
-/// Geographic Scope assignment for operational user roles
+/// Geographic Scope assignment for operational user roles. Moderator
+/// RoleScope rows stop at State/Country (see `WorkforceScopeService`,
+/// `ModeratorProvisioningService`) — but `regionId` itself is restored,
+/// since Officials/Country-Managers are still assigned REGION-level scope
+/// via the super-admin workforce-assignment flow, unrelated to Moderators.
 model RoleScope {
   id         String    @id @default(uuid()) @db.Uuid
   userRoleId String    @db.Uuid

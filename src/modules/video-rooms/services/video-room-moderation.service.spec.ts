@@ -1460,7 +1460,7 @@ describe('VideoRoomModerationService', () => {
     let escalatingSubject: VideoRoomModerationService;
 
     beforeEach(() => {
-      rooms.findById.mockResolvedValue({ ...ROOM, region: 'region-eu-west' });
+      rooms.findById.mockResolvedValue({ ...ROOM });
       scopeService = {
         assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
         resolveEscalationRecipients: jest.fn().mockResolvedValue(['manager-1']),
@@ -1488,12 +1488,12 @@ describe('VideoRoomModerationService', () => {
       );
     });
 
-    it('resolves recipients from the room region and notifies each one', async () => {
+    it('resolves recipients from the room owner and notifies each one', async () => {
       await escalatingSubject.escalateViolation(ACTOR, ROOM.id, TARGET, 'reason', 'CRITICAL');
 
       expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith(
         'CRITICAL',
-        'region-eu-west',
+        ROOM.ownerId,
       );
       expect(notifications.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1519,12 +1519,12 @@ describe('VideoRoomModerationService', () => {
     });
   });
 
-  describe('restorative actions region scope enforcement', () => {
+  describe('restorative actions owner scope enforcement', () => {
     let scopeService: { assertModeratorInScope: jest.Mock };
     let scopedSubject: VideoRoomModerationService;
 
     beforeEach(() => {
-      rooms.findById.mockResolvedValue({ ...ROOM, region: 'region-eu-west' });
+      rooms.findById.mockResolvedValue({ ...ROOM });
       scopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
       scopedSubject = new VideoRoomModerationService(
         rooms,
@@ -1544,16 +1544,16 @@ describe('VideoRoomModerationService', () => {
       );
     });
 
-    it('unblacklist checks the room region before lifting the block', async () => {
+    it('unblacklist checks the room owner before lifting the block', async () => {
       moderationRepo.findActiveBlock.mockResolvedValue({ id: 'block-1' });
       await scopedSubject.unblacklist(ACTOR, ROOM.id, TARGET);
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(ACTOR.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(ACTOR.id, ROOM.ownerId);
     });
 
-    it('unmute checks the room region before lifting the mute', async () => {
+    it('unmute checks the room owner before lifting the mute', async () => {
       moderationRepo.findActiveMute.mockResolvedValue({ id: 'mute-1' });
       await scopedSubject.unmute(ACTOR, ROOM.id, TARGET);
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(ACTOR.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(ACTOR.id, ROOM.ownerId);
     });
 
     it('unblacklist rejects a moderator outside scope', async () => {

@@ -41,10 +41,10 @@ describe('ModerationApprovalService', () => {
           .mockImplementation(({ data }: any) => Promise.resolve({ ...PENDING_ROW, ...data })),
       },
       // PENDING_ROW is an AUDIO_ROOM with a non-null roomId, so decide()'s
-      // resolveRegion() hits this by default for every decide test that
+      // resolveOwnerId() hits this by default for every decide test that
       // doesn't override roomType/roomId. Individual tests replace this
-      // stub when they need a specific region or a vanished-room case.
-      audioRoom: { findUnique: jest.fn().mockResolvedValue({ region: null }) },
+      // stub when they need a specific owner or a vanished-room case.
+      audioRoom: { findUnique: jest.fn().mockResolvedValue({ ownerId: null }) },
     };
     scopeService = {
       resolveEscalationRecipients: jest.fn().mockResolvedValue([OFFICIAL_ID]),
@@ -64,7 +64,7 @@ describe('ModerationApprovalService', () => {
         proposedBy: MODERATOR_ID,
         targetUserId: TARGET_ID,
         reason: 'harassment',
-        regionId: 'region-1',
+        ownerId: 'owner-1',
       });
       expect(prisma.moderationActionApproval.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -80,16 +80,16 @@ describe('ModerationApprovalService', () => {
       );
     });
 
-    it('routes to the Official(s) covering the region via HIGH-severity escalation recipients', async () => {
+    it("routes to the Official(s) covering the owner's territory via HIGH-severity escalation recipients", async () => {
       await service.propose({
         roomType: 'AUDIO_ROOM',
         roomId: 'room-1',
         reportId: REPORT_ID,
         proposedBy: MODERATOR_ID,
         targetUserId: TARGET_ID,
-        regionId: 'region-1',
+        ownerId: 'owner-1',
       });
-      expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith('HIGH', 'region-1');
+      expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith('HIGH', 'owner-1');
       expect(notifications.create).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: OFFICIAL_ID,
@@ -176,42 +176,28 @@ describe('ModerationApprovalService', () => {
       );
     });
 
-    it('resolves the region from the audio room and checks the decider is in scope', async () => {
-      prisma.audioRoom = { findUnique: jest.fn().mockResolvedValue({ region: 'region-eu-west' }) };
+    it('resolves the owner from the audio room and checks the decider is in scope', async () => {
+      prisma.audioRoom = { findUnique: jest.fn().mockResolvedValue({ ownerId: 'owner-eu-west' }) };
       await service.decide('approval-1', 'official-1', 'APPROVED');
-      expect(prisma.audioRoom.findUnique).toHaveBeenCalledWith({
-        where: { id: 'room-1' },
-        select: { region: true },
-      });
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(
-        'official-1',
-        'region-eu-west',
-      );
+      expect(prisma.audioRoom.findUnique).toHaveBeenCalledWith({ where: { id: 'room-1' }, select: { ownerId: true } });
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith('official-1', 'owner-eu-west');
     });
 
-    it('resolves the region from the live stream when roomType is LIVE_STREAM', async () => {
+    it('resolves the owner from the live stream when roomType is LIVE_STREAM', async () => {
       prisma.moderationActionApproval.findUnique.mockResolvedValue({
         ...PENDING_ROW,
         roomType: 'LIVE_STREAM',
         roomId: null,
         liveStreamId: 'stream-1',
       });
-      prisma.liveStream = {
-        findUnique: jest.fn().mockResolvedValue({ regionId: 'region-eu-west' }),
-      };
+      prisma.liveStream = { findUnique: jest.fn().mockResolvedValue({ hostId: 'owner-eu-west' }) };
       await service.decide('approval-1', 'official-1', 'APPROVED');
-      expect(prisma.liveStream.findUnique).toHaveBeenCalledWith({
-        where: { id: 'stream-1' },
-        select: { regionId: true },
-      });
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(
-        'official-1',
-        'region-eu-west',
-      );
+      expect(prisma.liveStream.findUnique).toHaveBeenCalledWith({ where: { id: 'stream-1' }, select: { hostId: true } });
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith('official-1', 'owner-eu-west');
     });
 
-    it('rejects an Official deciding outside their assigned region', async () => {
-      prisma.audioRoom = { findUnique: jest.fn().mockResolvedValue({ region: 'region-eu-west' }) };
+    it("rejects an Official deciding outside the owner's assigned scope", async () => {
+      prisma.audioRoom = { findUnique: jest.fn().mockResolvedValue({ ownerId: 'owner-eu-west' }) };
       scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
       await expect(service.decide('approval-1', 'official-1', 'APPROVED')).rejects.toBeInstanceOf(
         ForbiddenException,

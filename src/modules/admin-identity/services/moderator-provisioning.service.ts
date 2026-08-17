@@ -45,13 +45,13 @@ export interface ModeratorSummary {
 /**
  * Moderator account provisioning (Admin and Super Admin).
  *
- * The admin supplies only email, password, operational region(s), and shift
+ * The admin supplies only email, password, operational state(s), and shift
  * timings. Username and full name are derived automatically. The RBAC
- * region scope (`RoleScope`) that actually gates what the moderator can see
- * is assigned from the given regions via `setModeratorRegions`. Profile
+ * scope (`RoleScope`) that actually gates what the moderator can see
+ * is assigned from the given states via `setModeratorStates`. Profile
  * geography (`User.country` and its FKs) is never read or written here —
  * it is completely independent of operational scope; see
- * `setModeratorRegions`/`getModeratorRegions` below.
+ * `setModeratorStates`/`getModeratorStates` below.
  *
  *  1. Creating a brand new Moderator account from scratch.
  *  2. Upgrading / converting an existing account (by email) into a hidden
@@ -129,8 +129,8 @@ export class ModeratorProvisioningService {
       update: { email },
     });
 
-    // 4. Assign the MODERATOR role + operational regions.
-    const { regionIds } = await this.setModeratorRegions(userId, dto.regionIds, actorId);
+    // 4. Assign the MODERATOR role + operational states.
+    const { stateIds } = await this.setModeratorStates(userId, dto.stateIds, actorId);
 
     // 5. Assign the working shift (unchanged by this task — still reads the
     // same shift fields off dto, still deactivates any prior active shift).
@@ -157,81 +157,76 @@ export class ModeratorProvisioningService {
       action: 'moderator.created',
       resource: 'moderator_account',
       resourceId: userId,
-      details: { username, email, regionIds },
+      details: { username, email, stateIds },
       ipAddress: ctx?.ip,
       status: 'SUCCESS',
     });
 
-    return { id: userId, username, email, regionIds };
+    return { id: userId, username, email, stateIds };
   }
 
-  async setModeratorRegions(
+  async setModeratorStates(
     userId: string,
-    regionIds: string[],
+    stateIds: string[],
     actorId: string,
-  ): Promise<{ regionIds: string[] }> {
+  ): Promise<{ stateIds: string[] }> {
     await this.assertAdminOrAbove(actorId);
 
-    const regions = await this.prisma.region.findMany({
-      where: { id: { in: regionIds } },
-      include: { state: { include: { country: true } } },
+    const states = await this.prisma.state.findMany({
+      where: { id: { in: stateIds } },
+      include: { country: true },
     });
-    const foundIds = new Set(regions.map((r) => r.id));
-    const missing = regionIds.filter((id) => !foundIds.has(id));
+    const foundIds = new Set(states.map((s) => s.id));
+    const missing = stateIds.filter((id) => !foundIds.has(id));
     if (missing.length > 0) {
-      throw new NotFoundException(`Region(s) not found: ${missing.join(', ')}`);
+      throw new NotFoundException(`State(s) not found: ${missing.join(', ')}`);
     }
-    const inactive = regions.find(
-      (r) => !r.isActive || !r.state.isActive || !r.state.country.isActive,
-    );
+    const inactive = states.find((s) => !s.isActive || !s.country.isActive);
     if (inactive) {
       throw new BadRequestException(
-        `Cannot assign moderator to inactive region '${inactive.name}'`,
+        `Cannot assign moderator to inactive state '${inactive.name}'`,
       );
     }
 
     const userRole = await this.roleService.assignRoleByName(userId, 'MODERATOR', actorId);
 
     const existingScopes = await this.prisma.roleScope.findMany({
-      where: { userRoleId: userRole.id, scopeType: ScopeType.REGION },
+      where: { userRoleId: userRole.id, scopeType: ScopeType.STATE },
     });
-    const targetIds = new Set(regionIds);
-    const existingIds = new Set(
-      existingScopes.map((s) => s.regionId).filter((id): id is string => !!id),
-    );
+    const targetIds = new Set(stateIds);
+    const existingIds = new Set(existingScopes.map((s) => s.stateId).filter((id): id is string => !!id));
 
-    const toRemove = existingScopes.filter((s) => s.regionId && !targetIds.has(s.regionId));
-    const toAdd = regions.filter((r) => !existingIds.has(r.id));
+    const toRemove = existingScopes.filter((s) => s.stateId && !targetIds.has(s.stateId));
+    const toAdd = states.filter((s) => !existingIds.has(s.id));
 
     await Promise.all(toRemove.map((scope) => this.roleService.removeRoleScope(scope.id)));
     await Promise.all(
-      toAdd.map((region) =>
+      toAdd.map((state) =>
         this.roleService.assignRoleScope({
           userRoleId: userRole.id,
-          scopeType: ScopeType.REGION,
-          countryId: region.state.countryId,
-          stateId: region.stateId,
-          regionId: region.id,
+          scopeType: ScopeType.STATE,
+          countryId: state.countryId,
+          stateId: state.id,
         }),
       ),
     );
 
-    return { regionIds };
+    return { stateIds };
   }
 
-  async getModeratorRegions(actorId: string, targetId: string): Promise<{ regionIds: string[] }> {
+  async getModeratorStates(actorId: string, targetId: string): Promise<{ stateIds: string[] }> {
     await this.assertAdminOrAbove(actorId);
 
     const role = await this.prisma.role.findUnique({ where: { name: 'MODERATOR' } });
     const userRole = role
       ? await this.prisma.userRole.findFirst({ where: { userId: targetId, roleId: role.id } })
       : null;
-    if (!userRole) return { regionIds: [] };
+    if (!userRole) return { stateIds: [] };
 
     const scopes = await this.prisma.roleScope.findMany({
-      where: { userRoleId: userRole.id, scopeType: ScopeType.REGION },
+      where: { userRoleId: userRole.id, scopeType: ScopeType.STATE },
     });
-    return { regionIds: scopes.map((s) => s.regionId).filter((id): id is string => !!id) };
+    return { stateIds: scopes.map((s) => s.stateId).filter((id): id is string => !!id) };
   }
 
   async listModerators(actorId: string): Promise<ModeratorSummary[]> {

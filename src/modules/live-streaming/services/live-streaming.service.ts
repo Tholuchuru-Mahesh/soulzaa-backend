@@ -8,7 +8,6 @@ export interface StartStreamInput {
   /** Snapshot the streamer's geography at stream start so territory counts stay accurate. */
   countryId?: string | null;
   stateId?: string | null;
-  regionId?: string | null;
 }
 
 @Injectable()
@@ -28,7 +27,6 @@ export class LiveStreamingService {
         startedAt: new Date(),
         countryId: input.countryId,
         stateId: input.stateId,
-        regionId: input.regionId,
       },
     });
     this.logger.log(`Live stream ${stream.id} started by streamer ${input.streamerId}`);
@@ -55,8 +53,8 @@ export class LiveStreamingService {
   async listLive(scopeFilter: Record<string, unknown>, limit = 25, offset = 0) {
     const isUnrestricted = Object.keys(scopeFilter).length === 0;
 
-    // Re-map user scope predicates (countryId/stateId/regionId on the User
-    // table) to the same columns on the live_streams table.
+    // Re-map user scope predicates (countryId/stateId on the User table) to
+    // the same columns on the live_streams table.
     let locationFilter: Record<string, unknown> = {};
     if (!isUnrestricted && 'OR' in scopeFilter) {
       locationFilter = {
@@ -64,7 +62,6 @@ export class LiveStreamingService {
           const out: Record<string, unknown> = {};
           if ('countryId' in clause) out['countryId'] = clause['countryId'];
           if ('stateId' in clause) out['stateId'] = clause['stateId'];
-          if ('regionId' in clause) out['regionId'] = clause['regionId'];
           return out;
         }),
       };
@@ -106,7 +103,6 @@ export class LiveStreamingService {
           const out: Record<string, unknown> = {};
           if ('countryId' in clause) out['countryId'] = clause['countryId'];
           if ('stateId' in clause) out['stateId'] = clause['stateId'];
-          if ('regionId' in clause) out['regionId'] = clause['regionId'];
           return out;
         }),
       };

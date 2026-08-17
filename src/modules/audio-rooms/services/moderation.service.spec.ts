@@ -389,7 +389,7 @@ describe('ModerationService', () => {
 
       beforeEach(() => {
         approvalService = { propose: jest.fn().mockResolvedValue({ id: 'approval-1' }) };
-        rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+        rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
         approvingService = new ModerationService(
           repo as unknown as ModerationRepository,
           permissions as unknown as RoomPermissionService,
@@ -426,7 +426,7 @@ describe('ModerationService', () => {
             reportId: 'report-1',
             proposedBy: MOD.id,
             targetUserId: TARGET,
-            regionId: 'region-eu-west',
+            ownerId: 'owner-eu-west',
           }),
         );
         expect(repo.createBan).not.toHaveBeenCalled();
@@ -609,7 +609,7 @@ describe('ModerationService', () => {
     });
   });
 
-  describe('region scope enforcement', () => {
+  describe('owner scope enforcement', () => {
     let scopeService: { assertModeratorInScope: jest.Mock };
     let scopedService: ModerationService;
 
@@ -629,16 +629,16 @@ describe('ModerationService', () => {
       );
     });
 
-    it("passes the room's real region to the scope check instead of a hardcoded null", async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+    it("passes the room's real owner to the scope check instead of a hardcoded null", async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       await scopedService.kick(MOD, 'r', TARGET, 'spam');
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
     });
 
-    it("rejects a moderator acting outside the room's assigned region", async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+    it("rejects a moderator acting outside the room owner's assigned scope", async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       scopeService.assertModeratorInScope.mockRejectedValue(
-        new ForbiddenException('You are not authorized to perform moderation in this region.'),
+        new ForbiddenException('You are not authorized to perform moderation for this user.'),
       );
       await expect(scopedService.kick(MOD, 'r', TARGET, 'spam')).rejects.toBeInstanceOf(
         ForbiddenException,
@@ -646,27 +646,27 @@ describe('ModerationService', () => {
       expect(repo.createKick).not.toHaveBeenCalled();
     });
 
-    // A room that EXISTS but carries no region is the documented safety
+    // A room that EXISTS but carries no owner is the documented safety
     // valve: the assertion is still invoked (with null), and
-    // `assertModeratorInScope` permits on a null target region. That is
+    // `assertModeratorInScope` permits on a null target owner. That is
     // deliberately different from a room that does not exist at all, which
     // now 404s — see "missing room 404s before the action runs".
-    it('permits the action when the room exists but has no region set', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: null });
+    it('permits the action when the room exists but has no owner set', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: null });
       await scopedService.kick(MOD, 'r', TARGET, 'spam');
       expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, null);
       expect(repo.createKick).toHaveBeenCalled();
     });
 
-    it('unkick checks the room region before lifting the kick', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+    it('unkick checks the room owner before lifting the kick', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       repo.findActiveKick.mockResolvedValue({ id: 'kick-1' });
       await scopedService.unkick(MOD, 'r', TARGET);
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
     });
 
-    it('unkick rejects a moderator outside the room region', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+    it('unkick rejects a moderator outside the room owner scope', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       repo.findActiveKick.mockResolvedValue({ id: 'kick-1' });
       scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
       await expect(scopedService.unkick(MOD, 'r', TARGET)).rejects.toBeInstanceOf(
@@ -675,22 +675,22 @@ describe('ModerationService', () => {
       expect(repo.liftKick).not.toHaveBeenCalled();
     });
 
-    it('unban checks the room region before lifting the ban', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+    it('unban checks the room owner before lifting the ban', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       repo.findActiveBan.mockResolvedValue({ id: 'ban-1', status: 'ACTIVE' });
       await scopedService.unban(MOD, 'r', TARGET);
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
     });
 
-    it('unmute checks the room region before lifting the mute', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+    it('unmute checks the room owner before lifting the mute', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       repo.findActiveMute.mockResolvedValue({ id: 'mute-1', status: 'ACTIVE' });
       await scopedService.unmute(MOD, 'r', TARGET);
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
     });
   });
 
-  describe('report/appeal lifecycle region scope enforcement', () => {
+  describe('report/appeal lifecycle owner scope enforcement', () => {
     let scopeService: { assertModeratorInScope: jest.Mock };
     let scopedService: ModerationService;
 
@@ -710,55 +710,44 @@ describe('ModerationService', () => {
       );
     });
 
-    it('assignReport checks the room region', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+    it('assignReport checks the room owner', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'r', status: 'PENDING' });
       await scopedService.assignReport(MOD, 'r', 'rep-1', 'assignee-1');
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
     });
 
-    it('addReportNotes checks the room region', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+    it('addReportNotes checks the room owner', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'r' });
       await scopedService.addReportNotes(MOD, 'r', 'rep-1', 'notes');
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
       expect(repo.updateReportNotes).toHaveBeenCalledWith('rep-1', MOD.id, 'notes');
     });
 
-    it('dismissReport checks the room region', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+    it('dismissReport checks the room owner', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'r', createdAt: new Date() });
       await scopedService.dismissReport(MOD, 'r', 'rep-1', 'reason');
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
     });
 
-    it('resolveAppeal checks the room region', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
-      repo.getAppeal.mockResolvedValue({
-        id: 'appeal-1',
-        roomId: 'r',
-        status: 'PENDING',
-        userId: TARGET,
-      });
+    it('resolveAppeal checks the room owner', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
+      repo.getAppeal.mockResolvedValue({ id: 'appeal-1', roomId: 'r', status: 'PENDING', userId: TARGET });
       await scopedService.resolveAppeal(MOD, 'r', 'appeal-1', { approve: false });
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
     });
 
-    it('reviewReport checks the room region even for a bare dismiss (no recommendedAction)', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
-      repo.getReport.mockResolvedValue({
-        id: 'rep-1',
-        roomId: 'r',
-        status: 'PENDING',
-        targetUserId: TARGET,
-        createdAt: new Date(),
-      });
+    it('reviewReport checks the room owner even for a bare dismiss (no recommendedAction)', async () => {
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
+      repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'r', status: 'PENDING', targetUserId: TARGET, createdAt: new Date() });
       await scopedService.reviewReport(MOD, 'r', 'rep-1', { status: 'REVIEWED' } as never);
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'owner-eu-west');
     });
 
     it('reviewReport rejects a moderator outside scope before touching the report', async () => {
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
       await expect(
         scopedService.reviewReport(MOD, 'r', 'rep-1', { status: 'REVIEWED' } as never),
@@ -771,7 +760,7 @@ describe('ModerationService', () => {
     // an out-of-scope room's reportId alongside "r" and mutate it unchecked.
     describe('reportId is bound to the roomId that was scope-checked', () => {
       beforeEach(() => {
-        rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+        rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       });
 
       it('addReportNotes 404s when the report belongs to a different room', async () => {
@@ -812,8 +801,8 @@ describe('ModerationService', () => {
     });
   });
 
-  // A `null` room used to make `if (room?.region)` simply not fire, so the
-  // region-scope check was skipped entirely and the action proceeded against
+  // A `null` room used to make `if (room?.ownerId)` simply not fire, so the
+  // owner-scope check was skipped entirely and the action proceeded against
   // a room that does not exist. Video Rooms (`requireRoom`) and Live
   // Streaming (`getStream`) always 404 first; audio rooms now match.
   describe('missing room 404s before the action runs', () => {
@@ -873,7 +862,7 @@ describe('ModerationService', () => {
         resolveEscalationRecipients: jest.fn().mockResolvedValue(['official-1']),
       };
       notifications = { create: jest.fn().mockResolvedValue({}) };
-      rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
+      rooms.findRoomRow.mockResolvedValue({ id: 'r', ownerId: 'owner-eu-west' });
       escalatingService = new ModerationService(
         repo as unknown as ModerationRepository,
         permissions as unknown as RoomPermissionService,
@@ -895,10 +884,7 @@ describe('ModerationService', () => {
     it('routes a HIGH escalation through resolveEscalationRecipients and notifies each recipient', async () => {
       await escalatingService.escalateViolation(MOD, 'r', TARGET, 'repeated harassment', 'HIGH');
 
-      expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith(
-        'HIGH',
-        'region-eu-west',
-      );
+      expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith('HIGH', 'owner-eu-west');
       expect(notifications.create).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'official-1',

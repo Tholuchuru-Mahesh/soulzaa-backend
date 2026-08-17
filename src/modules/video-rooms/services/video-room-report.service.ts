@@ -172,8 +172,8 @@ export class VideoRoomReportService {
     await this.permissions.assertPermission(actor, ref, VideoRoomPermission.REVIEW_REPORTS);
 
     const room = await this.rooms.findById(roomId);
-    if (room?.region) {
-      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    if (room?.ownerId) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     }
 
     const report = await this.reportRepo.getById(reportId);
@@ -245,7 +245,7 @@ export class VideoRoomReportService {
             proposedBy: actor.id,
             targetUserId: report.targetUserId,
             reason,
-            regionId: room?.region ?? null,
+            ownerId: room?.ownerId ?? null,
           });
         }
       }
@@ -274,8 +274,8 @@ export class VideoRoomReportService {
     const ref = await this.requireRoom(roomId);
     await this.permissions.assertPermission(actor, ref, VideoRoomPermission.REVIEW_REPORTS);
     const room = await this.rooms.findById(roomId);
-    if (room?.region) {
-      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    if (room?.ownerId) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     }
     // The scope check above authorizes `roomId`, so the report being mutated
     // must actually belong to that room — otherwise a moderator scoped to
@@ -308,8 +308,8 @@ export class VideoRoomReportService {
     const ref = await this.requireRoom(roomId);
     await this.permissions.assertPermission(actor, ref, VideoRoomPermission.REVIEW_REPORTS);
     const room = await this.rooms.findById(roomId);
-    if (room?.region) {
-      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    if (room?.ownerId) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     }
     const report = await this.reportRepo.getById(reportId);
     if (!report || report.roomId !== ref.id) {
@@ -350,8 +350,8 @@ export class VideoRoomReportService {
     await this.permissions.assertPermission(actor, ref, VideoRoomPermission.REVIEW_REPORTS);
 
     const room = await this.rooms.findById(roomId);
-    if (room?.region) {
-      await this.scopeService.assertModeratorInScope(actor.id, room.region);
+    if (room?.ownerId) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
     }
 
     const report = await this.reportRepo.getById(reportId);

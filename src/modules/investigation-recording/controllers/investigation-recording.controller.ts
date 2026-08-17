@@ -18,11 +18,10 @@ export class InvestigationRecordingController {
   @ApiOperation({ summary: 'List all investigation recordings (Admin/SuperAdmin only)' })
   listAll(
     @Query('status') status?: string,
-    @Query('regionId') regionId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.service.listAll({ status, regionId }, Number(page ?? 1), Number(limit ?? 20));
+    return this.service.listAll({ status }, Number(page ?? 1), Number(limit ?? 20));
   }
 
   @Get('moderator/:moderatorId')

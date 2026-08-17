@@ -75,12 +75,11 @@ export class LiveStreamController {
   @ApiOperation({ summary: 'List active live streams' })
   listStreams(
     @Query('status') status?: LiveStreamStatus,
-    @Query('regionId') regionId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
     return this.service.listStreams(
-      { status: status ?? LiveStreamStatus.ACTIVE, regionId },
+      { status: status ?? LiveStreamStatus.ACTIVE },
       Number(page ?? 1),
       Number(limit ?? 20),
     );

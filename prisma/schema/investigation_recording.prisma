@@ -5,7 +5,6 @@ model InvestigationRecording {
   targetUserId    String              @db.Uuid
   roomId          String?             @db.Uuid
   liveStreamId    String?             @db.Uuid
-  regionId        String?             @db.Uuid
   /// Nullable: a recording opened at room-join time (before the moderator has
   /// observed the violation) has no reason yet — it's finalized by
   /// `completeRecording` once the moderator selects one. Always non-null by

@@ -346,13 +346,13 @@ export class ProfileService implements IProfileService {
     }
 
     // Auto-resolve geographic IDs for location scoping
-    if (input.country) {
+    if (input.country && this.prisma?.country) {
       const c = await this.prisma.country.findFirst({
         where: { OR: [{ name: { contains: input.country, mode: 'insensitive' } }, { code: { equals: input.country, mode: 'insensitive' } }] },
       });
       if (c) identityData['countryId'] = c.id;
     }
-    if (input.state) {
+    if (input.state && this.prisma?.state) {
       const s = await this.prisma.state.findFirst({
         where: { OR: [{ name: { contains: input.state, mode: 'insensitive' } }, { code: { equals: input.state, mode: 'insensitive' } }] },
       });
@@ -361,7 +361,7 @@ export class ProfileService implements IProfileService {
         if (!identityData['countryId']) identityData['countryId'] = s.countryId;
       }
     }
-    if (input.city) {
+    if (input.city && this.prisma?.region) {
       const r = await this.prisma.region.findFirst({
         where: { OR: [{ name: { contains: input.city, mode: 'insensitive' } }, { code: { equals: input.city, mode: 'insensitive' } }] },
       });

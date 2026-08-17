@@ -22,9 +22,11 @@ export type UserScopeFilter = Record<string, never> | { OR: Array<Record<string,
 /**
  * Turns a user's geographic scope assignments into an exact Prisma filter.
  *
- * A scope matches on the id at its own level — a region scope on `regionId`, a
- * state scope on `stateId` — so an Official sees their state and not the whole
- * country around it.
+ * A scope matches on the id at its own level — a state scope on `stateId`, a
+ * country scope on `countryId` — so an Official sees their state and not the
+ * whole country around it. Moderators are provisioned at STATE granularity
+ * (Region was removed from moderation scoping entirely — see
+ * `assertModeratorInScope`).
  *
  * **Migration bridge.** While `AUTHORIZATION_SCOPE_COUNTRY_BRIDGE` is on, a state
  * scope also matches users who have no state set but do sit in the right
@@ -93,8 +95,6 @@ export class WorkforceScopeService {
         if (this.countryBridgeEnabled && scope.countryId) {
           push({ stateId: null, countryId: scope.countryId });
         }
-      } else if (scope.scopeType === 'REGION' && scope.regionId) {
-        push({ regionId: scope.regionId });
       }
     }
 
@@ -119,9 +119,7 @@ export class WorkforceScopeService {
           ? scope.countryId
           : scope.scopeType === 'STATE'
             ? scope.stateId
-            : scope.scopeType === 'REGION'
-              ? scope.regionId
-              : null;
+            : null;
       if (targetId) predicates.push({ scopeType: scope.scopeType, targetId });
     }
 
@@ -129,75 +127,70 @@ export class WorkforceScopeService {
   }
 
   /**
-   * Asserts that a moderator is authorized to operate in the given target region.
-   * Throws ForbiddenException if the target region is outside the moderator's assigned scope.
-   *
-   * Matching is hierarchical, not exact-only: a STATE-scope clause covers every
-   * region inside that state and a COUNTRY-scope clause every region inside that
-   * country. `userScopeFilter` already emits `stateId`/`countryId` clauses for
-   * STATE/COUNTRY-scoped actors, and an Official who owns a whole state must be
-   * able to act anywhere in it — not only where an exact REGION-level RoleScope
-   * row happens to exist.
+   * Resolves the state/country a resource's owner sits in — the shared
+   * lookup `assertModeratorInScope`/`resolveEscalationRecipients`/
+   * `resolveModeratorsInScope` all use instead of the Region indirection
+   * they used to walk through.
    */
-  async assertModeratorInScope(moderatorId: string, regionId: string | null): Promise<void> {
-    if (!regionId) return; // Target has no region specified — permit (safety valve)
+  private async resolveOwnerLocation(
+    ownerId: string,
+  ): Promise<{ stateId: string | null; countryId: string | null } | null> {
+    return this.prisma.user.findUnique({
+      where: { id: ownerId },
+      select: { stateId: true, countryId: true },
+    });
+  }
+
+  /**
+   * Asserts that a moderator is authorized to act on a resource owned by
+   * `ownerId`. Throws ForbiddenException if the owner's territory is outside
+   * the moderator's assigned scope.
+   *
+   * Resolves the owner's `stateId`/`countryId` directly (one `User` lookup)
+   * and matches it against the moderator's scope clauses — no Region
+   * indirection, since Moderator `RoleScope` rows stop at State.
+   */
+  async assertModeratorInScope(moderatorId: string, ownerId: string | null): Promise<void> {
+    if (!ownerId) return; // No owner known — permit (safety valve)
     if (await this.isUnrestricted(moderatorId)) return;
 
     const filter = await this.userScopeFilter(moderatorId);
-    // If filter is empty object {}, user is unrestricted
-    if (!('OR' in filter)) return;
+    if (!('OR' in filter)) return; // unrestricted
+
+    const owner = await this.resolveOwnerLocation(ownerId);
+    if (!owner) return; // Owner vanished — same safety valve as an unresolved target
 
     const clauses = filter.OR;
-    // Exact region-level match — the cheap path, no extra query.
-    if (clauses.some((clause) => clause.regionId === regionId)) return;
-
-    // No exact region match — a STATE/COUNTRY-scoped clause still covers this
-    // region if the region actually sits within that state/country.
-    const hasHierarchicalClause = clauses.some(
-      (clause) => 'stateId' in clause || 'countryId' in clause,
+    // `clause.stateId &&` deliberately skips the migration-bridge clause
+    // (`{ stateId: null, countryId }`) for state-matching while still
+    // letting its countryId match — see `userScopeFilter`.
+    const matched = clauses.some(
+      (clause) =>
+        (clause.stateId && clause.stateId === owner.stateId) ||
+        (clause.countryId && clause.countryId === owner.countryId),
     );
-    if (hasHierarchicalClause) {
-      const region = await this.prisma.region.findUnique({
-        where: { id: regionId },
-        select: { stateId: true, state: { select: { countryId: true } } },
-      });
-      if (region) {
-        // `clause.stateId &&` deliberately skips the migration-bridge clause
-        // (`{ stateId: null, countryId }`) for state-matching while still
-        // letting its countryId match — see `userScopeFilter`.
-        const isHierarchicallyMatched = clauses.some(
-          (clause) =>
-            (clause.stateId && clause.stateId === region.stateId) ||
-            (clause.countryId && clause.countryId === region.state.countryId),
-        );
-        if (isHierarchicallyMatched) return;
-      }
-    }
+    if (matched) return;
 
     this.logger.warn(
-      `Moderator ${moderatorId} attempted operation outside assigned region scope (target region: ${regionId})`,
+      `Moderator ${moderatorId} attempted operation outside assigned scope (target owner: ${ownerId})`,
     );
-    throw new ForbiddenException('You are not authorized to perform moderation in this region.');
+    throw new ForbiddenException('You are not authorized to perform moderation for this user.');
   }
 
   /**
    * Who a Moderator's escalation should notify, by severity: HIGH reaches the
-   * Official(s) covering the target region, CRITICAL reaches the Country
-   * Manager(s) covering the target region's country, EMERGENCY reaches every
+   * Official(s) covering the resource owner's state, CRITICAL reaches the
+   * Country Manager(s) covering the owner's country, EMERGENCY reaches every
    * Admin directly — reusing the same OFFICIAL → MANAGER → ADMIN chain role
    * requests already climb, rather than inventing a second routing table.
    *
-   * Callers only ever have a regionId on hand (that's what every room/stream
-   * model stores) — country is derived here via Region → State → Country so
-   * CRITICAL doesn't need a second geography lookup at every call site.
-   *
    * A GLOBAL scope always matches, same as everywhere else in this class. If
-   * no one is scoped to the territory (an unstaffed region), this falls back
-   * to Admin rather than silently dropping a critical escalation.
+   * no one is scoped to the territory, this falls back to Admin rather than
+   * silently dropping a critical escalation.
    */
   async resolveEscalationRecipients(
     severity: EscalationSeverity,
-    regionId: string | null | undefined,
+    ownerId: string | null | undefined,
   ): Promise<string[]> {
     if (severity === 'EMERGENCY') {
       return this.roles.getUserIdsWithAnyRole(['ADMIN', 'SUPER_ADMIN']);
@@ -205,16 +198,11 @@ export class WorkforceScopeService {
 
     const roleName = ESCALATION_ROLE[severity];
     const scopeClauses: Array<Record<string, unknown>> = [{ scopeType: 'GLOBAL' }];
-    if (severity === 'HIGH' && regionId) {
-      scopeClauses.push({ scopeType: 'REGION', regionId });
-    } else if (severity === 'CRITICAL' && regionId) {
-      const region = await this.prisma.region.findUnique({
-        where: { id: regionId },
-        select: { state: { select: { countryId: true } } },
-      });
-      if (region?.state.countryId) {
-        scopeClauses.push({ scopeType: 'COUNTRY', countryId: region.state.countryId });
-      }
+    const owner = ownerId ? await this.resolveOwnerLocation(ownerId) : null;
+    if (severity === 'HIGH' && owner?.stateId) {
+      scopeClauses.push({ scopeType: 'STATE', stateId: owner.stateId });
+    } else if (severity === 'CRITICAL' && owner?.countryId) {
+      scopeClauses.push({ scopeType: 'COUNTRY', countryId: owner.countryId });
     }
 
     const rows = await this.prisma.roleScope.findMany({
@@ -228,7 +216,7 @@ export class WorkforceScopeService {
     const userIds = [...new Set(rows.map((r) => r.userRole.userId))];
     if (userIds.length === 0) {
       this.logger.warn(
-        `No ${roleName} scoped to escalation target (region=${regionId ?? 'n/a'}) — falling back to Admin.`,
+        `No ${roleName} scoped to escalation target (owner=${ownerId ?? 'n/a'}) — falling back to Admin.`,
       );
       return this.roles.getUserIdsWithAnyRole(['ADMIN', 'SUPER_ADMIN']);
     }
@@ -236,15 +224,18 @@ export class WorkforceScopeService {
   }
 
   /**
-   * Moderators who cover the given region: a GLOBAL scope always matches,
-   * plus anyone with a REGION scope on `regionId`. Unlike
-   * `resolveEscalationRecipients`, this has no Admin fallback — an
-   * unstaffed region just means nobody gets paged, which is correct for a
-   * routine per-report notification rather than an escalation.
+   * Moderators who cover a resource owner's territory: a GLOBAL scope always
+   * matches, plus anyone whose STATE/COUNTRY scope contains the owner's
+   * state/country. Unlike `resolveEscalationRecipients`, this has no Admin
+   * fallback — nobody covering the territory just means nobody gets paged,
+   * which is correct for a routine per-report notification rather than an
+   * escalation.
    */
-  async resolveModeratorsInScope(regionId: string | null | undefined): Promise<string[]> {
+  async resolveModeratorsInScope(ownerId: string | null | undefined): Promise<string[]> {
     const scopeClauses: Array<Record<string, unknown>> = [{ scopeType: 'GLOBAL' }];
-    if (regionId) scopeClauses.push({ scopeType: 'REGION', regionId });
+    const owner = ownerId ? await this.resolveOwnerLocation(ownerId) : null;
+    if (owner?.stateId) scopeClauses.push({ scopeType: 'STATE', stateId: owner.stateId });
+    if (owner?.countryId) scopeClauses.push({ scopeType: 'COUNTRY', countryId: owner.countryId });
 
     const rows = await this.prisma.roleScope.findMany({
       where: {

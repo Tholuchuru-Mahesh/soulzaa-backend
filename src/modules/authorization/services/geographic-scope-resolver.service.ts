@@ -11,6 +11,8 @@ export interface UserScopeDetail {
   countryCode?: string | null;
   stateId?: string | null;
   stateCode?: string | null;
+  /** Still populated for non-Moderator roles (Officials, role-request routing)
+   *  that continue to use REGION-level scope; Moderators stop at State. */
   regionId?: string | null;
   regionCode?: string | null;
 }

@@ -22,6 +22,10 @@ model User {
   deletedAt         DateTime?
   countryId         String?        @db.Uuid
   stateId           String?        @db.Uuid
+  /// Kept for consumers outside moderation that still scope by region:
+  /// role-request routing, campaigns, events, content-requests, support
+  /// tickets. Moderator RoleScope stops at State (see WorkforceScopeService)
+  /// but this column itself was never moderation-exclusive.
   regionId          String?        @db.Uuid
   /// True for platform staff accounts that must never surface to ordinary
   /// users. Denormalised from the ADMIN / SUPER_ADMIN role assignment and

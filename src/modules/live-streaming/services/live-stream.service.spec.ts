@@ -12,7 +12,6 @@ const ACTIVE_STREAM = {
   id: STREAM_ID,
   hostId: HOST_ID,
   status: LiveStreamStatus.ACTIVE,
-  regionId: null,
 };
 
 describe('LiveStreamService — non-host viewer moderation enforcement', () => {
@@ -97,15 +96,12 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
   });
 
   describe('MUTE on a non-host viewer', () => {
-    it('moderateUser checks the stream region before acting', async () => {
+    it("moderateUser checks the stream host's scope before acting", async () => {
       await subject.moderateUser(baseInput({ action: 'MUTE' }));
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(
-        MODERATOR_ID,
-        ACTIVE_STREAM.regionId,
-      );
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MODERATOR_ID, ACTIVE_STREAM.hostId);
     });
 
-    it('moderateUser rejects a moderator outside the stream region', async () => {
+    it("moderateUser rejects a moderator outside the stream host's scope", async () => {
       scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
       await expect(subject.moderateUser(baseInput({ action: 'MUTE' }))).rejects.toBeInstanceOf(
         ForbiddenException,
@@ -325,14 +321,14 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
   });
 
   describe('escalateViolation — severity-routed notifications', () => {
-    it('resolves recipients from the stream region and notifies each one', async () => {
+    it('resolves recipients from the stream host and notifies each one', async () => {
       scopeService.resolveEscalationRecipients.mockResolvedValue(['admin-1']);
 
       await subject.escalateViolation(STREAM_ID, MODERATOR_ID, VIEWER_ID, 'reason', 'EMERGENCY');
 
       expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith(
         'EMERGENCY',
-        ACTIVE_STREAM.regionId,
+        ACTIVE_STREAM.hostId,
       );
       expect(notifications.create).toHaveBeenCalledWith(
         expect.objectContaining({

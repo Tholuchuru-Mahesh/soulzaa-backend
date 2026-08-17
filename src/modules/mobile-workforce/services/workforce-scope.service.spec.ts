@@ -9,7 +9,7 @@ import { WorkforceScopeService } from './workforce-scope.service';
 const bridgeConfig = (enabled: boolean) =>
   ({ get: () => ({ scopeCountryBridge: enabled }) }) as unknown as ConfigService;
 
-/** Unused by userScopeFilter/describeScope tests — only resolveEscalationRecipients touches Prisma. */
+/** Unused by userScopeFilter/describeScope tests — only owner-resolving methods touch Prisma. */
 const unusedPrisma = {} as unknown as PrismaService;
 
 /**
@@ -33,14 +33,6 @@ describe('WorkforceScopeService.userScopeFilter', () => {
       bridgeConfig(true),
       unusedPrisma,
     );
-  });
-
-  it('matches a region scope on regionId exactly', async () => {
-    scopes.getUserScopes.mockResolvedValue([{ scopeType: 'REGION', regionId: 'r-1' }]);
-
-    await expect(service.userScopeFilter('mod-1')).resolves.toEqual({
-      OR: [{ regionId: 'r-1' }],
-    });
   });
 
   it('matches a state scope on stateId, and on its country for un-normalised users', async () => {
@@ -67,11 +59,11 @@ describe('WorkforceScopeService.userScopeFilter', () => {
   it('unions several scopes', async () => {
     scopes.getUserScopes.mockResolvedValue([
       { scopeType: 'COUNTRY', countryId: 'c-1' },
-      { scopeType: 'REGION', regionId: 'r-9' },
+      { scopeType: 'STATE', stateId: 's-9', countryId: 'c-9' },
     ]);
 
     await expect(service.userScopeFilter('cm-1')).resolves.toEqual({
-      OR: [{ countryId: 'c-1' }, { regionId: 'r-9' }],
+      OR: [{ countryId: 'c-1' }, { stateId: 's-9' }, { stateId: null, countryId: 'c-9' }],
     });
   });
 
@@ -108,7 +100,7 @@ describe('WorkforceScopeService.userScopeFilter', () => {
   });
 
   it('ignores a scope row missing the id its type requires', async () => {
-    scopes.getUserScopes.mockResolvedValue([{ scopeType: 'REGION', regionId: null }]);
+    scopes.getUserScopes.mockResolvedValue([{ scopeType: 'STATE', stateId: null }]);
 
     await expect(service.userScopeFilter('mod-1')).resolves.toEqual({ OR: [] });
   });
@@ -137,14 +129,11 @@ describe('WorkforceScopeService.userScopeFilter', () => {
       });
     });
 
-    it('leaves country and region scopes unchanged', async () => {
-      scopes.getUserScopes.mockResolvedValue([
-        { scopeType: 'COUNTRY', countryId: 'c-1' },
-        { scopeType: 'REGION', regionId: 'r-1' },
-      ]);
+    it('leaves a country scope unchanged', async () => {
+      scopes.getUserScopes.mockResolvedValue([{ scopeType: 'COUNTRY', countryId: 'c-1' }]);
 
       await expect(service.userScopeFilter('cm-1')).resolves.toEqual({
-        OR: [{ countryId: 'c-1' }, { regionId: 'r-1' }],
+        OR: [{ countryId: 'c-1' }],
       });
     });
   });
@@ -187,15 +176,16 @@ describe('WorkforceScopeService.describeScope', () => {
 });
 
 /**
- * Region-scope enforcement for a moderation action. Matching is hierarchical:
- * an Official who owns a whole state must be able to act on every region in
- * it, not only where an exact REGION-level RoleScope row happens to exist.
+ * Owner-scope enforcement for a moderation action. Matching resolves the
+ * resource owner's stateId/countryId (one User lookup) and checks it against
+ * the moderator's scope clauses directly — no Region indirection, since
+ * Moderator RoleScope rows stop at State.
  */
 describe('WorkforceScopeService.assertModeratorInScope', () => {
   let service: WorkforceScopeService;
   const scopes = { getUserScopes: jest.fn() };
   const roles = { getRoleNames: jest.fn() };
-  const prisma = { region: { findUnique: jest.fn() } };
+  const prisma = { user: { findUnique: jest.fn() } };
 
   const makeService = (bridge = true) =>
     new WorkforceScopeService(
@@ -211,7 +201,7 @@ describe('WorkforceScopeService.assertModeratorInScope', () => {
     service = makeService();
   });
 
-  it('permits when the target carries no region at all (safety valve)', async () => {
+  it('permits when the target carries no owner at all (safety valve)', async () => {
     await expect(service.assertModeratorInScope('mod-1', null)).resolves.toBeUndefined();
     expect(scopes.getUserScopes).not.toHaveBeenCalled();
   });
@@ -219,27 +209,19 @@ describe('WorkforceScopeService.assertModeratorInScope', () => {
   it('permits platform staff regardless of scope rows', async () => {
     roles.getRoleNames.mockResolvedValue(['ADMIN']);
     scopes.getUserScopes.mockResolvedValue([]);
-    await expect(service.assertModeratorInScope('admin-1', 'r-1')).resolves.toBeUndefined();
+    await expect(service.assertModeratorInScope('admin-1', 'owner-1')).resolves.toBeUndefined();
   });
 
-  it('permits an exact REGION-scope match without touching the database', async () => {
-    scopes.getUserScopes.mockResolvedValue([{ scopeType: 'REGION', regionId: 'r-1' }]);
-    await expect(service.assertModeratorInScope('mod-1', 'r-1')).resolves.toBeUndefined();
-    expect(prisma.region.findUnique).not.toHaveBeenCalled();
-  });
-
-  it('denies a REGION-scoped moderator acting on another region', async () => {
-    scopes.getUserScopes.mockResolvedValue([{ scopeType: 'REGION', regionId: 'r-1' }]);
-    await expect(service.assertModeratorInScope('mod-1', 'r-9')).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
-    // No state/country clause to widen with, so no region lookup is worth doing.
-    expect(prisma.region.findUnique).not.toHaveBeenCalled();
+  it('permits when the target owner cannot be resolved (safety valve, same as an unresolved target)', async () => {
+    scopes.getUserScopes.mockResolvedValue([{ scopeType: 'STATE', stateId: 's-1', countryId: 'c-1' }]);
+    prisma.user.findUnique.mockResolvedValue(null);
+    await expect(service.assertModeratorInScope('mod-1', 'owner-ghost')).resolves.toBeUndefined();
   });
 
   it('denies an operator with no scope assigned at all', async () => {
     scopes.getUserScopes.mockResolvedValue([]);
-    await expect(service.assertModeratorInScope('unscoped-1', 'r-1')).rejects.toBeInstanceOf(
+    prisma.user.findUnique.mockResolvedValue({ stateId: 's-1', countryId: 'c-1' });
+    await expect(service.assertModeratorInScope('unscoped-1', 'owner-1')).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });
@@ -252,62 +234,41 @@ describe('WorkforceScopeService.assertModeratorInScope', () => {
       ]);
     });
 
-    it('permits any region inside their state', async () => {
-      prisma.region.findUnique.mockResolvedValue({
-        stateId: 's-ka',
-        state: { countryId: 'c-in' },
+    it('permits an owner located inside their state', async () => {
+      prisma.user.findUnique.mockResolvedValue({ stateId: 's-ka', countryId: 'c-in' });
+      await expect(service.assertModeratorInScope('official-1', 'owner-blr')).resolves.toBeUndefined();
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'owner-blr' },
+        select: { stateId: true, countryId: true },
       });
-      await expect(service.assertModeratorInScope('official-1', 'r-blr')).resolves.toBeUndefined();
-      expect(prisma.region.findUnique).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 'r-blr' } }),
-      );
     });
 
     // With the migration bridge ON the state scope also carries a country
-    // clause, so the clean deny is a region outside both — see the bridge
+    // clause, so the clean deny is an owner outside both — see the bridge
     // tests below for the same-country case and the bridge-off case.
-    it('denies a region in another state', async () => {
-      prisma.region.findUnique.mockResolvedValue({
-        stateId: 's-ny',
-        state: { countryId: 'c-us' },
-      });
-      await expect(service.assertModeratorInScope('official-1', 'r-nyc')).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
-    });
-
-    it('denies when the target region cannot be resolved', async () => {
-      prisma.region.findUnique.mockResolvedValue(null);
-      await expect(service.assertModeratorInScope('official-1', 'r-ghost')).rejects.toBeInstanceOf(
+    it('denies an owner in another state', async () => {
+      prisma.user.findUnique.mockResolvedValue({ stateId: 's-ny', countryId: 'c-us' });
+      await expect(service.assertModeratorInScope('official-1', 'owner-nyc')).rejects.toBeInstanceOf(
         ForbiddenException,
       );
     });
 
     // The bridge clause is `{ stateId: null, countryId }`. Its null stateId
-    // must not match a real region's stateId, but its countryId still may.
+    // must not match a real owner's stateId, but its countryId still may.
     it('does not let the migration-bridge clause widen state matching, but its country still matches', async () => {
-      prisma.region.findUnique.mockResolvedValue({
-        stateId: 's-tn',
-        state: { countryId: 'c-us' },
-      });
-      await expect(service.assertModeratorInScope('official-1', 'r-nyc')).rejects.toBeInstanceOf(
+      prisma.user.findUnique.mockResolvedValue({ stateId: 's-tn', countryId: 'c-us' });
+      await expect(service.assertModeratorInScope('official-1', 'owner-nyc')).rejects.toBeInstanceOf(
         ForbiddenException,
       );
 
-      prisma.region.findUnique.mockResolvedValue({
-        stateId: 's-tn',
-        state: { countryId: 'c-in' },
-      });
-      await expect(service.assertModeratorInScope('official-1', 'r-chn')).resolves.toBeUndefined();
+      prisma.user.findUnique.mockResolvedValue({ stateId: 's-tn', countryId: 'c-in' });
+      await expect(service.assertModeratorInScope('official-1', 'owner-chn')).resolves.toBeUndefined();
     });
 
     it('with the migration bridge off, a different state in the same country is denied', async () => {
       service = makeService(false);
-      prisma.region.findUnique.mockResolvedValue({
-        stateId: 's-tn',
-        state: { countryId: 'c-in' },
-      });
-      await expect(service.assertModeratorInScope('official-1', 'r-chn')).rejects.toBeInstanceOf(
+      prisma.user.findUnique.mockResolvedValue({ stateId: 's-tn', countryId: 'c-in' });
+      await expect(service.assertModeratorInScope('official-1', 'owner-chn')).rejects.toBeInstanceOf(
         ForbiddenException,
       );
     });
@@ -319,20 +280,14 @@ describe('WorkforceScopeService.assertModeratorInScope', () => {
       scopes.getUserScopes.mockResolvedValue([{ scopeType: 'COUNTRY', countryId: 'c-in' }]);
     });
 
-    it('permits any region inside their country', async () => {
-      prisma.region.findUnique.mockResolvedValue({
-        stateId: 's-tn',
-        state: { countryId: 'c-in' },
-      });
-      await expect(service.assertModeratorInScope('cm-1', 'r-chn')).resolves.toBeUndefined();
+    it('permits an owner located anywhere inside their country', async () => {
+      prisma.user.findUnique.mockResolvedValue({ stateId: 's-tn', countryId: 'c-in' });
+      await expect(service.assertModeratorInScope('cm-1', 'owner-chn')).resolves.toBeUndefined();
     });
 
-    it('denies a region in a different country', async () => {
-      prisma.region.findUnique.mockResolvedValue({
-        stateId: 's-ny',
-        state: { countryId: 'c-us' },
-      });
-      await expect(service.assertModeratorInScope('cm-1', 'r-nyc')).rejects.toBeInstanceOf(
+    it('denies an owner in a different country', async () => {
+      prisma.user.findUnique.mockResolvedValue({ stateId: 's-ny', countryId: 'c-us' });
+      await expect(service.assertModeratorInScope('cm-1', 'owner-nyc')).rejects.toBeInstanceOf(
         ForbiddenException,
       );
     });
@@ -343,7 +298,7 @@ describe('WorkforceScopeService.resolveEscalationRecipients', () => {
   let service: WorkforceScopeService;
   const scopes = { getUserScopes: jest.fn() };
   const roles = { getRoleNames: jest.fn(), getUserIdsWithAnyRole: jest.fn() };
-  const prisma = { roleScope: { findMany: jest.fn() }, region: { findUnique: jest.fn() } };
+  const prisma = { roleScope: { findMany: jest.fn() }, user: { findUnique: jest.fn() } };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -358,43 +313,48 @@ describe('WorkforceScopeService.resolveEscalationRecipients', () => {
   it('EMERGENCY notifies Admin directly, skipping territory resolution entirely', async () => {
     roles.getUserIdsWithAnyRole.mockResolvedValue(['admin-1', 'admin-2']);
 
-    const recipients = await service.resolveEscalationRecipients('EMERGENCY', 'r-1');
+    const recipients = await service.resolveEscalationRecipients('EMERGENCY', 'owner-1');
 
     expect(recipients).toEqual(['admin-1', 'admin-2']);
     expect(roles.getUserIdsWithAnyRole).toHaveBeenCalledWith(['ADMIN', 'SUPER_ADMIN']);
     expect(prisma.roleScope.findMany).not.toHaveBeenCalled();
   });
 
-  it('HIGH notifies the Official(s) scoped to the target region', async () => {
+  it("HIGH notifies the Official(s) scoped to the owner's state", async () => {
+    prisma.user.findUnique.mockResolvedValue({ stateId: 's-1', countryId: 'c-1' });
     prisma.roleScope.findMany.mockResolvedValue([
       { userRole: { userId: 'official-1' } },
       { userRole: { userId: 'official-1' } },
     ]);
 
-    const recipients = await service.resolveEscalationRecipients('HIGH', 'r-1');
+    const recipients = await service.resolveEscalationRecipients('HIGH', 'owner-1');
 
     expect(recipients).toEqual(['official-1']);
-    expect(prisma.region.findUnique).not.toHaveBeenCalled();
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 'owner-1' },
+      select: { stateId: true, countryId: true },
+    });
     expect(prisma.roleScope.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: [{ scopeType: 'GLOBAL' }, { scopeType: 'REGION', regionId: 'r-1' }],
+          OR: [{ scopeType: 'GLOBAL' }, { scopeType: 'STATE', stateId: 's-1' }],
           userRole: { role: { name: 'OFFICIAL' }, suspendedAt: null },
         }),
       }),
     );
   });
 
-  it("CRITICAL notifies the Country Manager(s) scoped to the region's country", async () => {
-    prisma.region.findUnique.mockResolvedValue({ state: { countryId: 'c-1' } });
+  it("CRITICAL notifies the Country Manager(s) scoped to the owner's country", async () => {
+    prisma.user.findUnique.mockResolvedValue({ stateId: 's-1', countryId: 'c-1' });
     prisma.roleScope.findMany.mockResolvedValue([{ userRole: { userId: 'cm-1' } }]);
 
-    const recipients = await service.resolveEscalationRecipients('CRITICAL', 'r-1');
+    const recipients = await service.resolveEscalationRecipients('CRITICAL', 'owner-1');
 
     expect(recipients).toEqual(['cm-1']);
-    expect(prisma.region.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'r-1' } }),
-    );
+    expect(prisma.user.findUnique).toHaveBeenCalledWith({
+      where: { id: 'owner-1' },
+      select: { stateId: true, countryId: true },
+    });
     expect(prisma.roleScope.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -406,21 +366,22 @@ describe('WorkforceScopeService.resolveEscalationRecipients', () => {
   });
 
   it('falls back to Admin when no one is scoped to an unstaffed territory', async () => {
+    prisma.user.findUnique.mockResolvedValue({ stateId: 's-empty', countryId: 'c-x' });
     prisma.roleScope.findMany.mockResolvedValue([]);
     roles.getUserIdsWithAnyRole.mockResolvedValue(['admin-1']);
 
-    const recipients = await service.resolveEscalationRecipients('HIGH', 'r-empty');
+    const recipients = await service.resolveEscalationRecipients('HIGH', 'owner-empty');
 
     expect(recipients).toEqual(['admin-1']);
     expect(roles.getUserIdsWithAnyRole).toHaveBeenCalledWith(['ADMIN', 'SUPER_ADMIN']);
   });
 
-  it('falls back to Admin for CRITICAL when the region has no resolvable country', async () => {
-    prisma.region.findUnique.mockResolvedValue(null);
+  it('falls back to Admin for CRITICAL when the owner cannot be resolved', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
     prisma.roleScope.findMany.mockResolvedValue([]);
     roles.getUserIdsWithAnyRole.mockResolvedValue(['admin-1']);
 
-    const recipients = await service.resolveEscalationRecipients('CRITICAL', 'r-orphan');
+    const recipients = await service.resolveEscalationRecipients('CRITICAL', 'owner-orphan');
 
     expect(recipients).toEqual(['admin-1']);
     expect(prisma.roleScope.findMany).toHaveBeenCalledWith(

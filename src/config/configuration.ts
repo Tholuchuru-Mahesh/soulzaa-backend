@@ -264,6 +264,10 @@ export const zegoConfig = registerAs('zego', () => ({
   tokenExpirySeconds: env().ZEGO_TOKEN_EXPIRY_SECONDS,
 }));
 
+export const geocodingConfig = registerAs('geocoding', () => ({
+  googleApiKey: env().GOOGLE_GEOCODING_API_KEY,
+}));
+
 export const audioRoomConfig = registerAs('audioRoom', () => ({
   defaultMaxParticipants: env().AUDIO_ROOM_DEFAULT_MAX_PARTICIPANTS,
   maxParticipantsCap: env().AUDIO_ROOM_MAX_PARTICIPANTS_CAP,
@@ -538,6 +542,7 @@ export const configurations = [
   kycConfig,
   agoraConfig,
   zegoConfig,
+  geocodingConfig,
   audioRoomConfig,
   videoRoomConfig,
   videoRoomChatConfig,

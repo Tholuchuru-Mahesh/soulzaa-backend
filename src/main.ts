@@ -61,7 +61,13 @@ async function bootstrap(): Promise<void> {
     );
   }
 
-  app.enableShutdownHooks();
+  // Signal handling is done manually below (`gracefulShutdown`), which calls
+  // `app.close()` itself and then guarantees process exit. `enableShutdownHooks()`
+  // would register Nest's own SIGINT/SIGTERM listeners alongside that one —
+  // both firing on a single Ctrl+C ran the entire `OnModuleDestroy` /
+  // `OnApplicationShutdown` lifecycle twice, and the second pass tried to
+  // `redis.quit()` a connection `RedisService.onModuleDestroy` had already
+  // closed in the first pass, throwing "Connection is closed" during shutdown.
 
   // Socket.IO with Redis adapter for horizontal scaling.
   const socketAdapter = new SocketAdapter(app);

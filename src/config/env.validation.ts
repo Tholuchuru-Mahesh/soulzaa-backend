@@ -219,6 +219,9 @@ export const envSchema = z.object({
   ZEGO_SERVER_SECRET: z.string().optional(),
   ZEGO_TOKEN_EXPIRY_SECONDS: z.coerce.number().int().positive().default(3600),
 
+  // ---- Google Geocoding (self-service user location capture) ----
+  GOOGLE_GEOCODING_API_KEY: z.string().optional(),
+
   // ---- Audio Rooms ----
   // Default participant cap applied to a new room when not specified.
   AUDIO_ROOM_DEFAULT_MAX_PARTICIPANTS: z.coerce.number().int().positive().default(50),
