@@ -30,20 +30,39 @@ export class AgencyMemberScoreService {
     private readonly community: AgencyCommunityService,
   ) {}
 
-  /** Every active member of [agencyId], scored and ranked, keyed by user id. */
-  async rankAgency(agencyId: string): Promise<Map<string, MemberScore>> {
-    const cached = await this.readCache(agencyId);
+  /**
+   * Every active member of [agencyId], scored and ranked over the standard
+   * 30-day window — the figure the member profile shows.
+   */
+  rankAgency(agencyId: string): Promise<Map<string, MemberScore>> {
+    return this.rankAgencyOver(agencyId, SCORE_WINDOW_DAYS, 'monthly');
+  }
+
+  /**
+   * The same ranking over an arbitrary window, for the leaderboard's Daily and
+   * Weekly views.
+   *
+   * [cacheKind] separates one window's cached ranking from another's; without
+   * it the daily board would serve the monthly one's positions.
+   */
+  async rankAgencyOver(
+    agencyId: string,
+    windowDays: number,
+    cacheKind: string,
+    endingAt?: Date,
+  ): Promise<Map<string, MemberScore>> {
+    const to = endingAt ?? new Date();
+    const cached = await this.readCache(agencyId, cacheKind, to);
     if (cached) return cached;
 
     const memberIds = await this.community.getActiveHostIds(agencyId);
     if (memberIds.length === 0) return new Map();
 
-    const to = new Date();
-    const from = new Date(to.getTime() - SCORE_WINDOW_DAYS * DAY_MS);
+    const from = new Date(to.getTime() - windowDays * DAY_MS);
     const inputs = await this.scoreInputsFor(memberIds, from, to);
-    const ranked = this.rank(memberIds, inputs);
+    const ranked = this.rank(memberIds, inputs, windowDays);
 
-    await this.writeCache(agencyId, ranked);
+    await this.writeCache(agencyId, cacheKind, to, ranked);
     return ranked;
   }
 
@@ -134,16 +153,34 @@ export class AgencyMemberScoreService {
     return 0;
   }
 
-  private rank(memberIds: string[], inputs: Map<string, ScoreInputs>): Map<string, MemberScore> {
+  private rank(
+    memberIds: string[],
+    inputs: Map<string, ScoreInputs>,
+    windowDays: number = SCORE_WINDOW_DAYS,
+  ): Map<string, MemberScore> {
     const withScores = memberIds.map((userId) => {
       const memberInputs = inputs.get(userId) ?? this.emptyInputs();
-      return { userId, inputs: memberInputs, score: scoreMember(memberInputs) };
+      return {
+        userId,
+        inputs: memberInputs,
+        score: scoreMember(memberInputs, windowDays),
+        // Uncapped, so it can separate members the capped score cannot. Over a
+        // one-day window the caps are tiny and most active members reach 100;
+        // without this the daily board would be a wall of ties ordered by uuid.
+        raw:
+          memberInputs.loginDays +
+          memberInputs.roomsJoined +
+          memberInputs.giftsSent +
+          memberInputs.giftsReceived,
+      };
     });
 
-    // Ties break on user id so the ordering is total and stable. Without this,
-    // two members on the same score could swap positions between two loads of
-    // the same screen.
-    withScores.sort((a, b) => b.score - a.score || a.userId.localeCompare(b.userId));
+    // Ties break on raw activity, then on user id so the ordering is total and
+    // stable. Without a total order two equal members could swap positions
+    // between two loads of the same screen.
+    withScores.sort(
+      (a, b) => b.score - a.score || b.raw - a.raw || a.userId.localeCompare(b.userId),
+    );
 
     const totalMembers = withScores.length;
     return new Map(
@@ -165,13 +202,24 @@ export class AgencyMemberScoreService {
     );
   }
 
-  private cacheKey(agencyId: string): string {
-    return `agency:member-rank:${agencyId}`;
+  /**
+   * Keyed by window *and* by day.
+   *
+   * The day matters: `to` is normally "now", which changes every request, so a
+   * key built from the exact timestamp would never hit. Bucketing to the day
+   * makes the entry reusable for its whole TTL.
+   */
+  private cacheKey(agencyId: string, kind: string, at: Date): string {
+    return `agency:member-rank:${agencyId}:${kind}:${at.toISOString().slice(0, 10)}`;
   }
 
-  private async readCache(agencyId: string): Promise<Map<string, MemberScore> | null> {
+  private async readCache(
+    agencyId: string,
+    kind: string,
+    at: Date,
+  ): Promise<Map<string, MemberScore> | null> {
     try {
-      const raw = await this.redis.client.get(this.cacheKey(agencyId));
+      const raw = await this.redis.client.get(this.cacheKey(agencyId, kind, at));
       if (!raw) return null;
       return new Map(JSON.parse(raw) as [string, MemberScore][]);
     } catch {
@@ -180,10 +228,15 @@ export class AgencyMemberScoreService {
     }
   }
 
-  private async writeCache(agencyId: string, ranked: Map<string, MemberScore>): Promise<void> {
+  private async writeCache(
+    agencyId: string,
+    kind: string,
+    at: Date,
+    ranked: Map<string, MemberScore>,
+  ): Promise<void> {
     try {
       await this.redis.client.set(
-        this.cacheKey(agencyId),
+        this.cacheKey(agencyId, kind, at),
         JSON.stringify([...ranked.entries()]),
         'EX',
         CACHE_TTL_SECONDS,

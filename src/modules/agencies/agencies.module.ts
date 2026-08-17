@@ -19,6 +19,7 @@ import { AgencyDirectoryService } from './services/agency-directory.service';
 import { AgencyJoinRequestService } from './services/agency-join-request.service';
 import { AgencyMemberService } from './services/agency-member.service';
 import { AgencyMemberScoreService } from './services/agency-member-score.service';
+import { AgencyLeaderboardService } from './services/agency-leaderboard.service';
 import { AgencyMemberActivityService } from './services/agency-member-activity.service';
 import { AgencyMemberPerformanceService } from './services/agency-member-performance.service';
 import { AgencyMemberHistoryService } from './services/agency-member-history.service';
@@ -68,6 +69,7 @@ import {
     AgencyDashboardService,
     AgencyMemberService,
     AgencyMemberScoreService,
+    AgencyLeaderboardService,
     AgencyMemberActivityService,
     AgencyMemberPerformanceService,
     AgencyMemberHistoryService,

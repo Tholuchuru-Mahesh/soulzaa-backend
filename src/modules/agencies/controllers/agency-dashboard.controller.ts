@@ -5,8 +5,9 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { RequireRoles } from 'src/modules/authorization/decorators/authorization.decorators';
 import { RbacRolesGuard } from 'src/modules/authorization/guards/rbac-roles.guard';
-import { AgencyGrowthQueryDto } from '../dto/agency-growth-query.dto';
+import { AgencyGrowthQueryDto, AgencyLeaderboardQueryDto } from '../dto/agency-growth-query.dto';
 import { AgencyDashboardService } from '../services/agency-dashboard.service';
+import { AgencyLeaderboardService } from '../services/agency-leaderboard.service';
 
 /**
  * The agency owner's own dashboard.
@@ -27,13 +28,23 @@ import { AgencyDashboardService } from '../services/agency-dashboard.service';
 @RequireRoles('AGENCY')
 @Controller('agencies/me')
 export class AgencyDashboardController {
-  constructor(private readonly dashboard: AgencyDashboardService) {}
+  constructor(
+    private readonly dashboard: AgencyDashboardService,
+    private readonly leaderboardService: AgencyLeaderboardService,
+  ) {}
 
   @Get('dashboard')
   @ApiOperation({ summary: "The calling agency's own dashboard" })
   @ApiResponse({ status: 200, description: 'Wallet, community, growth and top performers' })
   getDashboard(@CurrentUser() user: AuthenticatedUser) {
     return this.dashboard.getDashboard(user.id);
+  }
+
+  @Get('leaderboard')
+  @ApiOperation({ summary: "The agency's members ranked by engagement" })
+  @ApiResponse({ status: 200, description: 'Ranked members with places moved since last period' })
+  leaderboard(@CurrentUser() user: AuthenticatedUser, @Query() query: AgencyLeaderboardQueryDto) {
+    return this.leaderboardService.getLeaderboard(user.id, query);
   }
 
   @Get('growth')

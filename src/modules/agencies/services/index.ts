@@ -14,3 +14,4 @@ export * from './agency-member-score.service';
 export * from './agency-member-activity.service';
 export * from './agency-member-performance.service';
 export * from './agency-member-history.service';
+export * from './agency-leaderboard.service';

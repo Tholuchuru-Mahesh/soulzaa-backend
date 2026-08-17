@@ -149,11 +149,27 @@ describe('AgencyMemberScoreService', () => {
 
     await service.rankAgency(AGENCY);
 
+    // Keyed by agency, window and day: the agency segment is what stops one
+    // agency reading another's, and the window segment is what stops the daily
+    // leaderboard serving the monthly board's positions.
     expect(redis.client.set).toHaveBeenCalledWith(
-      `agency:member-rank:${AGENCY}`,
+      expect.stringMatching(
+        new RegExp(`^agency:member-rank:${AGENCY}:monthly:\\d{4}-\\d{2}-\\d{2}$`),
+      ),
       expect.any(String),
       'EX',
       300,
     );
+  });
+
+  it('keys each window separately, so daily and monthly cannot collide', async () => {
+    const { service, redis } = build({ members: ['a'] });
+
+    await service.rankAgencyOver(AGENCY, 1, 'daily');
+    await service.rankAgencyOver(AGENCY, 30, 'monthly');
+
+    const keys: string[] = redis.client.set.mock.calls.map((call: unknown[]) => call[0] as string);
+    expect(keys.some((k: string) => k.includes(':daily:'))).toBe(true);
+    expect(keys.some((k: string) => k.includes(':monthly:'))).toBe(true);
   });
 });
