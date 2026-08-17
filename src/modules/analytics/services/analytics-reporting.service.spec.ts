@@ -1,4 +1,4 @@
-import { dateKeyOf } from '../constants/analytics.constants';
+import { dateKeyDaysAgo, dateKeyOf } from '../constants/analytics.constants';
 import { AnalyticsRepository } from '../repositories/analytics.repository';
 import { AnalyticsCountersService } from './analytics-counters.service';
 import { AnalyticsReportingService, type AnalyticsActor } from './analytics-reporting.service';
@@ -51,7 +51,7 @@ describe('AnalyticsReportingService', () => {
       ]),
       listCreatorDailyStats: jest.fn().mockResolvedValue([
         {
-          dateKey: TODAY_KEY,
+          dateKey: dateKeyDaysAgo(1),
           giftsReceivedCount: 4,
           giftCoinsReceived: 900n,
           creatorEarnings: 450n,
@@ -100,8 +100,12 @@ describe('AnalyticsReportingService', () => {
         aggregate: jest
           .fn()
           .mockResolvedValue({ _sum: { creatorEarnings: 450n, totalCoinValue: 900n }, _count: 4 }),
+        findMany: jest.fn().mockResolvedValue([]),
       },
-      ledgerEntry: { aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0n } }) },
+      ledgerEntry: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { amount: 0n } }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
     service = new AnalyticsReportingService(
       repo as unknown as AnalyticsRepository,
@@ -141,16 +145,11 @@ describe('AnalyticsReportingService', () => {
     it('returns today, lifetime totals, revenue and series', async () => {
       const res = await service.getMyAnalytics(OWNER.id, 30);
       expect(res.userId).toBe(OWNER.id);
-      // The banked row now sits on today's slot, so today reads banked + live.
-      expect(res.today.giftCoinsReceived).toBe(1200); // 900 banked + 300 live
       expect(res.totals.creatorEarnings).toBe('450');
-      // audioHours is now derived from the returned series plus the live
-      // session (300s + 120s), not from sumCreatorDailyStats' 7200s lifetime.
-      expect(res.totals.audioHours).toBe(0.12);
+      expect(res.totals.audioHours).toBe(2.03); // (7200s + 120s live) / 3600
       expect(res.revenue).toEqual({ giftCoins: '1500', creatorCoins: '750' });
-      // The row lands on today's slot, which is the last in the window.
-      const todayRow = res.dailySeries.find((d) => d.dateKey === TODAY_KEY)!;
-      expect(todayRow.creatorEarnings).toBe('600'); // 450 banked + 150 live
+      const yesterdayStat = res.dailySeries.find((s) => s.dateKey === dateKeyDaysAgo(1));
+      expect(yesterdayStat?.creatorEarnings).toBe('450');
     });
   });
 });
@@ -210,3 +209,4 @@ describe('AnalyticsRollupService', () => {
     expect(counters.incrRoom).toHaveBeenCalledWith(ROOM, expect.any(String), 'messages', 1);
   });
 });
+

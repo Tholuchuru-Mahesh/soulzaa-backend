@@ -518,6 +518,7 @@ export class ProfileService implements IProfileService {
         reviewedBy: input.reviewedBy,
       }),
     );
+    await this.invalidate(targetUserId);
     return this.toVerificationView(row);
   }
 
@@ -549,6 +550,18 @@ export class ProfileService implements IProfileService {
    */
   async invalidateProfile(userId: string): Promise<void> {
     await this.invalidate(userId);
+  }
+
+  @OnEvent('authorization.role.assigned')
+  @OnEvent('authorization.role.revoked')
+  @OnEvent('role.assigned')
+  @OnEvent('role.revoked')
+  @OnEvent('user.verification.updated')
+  async handleRoleOrVerificationChange(payload: any): Promise<void> {
+    const userId = payload?.userId ?? payload?.data?.userId;
+    if (userId) {
+      await this.invalidate(userId);
+    }
   }
 
   @OnEvent(BACKPACK_EVENTS.EQUIPPED)

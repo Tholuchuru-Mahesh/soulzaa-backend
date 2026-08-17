@@ -239,16 +239,11 @@ describe('AUDIO_ROOM gift baseline (VR-10 BC gate)', () => {
     });
   });
 
-  it('BC-4: credits the host 10% of the accepted amount via gift-host-reward:{key}', async () => {
+  it('BC-4: does not credit host reward when HOST_REWARD_RATE is 0', async () => {
     await service.sendGift(SENDER, dto());
-    expect(m.wallet.credit).toHaveBeenCalledWith(
+    expect(m.wallet.credit).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: HOST,
-        currency: WalletCurrency.GOLD,
-        amount: 10,
-        reason: WalletTxnReason.TREASURE_BOX,
         idempotencyKey: `gift-host-reward:${IDEM}`,
-        referenceType: 'gift',
       }),
       expect.anything(),
     );

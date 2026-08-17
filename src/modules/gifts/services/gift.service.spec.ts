@@ -440,8 +440,8 @@ describe('GiftService', () => {
         100,
         expect.any(String),
       );
-      expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'owner-id', currency: 'GOLD', amount: 10 }),
+      expect(wallet.credit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'owner-id', currency: 'GOLD' }),
         expect.anything(),
       );
     });
@@ -555,8 +555,8 @@ describe('GiftService', () => {
         expect.objectContaining({ amount: 300 }),
         expect.anything(),
       );
-      expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'owner-id', currency: 'GOLD', amount: 30 }),
+      expect(wallet.credit).not.toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'owner-id', currency: 'GOLD' }),
         expect.anything(),
       );
     });

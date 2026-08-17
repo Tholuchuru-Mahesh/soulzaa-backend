@@ -100,9 +100,23 @@ export class AnalyticsReportingService {
     const now = new Date();
     const todayKey = dateKeyOf(now);
 
-    const [live, seriesRows, revenue, giftLifetime, treasurePkSums] = await Promise.all([
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - days - 1);
+    fromDate.setHours(0, 0, 0, 0);
+
+    const [
+      live,
+      seriesRows,
+      lifetimeStats,
+      revenue,
+      giftLifetime,
+      treasurePkSums,
+      rangeGifts,
+      rangeLedger,
+    ] = await Promise.all([
       this.counters.readCreator(userId, todayKey),
       this.repo.listCreatorDailyStats(userId, dateKeyDaysAgo(days)),
+      this.repo.sumCreatorDailyStats(userId),
       this.repo.getRevenueReports({ userId, roomId: GLOBAL_ANALYTICS_UUID }),
       this.prisma.giftTransaction.aggregate({
         where: { receiverId: userId, status: GiftTxnStatus.COMPLETED },
@@ -117,6 +131,30 @@ export class AnalyticsReportingService {
         },
         _sum: { amount: true },
       }),
+      this.prisma.giftTransaction.findMany({
+        where: {
+          receiverId: userId,
+          status: GiftTxnStatus.COMPLETED,
+          createdAt: { gte: fromDate },
+        },
+        select: {
+          createdAt: true,
+          creatorEarnings: true,
+          totalCoinValue: true,
+        },
+      }),
+      this.prisma.ledgerEntry.findMany({
+        where: {
+          wallet: { userId },
+          reason: { in: [WalletTxnReason.TREASURE_BOX, WalletTxnReason.PK_REWARD] },
+          currency: WalletCurrency.GOLD,
+          createdAt: { gte: fromDate },
+        },
+        select: {
+          createdAt: true,
+          amount: true,
+        },
+      }),
     ]);
 
     let giftCoins = 0n;
@@ -130,35 +168,97 @@ export class AnalyticsReportingService {
     const treasurePkTotal = Number(treasurePkSums._sum?.amount ?? 0n);
     const lifetimeEarningsTotal = lifetimeGifts + treasurePkTotal;
 
+    // Aggregate DB completed transactions per dateKey
+    const dbEarningsByDate = new Map<
+      string,
+      { creatorEarnings: number; giftCoinsReceived: number; giftsCount: number }
+    >();
+
+    for (const g of rangeGifts) {
+      const key = dateKeyOf(g.createdAt);
+      const existing = dbEarningsByDate.get(key) || {
+        creatorEarnings: 0,
+        giftCoinsReceived: 0,
+        giftsCount: 0,
+      };
+      existing.creatorEarnings += Number(g.creatorEarnings);
+      existing.giftCoinsReceived += Number(g.totalCoinValue);
+      existing.giftsCount += 1;
+      dbEarningsByDate.set(key, existing);
+    }
+
+    for (const l of rangeLedger) {
+      const key = dateKeyOf(l.createdAt);
+      const existing = dbEarningsByDate.get(key) || {
+        creatorEarnings: 0,
+        giftCoinsReceived: 0,
+        giftsCount: 0,
+      };
+      existing.creatorEarnings += Number(l.amount);
+      dbEarningsByDate.set(key, existing);
+    }
+
     // Build complete dailySeries map for the requested days (ordered oldest -> newest)
     const map = new Map(seriesRows.map((s) => [s.dateKey, s]));
     const formattedSeries: CreatorDailyStatView[] = [];
 
     for (let i = days - 1; i >= 0; i--) {
       const key = dateKeyDaysAgo(i);
+      const existing = map.get(key);
+      const dbTxn = dbEarningsByDate.get(key);
+
       if (key === todayKey) {
-        const existing = map.get(key);
         const liveEarn = live.creatorEarnings;
         const liveCoins = live.giftCoinsReceived;
         const liveCount = live.giftsReceivedCount;
+
+        const giftsCount = Math.max(liveCount, dbTxn?.giftsCount ?? 0, existing?.giftsReceivedCount ?? 0);
+        const coinsRec = Math.max(
+          liveCoins,
+          dbTxn?.giftCoinsReceived ?? 0,
+          existing ? Number(existing.giftCoinsReceived) : 0,
+        );
+        const earningsRec = Math.max(
+          liveEarn,
+          dbTxn?.creatorEarnings ?? 0,
+          existing ? Number(existing.creatorEarnings) : 0,
+        );
+
         formattedSeries.push({
           dateKey: key,
-          giftsReceivedCount: (existing?.giftsReceivedCount ?? 0) + liveCount,
-          giftCoinsReceived: (
-            (existing ? Number(existing.giftCoinsReceived) : 0) + liveCoins
-          ).toString(),
-          creatorEarnings: (
-            (existing ? Number(existing.creatorEarnings) : 0) + liveEarn
-          ).toString(),
+          giftsReceivedCount: giftsCount,
+          giftCoinsReceived: coinsRec.toString(),
+          creatorEarnings: earningsRec.toString(),
           roomsHosted: (existing?.roomsHosted ?? 0) + live.roomsHosted,
           speakingSeconds: (
             (existing ? Number(existing.speakingSeconds) : 0) + live.speakingSeconds
           ).toString(),
           engagementScore: existing?.engagementScore ?? this.rollup.creatorEngagement(live),
         });
-      } else if (map.has(key)) {
-        const s = map.get(key)!;
-        formattedSeries.push(this.creatorDailyView(s));
+      } else if (existing) {
+        const giftsCount = Math.max(existing.giftsReceivedCount, dbTxn?.giftsCount ?? 0);
+        const coinsRec = Math.max(Number(existing.giftCoinsReceived), dbTxn?.giftCoinsReceived ?? 0);
+        const earningsRec = Math.max(Number(existing.creatorEarnings), dbTxn?.creatorEarnings ?? 0);
+
+        formattedSeries.push({
+          dateKey: key,
+          giftsReceivedCount: giftsCount,
+          giftCoinsReceived: coinsRec.toString(),
+          creatorEarnings: earningsRec.toString(),
+          roomsHosted: existing.roomsHosted,
+          speakingSeconds: existing.speakingSeconds.toString(),
+          engagementScore: existing.engagementScore,
+        });
+      } else if (dbTxn) {
+        formattedSeries.push({
+          dateKey: key,
+          giftsReceivedCount: dbTxn.giftsCount,
+          giftCoinsReceived: dbTxn.giftCoinsReceived.toString(),
+          creatorEarnings: dbTxn.creatorEarnings.toString(),
+          roomsHosted: 0,
+          speakingSeconds: '0',
+          engagementScore: 0,
+        });
       } else {
         formattedSeries.push({
           dateKey: key,
@@ -191,16 +291,13 @@ export class AnalyticsReportingService {
         giftCoinsReceived: (giftLifetime._sum.totalCoinValue ?? 0n).toString(),
         // Wallet Earnings = Creator Earnings Lifetime (authoritative exact lifetime total)
         creatorEarnings: lifetimeEarningsTotal.toString(),
-        roomsHosted: seriesRows.reduce((acc, r) => acc + r.roomsHosted, 0) + live.roomsHosted,
+        roomsHosted: (lifetimeStats.roomsHosted ?? 0) + live.roomsHosted,
         speakingSeconds: (
-          seriesRows.reduce((acc, r) => acc + r.speakingSeconds, 0n) + BigInt(live.speakingSeconds)
+          (lifetimeStats.speakingSeconds ?? 0n) + BigInt(live.speakingSeconds)
         ).toString(),
         audioHours:
           Math.round(
-            ((Number(seriesRows.reduce((acc, r) => acc + r.speakingSeconds, 0n)) +
-              live.speakingSeconds) /
-              3600) *
-              100,
+            ((Number(lifetimeStats.speakingSeconds ?? 0n) + live.speakingSeconds) / 3600) * 100,
           ) / 100,
       },
       revenue: { giftCoins: giftCoins.toString(), creatorCoins: creatorCoins.toString() },

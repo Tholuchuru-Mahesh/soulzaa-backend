@@ -185,29 +185,14 @@ describe('AudioRoomGiftContextHandler.onSend (treasure + host reward + refund)',
     expect(effects.acceptedAmount).toBe(100);
   });
 
-  it('BC-4: credits the host 10% of the accepted amount', async () => {
+  it('BC-4: does not credit extra host reward when HOST_REWARD_RATE is 0', async () => {
     await handler.onSend(TX, CTX as never);
-    expect(wallet.credit).toHaveBeenCalledWith(
+    expect(wallet.credit).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: 'owner-id',
-        amount: 10,
         idempotencyKey: 'gift-host-reward:idem-1',
-        referenceId: 'txn-1',
       }),
       TX,
     );
-  });
-
-  it('BC-4: publishes the host reward event', async () => {
-    const effects = await handler.onSend(TX, CTX as never);
-    const reward = effects.events.find((e) => e.name === 'treasure.receiver_reward');
-    expect(reward).toBeDefined();
-    expect((reward as { payload: Record<string, unknown> }).payload).toMatchObject({
-      hostId: 'owner-id',
-      rewardAmount: 10,
-      boxId: 'box-1',
-      level: 2,
-    });
   });
 
   it('BC-4: skips the host reward when the accepted amount rounds to zero', async () => {
@@ -261,16 +246,11 @@ describe('AudioRoomGiftContextHandler.onSend (treasure + host reward + refund)',
     expect(wallet.credit).not.toHaveBeenCalled();
   });
 
-  it('BC-4: still credits 10% host reward when the owner IS the receiver', async () => {
-    // owner-id === receiver-id: the owner is being gifted directly.
-    // The host reward must still fire — being the receiver does not cancel it.
+  it('BC-4: does not credit host reward even when the owner IS the receiver when HOST_REWARD_RATE is 0', async () => {
     rooms.getOwnerId.mockResolvedValue('receiver-1');
     await handler.onSend(TX, CTX as never);
-    expect(wallet.credit).toHaveBeenCalledWith(
+    expect(wallet.credit).not.toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: 'receiver-1', // owner = receiver
-        amount: 10, // 10% of accepted 100
-        reason: 'TREASURE_BOX',
         idempotencyKey: 'gift-host-reward:idem-1',
       }),
       TX,

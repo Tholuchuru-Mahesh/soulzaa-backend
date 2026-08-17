@@ -31,8 +31,8 @@ import {
 } from '../interfaces/audio-rooms.service.interface';
 import { PkReceiverBonusEvent } from '../events/audio-room-pk.events';
 
-/** Share of the accepted contribution credited to the room host. */
-const HOST_REWARD_RATE = 0.1;
+/** Share of the accepted contribution credited to the room host. Set to 0 to prevent duplicate 10% additions to Creator Earnings. */
+const HOST_REWARD_RATE = 0;
 
 /**
  * The AUDIO_ROOM gift context (VR-10). Moved out of GiftService so the shared

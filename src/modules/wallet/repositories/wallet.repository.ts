@@ -231,7 +231,7 @@ export class WalletRepository {
       if (input.reason === WalletTxnReason.GIFT_SEND) {
         data.totalGiftsSentValue = { increment: input.amount };
       }
-      if (input.reason === WalletTxnReason.GIFT_RECEIVE) {
+      if (input.reason === WalletTxnReason.GIFT_RECEIVE && input.currency === WalletCurrency.DIAMOND) {
         data.totalGiftsReceivedValue = { increment: input.amount };
       }
       if (input.type === WalletEntryType.DEBIT && input.currency === WalletCurrency.GOLD) {
