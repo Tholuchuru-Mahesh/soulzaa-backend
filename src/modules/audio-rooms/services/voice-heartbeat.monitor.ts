@@ -6,14 +6,13 @@ import {
   VOICE_MONITOR_LOCK_KEY,
 } from '../constants/voice.constants';
 import { VoiceSessionRepository } from '../repositories/voice-session.repository';
+import { AudioRoomsService } from './audio-rooms.service';
 import { VoiceService } from './voice.service';
 
 /**
  * Server-side network-recovery backstop: periodically ends voice sessions that
- * stopped sending heartbeats (client dropped without a clean leave). The sweep
- * is guarded by a short Redis lock so exactly one instance runs it across the
- * horizontally-scaled fleet. Client-side auto-reconnect uses the reconnect
- * endpoint; this reclaims sessions that never come back.
+ * stopped sending heartbeats (client dropped without a clean leave), and sweeps
+ * live audio rooms that have become empty to auto-end them.
  */
 @Injectable()
 export class VoiceHeartbeatMonitor implements OnModuleInit, OnModuleDestroy {
@@ -25,6 +24,7 @@ export class VoiceHeartbeatMonitor implements OnModuleInit, OnModuleDestroy {
     private readonly voice: VoiceSessionRepository,
     private readonly voiceService: VoiceService,
     private readonly locks: LockService,
+    private readonly roomsService: AudioRoomsService,
   ) {}
 
   onModuleInit(): void {
@@ -56,6 +56,9 @@ export class VoiceHeartbeatMonitor implements OnModuleInit, OnModuleDestroy {
           }
         }
         if (stale.length > 0) this.logger.debug(`Expired ${stale.length} stale voice session(s)`);
+
+        // Sweep active LIVE rooms and auto-end any that have become empty
+        await this.roomsService.autoEndEmptyRooms();
       } finally {
         await release();
       }

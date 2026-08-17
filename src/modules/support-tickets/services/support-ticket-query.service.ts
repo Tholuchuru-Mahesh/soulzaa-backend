@@ -33,15 +33,28 @@ export class SupportTicketQueryService {
     // (countryId/stateId/regionId) that the user scope filter targets.
     let locationFilter: Record<string, unknown> = {};
     if (!isUnrestricted && 'OR' in scopeWhere) {
-      locationFilter = {
-        OR: scopeWhere.OR.map((clause) => {
-          const out: Record<string, unknown> = {};
-          if ('countryId' in clause) out['countryId'] = clause['countryId'];
-          if ('stateId' in clause) out['stateId'] = clause['stateId'];
-          if ('regionId' in clause) out['regionId'] = clause['regionId'];
-          return out;
-        }),
-      };
+      const clauses = (scopeWhere as { OR: Array<Record<string, unknown>> }).OR;
+      if (Array.isArray(clauses) && clauses.length > 0) {
+        const mapped = clauses
+          .map((clause) => {
+            const out: Record<string, unknown> = {};
+            if ('countryId' in clause && clause['countryId'] !== undefined) out['countryId'] = clause['countryId'];
+            if ('stateId' in clause && clause['stateId'] !== undefined) out['stateId'] = clause['stateId'];
+            if ('regionId' in clause && clause['regionId'] !== undefined) out['regionId'] = clause['regionId'];
+            return out;
+          })
+          .filter((obj) => Object.keys(obj).length > 0);
+
+        if (mapped.length > 0) {
+          locationFilter = {
+            OR: [
+              ...mapped,
+              { countryId: null },
+              { stateId: null },
+            ],
+          };
+        }
+      }
     }
 
     const where = {
@@ -51,17 +64,18 @@ export class SupportTicketQueryService {
       ...(opts.priority ? { priority: opts.priority } : {}),
     };
 
-    const [total, items] = await Promise.all([
+    const [total, rawItems] = await Promise.all([
       this.prisma.supportTicket.count({ where }),
       this.prisma.supportTicket.findMany({
         where,
-        orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
+        orderBy: [{ createdAt: 'desc' }, { priority: 'desc' }],
         take: Math.min(opts.limit, 100),
         skip: opts.offset,
         select: {
           id: true,
           submitterId: true,
           title: true,
+          description: true,
           category: true,
           priority: true,
           status: true,
@@ -76,18 +90,59 @@ export class SupportTicketQueryService {
       }),
     ]);
 
+    const submitterIds = Array.from(new Set(rawItems.map((item) => item.submitterId)));
+    const users = submitterIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: submitterIds } },
+          select: { id: true, username: true, fullName: true },
+        })
+      : [];
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    const items = rawItems.map((item) => {
+      const user = userMap.get(item.submitterId);
+      return {
+        ...item,
+        submitter: user ? {
+          id: user.id,
+          username: user.username,
+          name: user.fullName || user.username,
+          avatarUrl: null,
+        } : null,
+      };
+    });
+
     return { total, items };
   }
 
   /** Single ticket with full message thread, for Official or submitter. */
   async findById(ticketId: string) {
-    return this.prisma.supportTicket.findUnique({
+    const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
       include: {
         messages: { orderBy: { createdAt: 'asc' } },
         audits: { orderBy: { createdAt: 'desc' }, take: 50 },
       },
     });
+    if (!ticket) return null;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: ticket.submitterId },
+      select: { id: true, username: true, fullName: true },
+    });
+
+    return {
+      ...ticket,
+      submitter: user
+        ? {
+            id: user.id,
+            username: user.username,
+            name: user.fullName || user.username,
+            avatarUrl: null,
+          }
+        : null,
+    };
   }
 
   /**
@@ -113,15 +168,28 @@ export class SupportTicketQueryService {
 
     let locationFilter: Record<string, unknown> = {};
     if (!isUnrestricted && 'OR' in scopeWhere) {
-      locationFilter = {
-        OR: scopeWhere.OR.map((clause) => {
-          const out: Record<string, unknown> = {};
-          if ('countryId' in clause) out['countryId'] = clause['countryId'];
-          if ('stateId' in clause) out['stateId'] = clause['stateId'];
-          if ('regionId' in clause) out['regionId'] = clause['regionId'];
-          return out;
-        }),
-      };
+      const clauses = (scopeWhere as { OR: Array<Record<string, unknown>> }).OR;
+      if (Array.isArray(clauses) && clauses.length > 0) {
+        const mapped = clauses
+          .map((clause) => {
+            const out: Record<string, unknown> = {};
+            if ('countryId' in clause && clause['countryId'] !== undefined) out['countryId'] = clause['countryId'];
+            if ('stateId' in clause && clause['stateId'] !== undefined) out['stateId'] = clause['stateId'];
+            if ('regionId' in clause && clause['regionId'] !== undefined) out['regionId'] = clause['regionId'];
+            return out;
+          })
+          .filter((obj) => Object.keys(obj).length > 0);
+
+        if (mapped.length > 0) {
+          locationFilter = {
+            OR: [
+              ...mapped,
+              { countryId: null },
+              { stateId: null },
+            ],
+          };
+        }
+      }
     }
 
     return this.prisma.supportTicket.count({

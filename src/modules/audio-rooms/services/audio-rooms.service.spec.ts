@@ -69,6 +69,7 @@ describe('AudioRoomsService', () => {
       getCachedSnapshot: jest.fn().mockResolvedValue(null),
       findRoomRow: jest.fn().mockResolvedValue(roomRow()),
       findLiveRoomRow: jest.fn().mockResolvedValue(roomRow()),
+      findLiveRooms: jest.fn().mockResolvedValue([]),
       updateRoom: jest.fn().mockResolvedValue(roomRow()),
       softDeleteRoom: jest.fn().mockResolvedValue(undefined),
       endRoom: jest.fn().mockResolvedValue(undefined),

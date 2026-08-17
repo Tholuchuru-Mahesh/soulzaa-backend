@@ -359,9 +359,18 @@ export class AudioRoomsService implements IAudioRoomsService {
         HttpStatus.FORBIDDEN,
       );
     }
+    await this.endRoomInternal(room, actor.id);
+  }
+
+  /**
+   * Closes a live broadcast session: updates DB status to OFFLINE, finalises statistics,
+   * closes live session window, clears Redis runtime state, and broadcasts RoomEndedEvent.
+   */
+  async endRoomInternal(room: AudioRoom, actorId: string): Promise<void> {
+    const roomId = room.id;
     const durationSeconds = (Date.now() - room.createdAt.getTime()) / 1000;
-    await this.repo.endRoom(roomId, actor.id, durationSeconds);
-    await this.repo.appendLog(roomId, actor.id, RoomLogAction.ENDED, {
+    await this.repo.endRoom(roomId, actorId, durationSeconds);
+    await this.repo.appendLog(roomId, actorId, RoomLogAction.ENDED, {
       durationSeconds: Math.floor(durationSeconds),
     });
     // Creator Center — Live History: close this broadcast's own session window
@@ -378,11 +387,32 @@ export class AudioRoomsService implements IAudioRoomsService {
     await this.bus.publish(
       new RoomEndedEvent({
         roomId,
-        actorId: actor.id,
+        actorId,
         ownerId: room.ownerId,
         durationSeconds: Math.floor(durationSeconds),
       }),
     );
+  }
+
+  /**
+   * Sweeps all currently LIVE rooms and auto-ends any room where participant count is 0
+   * after a startup grace period.
+   */
+  async autoEndEmptyRooms(): Promise<void> {
+    const liveRooms = await this.repo.findLiveRooms();
+    for (const room of liveRooms) {
+      try {
+        const count = await this.presence.roomMemberCount(room.id);
+        const ageMs = Date.now() - (room.updatedAt?.getTime() ?? room.createdAt.getTime());
+        // Grace period of 20 seconds so freshly started rooms have time for host to join presence
+        if (count <= 0 && ageMs > 20000) {
+          this.logger.log(`Auto-ending empty live audio room ${room.id}`);
+          await this.endRoomInternal(room, room.ownerId);
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to auto-end empty room ${room.id}: ${(err as Error).message}`);
+      }
+    }
   }
 
   async start(actor: RoomActor, roomId: string): Promise<RoomView> {
@@ -567,6 +597,11 @@ export class AudioRoomsService implements IAudioRoomsService {
     await this.bus.publish(
       new RoomLeftEvent({ roomId, userId: actor.id, participantCount: count }),
     );
+
+    // Auto-end the live audio room if no one is left in the room
+    if (room.status === 'LIVE' && count <= 0) {
+      await this.endRoomInternal(room, actor.id);
+    }
   }
 
   async transferOwnership(

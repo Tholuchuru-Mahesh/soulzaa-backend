@@ -66,6 +66,11 @@ export class ReplyToTicketDto {
   @MinLength(1)
   @MaxLength(5000)
   declare message: string;
+
+  @ApiPropertyOptional({ description: 'Alias for message' })
+  @IsOptional()
+  @IsString()
+  body?: string;
 }
 
 export class UpdateTicketStatusDto {

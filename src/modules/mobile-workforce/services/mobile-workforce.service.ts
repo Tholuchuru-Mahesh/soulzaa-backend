@@ -105,6 +105,7 @@ export class MobileWorkforceService {
           username: true,
           email: true,
           status: true,
+          roles: true,
           country: true,
           countryId: true,
           stateId: true,

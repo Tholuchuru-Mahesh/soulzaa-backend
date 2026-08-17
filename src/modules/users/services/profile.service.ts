@@ -344,6 +344,33 @@ export class ProfileService implements IProfileService {
       identityData['dateOfBirth'] = input.dateOfBirth ? new Date(input.dateOfBirth) : null;
       changed.push('dateOfBirth');
     }
+
+    // Auto-resolve geographic IDs for location scoping
+    if (input.country) {
+      const c = await this.prisma.country.findFirst({
+        where: { OR: [{ name: { contains: input.country, mode: 'insensitive' } }, { code: { equals: input.country, mode: 'insensitive' } }] },
+      });
+      if (c) identityData['countryId'] = c.id;
+    }
+    if (input.state) {
+      const s = await this.prisma.state.findFirst({
+        where: { OR: [{ name: { contains: input.state, mode: 'insensitive' } }, { code: { equals: input.state, mode: 'insensitive' } }] },
+      });
+      if (s) {
+        identityData['stateId'] = s.id;
+        if (!identityData['countryId']) identityData['countryId'] = s.countryId;
+      }
+    }
+    if (input.city) {
+      const r = await this.prisma.region.findFirst({
+        where: { OR: [{ name: { contains: input.city, mode: 'insensitive' } }, { code: { equals: input.city, mode: 'insensitive' } }] },
+      });
+      if (r) {
+        identityData['regionId'] = r.id;
+        if (!identityData['stateId']) identityData['stateId'] = r.stateId;
+      }
+    }
+
     if (Object.keys(identityData).length > 0) {
       await this.users.update(userId, { ...identityData, updatedBy: userId });
     }

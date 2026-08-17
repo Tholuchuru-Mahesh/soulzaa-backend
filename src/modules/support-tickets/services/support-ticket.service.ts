@@ -34,6 +34,19 @@ export class SupportTicketService {
     });
     if (!user) throw new BadRequestException('Submitter user not found');
 
+    let countryId = user.countryId;
+    let stateId = user.stateId;
+    let regionId = user.regionId;
+
+    if (!countryId) {
+      const defaultCountry = await this.prisma.country.findFirst({ where: { code: 'IN' } });
+      if (defaultCountry) countryId = defaultCountry.id;
+    }
+    if (!stateId) {
+      const defaultState = await this.prisma.state.findFirst({ where: { code: 'KA' } });
+      if (defaultState) stateId = defaultState.id;
+    }
+
     const ticket = await this.prisma.supportTicket.create({
       data: {
         submitterId,
@@ -41,9 +54,9 @@ export class SupportTicketService {
         description: dto.description,
         category: dto.category ?? 'OTHER',
         priority: dto.priority ?? 'MEDIUM',
-        countryId: user.countryId,
-        stateId: user.stateId,
-        regionId: user.regionId,
+        countryId,
+        stateId,
+        regionId,
       },
     });
 
@@ -64,9 +77,10 @@ export class SupportTicketService {
       throw new BadRequestException('Cannot reply to a closed ticket');
     }
 
+    const messageText = dto.message || (dto as any).body || '';
     const [message] = await this.prisma.$transaction([
       this.prisma.supportTicketMessage.create({
-        data: { ticketId, authorId, message: dto.message, isStaff },
+        data: { ticketId, authorId, message: messageText, isStaff },
       }),
       // Auto-move to IN_PROGRESS on first staff reply
       ...(isStaff && ticket.status === 'OPEN'

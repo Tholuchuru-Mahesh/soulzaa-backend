@@ -180,6 +180,13 @@ export class AudioRoomsRepository {
     });
   }
 
+  /** All LIVE, non-deleted room rows. */
+  findLiveRooms(): Promise<AudioRoom[]> {
+    return this.prisma.audioRoom.findMany({
+      where: { deletedAt: null, status: 'LIVE' },
+    });
+  }
+
   /** Per-room settings row (allowChat, slow-mode, etc.), or null if missing. */
   getSettings(roomId: string) {
     return this.prisma.roomSettings.findUnique({ where: { roomId } });
