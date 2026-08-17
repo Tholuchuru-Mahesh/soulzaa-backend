@@ -1,0 +1,42 @@
+/// A moderator's recommended BAN sits here as PENDING until an Official
+/// decides it — the one recommended-action type serious/hard-to-reverse
+/// enough to require a second set of eyes before it executes. WARN/MUTE/KICK
+/// stay immediate (the moderator already has direct authority for those
+/// live in-room). On APPROVED, `ModerationActionApprovedEvent` publishes on
+/// the shared EVENT_BUS and the owning room module's own listener executes
+/// the ban using its own service — this table never calls into another
+/// module's service directly.
+model ModerationActionApproval {
+  id           String                     @id @default(uuid()) @db.Uuid
+  roomType     ModerationApprovalRoomType
+  roomId       String?                    @db.Uuid
+  liveStreamId String?                    @db.Uuid
+  reportId     String                     @db.Uuid
+  proposedBy   String                     @db.Uuid
+  targetUserId String                     @db.Uuid
+  action       String                     @default("BAN")
+  reason       String?
+  status       ModerationApprovalStatus   @default(PENDING)
+  decidedBy    String?                    @db.Uuid
+  decidedAt    DateTime?
+  decisionNote String?
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+
+  @@index([status, targetUserId])
+  @@index([proposedBy, status])
+  @@index([reportId])
+  @@map("moderation_action_approvals")
+}
+
+enum ModerationApprovalRoomType {
+  AUDIO_ROOM
+  VIDEO_ROOM
+  LIVE_STREAM
+}
+
+enum ModerationApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}

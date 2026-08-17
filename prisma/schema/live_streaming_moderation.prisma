@@ -1,0 +1,131 @@
+// ============================================================
+// Live Streaming Moderation — mute / ban enforcement
+// Owned by the "live_streaming" module. No cross-module FK relations —
+// reference the stream/user by id, mirroring audio_rooms_moderation.prisma /
+// video_rooms_moderation.prisma. A live-stream KICK is transient (socket
+// disconnect only, no durable row here) — mirrors Video Room's kick; only
+// the durable "bar the viewer from rejoining" (BAN) and the durable "can't
+// send chat" (MUTE) states are modeled here.
+// ============================================================
+
+/// A per-stream viewer mute. PERMANENT + null `expiresAt` ⇒ "mute until
+/// manually removed". One ACTIVE mute per (streamId,userId), service-enforced.
+/// Redis mirrors the active set for the O(1) chat-send gate.
+model LiveStreamMute {
+  id          String                       @id @default(uuid()) @db.Uuid
+  streamId    String                       @db.Uuid
+  userId      String                       @db.Uuid
+  moderatorId String                       @db.Uuid
+  type        LiveStreamModerationMuteType
+  reason      String?
+  expiresAt   DateTime?
+  status      LiveStreamModerationStatus   @default(ACTIVE)
+  liftedBy    String?                      @db.Uuid
+  liftedAt    DateTime?
+  createdBy   String?                      @db.Uuid
+  updatedBy   String?                      @db.Uuid
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+
+  @@index([streamId, status])
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("live_stream_mutes")
+}
+
+/// A per-stream viewer ban — the durable "bar from rejoining this stream". A
+/// banned viewer is disconnected now AND blocked from rejoining until the ban
+/// is lifted or expires. `expiresAt` null ⇒ PERMANENT. One ACTIVE ban per
+/// (streamId,userId), service-enforced. Redis mirrors the active set for the
+/// O(1) join-time gate.
+model LiveStreamBan {
+  id          String                      @id @default(uuid()) @db.Uuid
+  streamId    String                      @db.Uuid
+  userId      String                      @db.Uuid
+  moderatorId String                      @db.Uuid
+  type        LiveStreamModerationBanType
+  reason      String?
+  expiresAt   DateTime?
+  status      LiveStreamModerationStatus  @default(ACTIVE)
+  liftedBy    String?                     @db.Uuid
+  liftedAt    DateTime?
+  createdBy   String?                     @db.Uuid
+  updatedBy   String?                     @db.Uuid
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+
+  @@index([streamId, status])
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("live_stream_bans")
+}
+
+enum LiveStreamModerationMuteType {
+  TEMPORARY
+  PERMANENT
+}
+
+enum LiveStreamModerationBanType {
+  TEMPORARY
+  PERMANENT
+}
+
+/// Lifecycle of a mute/ban: ACTIVE until lifted (manually) or expired (TTL).
+enum LiveStreamModerationStatus {
+  ACTIVE
+  LIFTED
+  EXPIRED
+}
+
+/// A viewer's report against another user in a live stream. Mirrors
+/// `RoomReport` (audio_rooms_moderation.prisma) field-for-field for
+/// consistency across the three moderation surfaces. `recommendedAction`
+/// (stored in `moderatorNotes`'s sibling, inline on review) auto-executes
+/// immediately via LiveStreamService.moderateUser — the moderator already
+/// has direct mute/kick/ban authority, so "recommend" is a reason-string
+/// label distinguishing an async report-review decision from live
+/// observation, not a separate approval gate.
+model LiveStreamReport {
+  id               String                  @id @default(uuid()) @db.Uuid
+  streamId         String                  @db.Uuid
+  reporterId       String                  @db.Uuid
+  targetUserId     String                  @db.Uuid
+  reason           LiveStreamReportReason
+  description      String?
+  status           LiveStreamReportStatus  @default(PENDING)
+  reviewedBy       String?                 @db.Uuid
+  reviewedAt       DateTime?
+  resolutionAction String?
+  moderatorNotes   String?
+  createdBy        String?                 @db.Uuid
+  updatedBy        String?                 @db.Uuid
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([streamId, status])
+  @@index([targetUserId])
+  @@index([reporterId])
+  @@map("live_stream_reports")
+}
+
+enum LiveStreamReportReason {
+  ABUSE
+  SPAM
+  HARASSMENT
+  FAKE_PROFILE
+  HATE_SPEECH
+  BULLYING
+  THREATS
+  SEXUAL_CONTENT
+  INAPPROPRIATE_CONTENT
+  LIVE_STREAM_VIOLATION
+  COMMUNITY_GUIDELINE_VIOLATION
+  OTHER
+}
+
+enum LiveStreamReportStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+  ACTIONED
+}
