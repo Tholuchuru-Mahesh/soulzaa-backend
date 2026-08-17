@@ -317,7 +317,11 @@ export class ModerationService implements IModerationService {
       let evidenceId: string | undefined;
       if (this.investigationRecording) {
         const violationReason = dto.reason ?? 'Audio room ban';
-        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, { roomId });
+        const existing = await this.investigationRecording.findActiveRecording(
+          actor.id,
+          targetUserId,
+          { roomId },
+        );
         const rec =
           existing ??
           (await this.investigationRecording.beginRecording({
@@ -350,7 +354,11 @@ export class ModerationService implements IModerationService {
           evidenceId,
           ipAddress: requestMeta?.ip,
           userAgent: requestMeta?.userAgent,
-          details: { targetUserId, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
+          details: {
+            targetUserId,
+            reason: dto.reason ?? null,
+            expiresAt: expiresAt?.toISOString() ?? null,
+          },
         });
       }
 
@@ -440,7 +448,11 @@ export class ModerationService implements IModerationService {
       let evidenceId: string | undefined;
       if (this.investigationRecording) {
         const violationReason = dto.reason ?? 'Audio room mute violation';
-        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, { roomId });
+        const existing = await this.investigationRecording.findActiveRecording(
+          actor.id,
+          targetUserId,
+          { roomId },
+        );
         const rec =
           existing ??
           (await this.investigationRecording.beginRecording({
@@ -469,7 +481,11 @@ export class ModerationService implements IModerationService {
           evidenceId,
           ipAddress: requestMeta?.ip,
           userAgent: requestMeta?.userAgent,
-          details: { targetUserId, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
+          details: {
+            targetUserId,
+            reason: dto.reason ?? null,
+            expiresAt: expiresAt?.toISOString() ?? null,
+          },
         });
       }
       if (this.performanceStats) {
@@ -516,7 +532,11 @@ export class ModerationService implements IModerationService {
     await this.assertModerationPrereqs(roomId, actor, targetUserId);
     let evidenceId: string | undefined;
     if (this.investigationRecording) {
-      const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, { roomId });
+      const existing = await this.investigationRecording.findActiveRecording(
+        actor.id,
+        targetUserId,
+        { roomId },
+      );
       const rec =
         existing ??
         (await this.investigationRecording.beginRecording({

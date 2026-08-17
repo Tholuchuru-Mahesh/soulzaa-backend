@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { LiveStreamReport, LiveStreamReportReason, LiveStreamReportStatus } from '@prisma/client';
 import type { RequestMetadata } from 'src/common/interfaces/request-metadata.interface';
 import { AuditLogService } from 'src/modules/authorization/services/audit-log.service';
@@ -91,7 +97,10 @@ export class LiveStreamReportService {
     return report;
   }
 
-  async reviewReport(input: ReviewLiveStreamReportInput, requestMeta?: RequestMetadata): Promise<void> {
+  async reviewReport(
+    input: ReviewLiveStreamReportInput,
+    requestMeta?: RequestMetadata,
+  ): Promise<void> {
     const report = await this.reportRepo.getReport(input.reportId);
     if (!report || report.streamId !== input.streamId) {
       throw new NotFoundException('Report not found.');
@@ -112,7 +121,11 @@ export class LiveStreamReportService {
 
     if (input.recommendedAction) {
       // Tagged distinctly from a live in-room action — see class doc.
-      const reason = buildReportReviewReason(input.reportId, input.resolution, input.recommendedAction);
+      const reason = buildReportReviewReason(
+        input.reportId,
+        input.resolution,
+        input.recommendedAction,
+      );
       if (input.recommendedAction === 'BAN') {
         // Hard to reverse, so it does not auto-execute like WARN/MUTE/KICK —
         // it goes to the Official covering the stream's region as a pending
@@ -166,7 +179,12 @@ export class LiveStreamReportService {
     }
   }
 
-  async addNotes(streamId: string, reportId: string, moderatorId: string, notes: string): Promise<void> {
+  async addNotes(
+    streamId: string,
+    reportId: string,
+    moderatorId: string,
+    notes: string,
+  ): Promise<void> {
     const report = await this.reportRepo.getReport(reportId);
     if (!report || report.streamId !== streamId) {
       throw new NotFoundException('Report not found.');

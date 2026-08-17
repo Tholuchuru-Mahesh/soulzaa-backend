@@ -142,7 +142,8 @@ export class LiveStreamController {
   escalate(
     @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: { targetUserId: string; reason: string; severity: 'HIGH' | 'CRITICAL' | 'EMERGENCY' },
+    @Body()
+    dto: { targetUserId: string; reason: string; severity: 'HIGH' | 'CRITICAL' | 'EMERGENCY' },
   ) {
     return this.service.escalateViolation(id, user.id, dto.targetUserId, dto.reason, dto.severity);
   }

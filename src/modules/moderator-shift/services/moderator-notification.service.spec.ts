@@ -19,11 +19,10 @@ describe('ModeratorNotificationService — real notification-publishing path', (
       },
       userRole: { findMany: jest.fn().mockResolvedValue([]) },
     };
-    notifications = { create: jest.fn().mockResolvedValue({}) } as unknown as jest.Mocked<INotificationService>;
-    service = new ModeratorNotificationService(
-      prisma as unknown as PrismaService,
-      notifications,
-    );
+    notifications = {
+      create: jest.fn().mockResolvedValue({}),
+    } as unknown as jest.Mocked<INotificationService>;
+    service = new ModeratorNotificationService(prisma as unknown as PrismaService, notifications);
   });
 
   it('sends MODERATOR_TASK_DUE_SOON through the real path for each due assignment', async () => {
@@ -50,7 +49,11 @@ describe('ModeratorNotificationService — real notification-publishing path', (
   it('sends MODERATOR_REPORT_ASSIGNED with the assigner as actor', async () => {
     await service.notifyReportAssigned('mod-1', 'report-1', 'official-1');
     expect(notifications.create).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'mod-1', type: 'MODERATOR_REPORT_ASSIGNED', actorId: 'official-1' }),
+      expect.objectContaining({
+        userId: 'mod-1',
+        type: 'MODERATOR_REPORT_ASSIGNED',
+        actorId: 'official-1',
+      }),
     );
   });
 
@@ -70,7 +73,11 @@ describe('ModeratorNotificationService — real notification-publishing path', (
     await service.broadcastPolicyUpdate('admin-1', 'New Policy', 'body text');
     expect(notifications.create).toHaveBeenCalledTimes(2);
     expect(notifications.create).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'mod-1', type: 'MODERATOR_POLICY_UPDATE', actorId: 'admin-1' }),
+      expect.objectContaining({
+        userId: 'mod-1',
+        type: 'MODERATOR_POLICY_UPDATE',
+        actorId: 'admin-1',
+      }),
     );
   });
 
@@ -82,7 +89,13 @@ describe('ModeratorNotificationService — real notification-publishing path', (
   });
 
   it('sends MODERATOR_MANAGER_INSTRUCTION to specific moderators', async () => {
-    await service.sendManagerInstruction(['mod-1'], 'manager-1', 'Priority', 'focus on X', 'URGENT');
+    await service.sendManagerInstruction(
+      ['mod-1'],
+      'manager-1',
+      'Priority',
+      'focus on X',
+      'URGENT',
+    );
     expect(notifications.create).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'mod-1', type: 'MODERATOR_MANAGER_INSTRUCTION' }),
     );

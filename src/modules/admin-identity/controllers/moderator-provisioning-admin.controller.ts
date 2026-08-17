@@ -39,7 +39,10 @@ export class ModeratorProvisioningAdminController {
   constructor(private readonly service: ModeratorProvisioningService) {}
 
   @ApiOperation({ summary: 'Provision a hidden Moderator account (Admin only)' })
-  @ApiResponse({ status: 201, description: 'Moderator account created and hidden from public surfaces' })
+  @ApiResponse({
+    status: 201,
+    description: 'Moderator account created and hidden from public surfaces',
+  })
   @ApiResponse({ status: 403, description: 'Actor is not Admin or Super Admin' })
   @Post()
   create(

@@ -13,7 +13,11 @@ function makeDeps() {
   };
   const moderation = { blacklist: jest.fn().mockResolvedValue(undefined) };
   const roles = { getRoleNames: jest.fn().mockResolvedValue(['MODERATOR']) };
-  new VideoRoomModerationApprovalListener(bus as never, moderation as never, roles as never).onModuleInit();
+  new VideoRoomModerationApprovalListener(
+    bus as never,
+    moderation as never,
+    roles as never,
+  ).onModuleInit();
   return { handlers, moderation, roles };
 }
 

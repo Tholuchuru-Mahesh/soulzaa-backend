@@ -126,10 +126,7 @@ describe('RoleRequestService', () => {
 
     it('refuses a Moderator request where the initiator is the subject', async () => {
       await expect(
-        service.submit(
-          { type: RoleRequestType.MODERATOR, subjectUserId: 'user-1' },
-          'user-1',
-        ),
+        service.submit({ type: RoleRequestType.MODERATOR, subjectUserId: 'user-1' }, 'user-1'),
       ).rejects.toThrow(ForbiddenException);
       expect(tx.roleRequestCounter.upsert).not.toHaveBeenCalled();
     });

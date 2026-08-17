@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AccountStatus, DayOfWeek, ScopeType } from '@prisma/client';
 import { randomToken } from 'src/modules/auth/services/hash.util';
 import { ROLE_SOURCE, type IRoleSource } from 'src/common/interfaces/role-source.interface';
@@ -75,7 +81,7 @@ export class ModeratorProvisioningService {
     const email = dto.email.toLowerCase().trim();
 
     // Check if user already exists
-    let existingUser = await this.prisma.user.findFirst({ where: { email } });
+    const existingUser = await this.prisma.user.findFirst({ where: { email } });
 
     let userId: string;
     let username: string;
@@ -175,7 +181,9 @@ export class ModeratorProvisioningService {
     if (missing.length > 0) {
       throw new NotFoundException(`Region(s) not found: ${missing.join(', ')}`);
     }
-    const inactive = regions.find((r) => !r.isActive || !r.state.isActive || !r.state.country.isActive);
+    const inactive = regions.find(
+      (r) => !r.isActive || !r.state.isActive || !r.state.country.isActive,
+    );
     if (inactive) {
       throw new BadRequestException(
         `Cannot assign moderator to inactive region '${inactive.name}'`,
@@ -188,7 +196,9 @@ export class ModeratorProvisioningService {
       where: { userRoleId: userRole.id, scopeType: ScopeType.REGION },
     });
     const targetIds = new Set(regionIds);
-    const existingIds = new Set(existingScopes.map((s) => s.regionId).filter((id): id is string => !!id));
+    const existingIds = new Set(
+      existingScopes.map((s) => s.regionId).filter((id): id is string => !!id),
+    );
 
     const toRemove = existingScopes.filter((s) => s.regionId && !targetIds.has(s.regionId));
     const toAdd = regions.filter((r) => !existingIds.has(r.id));

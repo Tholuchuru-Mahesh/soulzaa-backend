@@ -107,7 +107,9 @@ describe('ModerationService', () => {
       locks as unknown as LockService,
       queue as unknown as QueueService,
       bus,
-      { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as unknown as WorkforceScopeService,
+      {
+        assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
+      } as unknown as WorkforceScopeService,
     );
   });
 
@@ -398,7 +400,9 @@ describe('ModerationService', () => {
           locks as unknown as LockService,
           queue as unknown as QueueService,
           bus,
-          { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as unknown as WorkforceScopeService,
+          {
+            assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
+          } as unknown as WorkforceScopeService,
           undefined,
           undefined,
           undefined,
@@ -492,7 +496,9 @@ describe('ModerationService', () => {
           locks as unknown as LockService,
           queue as unknown as QueueService,
           bus,
-          { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as unknown as WorkforceScopeService,
+          {
+            assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
+          } as unknown as WorkforceScopeService,
           undefined,
           performanceStats as unknown as ModeratorPerformanceService,
         );
@@ -663,7 +669,9 @@ describe('ModerationService', () => {
       rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
       repo.findActiveKick.mockResolvedValue({ id: 'kick-1' });
       scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
-      await expect(scopedService.unkick(MOD, 'r', TARGET)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(scopedService.unkick(MOD, 'r', TARGET)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
       expect(repo.liftKick).not.toHaveBeenCalled();
     });
 
@@ -726,14 +734,25 @@ describe('ModerationService', () => {
 
     it('resolveAppeal checks the room region', async () => {
       rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
-      repo.getAppeal.mockResolvedValue({ id: 'appeal-1', roomId: 'r', status: 'PENDING', userId: TARGET });
+      repo.getAppeal.mockResolvedValue({
+        id: 'appeal-1',
+        roomId: 'r',
+        status: 'PENDING',
+        userId: TARGET,
+      });
       await scopedService.resolveAppeal(MOD, 'r', 'appeal-1', { approve: false });
       expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
     });
 
     it('reviewReport checks the room region even for a bare dismiss (no recommendedAction)', async () => {
       rooms.findRoomRow.mockResolvedValue({ id: 'r', region: 'region-eu-west' });
-      repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'r', status: 'PENDING', targetUserId: TARGET, createdAt: new Date() });
+      repo.getReport.mockResolvedValue({
+        id: 'rep-1',
+        roomId: 'r',
+        status: 'PENDING',
+        targetUserId: TARGET,
+        createdAt: new Date(),
+      });
       await scopedService.reviewReport(MOD, 'r', 'rep-1', { status: 'REVIEWED' } as never);
       expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MOD.id, 'region-eu-west');
     });
@@ -818,7 +837,11 @@ describe('ModerationService', () => {
     });
 
     it('dismissReport 404s instead of proceeding unscoped', async () => {
-      repo.getReport.mockResolvedValue({ id: 'rep-1', roomId: 'missing-room', createdAt: new Date() });
+      repo.getReport.mockResolvedValue({
+        id: 'rep-1',
+        roomId: 'missing-room',
+        createdAt: new Date(),
+      });
       await expect(
         service.dismissReport(MOD, 'missing-room', 'rep-1', 'reason'),
       ).rejects.toBeInstanceOf(BusinessException);
@@ -872,7 +895,10 @@ describe('ModerationService', () => {
     it('routes a HIGH escalation through resolveEscalationRecipients and notifies each recipient', async () => {
       await escalatingService.escalateViolation(MOD, 'r', TARGET, 'repeated harassment', 'HIGH');
 
-      expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith('HIGH', 'region-eu-west');
+      expect(scopeService.resolveEscalationRecipients).toHaveBeenCalledWith(
+        'HIGH',
+        'region-eu-west',
+      );
       expect(notifications.create).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: 'official-1',
@@ -901,7 +927,9 @@ describe('ModerationService', () => {
         locks as unknown as LockService,
         queue as unknown as QueueService,
         bus,
-        { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as unknown as WorkforceScopeService,
+        {
+          assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
+        } as unknown as WorkforceScopeService,
       );
       await expect(
         bareService.escalateViolation(MOD, 'r', TARGET, 'reason', 'EMERGENCY'),
@@ -936,7 +964,9 @@ describe('ModerationService', () => {
         locks as unknown as LockService,
         queue as unknown as QueueService,
         bus,
-        { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) } as unknown as WorkforceScopeService,
+        {
+          assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
+        } as unknown as WorkforceScopeService,
         investigationRecording as unknown as InvestigationRecordingService,
         undefined,
         auditLog as unknown as AuditLogService,
@@ -986,10 +1016,16 @@ describe('ModerationService', () => {
       });
       await auditedService.kick(MOD, 'r', TARGET, 'spam', REQUEST_META);
 
-      expect(investigationRecording.findActiveRecording).toHaveBeenCalledWith(MOD.id, TARGET, { roomId: 'r' });
+      expect(investigationRecording.findActiveRecording).toHaveBeenCalledWith(MOD.id, TARGET, {
+        roomId: 'r',
+      });
       expect(investigationRecording.beginRecording).not.toHaveBeenCalled();
       expect(investigationRecording.completeRecording).toHaveBeenCalledWith(
-        expect.objectContaining({ recordingId: 'rec-open-at-join', actionTaken: 'KICK', violationReason: 'spam' }),
+        expect.objectContaining({
+          recordingId: 'rec-open-at-join',
+          actionTaken: 'KICK',
+          violationReason: 'spam',
+        }),
       );
       expect(auditLog.logAction).toHaveBeenCalledWith(
         expect.objectContaining({ evidenceId: 'EVD-JOIN0001' }),
@@ -997,7 +1033,14 @@ describe('ModerationService', () => {
     });
 
     it('escalateViolation: forwards ip/user-agent + targetUserId but no evidenceId (no investigation recording hook)', async () => {
-      await auditedService.escalateViolation(MOD, 'r', TARGET, 'repeated abuse', 'CRITICAL', REQUEST_META);
+      await auditedService.escalateViolation(
+        MOD,
+        'r',
+        TARGET,
+        'repeated abuse',
+        'CRITICAL',
+        REQUEST_META,
+      );
 
       expect(investigationRecording.beginRecording).not.toHaveBeenCalled();
       expect(auditLog.logAction).toHaveBeenCalledWith(

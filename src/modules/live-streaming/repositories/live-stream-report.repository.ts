@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { LiveStreamReport, LiveStreamReportReason, LiveStreamReportStatus, Prisma } from '@prisma/client';
+import {
+  LiveStreamReport,
+  LiveStreamReportReason,
+  LiveStreamReportStatus,
+  Prisma,
+} from '@prisma/client';
 import { auditCreate, auditUpdate } from 'src/common/utils/audit.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 

@@ -424,7 +424,9 @@ describe('WorkforceScopeService.resolveEscalationRecipients', () => {
 
     expect(recipients).toEqual(['admin-1']);
     expect(prisma.roleScope.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ OR: [{ scopeType: 'GLOBAL' }] }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ OR: [{ scopeType: 'GLOBAL' }] }),
+      }),
     );
   });
 });

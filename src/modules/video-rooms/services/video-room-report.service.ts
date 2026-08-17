@@ -2,7 +2,6 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { forwardRef, HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import {
   Prisma,
-  VideoRoomBlockType,
   VideoRoomModerationActionType,
   VideoRoomModerationMuteType,
   VideoRoomReport,
@@ -215,7 +214,14 @@ export class VideoRoomReportService {
       // audit-trail clarity, not a separate approval gate.
       const reason = buildReportReviewReason(reportId, dto.resolutionAction, dto.recommendedAction);
       if (dto.recommendedAction === 'WARNING') {
-        await this.moderation.warn(actor, roomId, report.targetUserId, reason, undefined, requestMeta);
+        await this.moderation.warn(
+          actor,
+          roomId,
+          report.targetUserId,
+          reason,
+          undefined,
+          requestMeta,
+        );
       } else if (dto.recommendedAction === 'MUTE') {
         await this.moderation.mute(
           actor,

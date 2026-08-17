@@ -63,7 +63,11 @@ export async function recordEscalationOutcome(params: EscalationRecorderParams):
       violationReason: params.reason,
       ipAddress: params.requestMeta?.ip,
       userAgent: params.requestMeta?.userAgent,
-      details: { targetUserId: params.targetUserId, reason: params.reason, severity: params.severity },
+      details: {
+        targetUserId: params.targetUserId,
+        reason: params.reason,
+        severity: params.severity,
+      },
     });
   }
 
@@ -80,7 +84,11 @@ export async function recordEscalationOutcome(params: EscalationRecorderParams):
           actorId: params.actorId,
           entityType: params.resource,
           entityId: params.resourceId,
-          data: { targetUserId: params.targetUserId, reason: params.reason, severity: params.severity },
+          data: {
+            targetUserId: params.targetUserId,
+            reason: params.reason,
+            severity: params.severity,
+          },
         }),
       ),
     );

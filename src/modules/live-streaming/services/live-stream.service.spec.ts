@@ -32,7 +32,9 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
     prisma = {
       liveStream: {
         findUnique: jest.fn().mockResolvedValue(ACTIVE_STREAM),
-        update: jest.fn().mockResolvedValue({ ...ACTIVE_STREAM, status: LiveStreamStatus.SUSPENDED }),
+        update: jest
+          .fn()
+          .mockResolvedValue({ ...ACTIVE_STREAM, status: LiveStreamStatus.SUSPENDED }),
       },
       live_stream_moderation_actions: {
         create: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ ...data })),
@@ -97,7 +99,10 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
   describe('MUTE on a non-host viewer', () => {
     it('moderateUser checks the stream region before acting', async () => {
       await subject.moderateUser(baseInput({ action: 'MUTE' }));
-      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(MODERATOR_ID, ACTIVE_STREAM.regionId);
+      expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith(
+        MODERATOR_ID,
+        ACTIVE_STREAM.regionId,
+      );
     });
 
     it('moderateUser rejects a moderator outside the stream region', async () => {
@@ -111,7 +116,11 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
       await subject.moderateUser(baseInput({ action: 'MUTE', reason: 'spam' }));
 
       expect(moderationRepo.createMute).toHaveBeenCalledWith(
-        expect.objectContaining({ streamId: STREAM_ID, userId: VIEWER_ID, moderatorId: MODERATOR_ID }),
+        expect.objectContaining({
+          streamId: STREAM_ID,
+          userId: VIEWER_ID,
+          moderatorId: MODERATOR_ID,
+        }),
       );
       expect(moderationRepo.addMuteMirror).toHaveBeenCalledWith(STREAM_ID, VIEWER_ID, null);
       expect(sockets.disconnectUserInNamespace).not.toHaveBeenCalled();
@@ -143,10 +152,10 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
     });
 
     it('links the evidenceId and captures request metadata on the audit log row', async () => {
-      await subject.moderateUser(
-        baseInput({ action: 'MUTE', reason: 'spam' }),
-        { ip: '1.2.3.4', userAgent: 'Mozilla/5.0 Chrome/1.0' } as any,
-      );
+      await subject.moderateUser(baseInput({ action: 'MUTE', reason: 'spam' }), {
+        ip: '1.2.3.4',
+        userAgent: 'Mozilla/5.0 Chrome/1.0',
+      } as any);
 
       expect(auditLog.logAction).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -165,7 +174,10 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
     it('force-disconnects the viewer on the /live namespace but does not suspend the stream', async () => {
       await subject.moderateUser(baseInput({ action: 'KICK' }));
 
-      expect(sockets.disconnectUserInNamespace).toHaveBeenCalledWith(LIVE_STREAM_NAMESPACE, VIEWER_ID);
+      expect(sockets.disconnectUserInNamespace).toHaveBeenCalledWith(
+        LIVE_STREAM_NAMESPACE,
+        VIEWER_ID,
+      );
       expect(prisma.liveStream.update).not.toHaveBeenCalled();
     });
   });
@@ -175,21 +187,34 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
       await subject.moderateUser(baseInput({ action: 'BAN', reason: 'harassment' }));
 
       expect(moderationRepo.createBan).toHaveBeenCalledWith(
-        expect.objectContaining({ streamId: STREAM_ID, userId: VIEWER_ID, moderatorId: MODERATOR_ID }),
+        expect.objectContaining({
+          streamId: STREAM_ID,
+          userId: VIEWER_ID,
+          moderatorId: MODERATOR_ID,
+        }),
       );
       expect(moderationRepo.addBanMirror).toHaveBeenCalledWith(STREAM_ID, VIEWER_ID, null);
-      expect(sockets.disconnectUserInNamespace).toHaveBeenCalledWith(LIVE_STREAM_NAMESPACE, VIEWER_ID);
+      expect(sockets.disconnectUserInNamespace).toHaveBeenCalledWith(
+        LIVE_STREAM_NAMESPACE,
+        VIEWER_ID,
+      );
 
       moderationRepo.isActivelyBanned.mockResolvedValue(true);
       const bannedUser = { id: VIEWER_ID, roles: [] } as any;
-      await expect(subject.joinStream(STREAM_ID, bannedUser)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(subject.joinStream(STREAM_ID, bannedUser)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
 
     it('supports a temporary ban via durationMinutes', async () => {
       await subject.moderateUser(baseInput({ action: 'BAN', durationMinutes: 60 }));
       const [[createArg]] = moderationRepo.createBan.mock.calls;
       expect(createArg.expiresAt).toBeInstanceOf(Date);
-      expect(moderationRepo.addBanMirror).toHaveBeenCalledWith(STREAM_ID, VIEWER_ID, expect.any(Number));
+      expect(moderationRepo.addBanMirror).toHaveBeenCalledWith(
+        STREAM_ID,
+        VIEWER_ID,
+        expect.any(Number),
+      );
     });
   });
 
@@ -199,7 +224,10 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
       expect(prisma.liveStream.update).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: STREAM_ID } }),
       );
-      expect(sockets.disconnectUserInNamespace).toHaveBeenCalledWith(LIVE_STREAM_NAMESPACE, HOST_ID);
+      expect(sockets.disconnectUserInNamespace).toHaveBeenCalledWith(
+        LIVE_STREAM_NAMESPACE,
+        HOST_ID,
+      );
     });
   });
 
@@ -248,7 +276,9 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
     });
 
     it('opens nothing for a non-moderator join', async () => {
-      reportRepo.listPendingReports.mockResolvedValue([{ id: 'report-1', targetUserId: 'target-a' }]);
+      reportRepo.listPendingReports.mockResolvedValue([
+        { id: 'report-1', targetUserId: 'target-a' },
+      ]);
       const viewer = { id: VIEWER_ID, roles: [] } as any;
 
       await subject.joinStream(STREAM_ID, viewer);

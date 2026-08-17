@@ -116,7 +116,9 @@ export class ModeratorDeviceBindingService {
     const pending = await this.prisma.device_change_requests.findFirst({
       where: {
         moderatorId: input.moderatorId,
-        status: { in: [DeviceChangeRequestStatus.PENDING, DeviceChangeRequestStatus.MANAGER_REVIEWED] },
+        status: {
+          in: [DeviceChangeRequestStatus.PENDING, DeviceChangeRequestStatus.MANAGER_REVIEWED],
+        },
       },
     });
 

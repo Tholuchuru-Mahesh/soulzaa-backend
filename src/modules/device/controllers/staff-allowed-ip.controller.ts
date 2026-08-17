@@ -50,11 +50,10 @@ export class StaffAllowedIpController {
   @Delete(':userId/allowed-ips/:ipId')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('admin.identity.manage')
-  @ApiOperation({ summary: 'Remove an approved IP/CIDR from a staff account (Admin/Super Admin only)' })
-  removeIp(
-    @Param('ipId', ParseUuidPipe) ipId: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  @ApiOperation({
+    summary: 'Remove an approved IP/CIDR from a staff account (Admin/Super Admin only)',
+  })
+  removeIp(@Param('ipId', ParseUuidPipe) ipId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.removeIp(ipId, user.id);
   }
 

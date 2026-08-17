@@ -13,8 +13,14 @@ describe('MobileWorkforceService scope composition', () => {
 
   const prisma = {
     user: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
-    roomReport: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
-    videoRoomReport: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+    roomReport: {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    },
+    videoRoomReport: {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    },
     liveStreamReport: { count: jest.fn().mockResolvedValue(0) },
     investigationRecording: { count: jest.fn().mockResolvedValue(0) },
     audioRoom: { findMany: jest.fn().mockResolvedValue([]) },
@@ -139,9 +145,15 @@ describe('MobileWorkforceService scope composition', () => {
 
       await service.regionalDailyActivity('mod-1');
 
-      expect(prisma.roomReport.count).toHaveBeenCalledWith({ where: { roomId: { in: ['room-a', 'room-b'] } } });
-      expect(prisma.videoRoomReport.count).toHaveBeenCalledWith({ where: { roomId: { in: ['vroom-a'] } } });
-      expect(prisma.liveStreamReport.count).toHaveBeenCalledWith({ where: { streamId: { in: ['stream-a'] } } });
+      expect(prisma.roomReport.count).toHaveBeenCalledWith({
+        where: { roomId: { in: ['room-a', 'room-b'] } },
+      });
+      expect(prisma.videoRoomReport.count).toHaveBeenCalledWith({
+        where: { roomId: { in: ['vroom-a'] } },
+      });
+      expect(prisma.liveStreamReport.count).toHaveBeenCalledWith({
+        where: { streamId: { in: ['stream-a'] } },
+      });
     });
 
     it('is unrestricted for platform staff: counts all reports with no id filter', async () => {

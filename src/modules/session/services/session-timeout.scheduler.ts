@@ -93,9 +93,7 @@ export class SessionTimeoutScheduler {
           }),
         );
       } catch (err) {
-        this.logger.error(
-          `Failed to revoke idle session ${session.id}: ${(err as Error).message}`,
-        );
+        this.logger.error(`Failed to revoke idle session ${session.id}: ${(err as Error).message}`);
       }
     }
   }

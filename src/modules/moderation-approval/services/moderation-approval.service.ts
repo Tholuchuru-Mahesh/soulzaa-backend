@@ -116,17 +116,26 @@ export class ModerationApprovalService {
     liveStreamId: string | null,
   ): Promise<string | null> {
     if (roomType === 'AUDIO_ROOM' && roomId) {
-      const room = await this.prisma.audioRoom.findUnique({ where: { id: roomId }, select: { region: true } });
+      const room = await this.prisma.audioRoom.findUnique({
+        where: { id: roomId },
+        select: { region: true },
+      });
       if (!room) throw new NotFoundException('Audio room not found');
       return room.region ?? null;
     }
     if (roomType === 'VIDEO_ROOM' && roomId) {
-      const room = await this.prisma.videoRoom.findUnique({ where: { id: roomId }, select: { region: true } });
+      const room = await this.prisma.videoRoom.findUnique({
+        where: { id: roomId },
+        select: { region: true },
+      });
       if (!room) throw new NotFoundException('Video room not found');
       return room.region ?? null;
     }
     if (roomType === 'LIVE_STREAM' && liveStreamId) {
-      const stream = await this.prisma.liveStream.findUnique({ where: { id: liveStreamId }, select: { regionId: true } });
+      const stream = await this.prisma.liveStream.findUnique({
+        where: { id: liveStreamId },
+        select: { regionId: true },
+      });
       if (!stream) throw new NotFoundException('Live stream not found');
       return stream.regionId ?? null;
     }
@@ -144,7 +153,11 @@ export class ModerationApprovalService {
       throw new ConflictException('This approval request has already been decided');
     }
 
-    const region = await this.resolveRegion(approval.roomType, approval.roomId, approval.liveStreamId);
+    const region = await this.resolveRegion(
+      approval.roomType,
+      approval.roomId,
+      approval.liveStreamId,
+    );
     await this.scopeService.assertModeratorInScope(deciderId, region);
 
     const updated = await this.prisma.moderationActionApproval.update({

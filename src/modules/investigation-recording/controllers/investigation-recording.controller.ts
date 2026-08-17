@@ -39,7 +39,8 @@ export class InvestigationRecordingController {
   @Get('case/:targetUserId')
   @RequirePermissions('investigation.recording.view')
   @ApiOperation({
-    summary: 'Unified moderation case view: every recording + audit log entry against a target user',
+    summary:
+      'Unified moderation case view: every recording + audit log entry against a target user',
   })
   getCaseView(@Param('targetUserId', ParseUuidPipe) targetUserId: string) {
     return this.service.getCaseView(targetUserId);

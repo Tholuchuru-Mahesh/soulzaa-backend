@@ -163,9 +163,13 @@ export class VideoRoomModerationService {
       let evidenceId: string | undefined;
       if (this.investigationRecording) {
         const violationReason = reason ?? 'Video room kick';
-        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, {
-          roomId: ref.id,
-        });
+        const existing = await this.investigationRecording.findActiveRecording(
+          actor.id,
+          targetUserId,
+          {
+            roomId: ref.id,
+          },
+        );
         const rec =
           existing ??
           (await this.investigationRecording.beginRecording({
@@ -314,9 +318,13 @@ export class VideoRoomModerationService {
       let evidenceId: string | undefined;
       if (this.investigationRecording) {
         const violationReason = reason ?? 'Video room blacklist';
-        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, {
-          roomId: ref.id,
-        });
+        const existing = await this.investigationRecording.findActiveRecording(
+          actor.id,
+          targetUserId,
+          {
+            roomId: ref.id,
+          },
+        );
         const rec =
           existing ??
           (await this.investigationRecording.beginRecording({
@@ -481,9 +489,13 @@ export class VideoRoomModerationService {
       let evidenceId: string | undefined;
       if (this.investigationRecording) {
         const violationReason = dto.reason ?? 'Video room mute';
-        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, {
-          roomId: ref.id,
-        });
+        const existing = await this.investigationRecording.findActiveRecording(
+          actor.id,
+          targetUserId,
+          {
+            roomId: ref.id,
+          },
+        );
         const rec =
           existing ??
           (await this.investigationRecording.beginRecording({
@@ -513,7 +525,12 @@ export class VideoRoomModerationService {
           evidenceId,
           ipAddress: requestMeta?.ip,
           userAgent: requestMeta?.userAgent,
-          details: { targetUserId, channels, reason: dto.reason ?? null, expiresAt: expiresAt?.toISOString() ?? null },
+          details: {
+            targetUserId,
+            channels,
+            reason: dto.reason ?? null,
+            expiresAt: expiresAt?.toISOString() ?? null,
+          },
         });
       }
     });
@@ -843,9 +860,13 @@ export class VideoRoomModerationService {
       let evidenceId: string | undefined;
       if (this.investigationRecording) {
         const violationReason = reason;
-        const existing = await this.investigationRecording.findActiveRecording(actor.id, targetUserId, {
-          roomId: ref.id,
-        });
+        const existing = await this.investigationRecording.findActiveRecording(
+          actor.id,
+          targetUserId,
+          {
+            roomId: ref.id,
+          },
+        );
         const rec =
           existing ??
           (await this.investigationRecording.beginRecording({

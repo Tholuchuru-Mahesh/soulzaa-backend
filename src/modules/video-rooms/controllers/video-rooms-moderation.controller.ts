@@ -288,7 +288,8 @@ export class VideoRoomsModerationController {
   escalate(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) roomId: string,
-    @Body() dto: { targetUserId: string; reason: string; severity: 'HIGH' | 'CRITICAL' | 'EMERGENCY' },
+    @Body()
+    dto: { targetUserId: string; reason: string; severity: 'HIGH' | 'CRITICAL' | 'EMERGENCY' },
     @RequestMeta() meta: RequestMetadata,
   ) {
     return this.moderation.escalateViolation(

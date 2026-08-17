@@ -276,7 +276,10 @@ describe('AuthService', () => {
   describe('staffLogin', () => {
     function buildService(overrides: {
       deviceBinding?: jest.Mocked<
-        Pick<ModeratorDeviceBindingService, 'assertSingleDeviceByIdentifier' | 'requestDeviceChange'>
+        Pick<
+          ModeratorDeviceBindingService,
+          'assertSingleDeviceByIdentifier' | 'requestDeviceChange'
+        >
       >;
       staffIpAllowlist?: jest.Mocked<Pick<StaffIpAllowlistService, 'isIpAllowed'>>;
     }): AuthService {
@@ -311,7 +314,9 @@ describe('AuthService', () => {
       const deviceBinding = {
         assertSingleDeviceByIdentifier: jest
           .fn()
-          .mockRejectedValue(new ConflictException('Moderators are restricted to one active device.')),
+          .mockRejectedValue(
+            new ConflictException('Moderators are restricted to one active device.'),
+          ),
         requestDeviceChange: jest.fn().mockResolvedValue({ id: 'req1' }),
       };
       const service = buildService({ deviceBinding });
@@ -335,10 +340,14 @@ describe('AuthService', () => {
       const deviceBinding = {
         assertSingleDeviceByIdentifier: jest
           .fn()
-          .mockRejectedValue(new ConflictException('Moderators are restricted to one active device.')),
+          .mockRejectedValue(
+            new ConflictException('Moderators are restricted to one active device.'),
+          ),
         requestDeviceChange: jest
           .fn()
-          .mockRejectedValue(new ConflictException('A device change request is already pending review.')),
+          .mockRejectedValue(
+            new ConflictException('A device change request is already pending review.'),
+          ),
       };
       const service = buildService({ deviceBinding });
 
@@ -357,7 +366,10 @@ describe('AuthService', () => {
       const service = buildService({ staffIpAllowlist });
 
       await expect(
-        service.staffLogin({ email: 'mod@example.com', password: 'Str0ng@Pass' }, { ip: '10.0.0.5' }),
+        service.staffLogin(
+          { email: 'mod@example.com', password: 'Str0ng@Pass' },
+          { ip: '10.0.0.5' },
+        ),
       ).rejects.toMatchObject({ errorCode: 'STAFF_IP_NOT_ALLOWED' });
     });
   });

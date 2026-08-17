@@ -400,12 +400,13 @@ export class VideoRoomMemberService {
     // row entirely rather than returning one with every field blanked
     // (mirrors listPresence below). When resolution itself failed, keep
     // every row rather than emptying the roster for everyone.
-    const visibleRows = identitiesResolved
-      ? rows.filter((r) => identities.has(r.userId))
-      : rows;
+    const visibleRows = identitiesResolved ? rows.filter((r) => identities.has(r.userId)) : rows;
 
     return {
-      items: visibleRows.map((r) => ({ ...toVideoRoomMemberView(r), user: identities.get(r.userId) })),
+      items: visibleRows.map((r) => ({
+        ...toVideoRoomMemberView(r),
+        user: identities.get(r.userId),
+      })),
       total,
     };
   }

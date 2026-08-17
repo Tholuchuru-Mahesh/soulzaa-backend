@@ -329,15 +329,25 @@ describe('AudioRoomsService', () => {
         await new Promise((r) => setImmediate(r));
 
         expect(investigationRecording.beginOrReuseRecording).toHaveBeenCalledWith(
-          expect.objectContaining({ moderatorId: 'mod-1', targetUserId: 'target-a', roomId: 'room-1' }),
+          expect.objectContaining({
+            moderatorId: 'mod-1',
+            targetUserId: 'target-a',
+            roomId: 'room-1',
+          }),
         );
         expect(investigationRecording.beginOrReuseRecording).toHaveBeenCalledWith(
-          expect.objectContaining({ moderatorId: 'mod-1', targetUserId: 'target-b', roomId: 'room-1' }),
+          expect.objectContaining({
+            moderatorId: 'mod-1',
+            targetUserId: 'target-b',
+            roomId: 'room-1',
+          }),
         );
       });
 
       it('opens nothing for a non-moderator join', async () => {
-        moderation.listPendingReports.mockResolvedValue([{ id: 'report-1', targetUserId: 'target-a' }]);
+        moderation.listPendingReports.mockResolvedValue([
+          { id: 'report-1', targetUserId: 'target-a' },
+        ]);
         await recordingService.join(OTHER, 'room-1', {});
         await new Promise((r) => setImmediate(r));
         expect(investigationRecording.beginOrReuseRecording).not.toHaveBeenCalled();
@@ -608,7 +618,11 @@ describe('AudioRoomsService', () => {
     it('omits a hidden staff account entirely from the member roster, not just its identity', async () => {
       const member = (userId: string) =>
         ({ userId, role: RoomMemberRole.LISTENER, joinedAt: new Date() }) as never;
-      repo.listActiveMembers.mockResolvedValue([member('user-1'), member('mod-1'), member('user-2')]);
+      repo.listActiveMembers.mockResolvedValue([
+        member('user-1'),
+        member('mod-1'),
+        member('user-2'),
+      ]);
       // resolvePublicIdentities already drops hidden accounts from the map —
       // 'mod-1' has no entry, exactly like the real hidden-account behavior.
       (profiles.resolvePublicIdentities as jest.Mock).mockResolvedValue(

@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { ModeratorWarningLevel, ModeratorWarningStatus } from '@prisma/client';
+import { ModeratorWarningLevel } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import type { INotificationService } from 'src/modules/notification/interfaces/notification.interface';
 import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
@@ -19,13 +19,17 @@ describe('ModeratorWarningService', () => {
       moderatorWarningRecord: {
         create: jest.fn().mockResolvedValue({ id: 'warn-1' }),
         findUnique: jest.fn(),
-        update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'warn-1', ...data })),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }: any) => Promise.resolve({ id: 'warn-1', ...data })),
         count: jest.fn().mockResolvedValue(0),
       },
       role: { findFirst: jest.fn().mockResolvedValue({ id: 'role-mod' }) },
       userRole: { updateMany: jest.fn().mockResolvedValue({}) },
     };
-    notifications = { create: jest.fn().mockResolvedValue({}) } as unknown as jest.Mocked<INotificationService>;
+    notifications = {
+      create: jest.fn().mockResolvedValue({}),
+    } as unknown as jest.Mocked<INotificationService>;
     performanceStats = { recordAction: jest.fn().mockResolvedValue(undefined) };
     service = new ModeratorWarningService(
       prisma as unknown as PrismaService,
@@ -77,7 +81,9 @@ describe('ModeratorWarningService', () => {
         }),
       );
       expect(notifications.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ requiresCountryManagerReview: true }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ requiresCountryManagerReview: true }),
+        }),
       );
     });
 

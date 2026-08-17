@@ -85,7 +85,11 @@ export class ModeratorNotificationService {
    * Notify a moderator when a high-priority report is assigned or created.
    * Called from the report service when severity is critical.
    */
-  async notifyHighPriorityReport(moderatorId: string, reportId: string, reason: string): Promise<void> {
+  async notifyHighPriorityReport(
+    moderatorId: string,
+    reportId: string,
+    reason: string,
+  ): Promise<void> {
     await this.notifications.create({
       userId: moderatorId,
       type: NotificationType.MODERATOR_HIGH_PRIORITY_REPORT,
@@ -96,7 +100,11 @@ export class ModeratorNotificationService {
   // ---- Task 27: MODERATOR_REPORT_ASSIGNED ----
 
   /** Notify a moderator when a report is assigned to them. */
-  async notifyReportAssigned(moderatorId: string, reportId: string, assignedBy: string): Promise<void> {
+  async notifyReportAssigned(
+    moderatorId: string,
+    reportId: string,
+    assignedBy: string,
+  ): Promise<void> {
     await this.notifications.create({
       userId: moderatorId,
       type: NotificationType.MODERATOR_REPORT_ASSIGNED,
@@ -122,7 +130,9 @@ export class ModeratorNotificationService {
     actorId: string,
     data: Record<string, unknown>,
   ): Promise<void> {
-    await Promise.all(userIds.map((userId) => this.notifications.create({ userId, type, actorId, data })));
+    await Promise.all(
+      userIds.map((userId) => this.notifications.create({ userId, type, actorId, data })),
+    );
   }
 
   // ---- Task 27: MODERATOR_EMERGENCY_REQUEST ----
@@ -140,7 +150,9 @@ export class ModeratorNotificationService {
       senderId,
       { senderId, message, regionId: regionId ?? null },
     );
-    this.logger.log(`EMERGENCY_REQUEST sent to ${recipientModeratorIds.length} moderator(s) by ${senderId}`);
+    this.logger.log(
+      `EMERGENCY_REQUEST sent to ${recipientModeratorIds.length} moderator(s) by ${senderId}`,
+    );
   }
 
   // ---- Task 27: MODERATOR_POLICY_UPDATE ----
@@ -148,11 +160,16 @@ export class ModeratorNotificationService {
   /** Admin broadcasts a policy update to all active moderators. */
   async broadcastPolicyUpdate(adminId: string, title: string, body: string): Promise<void> {
     const moderatorIds = await this.allModeratorIds();
-    await this.broadcastToModerators(moderatorIds, NotificationType.MODERATOR_POLICY_UPDATE, adminId, {
+    await this.broadcastToModerators(
+      moderatorIds,
+      NotificationType.MODERATOR_POLICY_UPDATE,
       adminId,
-      title,
-      body,
-    });
+      {
+        adminId,
+        title,
+        body,
+      },
+    );
     this.logger.log(`POLICY_UPDATE broadcast to ${moderatorIds.length} moderator(s) by ${adminId}`);
   }
 
@@ -171,7 +188,9 @@ export class ModeratorNotificationService {
       officialId,
       { officialId, title, message },
     );
-    this.logger.log(`OFFICIAL_MESSAGE sent to ${recipientModeratorIds.length} moderator(s) by official ${officialId}`);
+    this.logger.log(
+      `OFFICIAL_MESSAGE sent to ${recipientModeratorIds.length} moderator(s) by official ${officialId}`,
+    );
   }
 
   // ---- Task 33: MODERATOR_MANAGER_INSTRUCTION ----
@@ -190,7 +209,9 @@ export class ModeratorNotificationService {
       managerId,
       { managerId, title, instruction, priority: priority ?? 'NORMAL' },
     );
-    this.logger.log(`MANAGER_INSTRUCTION sent to ${recipientModeratorIds.length} moderator(s) by manager ${managerId}`);
+    this.logger.log(
+      `MANAGER_INSTRUCTION sent to ${recipientModeratorIds.length} moderator(s) by manager ${managerId}`,
+    );
   }
 
   // ---- Task 33: MODERATOR_SYSTEM_ANNOUNCEMENT ----
@@ -198,11 +219,18 @@ export class ModeratorNotificationService {
   /** Admin broadcasts a system-wide announcement to all active moderators. */
   async broadcastSystemAnnouncement(adminId: string, title: string, body: string): Promise<void> {
     const moderatorIds = await this.allModeratorIds();
-    await this.broadcastToModerators(moderatorIds, NotificationType.MODERATOR_SYSTEM_ANNOUNCEMENT, adminId, {
+    await this.broadcastToModerators(
+      moderatorIds,
+      NotificationType.MODERATOR_SYSTEM_ANNOUNCEMENT,
       adminId,
-      title,
-      body,
-    });
-    this.logger.log(`SYSTEM_ANNOUNCEMENT broadcast to ${moderatorIds.length} moderator(s) by ${adminId}`);
+      {
+        adminId,
+        title,
+        body,
+      },
+    );
+    this.logger.log(
+      `SYSTEM_ANNOUNCEMENT broadcast to ${moderatorIds.length} moderator(s) by ${adminId}`,
+    );
   }
 }

@@ -289,7 +289,8 @@ export const DEFAULT_PERMISSIONS = [
     action: 'manage',
     category: 'SYSTEM',
     displayName: 'Manage Moderator Accounts',
-    description: 'Can create, list, suspend and restore hidden Moderator accounts; also manages staff IP allowlists',
+    description:
+      'Can create, list, suspend and restore hidden Moderator accounts; also manages staff IP allowlists',
   },
 
   // Super Admin only: can mint Admins (platform-wide authority).

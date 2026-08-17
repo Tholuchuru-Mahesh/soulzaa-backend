@@ -158,7 +158,8 @@ export class ModerationController {
   async escalate(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) id: string,
-    @Body() dto: { targetUserId: string; reason: string; severity: 'HIGH' | 'CRITICAL' | 'EMERGENCY' },
+    @Body()
+    dto: { targetUserId: string; reason: string; severity: 'HIGH' | 'CRITICAL' | 'EMERGENCY' },
     @RequestMeta() meta: RequestMetadata,
   ) {
     await this.moderation.escalateViolation(

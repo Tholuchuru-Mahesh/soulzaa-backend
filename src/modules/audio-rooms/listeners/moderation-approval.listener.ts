@@ -28,9 +28,8 @@ export class AudioRoomModerationApprovalListener implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.bus.subscribe<ModerationActionApprovedEvent>(
-      MODERATION_APPROVAL_EVENTS.APPROVED,
-      (e) => this.handleApproved(e),
+    this.bus.subscribe<ModerationActionApprovedEvent>(MODERATION_APPROVAL_EVENTS.APPROVED, (e) =>
+      this.handleApproved(e),
     );
   }
 

@@ -29,7 +29,9 @@ describe('InvestigationRecordingService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
-        update: jest.fn().mockImplementation(({ data }: any) => Promise.resolve({ id: 'rec-1', ...data })),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }: any) => Promise.resolve({ id: 'rec-1', ...data })),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
@@ -94,7 +96,9 @@ describe('InvestigationRecordingService', () => {
         violationReason: 'harassment',
       });
       expect(prisma.investigationRecording.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ violationReason: 'harassment' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ violationReason: 'harassment' }),
+        }),
       );
     });
 
@@ -112,7 +116,9 @@ describe('InvestigationRecordingService', () => {
         violationReason: 'a different reason passed at completion',
       });
       expect(prisma.investigationRecording.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ violationReason: 'original reason' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ violationReason: 'original reason' }),
+        }),
       );
     });
 
@@ -139,7 +145,10 @@ describe('InvestigationRecordingService', () => {
       expect(count).toBe(3);
       expect(prisma.investigationRecording.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ status: 'ACTIVE', startedAt: expect.objectContaining({ lt: expect.any(Date) }) }),
+          where: expect.objectContaining({
+            status: 'ACTIVE',
+            startedAt: expect.objectContaining({ lt: expect.any(Date) }),
+          }),
           data: expect.objectContaining({ status: 'FAILED' }),
         }),
       );
@@ -155,8 +164,14 @@ describe('InvestigationRecordingService', () => {
   describe('getCaseView', () => {
     it('joins recordings and audit logs for the target when an audit log service is wired', async () => {
       const auditLog = { getAuditLogsForTarget: jest.fn().mockResolvedValue([{ id: 'log-1' }]) };
-      const withAuditScopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
-      const withAudit = new InvestigationRecordingService(prisma, withAuditScopeService as any, auditLog as any);
+      const withAuditScopeService = {
+        assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
+      };
+      const withAudit = new InvestigationRecordingService(
+        prisma,
+        withAuditScopeService as any,
+        auditLog as any,
+      );
       prisma.investigationRecording.findMany.mockResolvedValue([{ id: 'rec-1' }]);
 
       const result = await withAudit.getCaseView(TARGET_ID);
@@ -180,19 +195,33 @@ describe('InvestigationRecordingService', () => {
 
   describe('beginRecording region scope (defense in depth)', () => {
     it('checks scope when a regionId is provided', async () => {
-      await service.beginRecording({ moderatorId: 'mod-1', targetUserId: 'target-1', roomId: 'room-1', regionId: 'region-eu-west' });
+      await service.beginRecording({
+        moderatorId: 'mod-1',
+        targetUserId: 'target-1',
+        roomId: 'room-1',
+        regionId: 'region-eu-west',
+      });
       expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith('mod-1', 'region-eu-west');
     });
 
     it('permits (skips the check) when no regionId is given', async () => {
-      await service.beginRecording({ moderatorId: 'mod-1', targetUserId: 'target-1', roomId: 'room-1' });
+      await service.beginRecording({
+        moderatorId: 'mod-1',
+        targetUserId: 'target-1',
+        roomId: 'room-1',
+      });
       expect(scopeService.assertModeratorInScope).toHaveBeenCalledWith('mod-1', null);
     });
 
     it('rejects a moderator outside the given region', async () => {
       scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
       await expect(
-        service.beginRecording({ moderatorId: 'mod-1', targetUserId: 'target-1', liveStreamId: 'stream-1', regionId: 'region-eu-west' }),
+        service.beginRecording({
+          moderatorId: 'mod-1',
+          targetUserId: 'target-1',
+          liveStreamId: 'stream-1',
+          regionId: 'region-eu-west',
+        }),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.investigationRecording.create).not.toHaveBeenCalled();
     });

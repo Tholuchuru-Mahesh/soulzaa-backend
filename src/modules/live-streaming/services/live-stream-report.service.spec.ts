@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { LiveStreamReportReason, LiveStreamReportStatus } from '@prisma/client';
 import type { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
 import { LiveStreamReportService } from './live-stream-report.service';
@@ -54,7 +59,13 @@ describe('LiveStreamReportService', () => {
       recordReportResolution: jest.fn().mockResolvedValue(undefined),
     };
     auditLog = { logAction: jest.fn().mockResolvedValue(undefined) };
-    service = new LiveStreamReportService(reportRepo, liveStream, scopeService as any, performanceStats, auditLog);
+    service = new LiveStreamReportService(
+      reportRepo,
+      liveStream,
+      scopeService as any,
+      performanceStats,
+      auditLog,
+    );
   });
 
   describe('fileReport', () => {
@@ -66,7 +77,11 @@ describe('LiveStreamReportService', () => {
         reason: LiveStreamReportReason.SPAM,
       });
       expect(reportRepo.createReport).toHaveBeenCalledWith(
-        expect.objectContaining({ streamId: STREAM_ID, reporterId: REPORTER_ID, targetUserId: TARGET_ID }),
+        expect.objectContaining({
+          streamId: STREAM_ID,
+          reporterId: REPORTER_ID,
+          targetUserId: TARGET_ID,
+        }),
       );
     });
 
@@ -202,7 +217,10 @@ describe('LiveStreamReportService', () => {
     });
 
     it('refuses to review an already-decided report', async () => {
-      reportRepo.getReport.mockResolvedValue({ ...PENDING_REPORT, status: LiveStreamReportStatus.REVIEWED });
+      reportRepo.getReport.mockResolvedValue({
+        ...PENDING_REPORT,
+        status: LiveStreamReportStatus.REVIEWED,
+      });
       await expect(
         service.reviewReport({
           streamId: STREAM_ID,
@@ -231,7 +249,10 @@ describe('LiveStreamReportService', () => {
   // ======================= region scope enforcement =======================
 
   describe('region scope enforcement', () => {
-    let scopedScopeService: { assertModeratorInScope: jest.Mock; resolveModeratorsInScope: jest.Mock };
+    let scopedScopeService: {
+      assertModeratorInScope: jest.Mock;
+      resolveModeratorsInScope: jest.Mock;
+    };
     let scopedService: LiveStreamReportService;
 
     beforeEach(() => {

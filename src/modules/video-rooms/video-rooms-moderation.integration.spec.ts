@@ -487,8 +487,14 @@ describe('VR-16 moderation engine — DI graph (video-rooms.module.ts provider w
         // `@UseGuards(ShiftActiveGuard, SuspendedGuard)` on the controller's
         // moderation routes pulls these into the DI graph at compile time
         // even though no HTTP request is made in this spec.
-        { provide: ModeratorShiftService, useValue: { isWithinShift: jest.fn().mockResolvedValue(true) } },
-        { provide: ModeratorWarningService, useValue: { isSuspended: jest.fn().mockResolvedValue(false) } },
+        {
+          provide: ModeratorShiftService,
+          useValue: { isWithinShift: jest.fn().mockResolvedValue(true) },
+        },
+        {
+          provide: ModeratorWarningService,
+          useValue: { isSuspended: jest.fn().mockResolvedValue(false) },
+        },
       ],
     }).compile();
   });

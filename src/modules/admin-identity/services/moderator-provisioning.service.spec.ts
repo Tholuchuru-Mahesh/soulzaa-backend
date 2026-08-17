@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { DayOfWeek, ScopeType } from '@prisma/client';
+import { DayOfWeek } from '@prisma/client';
 import { ModeratorProvisioningService } from './moderator-provisioning.service';
 
 /**
@@ -209,7 +209,11 @@ describe('ModeratorProvisioningService', () => {
     it('honors explicit shiftDaysOfWeek and shiftTimezone when provided', async () => {
       await service.createModerator(
         'actor-1',
-        { ...dto, shiftDaysOfWeek: [DayOfWeek.MONDAY, DayOfWeek.FRIDAY], shiftTimezone: 'Asia/Kolkata' },
+        {
+          ...dto,
+          shiftDaysOfWeek: [DayOfWeek.MONDAY, DayOfWeek.FRIDAY],
+          shiftTimezone: 'Asia/Kolkata',
+        },
         ctx,
       );
       expect(moderatorShift.assignShift).toHaveBeenCalledWith(
@@ -241,8 +245,30 @@ describe('ModeratorProvisioningService', () => {
   });
 
   describe('setModeratorRegions', () => {
-    const BLR = { id: 'region-blr', name: 'Bengaluru Region', isActive: true, stateId: 'state-ka', state: { id: 'state-ka', isActive: true, countryId: 'country-in', country: { id: 'country-in', code: 'IN', isActive: true } } };
-    const VJA = { id: 'region-vja', name: 'Vijayawada Region', isActive: true, stateId: 'state-ap', state: { id: 'state-ap', isActive: true, countryId: 'country-in', country: { id: 'country-in', code: 'IN', isActive: true } } };
+    const BLR = {
+      id: 'region-blr',
+      name: 'Bengaluru Region',
+      isActive: true,
+      stateId: 'state-ka',
+      state: {
+        id: 'state-ka',
+        isActive: true,
+        countryId: 'country-in',
+        country: { id: 'country-in', code: 'IN', isActive: true },
+      },
+    };
+    const VJA = {
+      id: 'region-vja',
+      name: 'Vijayawada Region',
+      isActive: true,
+      stateId: 'state-ap',
+      state: {
+        id: 'state-ap',
+        isActive: true,
+        countryId: 'country-in',
+        country: { id: 'country-in', code: 'IN', isActive: true },
+      },
+    };
 
     beforeEach(() => {
       roleService.assignRoleByName.mockResolvedValue({ id: 'user-role-1' });
@@ -251,23 +277,23 @@ describe('ModeratorProvisioningService', () => {
 
     it('rejects an actor who is not Admin or Super Admin', async () => {
       roles.getRoleNames.mockResolvedValue(['USER']);
-      await expect(service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1')).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('throws NotFoundException when a regionId does not exist', async () => {
       prisma.region.findMany = jest.fn().mockResolvedValue([]);
-      await expect(service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1')).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('rejects an inactive region in the batch', async () => {
       prisma.region.findMany = jest.fn().mockResolvedValue([{ ...BLR, isActive: false }]);
-      await expect(service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1')).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
+      await expect(
+        service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('creates a RoleScope row per new region when none exist yet', async () => {
@@ -306,7 +332,9 @@ describe('ModeratorProvisioningService', () => {
 
     it('is a no-op when the target set already matches', async () => {
       prisma.region.findMany = jest.fn().mockResolvedValue([BLR]);
-      prisma.roleScope.findMany = jest.fn().mockResolvedValue([{ id: 'scope-blr', regionId: 'region-blr' }]);
+      prisma.roleScope.findMany = jest
+        .fn()
+        .mockResolvedValue([{ id: 'scope-blr', regionId: 'region-blr' }]);
 
       await service.setModeratorRegions('mod-1', ['region-blr'], 'actor-1');
 
@@ -316,7 +344,11 @@ describe('ModeratorProvisioningService', () => {
 
     it('returns the resulting region id list', async () => {
       prisma.region.findMany = jest.fn().mockResolvedValue([BLR, VJA]);
-      const result = await service.setModeratorRegions('mod-1', ['region-blr', 'region-vja'], 'actor-1');
+      const result = await service.setModeratorRegions(
+        'mod-1',
+        ['region-blr', 'region-vja'],
+        'actor-1',
+      );
       expect(result).toEqual({ regionIds: ['region-blr', 'region-vja'] });
     });
   });
@@ -325,10 +357,9 @@ describe('ModeratorProvisioningService', () => {
     it('returns the current REGION-scope region ids for the moderator', async () => {
       roles.getRoleNames.mockResolvedValue(['ADMIN']);
       prisma.userRole.findFirst = jest.fn().mockResolvedValue({ id: 'user-role-1' });
-      prisma.roleScope.findMany = jest.fn().mockResolvedValue([
-        { regionId: 'region-blr' },
-        { regionId: 'region-vja' },
-      ]);
+      prisma.roleScope.findMany = jest
+        .fn()
+        .mockResolvedValue([{ regionId: 'region-blr' }, { regionId: 'region-vja' }]);
       const result = await service.getModeratorRegions('actor-1', 'mod-1');
       expect(result).toEqual({ regionIds: ['region-blr', 'region-vja'] });
     });

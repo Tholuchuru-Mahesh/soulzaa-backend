@@ -1,4 +1,11 @@
-import { ConflictException, HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthProviderType, OtpPurpose } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
@@ -155,10 +162,19 @@ export class AuthService implements IAuthService {
   }
 
   async staffLogin(
-    input: PasswordLoginCommand & { totpCode?: string; deviceIdentifier?: string; identifier?: string },
+    input: PasswordLoginCommand & {
+      totpCode?: string;
+      deviceIdentifier?: string;
+      identifier?: string;
+    },
     ctx: AuthContext,
   ): Promise<AuthResult> {
-    const identifier = (input.email || (input as any).username || (input as any).identifier || '').toLowerCase();
+    const identifier = (
+      input.email ||
+      (input as any).username ||
+      (input as any).identifier ||
+      ''
+    ).toLowerCase();
     await this.security.assertNotLocked(identifier);
 
     let user = await this.users.findByEmail(identifier);

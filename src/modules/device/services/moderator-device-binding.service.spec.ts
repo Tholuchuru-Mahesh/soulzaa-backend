@@ -27,7 +27,12 @@ describe('ModeratorDeviceBindingService — two-tier device change approval', ()
       create: jest.Mock;
     };
     deviceHistory: { create: jest.Mock };
-    userDevice: { update: jest.Mock; updateMany: jest.Mock; upsert: jest.Mock; findMany: jest.Mock };
+    userDevice: {
+      update: jest.Mock;
+      updateMany: jest.Mock;
+      upsert: jest.Mock;
+      findMany: jest.Mock;
+    };
     staffAllowedIp: { create: jest.Mock };
     userRole: { findMany: jest.Mock };
   };
@@ -40,10 +45,14 @@ describe('ModeratorDeviceBindingService — two-tier device change approval', ()
     prisma = {
       device_change_requests: {
         findUnique: jest.fn(),
-        update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...request(), ...data })),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ ...request(), ...data })),
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...request(), ...data })),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }) => Promise.resolve({ ...request(), ...data })),
       },
       deviceHistory: { create: jest.fn().mockResolvedValue({}) },
       userDevice: {
@@ -70,7 +79,10 @@ describe('ModeratorDeviceBindingService — two-tier device change approval', ()
   describe('approveDeviceChange', () => {
     it('approves a request directly from PENDING status', async () => {
       prisma.device_change_requests.findUnique.mockResolvedValue(
-        request({ status: DeviceChangeRequestStatus.PENDING, newDeviceInfo: { deviceIdentifier: 'device-new', ip: '192.168.1.50' } }),
+        request({
+          status: DeviceChangeRequestStatus.PENDING,
+          newDeviceInfo: { deviceIdentifier: 'device-new', ip: '192.168.1.50' },
+        }),
       );
 
       const result = await service.approveDeviceChange('req-1', 'admin-1');
@@ -170,9 +182,9 @@ describe('ModeratorDeviceBindingService — two-tier device change approval', ()
         request({ status: DeviceChangeRequestStatus.MANAGER_REVIEWED }),
       );
 
-      await expect(
-        service.managerReviewDeviceChange('req-1', 'manager-1'),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.managerReviewDeviceChange('req-1', 'manager-1')).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 
@@ -228,9 +240,9 @@ describe('ModeratorDeviceBindingService — two-tier device change approval', ()
         { id: 'device-row-1', userId: 'mod-1', deviceIdentifier: 'device-old' },
       ]);
 
-      await expect(
-        service.assertSingleDeviceByIdentifier('mod-1', 'device-new'),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.assertSingleDeviceByIdentifier('mod-1', 'device-new')).rejects.toThrow(
+        ConflictException,
+      );
       expect(prisma.userDevice.upsert).not.toHaveBeenCalled();
     });
   });

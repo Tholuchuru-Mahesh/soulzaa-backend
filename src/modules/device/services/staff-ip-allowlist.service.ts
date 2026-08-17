@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 /**
@@ -17,7 +12,8 @@ export function isIpInCidr(ip: string, cidr: string): boolean {
 
     // Exact string match (works for IPv4, IPv6, localhost)
     if (cleanIp === cleanCidr) return true;
-    if (cleanIp === '127.0.0.1' && (cleanCidr === '::1' || cleanCidr === '127.0.0.1/32')) return true;
+    if (cleanIp === '127.0.0.1' && (cleanCidr === '::1' || cleanCidr === '127.0.0.1/32'))
+      return true;
     if (cleanIp === '::1' && (cleanCidr === '127.0.0.1' || cleanCidr === '::1/128')) return true;
 
     // IPv4 CIDR matching
@@ -89,9 +85,7 @@ export class StaffIpAllowlistService {
       }
     }
 
-    this.logger.warn(
-      `Access rejected for staff user ${userId} from unapproved IP ${cleanIp}`,
-    );
+    this.logger.warn(`Access rejected for staff user ${userId} from unapproved IP ${cleanIp}`);
     return false;
   }
 

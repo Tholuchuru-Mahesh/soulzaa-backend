@@ -1527,8 +1527,20 @@ describe('VideoRoomModerationService', () => {
       rooms.findById.mockResolvedValue({ ...ROOM, region: 'region-eu-west' });
       scopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
       scopedSubject = new VideoRoomModerationService(
-        rooms, moderationRepo, permissions, session, sockets, locks, metrics, queue, bus,
-        media, warningRepo, reportService, config, scopeService as unknown as WorkforceScopeService,
+        rooms,
+        moderationRepo,
+        permissions,
+        session,
+        sockets,
+        locks,
+        metrics,
+        queue,
+        bus,
+        media,
+        warningRepo,
+        reportService,
+        config,
+        scopeService as unknown as WorkforceScopeService,
       );
     });
 
@@ -1546,7 +1558,9 @@ describe('VideoRoomModerationService', () => {
 
     it('unblacklist rejects a moderator outside scope', async () => {
       scopeService.assertModeratorInScope.mockRejectedValue(new ForbiddenException('nope'));
-      await expect(scopedSubject.unblacklist(ACTOR, ROOM.id, TARGET)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(scopedSubject.unblacklist(ACTOR, ROOM.id, TARGET)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
       expect(moderationRepo.liftBlock).not.toHaveBeenCalled();
     });
   });

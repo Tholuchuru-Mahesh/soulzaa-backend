@@ -150,12 +150,13 @@ export class MobileWorkforceService {
       ...audioReports.map((r) => r.reporterId),
       ...videoReports.map((r) => r.reporterId),
     ];
-    const users = userIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: userIds } },
-          select: { id: true, username: true, fullName: true },
-        })
-      : [];
+    const users =
+      userIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [];
     const userMap = new Map(users.map((u) => [u.id, u]));
 
     const formattedReports = [
@@ -170,7 +171,12 @@ export class MobileWorkforceService {
           roomTitle: 'Chill vibes',
           reporterName,
           reporterId: r.reporterId.substring(0, 6),
-          violationReason: r.reason ? r.reason.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Inappropriate content',
+          violationReason: r.reason
+            ? r.reason
+                .replace(/_/g, ' ')
+                .toLowerCase()
+                .replace(/\b\w/g, (c: string) => c.toUpperCase())
+            : 'Inappropriate content',
           description: r.description || '',
           priority: 'Highest priority',
           status: r.status === 'REVIEWED' || r.status === 'ACTIONED' ? 'Solved' : 'Under review',
@@ -188,7 +194,12 @@ export class MobileWorkforceService {
           roomTitle: 'Fun talk',
           reporterName,
           reporterId: r.reporterId.substring(0, 6),
-          violationReason: r.reason ? r.reason.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Harassment',
+          violationReason: r.reason
+            ? r.reason
+                .replace(/_/g, ' ')
+                .toLowerCase()
+                .replace(/\b\w/g, (c: string) => c.toUpperCase())
+            : 'Harassment',
           description: r.description || '',
           priority: 'Medium priority',
           status: r.status === 'REVIEWED' || r.status === 'ACTIONED' ? 'Solved' : 'Under review',
@@ -413,13 +424,22 @@ export class MobileWorkforceService {
 
     const [roomReportsCount, videoRoomReportsCount, liveStreamReportsCount] = await Promise.all([
       this.prisma.roomReport.count({
-        where: inScopeAudioRoomIds === null ? {} : { roomId: { in: inScopeAudioRoomIds.map((r) => r.id) } },
+        where:
+          inScopeAudioRoomIds === null
+            ? {}
+            : { roomId: { in: inScopeAudioRoomIds.map((r) => r.id) } },
       }),
       this.prisma.videoRoomReport.count({
-        where: inScopeVideoRoomIds === null ? {} : { roomId: { in: inScopeVideoRoomIds.map((r) => r.id) } },
+        where:
+          inScopeVideoRoomIds === null
+            ? {}
+            : { roomId: { in: inScopeVideoRoomIds.map((r) => r.id) } },
       }),
       this.prisma.liveStreamReport.count({
-        where: inScopeLiveStreamIds === null ? {} : { streamId: { in: inScopeLiveStreamIds.map((r) => r.id) } },
+        where:
+          inScopeLiveStreamIds === null
+            ? {}
+            : { streamId: { in: inScopeLiveStreamIds.map((r) => r.id) } },
       }),
     ]);
     const assignedReportsCount = roomReportsCount + videoRoomReportsCount + liveStreamReportsCount;
@@ -444,7 +464,8 @@ export class MobileWorkforceService {
    * again; the standalone endpoint omits it and it self-resolves as before.
    */
   async liveMonitoring(userId: string, resolvedScope?: ResolvedUserScope) {
-    const { isUnrestricted, inScopeUserIds } = resolvedScope ?? (await this.resolveUserScope(userId));
+    const { isUnrestricted, inScopeUserIds } =
+      resolvedScope ?? (await this.resolveUserScope(userId));
     const userIdsInScope = inScopeUserIds ?? undefined;
 
     const scopedFilter = userIdsInScope ? { hostId: { in: userIdsInScope } } : {};
@@ -471,147 +492,150 @@ export class MobileWorkforceService {
       }),
     ]);
 
-    const formattedAudio = audioRooms.length > 0
-      ? audioRooms.map((r, i) => ({
-          id: r.id,
-          name: r.name || `Audio Room ${i + 1}`,
-          category: 'Music',
-          isPublic: true,
-          isVerified: true,
-          participantsCount: 45 + (i * 27) % 200,
-          reportsCount: (i * 2) % 6,
-          warningsCount: i % 4,
-          imageUrl: 'assets/Moderator_UI/image 733.png',
-          roomType: 'audio',
-          createdAt: r.createdAt.toISOString(),
-        }))
-      : [
-          {
-            id: '1',
-            name: 'Chill vibes',
+    const formattedAudio =
+      audioRooms.length > 0
+        ? audioRooms.map((r, i) => ({
+            id: r.id,
+            name: r.name || `Audio Room ${i + 1}`,
             category: 'Music',
             isPublic: true,
             isVerified: true,
-            participantsCount: 128,
-            reportsCount: 5,
-            warningsCount: 2,
+            participantsCount: 45 + ((i * 27) % 200),
+            reportsCount: (i * 2) % 6,
+            warningsCount: i % 4,
             imageUrl: 'assets/Moderator_UI/image 733.png',
             roomType: 'audio',
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: '2',
-            name: 'Singing race',
-            category: 'Music',
-            isPublic: true,
-            isVerified: true,
-            participantsCount: 73,
-            reportsCount: 3,
-            warningsCount: 1,
-            imageUrl: 'assets/Moderator_UI/Rectangle 67.png',
-            roomType: 'audio',
-            createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-          },
-          {
-            id: '3',
-            name: 'Funny talks',
-            category: 'Music',
-            isPublic: true,
-            isVerified: true,
-            participantsCount: 62,
-            reportsCount: 1,
-            warningsCount: 3,
-            imageUrl: 'assets/Moderator_UI/image 733.png',
-            roomType: 'audio',
-            createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-          },
-          {
-            id: '4',
-            name: 'Timepass',
-            category: 'Music',
-            isPublic: true,
-            isVerified: true,
-            participantsCount: 230,
-            reportsCount: 0,
-            warningsCount: 0,
-            imageUrl: 'assets/Moderator_UI/Rectangle 67.png',
-            roomType: 'audio',
-            createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
-          },
-        ];
+            createdAt: r.createdAt.toISOString(),
+          }))
+        : [
+            {
+              id: '1',
+              name: 'Chill vibes',
+              category: 'Music',
+              isPublic: true,
+              isVerified: true,
+              participantsCount: 128,
+              reportsCount: 5,
+              warningsCount: 2,
+              imageUrl: 'assets/Moderator_UI/image 733.png',
+              roomType: 'audio',
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: '2',
+              name: 'Singing race',
+              category: 'Music',
+              isPublic: true,
+              isVerified: true,
+              participantsCount: 73,
+              reportsCount: 3,
+              warningsCount: 1,
+              imageUrl: 'assets/Moderator_UI/Rectangle 67.png',
+              roomType: 'audio',
+              createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+            },
+            {
+              id: '3',
+              name: 'Funny talks',
+              category: 'Music',
+              isPublic: true,
+              isVerified: true,
+              participantsCount: 62,
+              reportsCount: 1,
+              warningsCount: 3,
+              imageUrl: 'assets/Moderator_UI/image 733.png',
+              roomType: 'audio',
+              createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+            },
+            {
+              id: '4',
+              name: 'Timepass',
+              category: 'Music',
+              isPublic: true,
+              isVerified: true,
+              participantsCount: 230,
+              reportsCount: 0,
+              warningsCount: 0,
+              imageUrl: 'assets/Moderator_UI/Rectangle 67.png',
+              roomType: 'audio',
+              createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+            },
+          ];
 
-    const formattedVideo = videoRooms.length > 0
-      ? videoRooms.map((r, i) => ({
-          id: r.id,
-          name: r.name || `Video Room ${i + 1}`,
-          category: 'Video Chat',
-          isPublic: true,
-          isVerified: true,
-          participantsCount: 30 + (i * 15) % 150,
-          reportsCount: (i + 1) % 4,
-          warningsCount: i % 3,
-          imageUrl: 'assets/Moderator_UI/image 733.png',
-          roomType: 'video',
-          createdAt: r.createdAt.toISOString(),
-        }))
-      : [
-          {
-            id: 'v1',
-            name: 'Gaming Lounge',
-            category: 'Gaming',
+    const formattedVideo =
+      videoRooms.length > 0
+        ? videoRooms.map((r, i) => ({
+            id: r.id,
+            name: r.name || `Video Room ${i + 1}`,
+            category: 'Video Chat',
             isPublic: true,
             isVerified: true,
-            participantsCount: 94,
-            reportsCount: 4,
-            warningsCount: 1,
+            participantsCount: 30 + ((i * 15) % 150),
+            reportsCount: (i + 1) % 4,
+            warningsCount: i % 3,
             imageUrl: 'assets/Moderator_UI/image 733.png',
             roomType: 'video',
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: 'v2',
-            name: 'Late Night Chat',
-            category: 'Talk',
-            isPublic: true,
-            isVerified: true,
-            participantsCount: 52,
-            reportsCount: 2,
-            warningsCount: 0,
-            imageUrl: 'assets/Moderator_UI/Rectangle 67.png',
-            roomType: 'video',
-            createdAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-          },
-        ];
+            createdAt: r.createdAt.toISOString(),
+          }))
+        : [
+            {
+              id: 'v1',
+              name: 'Gaming Lounge',
+              category: 'Gaming',
+              isPublic: true,
+              isVerified: true,
+              participantsCount: 94,
+              reportsCount: 4,
+              warningsCount: 1,
+              imageUrl: 'assets/Moderator_UI/image 733.png',
+              roomType: 'video',
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: 'v2',
+              name: 'Late Night Chat',
+              category: 'Talk',
+              isPublic: true,
+              isVerified: true,
+              participantsCount: 52,
+              reportsCount: 2,
+              warningsCount: 0,
+              imageUrl: 'assets/Moderator_UI/Rectangle 67.png',
+              roomType: 'video',
+              createdAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
+            },
+          ];
 
-    const formattedStreams = liveStreams.length > 0
-      ? liveStreams.map((s, i) => ({
-          id: s.id,
-          name: s.title || `Live Stream ${i + 1}`,
-          category: 'Broadcast',
-          isPublic: true,
-          isVerified: true,
-          participantsCount: 110 + (i * 45) % 500,
-          reportsCount: (i * 3) % 5,
-          warningsCount: i % 2,
-          imageUrl: 'assets/Moderator_UI/image 733.png',
-          roomType: 'stream',
-          createdAt: s.createdAt.toISOString(),
-        }))
-      : [
-          {
-            id: 's1',
-            name: 'Live DJ Night',
-            category: 'Entertainment',
+    const formattedStreams =
+      liveStreams.length > 0
+        ? liveStreams.map((s, i) => ({
+            id: s.id,
+            name: s.title || `Live Stream ${i + 1}`,
+            category: 'Broadcast',
             isPublic: true,
             isVerified: true,
-            participantsCount: 310,
-            reportsCount: 3,
-            warningsCount: 2,
+            participantsCount: 110 + ((i * 45) % 500),
+            reportsCount: (i * 3) % 5,
+            warningsCount: i % 2,
             imageUrl: 'assets/Moderator_UI/image 733.png',
             roomType: 'stream',
-            createdAt: new Date().toISOString(),
-          },
-        ];
+            createdAt: s.createdAt.toISOString(),
+          }))
+        : [
+            {
+              id: 's1',
+              name: 'Live DJ Night',
+              category: 'Entertainment',
+              isPublic: true,
+              isVerified: true,
+              participantsCount: 310,
+              reportsCount: 3,
+              warningsCount: 2,
+              imageUrl: 'assets/Moderator_UI/image 733.png',
+              roomType: 'stream',
+              createdAt: new Date().toISOString(),
+            },
+          ];
 
     return {
       region: isUnrestricted ? 'ALL' : 'SCOPED',
@@ -631,18 +655,19 @@ export class MobileWorkforceService {
     // runs concurrently with everything else in this Promise.all) instead of
     // regionalDailyActivity/liveMonitoring each independently re-resolving it.
     const resolvedScope = this.resolveUserScope(userId);
-    const [scope, summary, queue, dailyActivity, liveMonitoring, warningsReceivedCount] = await Promise.all([
-      this.myScope(userId),
-      this.summary(userId),
-      this.moderationQueue(userId, 5),
-      resolvedScope.then((rs) => this.regionalDailyActivity(userId, rs)),
-      resolvedScope.then((rs) => this.liveMonitoring(userId, rs)),
-      this.warnings
-        ? this.warnings
-            .getWarnings(userId, { status: ModeratorWarningStatus.ACTIVE })
-            .then((rows) => rows.length)
-        : Promise.resolve(0),
-    ]);
+    const [scope, summary, queue, dailyActivity, liveMonitoring, warningsReceivedCount] =
+      await Promise.all([
+        this.myScope(userId),
+        this.summary(userId),
+        this.moderationQueue(userId, 5),
+        resolvedScope.then((rs) => this.regionalDailyActivity(userId, rs)),
+        resolvedScope.then((rs) => this.liveMonitoring(userId, rs)),
+        this.warnings
+          ? this.warnings
+              .getWarnings(userId, { status: ModeratorWarningStatus.ACTIVE })
+              .then((rows) => rows.length)
+          : Promise.resolve(0),
+      ]);
 
     // Shift info & countdown (Task 20)
     let shift = await this.prisma.moderatorShift.findFirst({

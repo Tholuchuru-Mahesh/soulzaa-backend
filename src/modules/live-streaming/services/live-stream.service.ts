@@ -1,4 +1,12 @@
-import { Inject, Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException, Optional } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+  BadRequestException,
+  Optional,
+} from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import {
   LiveStreamModerationBanType,
@@ -272,13 +280,21 @@ export class LiveStreamService {
         input.targetUserId,
         expiresAt ? expiresAt.getTime() - Date.now() : null,
       );
-      this.broadcastSystemMessage(streamId, LIVE_STREAM_SOCKET_EVENTS.USER_MUTED, input.targetUserId);
+      this.broadcastSystemMessage(
+        streamId,
+        LIVE_STREAM_SOCKET_EVENTS.USER_MUTED,
+        input.targetUserId,
+      );
       return;
     }
 
     if (input.action === 'KICK') {
       this.sockets.disconnectUserInNamespace(LIVE_STREAM_NAMESPACE, input.targetUserId);
-      this.broadcastSystemMessage(streamId, LIVE_STREAM_SOCKET_EVENTS.USER_KICKED, input.targetUserId);
+      this.broadcastSystemMessage(
+        streamId,
+        LIVE_STREAM_SOCKET_EVENTS.USER_KICKED,
+        input.targetUserId,
+      );
       return;
     }
 
@@ -304,7 +320,11 @@ export class LiveStreamService {
       this.sockets.disconnectUserInNamespace(LIVE_STREAM_NAMESPACE, input.targetUserId);
       // Proactively drop them from the viewer presence set — they're banned, not just kicked.
       await this.presence.leaveLiveStream(streamId, input.targetUserId, false);
-      this.broadcastSystemMessage(streamId, LIVE_STREAM_SOCKET_EVENTS.USER_BANNED, input.targetUserId);
+      this.broadcastSystemMessage(
+        streamId,
+        LIVE_STREAM_SOCKET_EVENTS.USER_BANNED,
+        input.targetUserId,
+      );
     }
   }
 

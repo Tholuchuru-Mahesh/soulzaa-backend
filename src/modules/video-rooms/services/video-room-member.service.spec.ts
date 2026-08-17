@@ -497,9 +497,11 @@ describe('VideoRoomMemberService.join', () => {
       // resolvePublicIdentities-backed cache: 'mod-1' has no entry, exactly
       // like the real hidden-account behavior — resolution succeeded, the
       // hidden user is just absent from the map.
-      identities.resolve = jest.fn().mockResolvedValue(
-        new Map([['u1', { displayName: 'Rahul', avatarUrl: null, username: 'rahul_92' }]]),
-      );
+      identities.resolve = jest
+        .fn()
+        .mockResolvedValue(
+          new Map([['u1', { displayName: 'Rahul', avatarUrl: null, username: 'rahul_92' }]]),
+        );
 
       const out = await service.listMembers('room1', 50, 0);
 
