@@ -212,7 +212,11 @@ export class AnalyticsReportingService {
         const liveCoins = live.giftCoinsReceived;
         const liveCount = live.giftsReceivedCount;
 
-        const giftsCount = Math.max(liveCount, dbTxn?.giftsCount ?? 0, existing?.giftsReceivedCount ?? 0);
+        const giftsCount = Math.max(
+          liveCount,
+          dbTxn?.giftsCount ?? 0,
+          existing?.giftsReceivedCount ?? 0,
+        );
         const coinsRec = Math.max(
           liveCoins,
           dbTxn?.giftCoinsReceived ?? 0,
@@ -237,7 +241,10 @@ export class AnalyticsReportingService {
         });
       } else if (existing) {
         const giftsCount = Math.max(existing.giftsReceivedCount, dbTxn?.giftsCount ?? 0);
-        const coinsRec = Math.max(Number(existing.giftCoinsReceived), dbTxn?.giftCoinsReceived ?? 0);
+        const coinsRec = Math.max(
+          Number(existing.giftCoinsReceived),
+          dbTxn?.giftCoinsReceived ?? 0,
+        );
         const earningsRec = Math.max(Number(existing.creatorEarnings), dbTxn?.creatorEarnings ?? 0);
 
         formattedSeries.push({

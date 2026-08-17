@@ -209,4 +209,3 @@ describe('AnalyticsRollupService', () => {
     expect(counters.incrRoom).toHaveBeenCalledWith(ROOM, expect.any(String), 'messages', 1);
   });
 });
-
