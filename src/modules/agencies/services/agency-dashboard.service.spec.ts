@@ -174,11 +174,32 @@ describe('Agency dashboard', () => {
       );
     });
 
+<<<<<<< Updated upstream
     it('reads the coin seller inventory balance for agency wallet', async () => {
       const view = await dashboard.getDashboard(AGENCY_ID);
 
       expect(view.wallet.coins).toBe('0');
       expect(wallet.getBalance).toHaveBeenCalledWith(AGENCY_ID);
+=======
+    it('reports the coins bought for the agency as the wallet balance', async () => {
+      prisma.coinSellerInventory.findUnique.mockResolvedValue({
+        availableBalance: BigInt('20145'),
+      });
+
+      const view = await dashboard.getDashboard(AGENCY_ID);
+
+      // The 15222 diamond figure above is the owner's *personal* earnings
+      // wallet — what the home screen shows. The agency wallet is a different
+      // pot entirely: coin inventory bought from the platform to resell.
+      expect(view.wallet.coins).toBe('20145');
+      expect(view.wallet.coins).toBe(view.coinSeller.availableBalance);
+    });
+
+    it('reports a zero agency wallet when the agency holds no inventory row', async () => {
+      const view = await dashboard.getDashboard(AGENCY_ID);
+
+      expect(view.wallet.coins).toBe('0');
+>>>>>>> Stashed changes
     });
 
     it('returns null — never zero — for metrics the platform cannot answer yet', async () => {

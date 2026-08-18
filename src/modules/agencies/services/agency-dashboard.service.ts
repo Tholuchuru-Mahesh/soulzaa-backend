@@ -5,10 +5,6 @@ import {
   PROFILE_SERVICE,
   type IProfileService,
 } from 'src/modules/users/interfaces/profile.interface';
-import {
-  WALLET_SERVICE,
-  type IWalletService,
-} from 'src/modules/wallet/interfaces/wallet.service.interface';
 import type {
   AgencyDashboardView,
   GrowthRange,
@@ -22,7 +18,7 @@ const TOP_PERFORMER_WINDOW_DAYS = 30;
 const TOP_PERFORMER_COUNT = 3;
 
 /**
- * The agency owner's own dashboard — a composition layer over wallet, RBAC,
+ * The agency owner's own dashboard — a composition layer over RBAC,
  * coin-seller inventory, community and settlement data. Owns no data of its
  * own.
  *
@@ -38,7 +34,6 @@ export class AgencyDashboardService {
     private readonly community: AgencyCommunityService,
     private readonly query: AgencyQueryService,
     private readonly roles: RoleResolver,
-    @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
     @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
   ) {}
 
@@ -47,10 +42,9 @@ export class AgencyDashboardService {
     // let the totals and the chart disagree about where "now" is.
     const now = new Date();
 
-    const [identities, balances, isCoinSeller, inventory, community, growth, topPerformers] =
+    const [identities, isCoinSeller, inventory, community, growth, topPerformers] =
       await Promise.all([
         this.profiles.resolvePublicIdentities([agencyId]),
-        this.wallet.getBalance(agencyId),
         this.roles.hasRole(agencyId, 'COIN_SELLER'),
         this.prisma.coinSellerInventory.findUnique({
           where: { sellerId: agencyId },
@@ -68,10 +62,21 @@ export class AgencyDashboardService {
         displayName: me?.displayName ?? null,
         avatarUrl: me?.avatarUrl ?? null,
       },
+<<<<<<< Updated upstream
       // Use available coin seller inventory balance for the agency wallet.
+=======
+      // The agency wallet is the coin inventory this agency bought from the
+      // platform to resell — NOT the owner's personal wallet. Those are
+      // separate pots: the personal one is the balance the home screen shows,
+      // and surfacing it here made the dashboard claim coins the agency does
+      // not hold. `0` (not null) because an agency with no inventory row
+      // genuinely has nothing to sell.
+>>>>>>> Stashed changes
       wallet: { coins: inventory?.availableBalance.toString() ?? '0' },
       coinSeller: {
         active: isCoinSeller,
+        // Null, unlike the wallet above, so the card can tell "not a seller"
+        // apart from "a seller who has sold out".
         availableBalance: inventory?.availableBalance.toString() ?? null,
       },
       community,
