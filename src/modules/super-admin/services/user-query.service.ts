@@ -471,13 +471,7 @@ export class UserQueryService {
             ledgerEntries: {
               some: {
                 reason: {
-                  in: [
-                    'GIFT_SEND',
-                    'GIFT_RECEIVE',
-                    'GAME_STAKE',
-                    'GAME_PAYOUT',
-                    'RECHARGE',
-                  ],
+                  in: ['GIFT_SEND', 'GIFT_RECEIVE', 'GAME_STAKE', 'GAME_PAYOUT', 'RECHARGE'],
                 },
               },
             },
@@ -493,7 +487,7 @@ export class UserQueryService {
       mappedWalletTxns = walletTxns.map((t) => {
         const ledger = t.ledgerEntries.find((e) => e.walletId === wallet.id);
         const isDebit = ledger?.type === 'DEBIT';
-        
+
         let type = 'system';
         let action = isDebit ? 'Transferred Coins' : 'Received Transfer';
         let resource = `Amount: ${t.amount.toString()}`;

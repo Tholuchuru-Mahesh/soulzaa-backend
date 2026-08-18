@@ -132,8 +132,6 @@ export class CreateGiftDto {
   @IsOptional()
   comboEnabled?: boolean = false;
 
-
-
   @ApiPropertyOptional({ description: 'Active enabled toggle', default: true })
   @IsBoolean()
   @IsOptional()
@@ -145,7 +143,10 @@ export class CreateGiftDto {
   @IsOptional()
   ttlValue?: number;
 
-  @ApiPropertyOptional({ description: 'TTL duration unit (SECONDS, MINUTES, HOURS, DAYS)', example: 'DAYS' })
+  @ApiPropertyOptional({
+    description: 'TTL duration unit (SECONDS, MINUTES, HOURS, DAYS)',
+    example: 'DAYS',
+  })
   @IsString()
   @IsOptional()
   ttlUnit?: string;
@@ -188,8 +189,6 @@ export class UpdateGiftDto {
   @IsString()
   @IsOptional()
   mp4Url?: string;
-
-
 
   @ApiPropertyOptional({ description: 'Active enabled toggle' })
   @IsBoolean()

@@ -28,10 +28,7 @@ export class UserCosmeticsController {
   @Post('equip/:cosmeticId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Equip a cosmetic item' })
-  equip(
-    @CurrentUser('id') userId: string,
-    @Param('cosmeticId', ParseUuidPipe) cosmeticId: string,
-  ) {
+  equip(@CurrentUser('id') userId: string, @Param('cosmeticId', ParseUuidPipe) cosmeticId: string) {
     return this.cosmetics.equipCosmetic(userId, cosmeticId);
   }
 

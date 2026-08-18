@@ -4,12 +4,18 @@ import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
-import { BackpackItemEquippedEvent, BackpackItemUnequippedEvent } from 'src/modules/backpack/events/backpack.events';
+import {
+  BackpackItemEquippedEvent,
+  BackpackItemUnequippedEvent,
+} from 'src/modules/backpack/events/backpack.events';
 import { FrameProcessorService } from 'src/infra/storage/frame-processor.service';
 import { S3Service } from 'src/infra/storage/s3.service';
 import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
-import { PROFILE_SERVICE, type IProfileService } from 'src/modules/users/interfaces/profile.interface';
+import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
 import {
   BACKPACK_SERVICE,
   type IBackpackService,
@@ -126,7 +132,11 @@ export class CosmeticsService implements ICosmeticsService {
     const cosmetic = await this.repo.getById(input.cosmeticId);
     if (!cosmetic || !cosmetic.enabled) return null;
 
-    if (cosmetic.type === 'FRAME' || cosmetic.type === 'THEME' || cosmetic.type === 'ENTRANCE_EFFECT') {
+    if (
+      cosmetic.type === 'FRAME' ||
+      cosmetic.type === 'THEME' ||
+      cosmetic.type === 'ENTRANCE_EFFECT'
+    ) {
       const res = await this.grantCosmeticToUser({
         userId: input.userId,
         cosmeticId: cosmetic.id,
@@ -429,10 +439,7 @@ export class CosmeticsService implements ICosmeticsService {
       where: {
         userId,
         cosmetic: type ? { type } : undefined,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gt: now } },
-        ],
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       include: {
         cosmetic: true,

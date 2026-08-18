@@ -155,6 +155,17 @@ describe('ProfileService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
       },
+      userCosmetic: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        // Non-zero: the caller already owns the default-frame row, so the
+        // resolver skips the grant branch and goes straight to the lookup.
+        count: jest.fn().mockResolvedValue(1),
+        create: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
+      },
     };
     const config = { get: () => CFG } as unknown as ConfigService;
     service = new ProfileService(
@@ -225,30 +236,56 @@ describe('ProfileService', () => {
 
     it('suppresses the profile frame for a hidden staff account', async () => {
       const usersPrisma = (users as any).prisma;
+      usersPrisma.userCosmetic.findFirst.mockResolvedValue({
+        id: 'uc-1',
+        cosmeticId: 'cosmetic-1',
+        expiresAt: null,
+        cosmetic: { type: 'FRAME', mediaUrl: 'frame.png' },
+      });
+      media.resolve.mockImplementation(async (key) => key ?? null);
       users.findById.mockResolvedValue(makeUser({ isHiddenAccount: true }));
 
       const view = await service.getProfileView('u1');
 
+      // The frame is still resolved into the cache snapshot; the hidden-account
+      // check drops it while the view is assembled, so none is ever exposed.
       expect(view?.equippedFrameUrl).toBeNull();
-      expect(usersPrisma.backpackItem.findFirst).not.toHaveBeenCalled();
     });
 
     it('still attempts to resolve the profile frame for an ordinary account', async () => {
       const usersPrisma = (users as any).prisma;
-      usersPrisma.backpackItem.findFirst.mockResolvedValue({
-        refId: 'cosmetic-1',
-        metadata: null,
+      usersPrisma.userCosmetic.findFirst.mockResolvedValue({
+        id: 'uc-1',
+        cosmeticId: 'cosmetic-1',
+        expiresAt: null,
+        cosmetic: { type: 'FRAME', mediaUrl: 'frame.png' },
       });
-      usersPrisma.cosmetic.findUnique.mockResolvedValue({ mediaUrl: 'frame.png' });
       media.resolve.mockImplementation(async (key) => key ?? null);
       users.findById.mockResolvedValue(makeUser({ isHiddenAccount: false }));
 
       const view = await service.getProfileView('u1');
 
       expect(view?.equippedFrameUrl).toBe('frame.png');
-      expect(usersPrisma.backpackItem.findFirst).toHaveBeenCalledWith({
-        where: { userId: 'u1', type: 'FRAME', equipped: true },
-      });
+      expect(usersPrisma.userCosmetic.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'u1',
+            equipped: true,
+            cosmetic: { type: 'FRAME' },
+          }),
+        }),
+      );
+    });
+
+    it('falls back to the default pink frame when nothing is equipped', async () => {
+      const usersPrisma = (users as any).prisma;
+      usersPrisma.userCosmetic.findFirst.mockResolvedValue(null);
+      media.resolve.mockImplementation(async (key) => key ?? null);
+      users.findById.mockResolvedValue(makeUser({ isHiddenAccount: false }));
+
+      const view = await service.getProfileView('u1');
+
+      expect(view?.equippedFrameUrl).toBe('default_pink_frame');
     });
   });
 
@@ -421,6 +458,20 @@ describe('ProfileService', () => {
           { id: 'u1', username: 'rahul_92', fullName: 'Rahul' },
           { id: 'u2', username: 'priya', fullName: null },
         ]),
+        // The frame resolver reads this handle. Give it one so the fallback
+        // below is the resolver's real "nothing equipped" path rather than its
+        // catch-all for a missing prisma client.
+        prisma: {
+          cosmetic: { upsert: jest.fn().mockResolvedValue({}) },
+          userCosmetic: {
+            findMany: jest.fn().mockResolvedValue([]),
+            findFirst: jest.fn().mockResolvedValue(null),
+            count: jest.fn().mockResolvedValue(1),
+            create: jest.fn().mockResolvedValue({}),
+            upsert: jest.fn().mockResolvedValue({}),
+            delete: jest.fn().mockResolvedValue({}),
+          },
+        },
       };
       const profiles = {
         profilesByIds: jest.fn().mockResolvedValue([{ userId: 'u1', avatarKey: 'avatars/u1.jpg' }]),
@@ -445,7 +496,7 @@ describe('ProfileService', () => {
         level: 24,
         vipLevel: 3,
         verified: true,
-        equippedFrameUrl: null,
+        equippedFrameUrl: 'https://cdn/default_pink_frame',
       });
     });
 

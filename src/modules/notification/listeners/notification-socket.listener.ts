@@ -72,7 +72,12 @@ export class NotificationSocketListener implements OnModuleInit {
       const { userId } = e.payload;
       this.toUser(userId, 'backpack.item.equipped', e.payload);
       this.toUser(userId, 'user.profile_updated', { userId });
-      this.sockets.emitToNamespaceRoom('/chat', `${USER_ROOM_PREFIX}${userId}`, 'user.profile_updated', { userId });
+      this.sockets.emitToNamespaceRoom(
+        '/chat',
+        `${USER_ROOM_PREFIX}${userId}`,
+        'user.profile_updated',
+        { userId },
+      );
 
       try {
         const rooms = await this.sockets.getUserRooms(userId);
@@ -88,7 +93,7 @@ export class NotificationSocketListener implements OnModuleInit {
             changed: ['frame'],
           });
         }
-      } catch (err) {
+      } catch {
         // Ignored defensively
       }
     });
@@ -97,7 +102,12 @@ export class NotificationSocketListener implements OnModuleInit {
       const { userId } = e.payload;
       this.toUser(userId, 'backpack.item.unequipped', e.payload);
       this.toUser(userId, 'user.profile_updated', { userId });
-      this.sockets.emitToNamespaceRoom('/chat', `${USER_ROOM_PREFIX}${userId}`, 'user.profile_updated', { userId });
+      this.sockets.emitToNamespaceRoom(
+        '/chat',
+        `${USER_ROOM_PREFIX}${userId}`,
+        'user.profile_updated',
+        { userId },
+      );
 
       try {
         const rooms = await this.sockets.getUserRooms(userId);
@@ -113,7 +123,7 @@ export class NotificationSocketListener implements OnModuleInit {
             changed: ['frame'],
           });
         }
-      } catch (err) {
+      } catch {
         // Ignored defensively
       }
     });

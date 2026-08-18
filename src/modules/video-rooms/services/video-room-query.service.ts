@@ -107,11 +107,6 @@ export class VideoRoomQueryService {
 
   /** "Trending" — hydrate the global trending zset (highest first). */
 
-
-
-
-
-
   async trending(limit: number): Promise<VideoRoomView[]> {
     const ids = await this.repo.trendingTopIds(limit);
     if (ids.length === 0) return [];
@@ -123,20 +118,22 @@ export class VideoRoomQueryService {
     const sums = await prisma.giftTransaction.groupBy({
       by: ['contextId'],
       _sum: { totalCoinValue: true },
-      where: { contextId: { in: ids } }
+      where: { contextId: { in: ids } },
     });
     const sumMap = new Map<string, number>(
-      sums.map((s: any) => [s.contextId, Number(s._sum.totalCoinValue || 0)])
+      sums.map((s: any) => [s.contextId, Number(s._sum.totalCoinValue || 0)]),
     );
     const ownerIds = rooms.map((r) => r.ownerId);
     const owners = await prisma.user.findMany({
       where: { id: { in: ownerIds } },
-      select: { id: true, username: true, fullName: true }
+      select: { id: true, username: true, fullName: true },
     });
     const ownerMap = new Map<string, string>(
-      owners.map((o: any) => [o.id, o.fullName || o.username])
+      owners.map((o: any) => [o.id, o.fullName || o.username]),
     );
-    return rooms.map((room) => toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)));
+    return rooms.map((room) =>
+      toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)),
+    );
   }
 
   /** The caller's own rooms (any status, non-deleted). */
@@ -150,20 +147,22 @@ export class VideoRoomQueryService {
     const sums = await prisma.giftTransaction.groupBy({
       by: ['contextId'],
       _sum: { totalCoinValue: true },
-      where: { contextId: { in: ids } }
+      where: { contextId: { in: ids } },
     });
     const sumMap = new Map<string, number>(
-      sums.map((s: any) => [s.contextId, Number(s._sum.totalCoinValue || 0)])
+      sums.map((s: any) => [s.contextId, Number(s._sum.totalCoinValue || 0)]),
     );
     const ownerIds = rooms.map((r) => r.ownerId);
     const owners = await prisma.user.findMany({
       where: { id: { in: ownerIds } },
-      select: { id: true, username: true, fullName: true }
+      select: { id: true, username: true, fullName: true },
     });
     const ownerMap = new Map<string, string>(
-      owners.map((o: any) => [o.id, o.fullName || o.username])
+      owners.map((o: any) => [o.id, o.fullName || o.username]),
     );
-    return rooms.map((room) => toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)));
+    return rooms.map((room) =>
+      toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)),
+    );
   }
 
   private async paginateViews(
@@ -181,20 +180,22 @@ export class VideoRoomQueryService {
     const sums = await prisma.giftTransaction.groupBy({
       by: ['contextId'],
       _sum: { totalCoinValue: true },
-      where: { contextId: { in: roomIds } }
+      where: { contextId: { in: roomIds } },
     });
     const sumMap = new Map<string, number>(
-      sums.map((s: any) => [s.contextId, Number(s._sum.totalCoinValue || 0)])
+      sums.map((s: any) => [s.contextId, Number(s._sum.totalCoinValue || 0)]),
     );
     const ownerIds = rooms.map((r) => r.ownerId);
     const owners = await prisma.user.findMany({
       where: { id: { in: ownerIds } },
-      select: { id: true, username: true, fullName: true }
+      select: { id: true, username: true, fullName: true },
     });
     const ownerMap = new Map<string, string>(
-      owners.map((o: any) => [o.id, o.fullName || o.username])
+      owners.map((o: any) => [o.id, o.fullName || o.username]),
     );
-    const mapped = rooms.map((room) => toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)));
+    const mapped = rooms.map((room) =>
+      toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)),
+    );
     return buildPaginated(mapped, total, page, limit);
   }
 

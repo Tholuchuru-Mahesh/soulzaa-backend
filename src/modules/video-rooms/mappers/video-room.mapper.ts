@@ -6,7 +6,11 @@ import type { VideoRoomView } from '../entities/video-room.view';
  * columns (passwordHash, audit, soft-delete). One place owns the projection so
  * a new sensitive column cannot leak by being spread into a response.
  */
-export function toVideoRoomView(room: VideoRoom, giftCoins?: number, ownerName?: string): VideoRoomView {
+export function toVideoRoomView(
+  room: VideoRoom,
+  giftCoins?: number,
+  ownerName?: string,
+): VideoRoomView {
   return {
     id: room.id,
     ownerId: room.ownerId,

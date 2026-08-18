@@ -29,7 +29,6 @@ import { walletLockKey } from 'src/modules/wallet/constants/wallet.constants';
 import type { GiftHistoryDto, SendGiftDto } from '../dto/gift.dto';
 import { GiftComboEvent, GiftLuckyWinEvent, GiftSentEvent } from '../events/gift.events';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
-import { BackpackItemEquippedEvent } from 'src/modules/backpack/events/backpack.events';
 import type { GiftContextRequest } from '../interfaces/gift-context-handler.interface';
 import { GiftRepository } from '../repositories/gift.repository';
 import { GiftCatalogService } from './gift-catalog.service';
@@ -433,7 +432,7 @@ export class GiftService {
 
           if (gift.type === GiftType.PROFILE_FRAME) {
             let cosmetic = await tx.cosmetic.findFirst({
-              where: { type: 'FRAME', name: gift.name }
+              where: { type: 'FRAME', name: gift.name },
             });
             if (!cosmetic) {
               cosmetic = await tx.cosmetic.create({
@@ -444,8 +443,8 @@ export class GiftService {
                   thumbnailUrl: gift.thumbnailUrl,
                   price: gift.coinValue,
                   enabled: true,
-                  isPremium: true
-                }
+                  isPremium: true,
+                },
               });
             }
 
@@ -462,21 +461,22 @@ export class GiftService {
             }
 
             const existing = await tx.userCosmetic.findUnique({
-              where: { userId_cosmeticId: { userId: receiverId, cosmeticId: cosmetic.id } }
+              where: { userId_cosmeticId: { userId: receiverId, cosmeticId: cosmetic.id } },
             });
 
             if (existing) {
               if (expiresAt) {
                 if (existing.expiresAt) {
-                  const baseTime = existing.expiresAt.getTime() > Date.now()
-                    ? existing.expiresAt.getTime()
-                    : Date.now();
+                  const baseTime =
+                    existing.expiresAt.getTime() > Date.now()
+                      ? existing.expiresAt.getTime()
+                      : Date.now();
                   const newExpires = new Date(baseTime + (expiresAt.getTime() - Date.now()));
                   await tx.userCosmetic.update({
                     where: { id: existing.id },
                     data: {
-                      expiresAt: newExpires
-                    }
+                      expiresAt: newExpires,
+                    },
                   });
                 }
               } else {
@@ -484,8 +484,8 @@ export class GiftService {
                 await tx.userCosmetic.update({
                   where: { id: existing.id },
                   data: {
-                    expiresAt: null
-                  }
+                    expiresAt: null,
+                  },
                 });
               }
             } else {
@@ -494,8 +494,8 @@ export class GiftService {
                   userId: receiverId,
                   cosmeticId: cosmetic.id,
                   equipped: false,
-                  expiresAt
-                }
+                  expiresAt,
+                },
               });
             }
           }

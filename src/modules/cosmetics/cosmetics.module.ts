@@ -19,7 +19,12 @@ import { CosmeticsService } from './services/cosmetics.service';
  */
 @Global()
 @Module({
-  controllers: [CosmeticsController, CosmeticsAdminController, CosmeticsStoreController, UserCosmeticsController],
+  controllers: [
+    CosmeticsController,
+    CosmeticsAdminController,
+    CosmeticsStoreController,
+    UserCosmeticsController,
+  ],
   providers: [
     CosmeticsRepository,
     CosmeticsService,

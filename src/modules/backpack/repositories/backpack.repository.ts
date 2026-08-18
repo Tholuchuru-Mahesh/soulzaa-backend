@@ -116,11 +116,7 @@ export class BackpackRepository {
         ? { type: filter.type }
         : {
             type: {
-              notIn: [
-                'FRAME',
-                'THEME',
-                'ENTRANCE_EFFECT',
-              ] as BackpackItemType[],
+              notIn: ['FRAME', 'THEME', 'ENTRANCE_EFFECT'] as BackpackItemType[],
             },
           }),
       ...(filter.equipped !== undefined ? { equipped: filter.equipped } : {}),

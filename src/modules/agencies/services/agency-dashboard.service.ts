@@ -62,16 +62,12 @@ export class AgencyDashboardService {
         displayName: me?.displayName ?? null,
         avatarUrl: me?.avatarUrl ?? null,
       },
-<<<<<<< Updated upstream
-      // Use available coin seller inventory balance for the agency wallet.
-=======
       // The agency wallet is the coin inventory this agency bought from the
       // platform to resell — NOT the owner's personal wallet. Those are
       // separate pots: the personal one is the balance the home screen shows,
       // and surfacing it here made the dashboard claim coins the agency does
       // not hold. `0` (not null) because an agency with no inventory row
       // genuinely has nothing to sell.
->>>>>>> Stashed changes
       wallet: { coins: inventory?.availableBalance.toString() ?? '0' },
       coinSeller: {
         active: isCoinSeller,

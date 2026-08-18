@@ -175,28 +175,24 @@ export class TransactionQueryService {
       }),
       this.prisma.withdrawalRequest.findMany({
         where: {
-          OR: [
-            { payoutTxnId: { in: txIds } },
-            { holdTxnId: { in: txIds } },
-          ],
+          OR: [{ payoutTxnId: { in: txIds } }, { holdTxnId: { in: txIds } }],
         },
       }),
       this.prisma.giftTransaction.findMany({
         where: {
-          OR: [
-            { senderWalletTxnId: { in: txIds } },
-            { receiverWalletTxnId: { in: txIds } },
-          ],
+          OR: [{ senderWalletTxnId: { in: txIds } }, { receiverWalletTxnId: { in: txIds } }],
         },
       }),
     ]);
 
     // Query gifts and user profiles in memory to bypass missing schema relations
     const giftIds = [...new Set(giftTransactions.map((gt) => gt.giftId))];
-    const userIds = [...new Set([
-      ...giftTransactions.map((gt) => gt.senderId),
-      ...giftTransactions.map((gt) => gt.receiverId),
-    ])];
+    const userIds = [
+      ...new Set([
+        ...giftTransactions.map((gt) => gt.senderId),
+        ...giftTransactions.map((gt) => gt.receiverId),
+      ]),
+    ];
 
     const [gifts, users] = await Promise.all([
       this.prisma.gift.findMany({ where: { id: { in: giftIds } } }),
@@ -206,7 +202,11 @@ export class TransactionQueryService {
     const giftMap = new Map(gifts.map((g) => [g.id, g]));
     const userMap = new Map(users.map((u) => [u.id, u]));
 
-    const poMap = new Map(purchaseOrders.filter((po) => po.walletTransactionId).map((po) => [po.walletTransactionId!, po]));
+    const poMap = new Map(
+      purchaseOrders
+        .filter((po) => po.walletTransactionId)
+        .map((po) => [po.walletTransactionId!, po]),
+    );
     const wrMap = new Map();
     for (const wr of withdrawalRequests) {
       if (wr.payoutTxnId) wrMap.set(wr.payoutTxnId, wr);

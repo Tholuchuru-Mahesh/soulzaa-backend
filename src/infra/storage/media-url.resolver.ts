@@ -76,7 +76,11 @@ export class MediaUrlResolver {
       cleanKey = queryIndex !== -1 ? fullPath.substring(0, queryIndex) : fullPath;
     }
 
-    if (cleanKey.startsWith('http://') || cleanKey.startsWith('https://') || cleanKey.startsWith('data:')) {
+    if (
+      cleanKey.startsWith('http://') ||
+      cleanKey.startsWith('https://') ||
+      cleanKey.startsWith('data:')
+    ) {
       return cleanKey;
     }
     if (this.publicBase && this.isPubliclyServable(cleanKey)) {

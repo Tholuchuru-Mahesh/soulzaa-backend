@@ -21,7 +21,10 @@ import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { STORAGE_CATEGORIES } from 'src/infra/storage/storage.constants';
 import { UploadService } from 'src/infra/storage/upload.service';
-import { BACKPACK_EVENTS, BackpackItemEquippedEvent } from 'src/modules/backpack/events/backpack.events';
+import {
+  BACKPACK_EVENTS,
+  BackpackItemEquippedEvent,
+} from 'src/modules/backpack/events/backpack.events';
 import {
   PRIVACY_SERVICE,
   PrivacyAction,
@@ -655,8 +658,9 @@ export class ProfileService implements IProfileService {
     };
   }
 
-
-  private async resolveEquippedFrame(userId: string): Promise<{ url: string | null; expiresAt: Date | null }> {
+  private async resolveEquippedFrame(
+    userId: string,
+  ): Promise<{ url: string | null; expiresAt: Date | null }> {
     try {
       const cosmeticId = '00000000-0000-0000-0000-000000000001';
       const prisma = this.users['prisma'];
@@ -691,10 +695,7 @@ export class ProfileService implements IProfileService {
             userId,
             equipped: true,
             cosmetic: { type: 'FRAME' },
-            OR: [
-              { expiresAt: null },
-              { expiresAt: { gt: now } },
-            ],
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
           },
         });
 
@@ -706,10 +707,7 @@ export class ProfileService implements IProfileService {
                 type: 'FRAME',
                 id: { not: cosmeticId },
               },
-              OR: [
-                { expiresAt: null },
-                { expiresAt: { gt: now } },
-              ],
+              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
             },
             orderBy: {
               updatedAt: 'desc',
@@ -790,10 +788,7 @@ export class ProfileService implements IProfileService {
             cosmetic: {
               type: 'FRAME',
             },
-            OR: [
-              { expiresAt: null },
-              { expiresAt: { gt: now } },
-            ],
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
           },
         });
         await prisma.userCosmetic.create({
@@ -812,10 +807,7 @@ export class ProfileService implements IProfileService {
           cosmetic: {
             type: 'FRAME',
           },
-          OR: [
-            { expiresAt: null },
-            { expiresAt: { gt: now } },
-          ],
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
         },
         include: {
           cosmetic: true,
@@ -839,7 +831,7 @@ export class ProfileService implements IProfileService {
       }
       const url = await this.media.resolve(mediaUrl || 'default_pink_frame');
       return { url, expiresAt: item.expiresAt || null };
-    } catch (_) {
+    } catch {
       const defaultPinkUrl = await this.media.resolve('default_pink_frame').catch(() => null);
       return { url: defaultPinkUrl, expiresAt: null };
     }
@@ -859,9 +851,8 @@ export class ProfileService implements IProfileService {
 
     // Task 35 / Moderator anonymity: hidden staff accounts get no profile frame.
     let equippedFrameUrl: string | null = isHidden ? null : (snap.equippedFrameKey ?? null);
-    let equippedFrameExpiresAt = isHidden || !snap.equippedFrameExpiresAt
-      ? null
-      : new Date(snap.equippedFrameExpiresAt);
+    let equippedFrameExpiresAt =
+      isHidden || !snap.equippedFrameExpiresAt ? null : new Date(snap.equippedFrameExpiresAt);
 
     if (!isHidden && equippedFrameExpiresAt && equippedFrameExpiresAt.getTime() <= Date.now()) {
       equippedFrameUrl = await this.media.resolve('default_pink_frame');

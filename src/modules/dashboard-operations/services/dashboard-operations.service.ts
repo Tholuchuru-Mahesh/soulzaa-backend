@@ -29,7 +29,6 @@ export class DashboardOperationsService {
       this.prisma.family.count(),
     ]);
 
-
     // Distinct users, since one person may hold several sessions. Exclude staff/admin/moderation roles.
     const activeSessions = await this.prisma.userSession.findMany({
       where: { lastActivityAt: { gte: dayAgo } },
@@ -37,7 +36,6 @@ export class DashboardOperationsService {
       distinct: ['userId'],
     });
     const activeUserIds = activeSessions.map((s) => s.userId);
-
 
     const staffUserRoles = await this.prisma.userRole.findMany({
       where: {

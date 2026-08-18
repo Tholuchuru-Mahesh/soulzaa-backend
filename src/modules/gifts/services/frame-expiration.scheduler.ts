@@ -43,10 +43,7 @@ export class FrameExpirationScheduler {
               userId: item.userId,
               equipped: true,
               cosmetic: { type: 'FRAME' },
-              OR: [
-                { expiresAt: null },
-                { expiresAt: { gt: now } },
-              ],
+              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
             },
           });
 
@@ -54,85 +51,85 @@ export class FrameExpirationScheduler {
             const backupFrame = await this.prisma.userCosmetic.findFirst({
               where: {
                 userId: item.userId,
-              cosmetic: {
-                type: 'FRAME',
-                id: { not: defaultCosmeticId },
+                cosmetic: {
+                  type: 'FRAME',
+                  id: { not: defaultCosmeticId },
+                },
+                OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
               },
-              OR: [
-                { expiresAt: null },
-                { expiresAt: { gt: now } },
-              ],
-            },
-            orderBy: {
-              updatedAt: 'desc',
-            },
-          });
-
-          if (backupFrame) {
-            await this.prisma.userCosmetic.update({
-              where: { id: backupFrame.id },
-              data: { equipped: true },
-            });
-
-            await this.bus.publish(
-              new BackpackItemEquippedEvent({
-                userId: item.userId,
-                itemId: backupFrame.cosmeticId,
-                type: 'FRAME' as any,
-              }),
-            );
-            await this.bus.publish(
-              new UserProfileUpdatedEvent({
-                userId: item.userId,
-                username: '',
-                changed: ['frame'],
-              }),
-            );
-            this.logger.debug(`Reverted frame for user ${item.userId} to backup frame ${backupFrame.cosmeticId}.`);
-          } else {
-            await this.prisma.cosmetic.upsert({
-              where: { id: defaultCosmeticId },
-              create: {
-                id: defaultCosmeticId,
-                type: 'FRAME',
-                name: 'Default Pink Frame',
-                mediaUrl: 'default_pink_frame',
-                thumbnailUrl: 'default_pink_frame',
-                rarity: 'COMMON',
-                enabled: true,
-                price: 0,
-                isPremium: false,
+              orderBy: {
+                updatedAt: 'desc',
               },
-              update: {},
-            });
-            await this.prisma.userCosmetic.upsert({
-              where: { userId_cosmeticId: { userId: item.userId, cosmeticId: defaultCosmeticId } },
-              create: { userId: item.userId, cosmeticId: defaultCosmeticId, equipped: true },
-              update: { equipped: true },
             });
 
-            await this.bus.publish(
-              new BackpackItemEquippedEvent({
-                userId: item.userId,
-                itemId: defaultCosmeticId,
-                type: 'FRAME' as any,
-              }),
-            );
-            await this.bus.publish(
-              new UserProfileUpdatedEvent({
-                userId: item.userId,
-                username: '',
-                changed: ['frame'],
-              }),
-            );
-            this.logger.debug(`Reverted frame for user ${item.userId} to default pink frame.`);
+            if (backupFrame) {
+              await this.prisma.userCosmetic.update({
+                where: { id: backupFrame.id },
+                data: { equipped: true },
+              });
+
+              await this.bus.publish(
+                new BackpackItemEquippedEvent({
+                  userId: item.userId,
+                  itemId: backupFrame.cosmeticId,
+                  type: 'FRAME' as any,
+                }),
+              );
+              await this.bus.publish(
+                new UserProfileUpdatedEvent({
+                  userId: item.userId,
+                  username: '',
+                  changed: ['frame'],
+                }),
+              );
+              this.logger.debug(
+                `Reverted frame for user ${item.userId} to backup frame ${backupFrame.cosmeticId}.`,
+              );
+            } else {
+              await this.prisma.cosmetic.upsert({
+                where: { id: defaultCosmeticId },
+                create: {
+                  id: defaultCosmeticId,
+                  type: 'FRAME',
+                  name: 'Default Pink Frame',
+                  mediaUrl: 'default_pink_frame',
+                  thumbnailUrl: 'default_pink_frame',
+                  rarity: 'COMMON',
+                  enabled: true,
+                  price: 0,
+                  isPremium: false,
+                },
+                update: {},
+              });
+              await this.prisma.userCosmetic.upsert({
+                where: {
+                  userId_cosmeticId: { userId: item.userId, cosmeticId: defaultCosmeticId },
+                },
+                create: { userId: item.userId, cosmeticId: defaultCosmeticId, equipped: true },
+                update: { equipped: true },
+              });
+
+              await this.bus.publish(
+                new BackpackItemEquippedEvent({
+                  userId: item.userId,
+                  itemId: defaultCosmeticId,
+                  type: 'FRAME' as any,
+                }),
+              );
+              await this.bus.publish(
+                new UserProfileUpdatedEvent({
+                  userId: item.userId,
+                  username: '',
+                  changed: ['frame'],
+                }),
+              );
+              this.logger.debug(`Reverted frame for user ${item.userId} to default pink frame.`);
+            }
           }
         }
       }
+    } catch (err) {
+      this.logger.error(`Error in frame expiration scheduler: ${(err as Error).message}`);
     }
-  } catch (err) {
-    this.logger.error(`Error in frame expiration scheduler: ${(err as Error).message}`);
   }
 }
-}
-
