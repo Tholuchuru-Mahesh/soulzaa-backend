@@ -2,9 +2,10 @@ packages:
   - '.'
 
 # Security overrides for transitive dependencies flagged by Trivy (CI security-scan).
-# Each is a patch/minor bump within the same major, so the parent package's range
-# still resolves — no API break. Remove an entry once the parent ships a version
-# that already depends on a fixed release.
+# Most are a patch/minor bump within the same major, so the parent package's range
+# still resolves — no API break. Where a major bump is unavoidable, the entry states
+# which APIs the parent actually uses and why they are unchanged. Remove an entry
+# once the parent ships a version that already depends on a fixed release.
 overrides:
   # CVE-2026-5079 (DoS via deeply nested multipart field names).
   # Parent: @nestjs/platform-express@11 — depends on multer@^2, so 2.2.0 satisfies it.
@@ -20,6 +21,15 @@ overrides:
   "js-yaml@^4.0.0": '4.3.1'
   # CVE-2026-69185 (Denial of Service via memory exhaustion from crafted packets)
   socket.io-parser: '^4.2.7'
+  # CVE-2026-40345 (stack exhaustion merging recursive object graphs).
+  # Parent: @prisma/config, reached via the `prisma` CLI in dependencies (the
+  # Dockerfile runs `prisma migrate deploy` at container start, so it cannot move
+  # to devDependencies). Unlike the entries above this is a MAJOR bump: 6.19.3 is
+  # the last 6.x release and @prisma/config still pins deepmerge-ts 7.1.5 even on
+  # prisma 7.9.1, so no upgrade clears it. Safe because @prisma/config imports a
+  # single named export — `const { deepmerge } = await import('deepmerge-ts')`,
+  # handed to c12 as its `merger` — and `deepmerge` keeps its signature in 8.x.
+  deepmerge-ts: '^8.0.0'
   # NOTE: brace-expansion (CVE-2026-13149, CVE-2026-14257) is deliberately NOT
   # overridden. CVE-2026-14257 affects everything through 5.0.7, so 5.0.8 is the
   # only fix — but forcing it breaks minimatch@3.1.5, which does
