@@ -201,7 +201,10 @@ export class RoomCasinoWindowService {
    */
   async getWindow(roomId: string, actorId: string): Promise<unknown> {
     await this.authz.assertCanWatch(roomId, actorId);
-    const session = await this.requireWindow(roomId);
+    const session = await this.findActiveWindow(roomId);
+    if (!session) {
+      return null;
+    }
     const game = session.code as unknown as CasinoGame;
     const state = this.loop.getState(game);
     const roundId = state?.roundId ?? null;
@@ -237,17 +240,20 @@ export class RoomCasinoWindowService {
   async onOwnerChanged(roomId: string, newOwnerId: string): Promise<void> {
     const session = await this.games.findActiveSessionForRoom(roomId);
     if (!session || !CASINO_WINDOW_CODES.has(session.code)) return;
+    if (session.hostId === newOwnerId) return;
     await this.games.updateSessionHost(session.id, newOwnerId);
+    this.logger.log(
+      `Re-pointed active casino window ${session.id} (room ${roomId}) host to new owner ${newOwnerId}`,
+    );
   }
 
   /**
    * Orphan-window safety net: closes every ACTIVE casino window whose audio
-   * room is no longer live (room ended/deleted without the DELETED/ENDED event
+   * room has ended (a room-ended event dropped, an uncaught error before
    * reaching us, or a crash between window-create and room-end). A window
-   * carries no stake, so closing is just marking the `GameSession` COMPLETED.
-   * Runs on a low-frequency Redis-locked sweep (`RoomCasinoWindowMonitor`) and
+   * carries no refund logic, so we only need to mark it COMPLETED. Invoked
    * on bootstrap. Returns how many windows were closed; a window that raced to
-   * an already-closed state is logged and skipped, not fatal.
+   * close concurrently is handled gracefully.
    */
   async sweepOrphanWindows(): Promise<number> {
     const windows = await this.games.listActiveRoomWindows();
@@ -257,7 +263,7 @@ export class RoomCasinoWindowService {
       if (await this.rooms.isRoomLive(window.roomId)) continue;
       try {
         await this.closeWindow(window.roomId, null);
-        closed += 1;
+        closed++;
       } catch (err) {
         this.logger.warn(
           `Orphan casino window ${window.id} (room ${window.roomId}) sweep failed: ${(err as Error).message}`,
@@ -267,10 +273,19 @@ export class RoomCasinoWindowService {
     return closed;
   }
 
-  /** The room's current active casino window, or NOT_FOUND when none / a board game is running. */
-  private async requireWindow(roomId: string): Promise<GameSession> {
+  /** The room's current active casino window, or null when none / a board game is running. */
+  private async findActiveWindow(roomId: string): Promise<GameSession | null> {
     const session = await this.games.findActiveSessionForRoom(roomId);
     if (!session || !CASINO_WINDOW_CODES.has(session.code)) {
+      return null;
+    }
+    return session;
+  }
+
+  /** The room's current active casino window, or NOT_FOUND when none / a board game is running. */
+  private async requireWindow(roomId: string): Promise<GameSession> {
+    const session = await this.findActiveWindow(roomId);
+    if (!session) {
       throw new BusinessException(
         ERROR_CODES.GAME_SESSION_NOT_FOUND,
         'No Gold Coin game is running in this room.',

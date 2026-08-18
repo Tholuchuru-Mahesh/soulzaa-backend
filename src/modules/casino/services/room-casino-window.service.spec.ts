@@ -309,12 +309,11 @@ describe('RoomCasinoWindowService — getWindow', () => {
     });
   });
 
-  it('returns NOT_FOUND when no casino window is active in the room', async () => {
+  it('returns null when no casino window is active in the room', async () => {
     const { svc, games } = makeService();
     games.findActiveSessionForRoom.mockResolvedValue(null);
-    await expect(svc.getWindow(ROOM, OWNER)).rejects.toMatchObject({
-      errorCode: ERROR_CODES.GAME_SESSION_NOT_FOUND,
-    });
+    const result = await svc.getWindow(ROOM, OWNER);
+    expect(result).toBeNull();
   });
 });
 
