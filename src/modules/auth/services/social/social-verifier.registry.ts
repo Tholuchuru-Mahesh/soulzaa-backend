@@ -2,8 +2,10 @@ import { Injectable } from '@nestjs/common';
 import type {
   ISocialIdentityVerifier,
   SocialIdentity,
+  SocialProvider,
 } from '../../interfaces/social-identity-verifier.interface';
 import { AppleVerifier } from './apple.verifier';
+import { FacebookVerifier } from './facebook.verifier';
 import { GoogleVerifier } from './google.verifier';
 
 /**
@@ -16,9 +18,18 @@ export class SocialVerifierRegistry implements ISocialIdentityVerifier {
   constructor(
     private readonly google: GoogleVerifier,
     private readonly apple: AppleVerifier,
+    private readonly facebook: FacebookVerifier,
   ) {}
 
-  verify(provider: 'GOOGLE' | 'APPLE', idToken: string): Promise<SocialIdentity> {
-    return provider === 'GOOGLE' ? this.google.verify(idToken) : this.apple.verify(idToken);
+  verify(provider: SocialProvider, credential: string): Promise<SocialIdentity> {
+    switch (provider) {
+      case 'GOOGLE':
+        return this.google.verify(credential);
+      case 'APPLE':
+        return this.apple.verify(credential);
+      case 'FACEBOOK':
+        // An access token, not an ID token — see FacebookVerifier.
+        return this.facebook.verify(credential);
+    }
   }
 }

@@ -15,6 +15,15 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+# Every real env file, not just the local ones. `.env.production` is what
+# docker-compose.prod.yml feeds the container on EC2 and holds live secrets;
+# it was previously un-ignored, so a stray `git add .` would have committed it.
+.env.production
+.env.staging
+.env.qa
+.env.development
+# The tracked template stays tracked — it carries key names, never values.
+!.env.example
 
 
 # OS / IDE

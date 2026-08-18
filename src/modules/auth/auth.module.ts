@@ -7,6 +7,7 @@ import { AuthService } from './services/auth.service';
 import { LoginSecurityService } from './services/login-security.service';
 import { FirebaseService } from './services/firebase.service';
 import { AppleVerifier } from './services/social/apple.verifier';
+import { FacebookVerifier } from './services/social/facebook.verifier';
 import { GoogleVerifier } from './services/social/google.verifier';
 import { SocialVerifierRegistry } from './services/social/social-verifier.registry';
 
@@ -39,6 +40,7 @@ import { DeviceModule } from 'src/modules/device/device.module';
     LoginSecurityService,
     FirebaseService,
     GoogleVerifier,
+    FacebookVerifier,
     AppleVerifier,
     SocialVerifierRegistry,
     { provide: AUTH_SERVICE, useExisting: AuthService },

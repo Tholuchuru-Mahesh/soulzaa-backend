@@ -47,4 +47,5 @@ enum AuthProviderType {
   MOBILE_OTP
   GOOGLE
   APPLE
+  FACEBOOK
 }

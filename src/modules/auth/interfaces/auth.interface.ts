@@ -1,3 +1,4 @@
+import type { SocialProvider } from './social-identity-verifier.interface';
 import type { UserIdentity } from 'src/modules/users/interfaces/users.service.interface';
 import type {
   AuthTokens,
@@ -74,7 +75,12 @@ export interface MobileOtpLoginCommand {
 }
 
 export interface SocialLoginCommand {
-  provider: 'GOOGLE' | 'APPLE';
+  provider: SocialProvider;
+  /**
+   * The provider credential. An ID token for Google/Apple, an access token for
+   * Facebook — see [ISocialIdentityVerifier]. Named `idToken` to match the
+   * wire field shipped clients already send.
+   */
   idToken: string;
 }
 

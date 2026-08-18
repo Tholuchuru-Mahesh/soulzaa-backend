@@ -231,6 +231,10 @@ export const socialConfig = registerAs('social', () => ({
   googleClientIds: parseCsv(env().GOOGLE_CLIENT_IDS),
   appleClientIds: parseCsv(env().APPLE_CLIENT_IDS),
   appleIssuer: env().APPLE_ISSUER,
+  facebookAppId: env().FACEBOOK_APP_ID,
+  // Server-side only. Used to build the app-token for Graph `/debug_token`;
+  // it must never be shipped to a client.
+  facebookAppSecret: env().FACEBOOK_APP_SECRET,
 }));
 
 export const storageConfig = registerAs('storage', () => ({

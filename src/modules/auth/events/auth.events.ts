@@ -16,7 +16,7 @@ export const AUTH_EVENTS = {
   USER_MOBILE_VERIFIED: 'user.mobile_verified',
 } as const;
 
-export type AuthMethod = 'PASSWORD' | 'MOBILE_OTP' | 'GOOGLE' | 'APPLE';
+export type AuthMethod = 'PASSWORD' | 'MOBILE_OTP' | 'GOOGLE' | 'APPLE' | 'FACEBOOK';
 
 export class UserRegisteredEvent extends DomainEvent<{
   userId: string;

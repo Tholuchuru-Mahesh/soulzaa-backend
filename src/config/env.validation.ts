@@ -182,6 +182,8 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_IDS: z.string().optional(),
   APPLE_CLIENT_IDS: z.string().optional(),
   APPLE_ISSUER: z.string().default('https://appleid.apple.com'),
+  FACEBOOK_APP_ID: z.string().optional(),
+  FACEBOOK_APP_SECRET: z.string().optional(),
 
   // ---- AWS S3 (media storage) ----
   AWS_REGION: z.string().default('us-east-1'),

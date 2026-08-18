@@ -3,13 +3,22 @@ import { Type } from 'class-transformer';
 import { IsIn, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { DeviceInfoDto } from './device-info.dto';
 
-/** Google/Apple login — the client sends the provider ID token to verify. */
+/**
+ * Social login — the client sends the provider credential and the server
+ * verifies it. Google and Apple send an ID token (a JWT); Facebook sends an
+ * access token, which the server checks against the Graph API instead. The
+ * field keeps the name `idToken` because clients already send it under that
+ * key, and renaming it would break every shipped app build.
+ */
 export class SocialLoginDto {
-  @ApiProperty({ enum: ['GOOGLE', 'APPLE'] })
-  @IsIn(['GOOGLE', 'APPLE'])
-  provider!: 'GOOGLE' | 'APPLE';
+  @ApiProperty({ enum: ['GOOGLE', 'APPLE', 'FACEBOOK'] })
+  @IsIn(['GOOGLE', 'APPLE', 'FACEBOOK'])
+  provider!: 'GOOGLE' | 'APPLE' | 'FACEBOOK';
 
-  @ApiProperty({ description: 'Provider-issued ID token (JWT) to verify server-side' })
+  @ApiProperty({
+    description:
+      'Provider credential: an ID token (JWT) for Google/Apple, an access token for Facebook',
+  })
   @IsString()
   idToken!: string;
 
