@@ -1056,4 +1056,33 @@ describe('ModerationService', () => {
       );
     });
   });
+
+  /**
+   * The asymmetry this guards: `mute` runs through `assertModerationPrereqs`,
+   * which rank-checks the actor against the target. `unmute` and `unban` did
+   * not, so an Admin could lift a restriction they had no authority to apply —
+   * including one the Owner imposed on another Admin.
+   */
+  describe('lifting a restriction is rank-checked like applying one', () => {
+    it('rejects an unmute when the actor does not outrank the target', async () => {
+      permissions.assertOutranks.mockRejectedValue(new Error('INSUFFICIENT_AUTHORITY'));
+
+      await expect(service.unmute(MOD, 'r', 'admin-a')).rejects.toThrow('INSUFFICIENT_AUTHORITY');
+      expect(permissions.assertOutranks).toHaveBeenCalledWith('r', MOD, 'admin-a');
+    });
+
+    it('rejects an unban when the actor does not outrank the target', async () => {
+      permissions.assertOutranks.mockRejectedValue(new Error('INSUFFICIENT_AUTHORITY'));
+
+      await expect(service.unban(MOD, 'r', 'admin-a')).rejects.toThrow('INSUFFICIENT_AUTHORITY');
+      expect(permissions.assertOutranks).toHaveBeenCalledWith('r', MOD, 'admin-a');
+    });
+
+    it('checks authority before looking the mute up, so a lift never half-runs', async () => {
+      permissions.assertOutranks.mockRejectedValue(new Error('INSUFFICIENT_AUTHORITY'));
+
+      await expect(service.unmute(MOD, 'r', 'admin-a')).rejects.toThrow('INSUFFICIENT_AUTHORITY');
+      expect(repo.findActiveMute).not.toHaveBeenCalled();
+    });
+  });
 });

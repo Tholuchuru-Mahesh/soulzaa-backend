@@ -12,6 +12,7 @@ import type { RoomActor } from '../interfaces/room-actor.interface';
 
 const OWNER: RoomActor = { id: 'owner-1', roles: ['USER'] };
 const LISTENER: RoomActor = { id: 'listener-1', roles: ['USER'] };
+const ADMIN: RoomActor = { id: 'admin-1', roles: ['USER'] };
 
 function seat(overrides: Record<string, unknown> = {}) {
   return {
@@ -80,6 +81,7 @@ describe('AudioRoomSeatsService', () => {
       assertPermission: jest.fn().mockResolvedValue(undefined),
       hasPermission: jest.fn().mockResolvedValue(false),
       getEffectiveRole: jest.fn().mockResolvedValue('LISTENER'),
+      assertOutranks: jest.fn().mockResolvedValue(undefined),
     };
     locks = { withLock: jest.fn(<T>(_k: string, fn: () => Promise<T>) => fn()) as never };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
@@ -284,9 +286,12 @@ describe('AudioRoomSeatsService', () => {
         expect(seats.setOccupant).not.toHaveBeenCalled();
       });
 
-      // The relaxation is the owner's alone — it must not become a general
-      // "hop between seats" for speakers, who still leave before taking.
-      it('still blocks a seated non-owner from taking another seat', async () => {
+      // The relaxation reaches the owner and MANAGE_SEATS holders — it must not
+      // become a general "hop between seats" for speakers, who still leave
+      // before taking. This block grants the permission by default, so the
+      // ordinary member being described here has to give it back up.
+      it('still blocks a seated member with no seat permission from moving', async () => {
+        permissions.hasPermission.mockResolvedValue(false);
         seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3 }));
         seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 4 }));
 
@@ -537,6 +542,77 @@ describe('AudioRoomSeatsService', () => {
       await service.onRoomOpened('r', OWNER.id, false);
 
       expect(seats.setOccupant).toHaveBeenCalledWith('r', 0, OWNER.id, OWNER.id);
+    });
+  });
+
+  /**
+   * Seat-move freedom was written for the owner alone, so an admin who was
+   * already seated could not move — including into a seat they had just
+   * unlocked. Anyone trusted with MANAGE_SEATS gets the same freedom; the owner
+   * seat stays protected by the seat-type check that runs after.
+   */
+  describe('admin seat freedom', () => {
+    beforeEach(() => {
+      seats.getSettings.mockResolvedValue({
+        requireApprovalForSeat: false,
+        speakerSeatCount: 8,
+        premiumAdminSeatCount: 0,
+      });
+      // MANAGE_SEATS holder.
+      permissions.hasPermission.mockResolvedValue(true);
+    });
+
+    it('lets a seated admin move straight to another speaker seat', async () => {
+      seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3 }));
+      seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 5 }));
+
+      await service.takeSeat(ADMIN, 'r', 5);
+
+      expect(seats.setOccupant).toHaveBeenCalledWith('r', 3, null, ADMIN.id);
+      expect(seats.setOccupant).toHaveBeenCalledWith('r', 5, ADMIN.id, ADMIN.id);
+    });
+
+    it('still refuses to seat an admin on the owner seat', async () => {
+      seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3 }));
+      seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 0, seatType: SeatType.OWNER }));
+
+      await expect(service.takeSeat(ADMIN, 'r', 0)).rejects.toBeInstanceOf(BusinessException);
+      // The seat they already held must not be vacated by a rejected move.
+      expect(seats.setOccupant).not.toHaveBeenCalledWith('r', 3, null, ADMIN.id);
+    });
+
+    it('leaves an ordinary seated member blocked', async () => {
+      permissions.hasPermission.mockResolvedValue(false);
+      seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3 }));
+      seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 5 }));
+
+      await expect(service.takeSeat(LISTENER, 'r', 5)).rejects.toBeInstanceOf(BusinessException);
+    });
+  });
+
+  /**
+   * Muting the owner was already blocked, but unmuting was documented as
+   * "always allowed". That let one admin lift a seat mute another admin — or the
+   * owner — had applied.
+   */
+  describe('seat unmute respects authority', () => {
+    it('rank-checks the occupant before lifting a seat mute', async () => {
+      seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 2, occupantUserId: 'admin-b' }));
+      permissions.assertOutranks.mockRejectedValue(new Error('INSUFFICIENT_AUTHORITY'));
+
+      await expect(service.setSeatMuted(ADMIN, 'r', 2, false)).rejects.toThrow(
+        'INSUFFICIENT_AUTHORITY',
+      );
+      expect(seats.setSeatMuted).not.toHaveBeenCalled();
+    });
+
+    it('still lets an empty seat be unmuted, which targets nobody', async () => {
+      seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 2, occupantUserId: null }));
+
+      await service.setSeatMuted(ADMIN, 'r', 2, false);
+
+      expect(permissions.assertOutranks).not.toHaveBeenCalled();
+      expect(seats.setSeatMuted).toHaveBeenCalledWith('r', 2, false, ADMIN.id);
     });
   });
 });

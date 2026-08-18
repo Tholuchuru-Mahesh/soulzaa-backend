@@ -382,9 +382,8 @@ export class ModerationService implements IModerationService {
   }
 
   async unban(actor: RoomActor, roomId: string, targetUserId: string): Promise<void> {
-    await this.permissions.assertCanModerate(roomId, actor);
-    const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
+    // Same asymmetry as `unmute` above — `ban` rank-checks, lifting one did not.
+    await this.assertModerationPrereqs(roomId, actor, targetUserId);
     const ban = await this.repo.findActiveBan(roomId, targetUserId);
     if (!ban) {
       throw new BusinessException(
@@ -506,9 +505,12 @@ export class ModerationService implements IModerationService {
   }
 
   async unmute(actor: RoomActor, roomId: string, targetUserId: string): Promise<void> {
-    await this.permissions.assertCanModerate(roomId, actor);
-    const room = await this.requireRoom(roomId);
-    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
+    // The same prereqs as `mute`. Lifting a restriction used to check only that
+    // the actor could moderate at all, so an admin could clear a mute they had
+    // no authority to apply — including one the owner placed on another admin.
+    // Rank is what separates them, and `assertModerationPrereqs` is where the
+    // apply path already enforces it.
+    await this.assertModerationPrereqs(roomId, actor, targetUserId);
     const mute = await this.repo.findActiveMute(roomId, targetUserId);
     if (!mute) {
       throw new BusinessException(

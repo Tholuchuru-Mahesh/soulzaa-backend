@@ -502,8 +502,13 @@ export class AudioRoomSeatsService {
       // into the seat they were heading for, and where the owner seat sits
       // conspicuously empty. Everyone else still has to leave a seat before
       // taking another; this is the owner's seat freedom, not a general relaxation.
+      // `canManage` (MANAGE_SEATS) earns the same freedom: an admin who is
+      // already seated must be able to move — not least into a seat they have
+      // just unlocked — without dropping off the stage first. The owner seat is
+      // still off-limits to them; `assertSeatTypeAllowed` below is what reserves
+      // it, and it runs before the seat they hold is given up.
       const isOwner = (await this.rooms.getOwnerId(roomId)) === actor.id;
-      if (current && !isOwner) {
+      if (current && !isOwner && !canManage) {
         throw this.err(
           ERROR_CODES.ALREADY_ON_SEAT,
           'You are already on a seat.',
@@ -667,10 +672,10 @@ export class AudioRoomSeatsService {
     await this.permissions.assertPermission(roomId, actor, RoomPermission.MUTE_USERS);
     const seat = await this.requireSeat(roomId, seatIndex);
     // The owner outranks every in-room moderator, which the rest of the module
-    // already enforces (ModerationService rejects actions against them, and they
-    // can unmute themselves through Broad Mute). Seat-mute was the one hole: an
-    // ADMIN could silence the host by muting whichever chair they were sitting
-    // in. Unmuting is always allowed — it can only ever restore them.
+    // already enforces (ModerationService rejects actions against them). Seat-
+    // mute was the one hole: an ADMIN could silence the host by muting whichever
+    // chair they were sitting in. Kept ahead of the rank check for its clearer
+    // message.
     if (
       muted &&
       seat.occupantUserId &&
@@ -681,6 +686,17 @@ export class AudioRoomSeatsService {
         'The room owner cannot be muted.',
         HttpStatus.FORBIDDEN,
       );
+    }
+    // Both directions, against the occupant. Unmuting used to be unguarded on
+    // the reasoning that restoring someone can only ever help them — but that
+    // let one admin lift a seat mute an equal-or-higher authority had applied,
+    // which is precisely how an owner's mute on one admin got cleared by
+    // another. Guarding only the lift would stop an admin undoing their own
+    // mute, so the mute side moves in step: seat mute now matches the rule
+    // ModerationService has always applied, where equal rank is not enough.
+    // An empty seat targets nobody, so it stays plain housekeeping.
+    if (seat.occupantUserId) {
+      await this.permissions.assertOutranks(roomId, actor, seat.occupantUserId);
     }
     await this.seats.setSeatMuted(roomId, seatIndex, muted, actor.id);
     await this.seats.appendSeatHistory({
