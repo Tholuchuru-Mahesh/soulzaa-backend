@@ -92,6 +92,38 @@ describe('FacebookVerifier', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('says plainly when it is OUR credentials Facebook rejected, not the user token', async () => {
+    // The distinction this pins down cost three rounds of debugging in
+    // production: a wrong FACEBOOK_APP_SECRET and a junk user token both made
+    // Graph answer 400, and both surfaced as the same "Facebook returned 400".
+    // One is an operator misconfiguration, the other is a normal bad login.
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: { code: 190, message: 'Invalid OAuth access token signature.' },
+      }),
+    });
+
+    await expect(new FacebookVerifier(config()).verify('tok')).rejects.toThrow(
+      /not accepted by Facebook/i,
+    );
+  });
+
+  it('reports a bad user token as a bad user token', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: { code: 190, message: 'Invalid OAuth 2.0 Access Token' },
+      }),
+    });
+
+    await expect(new FacebookVerifier(config()).verify('tok')).rejects.toThrow(
+      /sign-in could not be verified/i,
+    );
+  });
+
   it('never puts the app secret in the token-debug query string', async () => {
     fetchMock.mockResolvedValueOnce(debugOk()).mockResolvedValueOnce(profile());
 

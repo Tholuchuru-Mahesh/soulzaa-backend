@@ -129,10 +129,41 @@ export class FacebookVerifier {
         HttpStatus.BAD_GATEWAY,
       );
     }
-    if (!res.ok) {
-      throw this.reject(`Facebook returned ${res.status}`);
-    }
+    if (!res.ok) throw await this.explain(res);
     return res;
+  }
+
+  /**
+   * Turns a Graph error into a message that says *whose* credentials failed.
+   *
+   * Both a wrong `FACEBOOK_APP_SECRET` and a junk user token make Graph answer
+   * 400, and collapsing them into one "Facebook returned 400" hid a
+   * misconfigured server behind what looked like an ordinary failed login. A
+   * bad **signature** can only mean the app-token this server built is wrong,
+   * because that is the only thing signed with the app secret — so it is the
+   * one reliable tell that the fault is ours, not the user's.
+   */
+  private async explain(res: Response): Promise<BusinessException> {
+    let fbMessage = '';
+    try {
+      const body = (await res.json()) as { error?: { message?: string; code?: number } };
+      fbMessage = body.error?.message ?? '';
+    } catch {
+      // Non-JSON error body — fall through to the generic message below.
+    }
+
+    const isOurCredentials = /signature/i.test(fbMessage);
+    if (isOurCredentials) {
+      // Operator-facing detail goes to the log, never to the client.
+      this.logger.error(
+        `Facebook rejected THIS SERVER's app credentials (${res.status}): ${fbMessage}. ` +
+          'Check FACEBOOK_APP_ID / FACEBOOK_APP_SECRET.',
+      );
+      return this.reject('Facebook login is not accepted by Facebook for this app');
+    }
+
+    this.logger.warn(`Facebook rejected the user token (${res.status}): ${fbMessage}`);
+    return this.reject('This Facebook sign-in could not be verified. Please try again.');
   }
 
   private reject(message: string): BusinessException {
