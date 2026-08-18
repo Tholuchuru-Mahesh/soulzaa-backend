@@ -124,6 +124,20 @@ describe('FacebookVerifier', () => {
     );
   });
 
+  it('calls /debug_token with GET — Graph rejects a POST there', async () => {
+    // Production failure: the endpoint answered
+    //   "Unsupported post request. Please read the Graph API documentation"
+    // for every login, because /debug_token is GET-only. It surfaced as a token
+    // error, which is exactly what it was not.
+    fetchMock.mockResolvedValueOnce(debugOk()).mockResolvedValueOnce(profile());
+
+    await new FacebookVerifier(config()).verify('tok');
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit | undefined];
+    expect(String(url)).toContain('/debug_token');
+    expect((init?.method ?? 'GET').toUpperCase()).toBe('GET');
+  });
+
   it('never puts the app secret in the token-debug query string', async () => {
     fetchMock.mockResolvedValueOnce(debugOk()).mockResolvedValueOnce(profile());
 

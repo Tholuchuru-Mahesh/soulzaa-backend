@@ -87,20 +87,22 @@ export class FacebookVerifier {
   }
 
   /**
-   * Credentials go in the POST body rather than the query string — an
-   * `access_token=<id>|<secret>` URL would otherwise be copied verbatim into
-   * proxy and server access logs.
+   * `/debug_token` is GET-only — a POST is answered with "Unsupported post
+   * request", which reads like a bad user token and is not one. That mistake
+   * broke every Facebook login in production.
+   *
+   * The app-token still stays out of the URL: Graph accepts it as a Bearer
+   * header in place of the `access_token` query parameter, so an
+   * `<id>|<secret>` string is never copied into proxy or server access logs.
+   * Only the user's own token travels in the query string, which is where
+   * Facebook expects it.
    */
   private async debugToken(accessToken: string): Promise<DebugTokenData> {
-    const body = new URLSearchParams({
-      input_token: accessToken,
-      access_token: `${this.appId}|${this.appSecret}`,
-    });
+    const query = new URLSearchParams({ input_token: accessToken });
 
-    const res = await this.call(`${GRAPH}/debug_token`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body,
+    const res = await this.call(`${GRAPH}/debug_token?${query.toString()}`, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${this.appId}|${this.appSecret}` },
     });
 
     const json = (await res.json()) as { data?: DebugTokenData };
