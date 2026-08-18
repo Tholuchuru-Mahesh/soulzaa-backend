@@ -55,7 +55,12 @@ describe('Super Admin Phase 2B: User & Role Management Services', () => {
     userVerification: { findUnique: jest.fn().mockResolvedValue(null) },
     familyMember: { findUnique: jest.fn().mockResolvedValue(null) },
     family: { findUnique: jest.fn().mockResolvedValue(null) },
-    agencyRelationship: { findFirst: jest.fn().mockResolvedValue(null) },
+    agencyRelationship: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      groupBy: jest.fn().mockResolvedValue([]),
+    },
+    coinSellerRelationship: { findFirst: jest.fn().mockResolvedValue(null) },
+    userSession: { findFirst: jest.fn().mockResolvedValue(null) },
     wallet: { findUnique: jest.fn().mockResolvedValue(null) },
     walletTransaction: { findMany: jest.fn().mockResolvedValue([]) },
     purchaseOrder: { findMany: jest.fn().mockResolvedValue([]) },

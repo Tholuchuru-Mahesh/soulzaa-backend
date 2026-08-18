@@ -5,6 +5,11 @@ import {
   type UserAvatarUpdatedEvent,
   type UserProfileUpdatedEvent,
 } from 'src/modules/users/events/user.events';
+import {
+  BACKPACK_EVENTS,
+  type BackpackItemEquippedEvent,
+  type BackpackItemUnequippedEvent,
+} from 'src/modules/backpack/events/backpack.events';
 import { VideoRoomIdentityCache } from '../services/video-room-identity-cache.service';
 
 /**
@@ -35,6 +40,12 @@ export class VideoRoomIdentityCacheListener implements OnModuleInit {
       // Only the avatar appears in PublicIdentity; a cover change would be a
       // pointless cache eviction.
       e.payload.kind === 'avatar' ? this.invalidate(e.payload.userId) : undefined,
+    );
+    this.bus.subscribe<BackpackItemEquippedEvent>(BACKPACK_EVENTS.EQUIPPED, (e) =>
+      this.invalidate(e.payload.userId),
+    );
+    this.bus.subscribe<BackpackItemUnequippedEvent>(BACKPACK_EVENTS.UNEQUIPPED, (e) =>
+      this.invalidate(e.payload.userId),
     );
   }
 

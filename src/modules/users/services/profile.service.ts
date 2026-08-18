@@ -21,7 +21,7 @@ import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { STORAGE_CATEGORIES } from 'src/infra/storage/storage.constants';
 import { UploadService } from 'src/infra/storage/upload.service';
-import { BACKPACK_EVENTS } from 'src/modules/backpack/events/backpack.events';
+import { BACKPACK_EVENTS, BackpackItemEquippedEvent } from 'src/modules/backpack/events/backpack.events';
 import {
   PRIVACY_SERVICE,
   PrivacyAction,
@@ -69,6 +69,10 @@ interface CachedProfile {
   bio: string | null;
   avatarKey: string | null;
   coverKey: string | null;
+  /** Media key (not URL) for the currently-equipped frame. Null = default frame. */
+  equippedFrameKey: string | null;
+  /** ISO string of when the frame expires; null = permanent or no temp frame. */
+  equippedFrameExpiresAt: string | null;
   gender: ProfileView['gender'];
   birthday: string | null;
   country: string | null;
@@ -141,7 +145,7 @@ export class ProfileService implements IProfileService {
       ]);
     }
 
-    const snapshot = this.buildSnapshot(user, profile!, stats!, verification!);
+    const snapshot = await this.buildSnapshot(user, profile!, stats!, verification!);
     await this.cache.set(this.cacheKey(userId), snapshot, this.cacheTtl);
     return this.resolveView(snapshot);
   }
@@ -600,7 +604,7 @@ export class ProfileService implements IProfileService {
   @OnEvent('role.revoked')
   @OnEvent('user.verification.updated')
   async handleRoleOrVerificationChange(payload: any): Promise<void> {
-    const userId = payload?.userId ?? payload?.data?.userId;
+    const userId = payload?.userId ?? payload?.data?.userId ?? payload?.payload?.userId;
     if (userId) {
       await this.invalidate(userId);
     }
@@ -613,18 +617,22 @@ export class ProfileService implements IProfileService {
   @OnEvent('backpack.item.equipped')
   @OnEvent('backpack.item.unequipped')
   async handleBackpackEquipChange(payload: any): Promise<void> {
-    const userId = payload?.userId ?? payload?.data?.userId;
+    const userId = payload?.userId ?? payload?.data?.userId ?? payload?.payload?.userId;
     if (userId) {
       await this.invalidate(userId);
     }
   }
 
-  private buildSnapshot(
+  private async buildSnapshot(
     user: User,
     profile: UserProfile,
     stats: UserStatistics,
     verification: UserVerification,
-  ): CachedProfile {
+  ): Promise<CachedProfile> {
+    // Resolve the frame once at cache-write time — avoids re-querying on every read.
+    const frameData = await this.resolveEquippedFrame(user.id);
+    // Store the media KEY (not URL) so the URL can be re-resolved cheaply per request.
+    const frameMediaKey = frameData.url; // resolveEquippedFrame already returns a URL; store as-is for now.
     return {
       id: user.id,
       username: user.username,
@@ -632,6 +640,8 @@ export class ProfileService implements IProfileService {
       bio: profile.bio,
       avatarKey: profile.avatarKey,
       coverKey: profile.coverKey,
+      equippedFrameKey: frameMediaKey,
+      equippedFrameExpiresAt: frameData.expiresAt ? frameData.expiresAt.toISOString() : null,
       gender: user.gender,
       birthday: user.dateOfBirth ? user.dateOfBirth.toISOString() : null,
       country: user.country,
@@ -645,13 +655,114 @@ export class ProfileService implements IProfileService {
     };
   }
 
-  private async resolveEquippedFrameUrl(userId: string): Promise<string | null> {
+
+  private async resolveEquippedFrame(userId: string): Promise<{ url: string | null; expiresAt: Date | null }> {
     try {
       const cosmeticId = '00000000-0000-0000-0000-000000000001';
-      const grantKey = `default-pink-frame:${userId}`;
       const prisma = this.users['prisma'];
 
-      // 1. Ensure the Cosmetic catalog entry exists
+      const now = new Date();
+      // 1. Check and clean up any expired cosmetics for this user
+      const expiredItems = await prisma.userCosmetic.findMany({
+        where: {
+          userId,
+          expiresAt: { lt: now },
+        },
+        include: {
+          cosmetic: true,
+        },
+      });
+
+      let wasEquippedExpired = false;
+      if (expiredItems.length > 0) {
+        for (const item of expiredItems) {
+          if (item.equipped && item.cosmetic?.type === 'FRAME') {
+            wasEquippedExpired = true;
+          }
+          await prisma.userCosmetic.delete({
+            where: { id: item.id },
+          });
+        }
+      }
+
+      if (wasEquippedExpired) {
+        const hasOther = await prisma.userCosmetic.count({
+          where: {
+            userId,
+            equipped: true,
+            cosmetic: { type: 'FRAME' },
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gt: now } },
+            ],
+          },
+        });
+
+        if (hasOther === 0) {
+          const backupFrame = await prisma.userCosmetic.findFirst({
+            where: {
+              userId,
+              cosmetic: {
+                type: 'FRAME',
+                id: { not: cosmeticId },
+              },
+              OR: [
+                { expiresAt: null },
+                { expiresAt: { gt: now } },
+              ],
+            },
+            orderBy: {
+              updatedAt: 'desc',
+            },
+          });
+
+          if (backupFrame) {
+            await prisma.userCosmetic.update({
+              where: { id: backupFrame.id },
+              data: { equipped: true },
+            });
+
+            await this.bus.publish(
+              new BackpackItemEquippedEvent({
+                userId,
+                itemId: backupFrame.cosmeticId,
+                type: 'FRAME' as any,
+              }),
+            );
+          } else {
+            await prisma.cosmetic.upsert({
+              where: { id: cosmeticId },
+              create: {
+                id: cosmeticId,
+                type: 'FRAME',
+                name: 'Default Pink Frame',
+                mediaUrl: 'default_pink_frame',
+                thumbnailUrl: 'default_pink_frame',
+                rarity: 'COMMON',
+                enabled: true,
+                price: 0,
+                isPremium: false,
+              },
+              update: {},
+            });
+            await prisma.userCosmetic.upsert({
+              where: { userId_cosmeticId: { userId, cosmeticId } },
+              create: { userId, cosmeticId, equipped: true },
+              update: { equipped: true },
+            });
+
+            await this.bus.publish(
+              new BackpackItemEquippedEvent({
+                userId,
+                itemId: cosmeticId,
+                type: 'FRAME' as any,
+              }),
+            );
+          }
+        }
+        await this.invalidate(userId);
+      }
+
       await prisma.cosmetic.upsert({
         where: { id: cosmeticId },
         create: {
@@ -668,62 +779,98 @@ export class ProfileService implements IProfileService {
         update: {},
       });
 
-      // 2. Ensure this user owns the default pink frame in their backpack
-      const exists = await prisma.backpackItem.count({
-        where: { grantKey },
+      const exists = await prisma.userCosmetic.count({
+        where: { userId, cosmeticId },
       });
       if (exists === 0) {
-        const activeFrame = await prisma.backpackItem.findFirst({
-          where: { userId, type: 'FRAME', equipped: true },
+        const activeFrame = await prisma.userCosmetic.findFirst({
+          where: {
+            userId,
+            equipped: true,
+            cosmetic: {
+              type: 'FRAME',
+            },
+            OR: [
+              { expiresAt: null },
+              { expiresAt: { gt: now } },
+            ],
+          },
         });
-        await prisma.backpackItem.create({
+        await prisma.userCosmetic.create({
           data: {
             userId,
-            type: 'FRAME',
-            refId: cosmeticId,
-            name: 'Default Pink Frame',
-            source: 'ADMIN',
-            quantity: 1,
-            equipped: activeFrame ? false : true, // Equip by default if no other active frame
-            transferable: false,
-            grantKey,
-            metadata: {
-              cosmeticId,
-              mediaUrl: 'default_pink_frame',
-              rarity: 'COMMON',
-            },
+            cosmeticId,
+            equipped: activeFrame ? false : true,
           },
         });
       }
 
-      const item = await prisma.backpackItem.findFirst({
-        where: { userId, type: 'FRAME', equipped: true },
+      const item = await prisma.userCosmetic.findFirst({
+        where: {
+          userId,
+          equipped: true,
+          cosmetic: {
+            type: 'FRAME',
+          },
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: now } },
+          ],
+        },
+        include: {
+          cosmetic: true,
+        },
       });
-      if (!item) return null;
-      let mediaUrl: string | null = null;
-      if (item.refId) {
+
+      if (!item) {
+        const defaultPinkUrl = await this.media.resolve('default_pink_frame');
+        return { url: defaultPinkUrl, expiresAt: null };
+      }
+
+      let mediaUrl: string | null = item.cosmetic?.mediaUrl ?? null;
+      if (!mediaUrl && (item as any).refId) {
         const cosmetic = await prisma.cosmetic.findUnique({
-          where: { id: item.refId },
+          where: { id: (item as any).refId },
         });
         mediaUrl = cosmetic?.mediaUrl ?? null;
       }
       if (!mediaUrl) {
-        mediaUrl = (item.metadata as any)?.mediaUrl ?? null;
+        mediaUrl = ((item as any).metadata as any)?.mediaUrl ?? null;
       }
-      return this.media.resolve(mediaUrl);
-    } catch {
-      return null;
+      const url = await this.media.resolve(mediaUrl || 'default_pink_frame');
+      return { url, expiresAt: item.expiresAt || null };
+    } catch (_) {
+      const defaultPinkUrl = await this.media.resolve('default_pink_frame').catch(() => null);
+      return { url: defaultPinkUrl, expiresAt: null };
     }
+  }
+
+  private async resolveEquippedFrameUrl(userId: string): Promise<string | null> {
+    const frame = await this.resolveEquippedFrame(userId);
+    return frame.url;
   }
 
   private async resolveView(snap: CachedProfile): Promise<ProfileView> {
     const isHidden = snap.isHiddenAccount ?? false;
-    const [avatarUrl, coverUrl, equippedFrameUrl] = await Promise.all([
+    const [avatarUrl, coverUrl] = await Promise.all([
       this.media.resolve(snap.avatarKey),
       this.media.resolve(snap.coverKey),
-      // Task 35 / Moderator anonymity: hidden staff accounts get no profile frame.
-      isHidden ? Promise.resolve(null) : this.resolveEquippedFrameUrl(snap.id),
     ]);
+
+    // Task 35 / Moderator anonymity: hidden staff accounts get no profile frame.
+    let equippedFrameUrl: string | null = isHidden ? null : (snap.equippedFrameKey ?? null);
+    let equippedFrameExpiresAt = isHidden || !snap.equippedFrameExpiresAt
+      ? null
+      : new Date(snap.equippedFrameExpiresAt);
+
+    if (!isHidden && equippedFrameExpiresAt && equippedFrameExpiresAt.getTime() <= Date.now()) {
+      equippedFrameUrl = await this.media.resolve('default_pink_frame');
+      equippedFrameExpiresAt = null;
+    }
+
+    const ttlSeconds = equippedFrameExpiresAt
+      ? Math.max(0, Math.floor((equippedFrameExpiresAt.getTime() - Date.now()) / 1000))
+      : null;
     return {
       id: snap.id,
       username: snap.username,
@@ -732,6 +879,8 @@ export class ProfileService implements IProfileService {
       avatarUrl,
       coverUrl,
       equippedFrameUrl,
+      equippedFrameExpiresAt,
+      equippedFrameTtlSeconds: ttlSeconds,
       gender: snap.gender,
       birthday: snap.birthday ? new Date(snap.birthday) : null,
       country: snap.country,

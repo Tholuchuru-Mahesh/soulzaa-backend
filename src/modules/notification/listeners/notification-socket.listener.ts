@@ -13,6 +13,11 @@ import {
   type NotificationReadAllEvent,
   type NotificationReadEvent,
 } from '../events/notification.events';
+import {
+  BACKPACK_EVENTS,
+  BackpackItemEquippedEvent,
+  BackpackItemUnequippedEvent,
+} from 'src/modules/backpack/events/backpack.events';
 
 /**
  * Bridges notification-centre events to the `/notifications` namespace.
@@ -62,6 +67,56 @@ export class NotificationSocketListener implements OnModuleInit {
           e.payload.preferences,
         ),
     );
+
+    this.bus.subscribe<BackpackItemEquippedEvent>(BACKPACK_EVENTS.EQUIPPED, async (e) => {
+      const { userId } = e.payload;
+      this.toUser(userId, 'backpack.item.equipped', e.payload);
+      this.toUser(userId, 'user.profile_updated', { userId });
+      this.sockets.emitToNamespaceRoom('/chat', `${USER_ROOM_PREFIX}${userId}`, 'user.profile_updated', { userId });
+
+      try {
+        const rooms = await this.sockets.getUserRooms(userId);
+        for (const roomId of rooms) {
+          this.sockets.emitToNamespaceRoom('/audio-room', roomId, 'seat.updated', {
+            roomId,
+            userId,
+            changed: ['frame'],
+          });
+          this.sockets.emitToNamespaceRoom('/video-room', roomId, 'video_room.seat_updated', {
+            roomId,
+            userId,
+            changed: ['frame'],
+          });
+        }
+      } catch (err) {
+        // Ignored defensively
+      }
+    });
+
+    this.bus.subscribe<BackpackItemUnequippedEvent>(BACKPACK_EVENTS.UNEQUIPPED, async (e) => {
+      const { userId } = e.payload;
+      this.toUser(userId, 'backpack.item.unequipped', e.payload);
+      this.toUser(userId, 'user.profile_updated', { userId });
+      this.sockets.emitToNamespaceRoom('/chat', `${USER_ROOM_PREFIX}${userId}`, 'user.profile_updated', { userId });
+
+      try {
+        const rooms = await this.sockets.getUserRooms(userId);
+        for (const roomId of rooms) {
+          this.sockets.emitToNamespaceRoom('/audio-room', roomId, 'seat.updated', {
+            roomId,
+            userId,
+            changed: ['frame'],
+          });
+          this.sockets.emitToNamespaceRoom('/video-room', roomId, 'video_room.seat_updated', {
+            roomId,
+            userId,
+            changed: ['frame'],
+          });
+        }
+      } catch (err) {
+        // Ignored defensively
+      }
+    });
   }
 
   private toUser(userId: string, event: string, payload: unknown): void {

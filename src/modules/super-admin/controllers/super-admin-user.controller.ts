@@ -73,6 +73,14 @@ export class SuperAdminUserController {
     return this.userManagementService.getPendingVerifications();
   }
 
+  @ApiOperation({ summary: 'Super Admin: list members linked to a specific agency' })
+  @ApiResponse({ status: 200, description: 'List of agency members' })
+  @RequirePermissions('user.list.view')
+  @Get('agencies/:agencyId/members')
+  async getAgencyMembers(@Param('agencyId') agencyId: string) {
+    return this.userManagementService.getAgencyMembers(agencyId);
+  }
+
   @ApiOperation({
     summary:
       'Get complete user profile details (roles, inherited permissions, scopes, recent activity)',

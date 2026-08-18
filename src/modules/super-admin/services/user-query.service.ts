@@ -146,6 +146,7 @@ export class UserQueryService {
         id: ur.role.id,
         name: maskPrivilegedRole(ur.role.name, viewerIsSuperAdmin),
         displayName: ur.role.displayName,
+        assignedAt: ur.createdAt,
         scopes: ur.roleScopes.map((s) => ({
           scopeType: s.scopeType,
           country: s.country
@@ -158,10 +159,33 @@ export class UserQueryService {
       roleMap.set(ur.userId, list);
     }
 
-    const items = users.map((u) => ({
-      ...u,
-      assignedRoles: roleMap.get(u.id) ?? [],
-    }));
+    // Count active agency relationships for each user (relevant for agencies)
+    const agencyCreatorCounts = await this.prisma.agencyRelationship.groupBy({
+      by: ['agencyId'],
+      where: {
+        agencyId: { in: userIds },
+        status: 'ACTIVE',
+      },
+      _count: {
+        hostId: true,
+      },
+    });
+
+    const creatorCountMap = new Map<string, number>();
+    for (const row of agencyCreatorCounts) {
+      creatorCountMap.set(row.agencyId, row._count.hostId);
+    }
+
+    const items = users.map((u) => {
+      const roles = roleMap.get(u.id) ?? [];
+      const agencyRole = roles.find((r) => r.name === 'AGENCY' || r.name === 'COIN_SELLER');
+      return {
+        ...u,
+        assignedRoles: roles,
+        creatorsCount: creatorCountMap.get(u.id) ?? 0,
+        agencyJoinedAt: agencyRole ? agencyRole.assignedAt : u.createdAt,
+      };
+    });
 
     return {
       total,
@@ -194,12 +218,14 @@ export class UserQueryService {
       verification,
       familyMember,
       agencyRel,
+      coinSellerRel,
       wallet,
       roomLogs,
       videoLogs,
       giftTransactions,
       recharges,
       gamePlays,
+      latestSession,
     ] = await Promise.all([
       this.prisma.userRole.findMany({
         where: { userId },
@@ -237,6 +263,9 @@ export class UserQueryService {
       this.prisma.agencyRelationship.findFirst({
         where: { hostId: userId, status: 'ACTIVE' },
       }),
+      this.prisma.coinSellerRelationship.findFirst({
+        where: { buyerId: userId, status: 'ACTIVE' },
+      }),
       this.prisma.wallet.findUnique({
         where: { userId },
       }),
@@ -265,6 +294,10 @@ export class UserQueryService {
         where: { userId },
         orderBy: { joinedAt: 'desc' },
         take: 10,
+      }),
+      this.prisma.userSession.findFirst({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
       }),
     ]);
 
@@ -303,8 +336,46 @@ export class UserQueryService {
           agencyId: agencyRel.agencyId,
           agencyName: agencyUser.fullName || agencyUser.username,
           agencyRole: 'HOST',
+          id: agencyRel.agencyId,
+          name: agencyUser.fullName || agencyUser.username,
+          role: 'HOST',
         };
       }
+    }
+
+    const userHasAgencyRole = userRoles.some((ur) => ur.role.name === 'AGENCY');
+    if (userHasAgencyRole && !agency) {
+      agency = {
+        agencyId: user.id,
+        agencyName: user.fullName || user.username,
+        agencyRole: 'OWNER',
+        id: user.id,
+        name: user.fullName || user.username,
+        role: 'OWNER',
+      };
+    }
+
+    let coinSeller = null;
+    if (coinSellerRel) {
+      const sellerUser = await this.prisma.user.findUnique({
+        where: { id: coinSellerRel.sellerId },
+      });
+      if (sellerUser) {
+        coinSeller = {
+          id: coinSellerRel.sellerId,
+          name: sellerUser.fullName || sellerUser.username,
+          email: sellerUser.email,
+        };
+      }
+    }
+
+    const userHasCoinSellerRole = userRoles.some((ur) => ur.role.name === 'COIN_SELLER');
+    if (userHasCoinSellerRole && !coinSeller) {
+      coinSeller = {
+        id: user.id,
+        name: user.fullName || user.username,
+        email: user.email,
+      };
     }
 
     // Resolve name mappings for logs
@@ -391,22 +462,49 @@ export class UserQueryService {
     if (wallet) {
       const walletTxns = await this.prisma.walletTransaction.findMany({
         where: {
-          OR: [{ sourceWalletId: wallet.id }, { destinationWalletId: wallet.id }],
-          NOT: {
-            transactionType: {
-              in: ['GIFT', 'PURCHASE', 'GAME_ENTRY', 'GAME_REWARD'],
+          ledgerEntries: {
+            some: {
+              walletId: wallet.id,
             },
           },
+          NOT: {
+            ledgerEntries: {
+              some: {
+                reason: {
+                  in: [
+                    'GIFT_SEND',
+                    'GIFT_RECEIVE',
+                    'GAME_STAKE',
+                    'GAME_PAYOUT',
+                    'RECHARGE',
+                  ],
+                },
+              },
+            },
+          },
+        },
+        include: {
+          ledgerEntries: true,
         },
         orderBy: { createdAt: 'desc' },
         take: 10,
       });
 
       mappedWalletTxns = walletTxns.map((t) => {
-        const isSource = t.sourceWalletId === wallet.id;
-        const type = 'system';
-        const action = isSource ? 'Transferred Coins' : 'Received Transfer';
-        const resource = `Amount: ${t.amount.toString()}`;
+        const ledger = t.ledgerEntries.find((e) => e.walletId === wallet.id);
+        const isDebit = ledger?.type === 'DEBIT';
+        
+        let type = 'system';
+        let action = isDebit ? 'Transferred Coins' : 'Received Transfer';
+        let resource = `Amount: ${t.amount.toString()}`;
+
+        if (ledger?.reason === 'COSMETIC_PURCHASE') {
+          type = 'recharge';
+          const meta = t.metadata as any;
+          action = `Bought cosmetic: “${meta?.name || 'Cosmetic'}”`;
+          resource = `Cost: ${t.amount.toString()} gold coins`;
+        }
+
         return {
           id: t.id,
           type,
@@ -457,6 +555,11 @@ export class UserQueryService {
       })),
     }));
 
+    const agencyRole = formattedRoles.find(
+      (r) => r.roleName === 'AGENCY' || r.roleName === 'COIN_SELLER',
+    );
+    const agencyJoinedAt = agencyRole ? agencyRole.assignedAt : user.createdAt;
+
     return {
       id: user.id,
       username: user.username,
@@ -472,7 +575,9 @@ export class UserQueryService {
       emailVerifiedAt: user.emailVerifiedAt,
       mobileVerifiedAt: user.mobileVerifiedAt,
       createdAt: user.createdAt,
+      agencyJoinedAt,
       updatedAt: user.updatedAt,
+      lastLoginAt: latestSession ? latestSession.createdAt : null,
       level,
       vipLevel,
       referredBy,
@@ -480,6 +585,7 @@ export class UserQueryService {
       ageVerifiedAt,
       family,
       agency,
+      coinSeller,
       assignedRoles: formattedRoles,
       inheritedPermissions: effectivePermissions,
       recentAuditLogs: combinedLogs,
@@ -584,5 +690,53 @@ export class UserQueryService {
     );
 
     return result;
+  }
+
+  /**
+   * List members / hosts assigned to a specific agency
+   */
+  async getAgencyMembers(agencyId: string) {
+    const relationships = await this.prisma.agencyRelationship.findMany({
+      where: { agencyId, status: 'ACTIVE' },
+      orderBy: { effectiveFrom: 'desc' },
+      select: { hostId: true, effectiveFrom: true },
+    });
+
+    if (relationships.length === 0) {
+      return { items: [], total: 0 };
+    }
+
+    const hostIds = relationships.map((r) => r.hostId);
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: hostIds } },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        email: true,
+        country: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+
+    const userRoles = await this.prisma.userRole.findMany({
+      where: { userId: { in: hostIds } },
+      include: { role: true },
+    });
+
+    const roleMap = new Map<string, string[]>();
+    for (const ur of userRoles) {
+      const list = roleMap.get(ur.userId) ?? [];
+      list.push(ur.role.name);
+      roleMap.set(ur.userId, list);
+    }
+
+    const items = users.map((u) => ({
+      ...u,
+      roles: roleMap.get(u.id) ?? ['USER'],
+    }));
+
+    return { items, total: items.length };
   }
 }

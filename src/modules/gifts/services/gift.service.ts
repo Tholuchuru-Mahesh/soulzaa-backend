@@ -25,9 +25,11 @@ import {
 import { VIP_SERVICE, type IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
 import { GIFT_WALLET_REFERENCE_TYPE } from '../constants/gifts.constants';
 import { walletLockKey } from 'src/modules/wallet/constants/wallet.constants';
+
 import type { GiftHistoryDto, SendGiftDto } from '../dto/gift.dto';
 import { GiftComboEvent, GiftLuckyWinEvent, GiftSentEvent } from '../events/gift.events';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
+import { BackpackItemEquippedEvent } from 'src/modules/backpack/events/backpack.events';
 import type { GiftContextRequest } from '../interfaces/gift-context-handler.interface';
 import { GiftRepository } from '../repositories/gift.repository';
 import { GiftCatalogService } from './gift-catalog.service';
@@ -389,10 +391,10 @@ export class GiftService {
                 },
                 actorId: senderId,
               },
+
               tx,
             );
           }
-
           rows.push(
             await this.repo.createTransaction(
               {
@@ -428,6 +430,75 @@ export class GiftService {
               tx,
             ),
           );
+
+          if (gift.type === GiftType.PROFILE_FRAME) {
+            let cosmetic = await tx.cosmetic.findFirst({
+              where: { type: 'FRAME', name: gift.name }
+            });
+            if (!cosmetic) {
+              cosmetic = await tx.cosmetic.create({
+                data: {
+                  type: 'FRAME',
+                  name: gift.name,
+                  mediaUrl: gift.animationUrl || gift.thumbnailUrl || 'default_pink_frame',
+                  thumbnailUrl: gift.thumbnailUrl,
+                  price: gift.coinValue,
+                  enabled: true,
+                  isPremium: true
+                }
+              });
+            }
+
+            let expiresAt: Date | null = null;
+            const ttlVal = gift.ttlValue || 0;
+            if (ttlVal > 0) {
+              let durationMs = 0;
+              const ttlUnit = (gift.ttlUnit || 'DAYS').toUpperCase();
+              if (ttlUnit === 'SECONDS') durationMs = ttlVal * 1000;
+              else if (ttlUnit === 'MINUTES') durationMs = ttlVal * 60 * 1000;
+              else if (ttlUnit === 'HOURS') durationMs = ttlVal * 60 * 60 * 1000;
+              else durationMs = ttlVal * 24 * 60 * 60 * 1000;
+              expiresAt = new Date(Date.now() + durationMs);
+            }
+
+            const existing = await tx.userCosmetic.findUnique({
+              where: { userId_cosmeticId: { userId: receiverId, cosmeticId: cosmetic.id } }
+            });
+
+            if (existing) {
+              if (expiresAt) {
+                if (existing.expiresAt) {
+                  const baseTime = existing.expiresAt.getTime() > Date.now()
+                    ? existing.expiresAt.getTime()
+                    : Date.now();
+                  const newExpires = new Date(baseTime + (expiresAt.getTime() - Date.now()));
+                  await tx.userCosmetic.update({
+                    where: { id: existing.id },
+                    data: {
+                      expiresAt: newExpires
+                    }
+                  });
+                }
+              } else {
+                // If the new gift is permanent, make the ownership permanent by clearing expiresAt!
+                await tx.userCosmetic.update({
+                  where: { id: existing.id },
+                  data: {
+                    expiresAt: null
+                  }
+                });
+              }
+            } else {
+              await tx.userCosmetic.create({
+                data: {
+                  userId: receiverId,
+                  cosmeticId: cosmetic.id,
+                  equipped: false,
+                  expiresAt
+                }
+              });
+            }
+          }
         }
         return rows;
       }),

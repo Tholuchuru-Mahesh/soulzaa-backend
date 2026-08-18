@@ -46,12 +46,14 @@ const PUBLICLY_SERVABLE_PREFIXES: readonly string[] = [
 @Injectable()
 export class MediaUrlResolver {
   private readonly publicBase?: string;
+  private readonly bucket: string;
 
   constructor(
     config: ConfigService,
     private readonly s3: S3Service,
   ) {
     this.publicBase = config.get('profile', { infer: true })!.mediaPublicBaseUrl;
+    this.bucket = config.get('S3_BUCKET') || 'soulzaa-media';
   }
 
   /**
@@ -64,13 +66,23 @@ export class MediaUrlResolver {
 
   async resolve(key: string | null | undefined): Promise<string | null> {
     if (!key) return null;
-    if (key.startsWith('http://') || key.startsWith('https://') || key.startsWith('data:')) {
-      return key;
+
+    let cleanKey = key;
+    const bucketInPath = `/${this.bucket}/`;
+    const bucketIndex = key.indexOf(bucketInPath);
+    if (bucketIndex !== -1) {
+      const fullPath = key.substring(bucketIndex + bucketInPath.length);
+      const queryIndex = fullPath.indexOf('?');
+      cleanKey = queryIndex !== -1 ? fullPath.substring(0, queryIndex) : fullPath;
     }
-    if (this.publicBase && this.isPubliclyServable(key)) {
-      return `${this.publicBase.replace(/\/$/, '')}/${key}`;
+
+    if (cleanKey.startsWith('http://') || cleanKey.startsWith('https://') || cleanKey.startsWith('data:')) {
+      return cleanKey;
     }
-    return this.s3.getPresignedDownloadUrl(key);
+    if (this.publicBase && this.isPubliclyServable(cleanKey)) {
+      return `${this.publicBase.replace(/\/$/, '')}/${cleanKey}`;
+    }
+    return this.s3.getPresignedDownloadUrl(cleanKey);
   }
 
   /** True when [key] sits under a prefix the bucket serves without a signature. */

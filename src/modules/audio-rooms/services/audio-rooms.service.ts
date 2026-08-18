@@ -1118,10 +1118,37 @@ export class AudioRoomsService implements IAudioRoomsService {
     }
   }
 
+
+
+
+
+
+
   private async toView(room: AudioRoom): Promise<RoomView> {
+    const prisma = (this.repo as any).prisma;
+    const totalGifts = prisma
+      ? await prisma.giftTransaction.aggregate({
+          _sum: { totalCoinValue: true },
+          where: { contextId: room.id }
+        })
+      : null;
+    const giftCoins = totalGifts ? Number(totalGifts._sum.totalCoinValue || 0) : 0;
+
+    let ownerName: string | undefined;
+    if (prisma) {
+      const ownerUser = await prisma.user.findUnique({
+        where: { id: room.ownerId },
+        select: { username: true, fullName: true }
+      });
+      if (ownerUser) {
+        ownerName = ownerUser.fullName || ownerUser.username;
+      }
+    }
+
     return {
       id: room.id,
       ownerId: room.ownerId,
+      ownerName: ownerName,
       name: room.name,
       description: room.description,
       imageKey: room.imageKey,
@@ -1139,6 +1166,7 @@ export class AudioRoomsService implements IAudioRoomsService {
       zegoRoomId: room.zegoRoomId,
       createdAt: room.createdAt,
       endedAt: room.endedAt,
+      giftCoins: giftCoins,
     };
   }
 

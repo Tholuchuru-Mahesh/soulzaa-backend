@@ -49,6 +49,10 @@ export class TransactionQueryService {
       goldBalance: w.goldBalance.toString(),
       freeBalance: w.freeBalance.toString(),
       earningsBalance: w.earningsBalance.toString(),
+      totalSpent: w.totalSpent.toString(),
+      totalRecharged: w.totalRecharged.toString(),
+      totalGiftsSentValue: w.totalGiftsSentValue.toString(),
+      totalGiftsReceivedValue: w.totalGiftsReceivedValue.toString(),
     }));
 
     return {
@@ -115,11 +119,32 @@ export class TransactionQueryService {
     const skip = (page - 1) * limit;
 
     const where: any = {
-      OR: [{ sourceWalletId: wallet.id }, { destinationWalletId: wallet.id }],
+      ledgerEntries: {
+        some: {
+          walletId: wallet.id,
+        },
+      },
     };
 
     if (transactionType) {
-      where.transactionType = transactionType.toUpperCase();
+      const typeUpper = transactionType.toUpperCase();
+      if (typeUpper === 'GIFT') {
+        where.ledgerEntries.some.reason = {
+          in: ['GIFT_SEND', 'GIFT_RECEIVE'],
+        };
+      } else if (typeUpper === 'GIFT_SEND') {
+        where.ledgerEntries.some.reason = 'GIFT_SEND';
+      } else if (typeUpper === 'GIFT_RECEIVE') {
+        where.ledgerEntries.some.reason = 'GIFT_RECEIVE';
+      } else if (typeUpper === 'GAME_ENTRY') {
+        where.ledgerEntries.some.reason = {
+          in: ['GAME_STAKE', 'GAME_PAYOUT'],
+        };
+      } else if (typeUpper === 'COSMETIC_PURCHASE') {
+        where.ledgerEntries.some.reason = 'COSMETIC_PURCHASE';
+      } else {
+        where.transactionType = typeUpper;
+      }
     }
     if (currency) {
       where.currency = currency.toUpperCase();
@@ -136,16 +161,109 @@ export class TransactionQueryService {
       }),
     ]);
 
-    const items = txs.map((t) => ({
-      ...t,
-      amount: t.amount.toString(),
-      ledgerEntries: t.ledgerEntries.map((e) => ({
-        ...e,
-        amount: e.amount.toString(),
-        balanceBefore: e.balanceBefore.toString(),
-        balanceAfter: e.balanceAfter.toString(),
-      })),
-    }));
+    const txIds = txs.map((t) => t.id);
+
+    // Fetch related purchase orders, withdrawal requests, and gift transactions in parallel
+    const [purchaseOrders, withdrawalRequests, giftTransactions] = await Promise.all([
+      this.prisma.purchaseOrder.findMany({
+        where: {
+          walletTransactionId: { in: txIds },
+        },
+        include: {
+          package: true,
+        },
+      }),
+      this.prisma.withdrawalRequest.findMany({
+        where: {
+          OR: [
+            { payoutTxnId: { in: txIds } },
+            { holdTxnId: { in: txIds } },
+          ],
+        },
+      }),
+      this.prisma.giftTransaction.findMany({
+        where: {
+          OR: [
+            { senderWalletTxnId: { in: txIds } },
+            { receiverWalletTxnId: { in: txIds } },
+          ],
+        },
+      }),
+    ]);
+
+    // Query gifts and user profiles in memory to bypass missing schema relations
+    const giftIds = [...new Set(giftTransactions.map((gt) => gt.giftId))];
+    const userIds = [...new Set([
+      ...giftTransactions.map((gt) => gt.senderId),
+      ...giftTransactions.map((gt) => gt.receiverId),
+    ])];
+
+    const [gifts, users] = await Promise.all([
+      this.prisma.gift.findMany({ where: { id: { in: giftIds } } }),
+      this.prisma.user.findMany({ where: { id: { in: userIds } } }),
+    ]);
+
+    const giftMap = new Map(gifts.map((g) => [g.id, g]));
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    const poMap = new Map(purchaseOrders.filter((po) => po.walletTransactionId).map((po) => [po.walletTransactionId!, po]));
+    const wrMap = new Map();
+    for (const wr of withdrawalRequests) {
+      if (wr.payoutTxnId) wrMap.set(wr.payoutTxnId, wr);
+      if (wr.holdTxnId) wrMap.set(wr.holdTxnId, wr);
+    }
+    const gtMap = new Map();
+    for (const gt of giftTransactions) {
+      if (gt.senderWalletTxnId) gtMap.set(gt.senderWalletTxnId, gt);
+      if (gt.receiverWalletTxnId) gtMap.set(gt.receiverWalletTxnId, gt);
+    }
+
+    const items = txs.map((t) => {
+      const po = poMap.get(t.id);
+      const wr = wrMap.get(t.id);
+      const gt = gtMap.get(t.id);
+
+      // Construct a rich payment/details block
+      let paymentDetails: any = null;
+      if (po) {
+        paymentDetails = {
+          priceAmount: po.priceAmount.toString(),
+          currency: po.currency,
+          provider: po.provider,
+          orderNumber: po.orderNumber,
+          packageName: po.package?.name,
+        };
+      } else if (wr) {
+        paymentDetails = {
+          payoutAmountCoins: wr.netPayoutAmountCoins.toString(),
+          payoutMethod: wr.payoutMethod,
+          payoutDetails: wr.payoutDetails,
+          status: wr.status,
+        };
+      } else if (gt) {
+        const gift = giftMap.get(gt.giftId);
+        const sender = userMap.get(gt.senderId);
+        const receiver = userMap.get(gt.receiverId);
+        paymentDetails = {
+          giftName: gift?.name || 'Gift',
+          quantity: gt.quantity,
+          senderName: sender?.username || 'user',
+          receiverName: receiver?.username || 'user',
+        };
+      }
+
+      return {
+        ...t,
+        amount: t.amount.toString(),
+        paymentDetails,
+        ledgerEntries: t.ledgerEntries.map((e) => ({
+          ...e,
+          amount: e.amount.toString(),
+          balanceBefore: e.balanceBefore.toString(),
+          balanceAfter: e.balanceAfter.toString(),
+        })),
+      };
+    });
 
     return {
       total,

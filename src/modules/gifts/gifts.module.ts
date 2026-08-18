@@ -16,15 +16,19 @@ import { GiftHistoryService } from './services/gift-history.service';
 import { GiftInventoryService } from './services/gift-inventory.service';
 import { GiftLeaderboardService } from './services/gift-leaderboard.service';
 import { GiftQueryService } from './services/gift-query.service';
+
+import { StorageModule } from 'src/infra/storage/storage.module';
 import { GiftService } from './services/gift.service';
+import { FrameExpirationScheduler } from './services/frame-expiration.scheduler';
 
 @Global()
 @Module({
-  imports: [PrismaModule, PlatformConfigurationModule, TreasuryModule, WalletModule],
+  imports: [PrismaModule, PlatformConfigurationModule, TreasuryModule, WalletModule, StorageModule],
   controllers: [GiftController, GiftsController],
   providers: [
     GiftRepository,
     GiftService,
+    FrameExpirationScheduler,
     GiftContextRegistry,
     GiftAuditService,
     GiftCatalogService,

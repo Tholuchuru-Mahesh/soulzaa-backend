@@ -33,6 +33,10 @@ export class UserManagementService {
     return this.queryService.getUserAuditHistory(userId, page, limit);
   }
 
+  async getAgencyMembers(agencyId: string) {
+    return this.queryService.getAgencyMembers(agencyId);
+  }
+
   // ---------------------------------------------------------
   // Role Assignment Operations
   // ---------------------------------------------------------

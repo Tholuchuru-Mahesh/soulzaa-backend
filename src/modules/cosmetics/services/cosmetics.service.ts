@@ -3,9 +3,13 @@ import { BackpackItemType, Cosmetic, CosmeticType, Prisma } from '@prisma/client
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
+import { EVENT_BUS, type IEventBus } from 'src/common/events';
+import { BackpackItemEquippedEvent, BackpackItemUnequippedEvent } from 'src/modules/backpack/events/backpack.events';
 import { FrameProcessorService } from 'src/infra/storage/frame-processor.service';
 import { S3Service } from 'src/infra/storage/s3.service';
 import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { PROFILE_SERVICE, type IProfileService } from 'src/modules/users/interfaces/profile.interface';
 import {
   BACKPACK_SERVICE,
   type IBackpackService,
@@ -30,7 +34,8 @@ const TO_BACKPACK_TYPE: Record<CosmeticType, BackpackItemType> = {
  * The cosmetics catalog: the definition of every frame/badge/entrance-effect and
  * the single seam through which the economy features award them. `grantToUser`
  * looks up the catalog entry and deposits a per-user instance into the backpack
- * (idempotent), keeping backpack coupling out of the EXP/VIP/treasure modules.
+ * (idempotent) or user cosmetics depending on style customisation needs, keeping
+ * backpack coupling out of the EXP/VIP/treasure modules.
  */
 @Injectable()
 export class CosmeticsService implements ICosmeticsService {
@@ -42,6 +47,9 @@ export class CosmeticsService implements ICosmeticsService {
     private readonly frameProcessor: FrameProcessorService,
     private readonly s3: S3Service,
     private readonly media: MediaUrlResolver,
+    private readonly prisma: PrismaService,
+    @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
+    @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
 
   // ---- ICosmeticsService ----
@@ -81,6 +89,34 @@ export class CosmeticsService implements ICosmeticsService {
     return created.id;
   }
 
+  async grantCosmeticToUser(input: {
+    userId: string;
+    cosmeticId: string;
+    expiresAt?: Date | null;
+  }): Promise<{ id: string; duplicate: boolean }> {
+    const existing = await this.prisma.userCosmetic.findUnique({
+      where: {
+        userId_cosmeticId: {
+          userId: input.userId,
+          cosmeticId: input.cosmeticId,
+        },
+      },
+    });
+    if (existing) {
+      return { id: existing.id, duplicate: true };
+    }
+
+    const userCos = await this.prisma.userCosmetic.create({
+      data: {
+        userId: input.userId,
+        cosmeticId: input.cosmeticId,
+        expiresAt: input.expiresAt ?? null,
+        equipped: false,
+      },
+    });
+    return { id: userCos.id, duplicate: false };
+  }
+
   async grantToUser(input: {
     userId: string;
     cosmeticId: string;
@@ -89,6 +125,15 @@ export class CosmeticsService implements ICosmeticsService {
   }): Promise<CosmeticGrantResult | null> {
     const cosmetic = await this.repo.getById(input.cosmeticId);
     if (!cosmetic || !cosmetic.enabled) return null;
+
+    if (cosmetic.type === 'FRAME' || cosmetic.type === 'THEME' || cosmetic.type === 'ENTRANCE_EFFECT') {
+      const res = await this.grantCosmeticToUser({
+        userId: input.userId,
+        cosmeticId: cosmetic.id,
+      });
+      return { cosmeticId: cosmetic.id, backpackItemId: res.id, duplicate: res.duplicate };
+    }
+
     const res = await this.backpack.grant({
       userId: input.userId,
       type: TO_BACKPACK_TYPE[cosmetic.type],
@@ -242,5 +287,172 @@ export class CosmeticsService implements ICosmeticsService {
       this.logger.error(`Failed to process frame background: ${err?.message ?? err}`);
       return { mediaUrl, thumbnailUrl };
     }
+  }
+
+  async equipCosmetic(userId: string, cosmeticId: string): Promise<void> {
+    const userCos = await this.prisma.userCosmetic.findUnique({
+      where: {
+        userId_cosmeticId: {
+          userId,
+          cosmeticId,
+        },
+      },
+      include: {
+        cosmetic: true,
+      },
+    });
+
+    if (!userCos) {
+      throw new BusinessException(
+        ERROR_CODES.COSMETIC_NOT_FOUND,
+        'You do not own this cosmetic.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    if (userCos.expiresAt && userCos.expiresAt.getTime() <= Date.now()) {
+      throw new BusinessException(
+        ERROR_CODES.BACKPACK_ITEM_EXPIRED,
+        'This cosmetic has expired.',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // Unequip all other cosmetics of the same type for this user
+    const sameTypeCosmetics = await this.prisma.userCosmetic.findMany({
+      where: {
+        userId,
+        cosmetic: {
+          type: userCos.cosmetic.type,
+        },
+      },
+    });
+
+    await this.prisma.$transaction([
+      // Unequip all of this type
+      this.prisma.userCosmetic.updateMany({
+        where: {
+          id: { in: sameTypeCosmetics.map((c) => c.id) },
+        },
+        data: { equipped: false },
+      }),
+      // Equip this one
+      this.prisma.userCosmetic.update({
+        where: { id: userCos.id },
+        data: { equipped: true },
+      }),
+    ]);
+
+    await this.profiles.invalidateProfile(userId);
+
+    // Publish equipped event for realtime synchronization
+    await this.bus.publish(
+      new BackpackItemEquippedEvent({
+        userId,
+        itemId: cosmeticId,
+        type: userCos.cosmetic.type as any,
+      }),
+    );
+  }
+
+  async unequipCosmetic(userId: string, cosmeticId: string): Promise<void> {
+    const userCos = await this.prisma.userCosmetic.findUnique({
+      where: {
+        userId_cosmeticId: {
+          userId,
+          cosmeticId,
+        },
+      },
+      include: {
+        cosmetic: true,
+      },
+    });
+
+    if (!userCos) {
+      throw new BusinessException(
+        ERROR_CODES.COSMETIC_NOT_FOUND,
+        'You do not own this cosmetic.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    await this.prisma.userCosmetic.update({
+      where: { id: userCos.id },
+      data: { equipped: false },
+    });
+
+    // Publish unequipped event
+    await this.bus.publish(
+      new BackpackItemUnequippedEvent({
+        userId,
+        itemId: cosmeticId,
+        type: userCos.cosmetic.type as any,
+      }),
+    );
+
+    // If it's a FRAME, equip the default pink frame automatically
+    if (userCos.cosmetic.type === 'FRAME') {
+      const defaultCosmeticId = '00000000-0000-0000-0000-000000000001';
+      if (cosmeticId !== defaultCosmeticId) {
+        await this.prisma.userCosmetic.upsert({
+          where: {
+            userId_cosmeticId: {
+              userId,
+              cosmeticId: defaultCosmeticId,
+            },
+          },
+          update: { equipped: true },
+          create: {
+            userId,
+            cosmeticId: defaultCosmeticId,
+            equipped: true,
+          },
+        });
+
+        // Publish equipped event for default pink frame
+        await this.bus.publish(
+          new BackpackItemEquippedEvent({
+            userId,
+            itemId: defaultCosmeticId,
+            type: 'FRAME' as any,
+          }),
+        );
+      }
+    }
+
+    await this.profiles.invalidateProfile(userId);
+  }
+
+  async listOwnedCosmetics(userId: string, type?: CosmeticType): Promise<any[]> {
+    const now = new Date();
+    const rows = await this.prisma.userCosmetic.findMany({
+      where: {
+        userId,
+        cosmetic: type ? { type } : undefined,
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: now } },
+        ],
+      },
+      include: {
+        cosmetic: true,
+      },
+      orderBy: { acquiredAt: 'desc' },
+    });
+
+    return Promise.all(
+      rows.map(async (uc) => ({
+        id: uc.id,
+        cosmeticId: uc.cosmeticId,
+        refId: uc.cosmeticId,
+        name: uc.cosmetic.name,
+        type: uc.cosmetic.type,
+        mediaUrl: await this.media.resolve(uc.cosmetic.mediaUrl),
+        thumbnailUrl: await this.media.resolve(uc.cosmetic.thumbnailUrl),
+        equipped: uc.equipped,
+        expiresAt: uc.expiresAt,
+        acquiredAt: uc.acquiredAt.toISOString(),
+      })),
+    );
   }
 }

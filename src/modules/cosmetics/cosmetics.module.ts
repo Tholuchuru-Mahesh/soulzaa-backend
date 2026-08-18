@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { CosmeticsAdminController } from './controllers/cosmetics-admin.controller';
 import { CosmeticsStoreController } from './controllers/cosmetics-store.controller';
 import { CosmeticsController } from './controllers/cosmetics.controller';
+import { UserCosmeticsController } from './controllers/user-cosmetics.controller';
 import { COSMETICS_SERVICE } from './interfaces/cosmetics.service.interface';
 import { CosmeticsRepository } from './repositories/cosmetics.repository';
 import { CosmeticsStoreService } from './services/cosmetics-store.service';
@@ -18,7 +19,7 @@ import { CosmeticsService } from './services/cosmetics.service';
  */
 @Global()
 @Module({
-  controllers: [CosmeticsController, CosmeticsAdminController, CosmeticsStoreController],
+  controllers: [CosmeticsController, CosmeticsAdminController, CosmeticsStoreController, UserCosmeticsController],
   providers: [
     CosmeticsRepository,
     CosmeticsService,

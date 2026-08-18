@@ -19,11 +19,28 @@ model Cosmetic {
   isPremium    Boolean        @default(false)
   /// Gold-coin price. Purchasable only when `isPremium` and `price > 0`.
   price        Int            @default(0)
+  userCosmetics UserCosmetic[]
 
   @@unique([type, name])
   @@index([enabled, type])
   @@index([isPremium, enabled])
   @@map("cosmetics")
+}
+
+model UserCosmetic {
+  id           String         @id @default(uuid()) @db.Uuid
+  userId       String         @db.Uuid
+  cosmeticId   String         @db.Uuid
+  equipped     Boolean        @default(false)
+  acquiredAt   DateTime       @default(now())
+  expiresAt    DateTime?
+  updatedAt    DateTime       @updatedAt
+
+  cosmetic     Cosmetic       @relation(fields: [cosmeticId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cosmeticId])
+  @@index([userId, equipped])
+  @@map("user_cosmetics")
 }
 
 /// Immutable ledger of premium-cosmetic purchases. `idempotencyKey` (a client

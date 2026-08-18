@@ -46,8 +46,11 @@ model Gift {
   platformRestriction String[]           @default([])
   popularity          Int                @default(0)
   priority            Int                @default(0)
+
   svgaUrl             String?
   tags                String[]           @default([])
+  ttlValue            Int?
+  ttlUnit             String?
   availabilities      GiftAvailability[]
   inventories         GiftInventory[]
 
@@ -137,6 +140,8 @@ model GiftAudit {
   @@index([giftId])
   @@index([createdAt])
   @@map("gift_audits")
+
+
 }
 
 enum GiftType {
@@ -147,6 +152,7 @@ enum GiftType {
   FESTIVAL
   PREMIUM
   LIMITED_EDITION
+  PROFILE_FRAME
 }
 
 enum GiftCategory {

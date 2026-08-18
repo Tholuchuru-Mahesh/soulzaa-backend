@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GiftCategory } from '@prisma/client';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { GiftAuditService } from './gift-audit.service';
 import { GiftCatalogService } from './gift-catalog.service';
@@ -32,12 +33,17 @@ describe('GiftCatalogService', () => {
     giftAuditLog: { create: jest.fn().mockResolvedValue({}) },
   };
 
+  const mockMediaUrlResolver = {
+    resolve: jest.fn().mockImplementation((url) => Promise.resolve(url)),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GiftCatalogService,
         GiftAuditService,
         { provide: PrismaService, useValue: mockPrismaService },
+        { provide: MediaUrlResolver, useValue: mockMediaUrlResolver },
       ],
     }).compile();
 

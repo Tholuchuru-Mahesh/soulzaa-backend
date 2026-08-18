@@ -8,6 +8,7 @@ import type { VideoRoomStatus, VideoRoomVisibility } from '@prisma/client';
 export interface VideoRoomView {
   id: string;
   ownerId: string;
+  ownerName?: string;
   name: string;
   description: string | null;
   imageKey: string | null;
@@ -20,4 +21,5 @@ export interface VideoRoomView {
   maxViewers: number;
   status: VideoRoomStatus;
   createdAt: Date;
+  giftCoins?: number;
 }

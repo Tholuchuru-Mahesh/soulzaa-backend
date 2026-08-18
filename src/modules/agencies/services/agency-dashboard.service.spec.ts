@@ -174,10 +174,10 @@ describe('Agency dashboard', () => {
       );
     });
 
-    it('reads the canonical diamond balance, not the deprecated earnings column', async () => {
+    it('reads the coin seller inventory balance for agency wallet', async () => {
       const view = await dashboard.getDashboard(AGENCY_ID);
 
-      expect(view.wallet.coins).toBe('15222');
+      expect(view.wallet.coins).toBe('0');
       expect(wallet.getBalance).toHaveBeenCalledWith(AGENCY_ID);
     });
 
@@ -208,6 +208,7 @@ describe('Agency dashboard', () => {
       const view = await dashboard.getDashboard(AGENCY_ID);
 
       expect(view.coinSeller.availableBalance).toBe('4300');
+      expect(view.wallet.coins).toBe('4300');
     });
 
     it('renders a brand-new agency as real zeros with an empty leaderboard', async () => {

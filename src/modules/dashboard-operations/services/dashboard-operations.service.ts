@@ -29,18 +29,51 @@ export class DashboardOperationsService {
       this.prisma.family.count(),
     ]);
 
-    // Distinct users, since one person may hold several sessions.
+
+    // Distinct users, since one person may hold several sessions. Exclude staff/admin/moderation roles.
     const activeSessions = await this.prisma.userSession.findMany({
       where: { lastActivityAt: { gte: dayAgo } },
       select: { userId: true },
       distinct: ['userId'],
+    });
+    const activeUserIds = activeSessions.map((s) => s.userId);
+
+
+    const staffUserRoles = await this.prisma.userRole.findMany({
+      where: {
+        role: {
+          name: {
+            in: [
+              'SUPER_ADMIN',
+              'ADMIN',
+              'COUNTRY_MANAGER',
+              'OFFICIAL',
+              'MODERATOR',
+              'BUSINESS_DEVELOPMENT',
+              'AGENCY',
+              'COIN_SELLER',
+            ],
+          },
+        },
+      },
+      select: { userId: true },
+    });
+    const staffUserIds = staffUserRoles.map((ur) => ur.userId);
+
+    const activeStandardUsersCount = await this.prisma.user.count({
+      where: {
+        id: {
+          in: activeUserIds,
+          notIn: staffUserIds,
+        },
+      },
     });
 
     return {
       totalUsers: users,
       activeUsers: active,
       newUsersToday: newToday,
-      dailyActiveUsers: activeSessions.length,
+      dailyActiveUsers: activeStandardUsersCount,
       liveAudioRooms: rooms,
       liveVideoRooms: videoRooms,
       totalFamilies: families,

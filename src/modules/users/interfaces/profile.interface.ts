@@ -59,8 +59,11 @@ export interface ProfileView {
   city: string | null;
   preferredLanguage: string | null;
   statistics: StatisticsView;
+
   verification: VerificationView;
   equippedFrameUrl?: string | null;
+  equippedFrameExpiresAt?: Date | null;
+  equippedFrameTtlSeconds?: number | null;
   /** True for platform staff accounts. Never rendered to ordinary users. */
   isHiddenAccount: boolean;
   createdAt: Date;

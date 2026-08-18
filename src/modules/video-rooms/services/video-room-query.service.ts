@@ -62,7 +62,7 @@ export class VideoRoomQueryService {
       discoverableOnly: !this.isPrivileged(actor),
       status: query.status,
     });
-    return this.paginateViews(items, total, page, limit);
+    return await this.paginateViews(items, total, page, limit);
   }
 
   /** Faceted search (category / language / country / tags / access policy). */
@@ -79,7 +79,7 @@ export class VideoRoomQueryService {
       tags: query.tags,
       accessPolicy: query.accessPolicy,
     });
-    return this.paginateViews(items, total, page, limit);
+    return await this.paginateViews(items, total, page, limit);
   }
 
   /** "Popular" — ranked by denormalised statistics (peak viewers, then joins). */
@@ -90,7 +90,7 @@ export class VideoRoomQueryService {
       take: limit,
       discoverableOnly: !this.isPrivileged(actor),
     });
-    return this.paginateViews(items, total, page, limit);
+    return await this.paginateViews(items, total, page, limit);
   }
 
   /** "Featured" — verified rooms only. */
@@ -102,30 +102,100 @@ export class VideoRoomQueryService {
       discoverableOnly: !this.isPrivileged(actor),
       isVerified: true,
     });
-    return this.paginateViews(items, total, page, limit);
+    return await this.paginateViews(items, total, page, limit);
   }
 
   /** "Trending" — hydrate the global trending zset (highest first). */
+
+
+
+
+
+
   async trending(limit: number): Promise<VideoRoomView[]> {
     const ids = await this.repo.trendingTopIds(limit);
     if (ids.length === 0) return [];
     const rooms = await this.repo.findManyByIds(ids);
-    return rooms.map(toVideoRoomView);
+    const prisma = (this.repo as any).prisma;
+    if (!prisma) {
+      return rooms.map((room) => toVideoRoomView(room, 0));
+    }
+    const sums = await prisma.giftTransaction.groupBy({
+      by: ['contextId'],
+      _sum: { totalCoinValue: true },
+      where: { contextId: { in: ids } }
+    });
+    const sumMap = new Map<string, number>(
+      sums.map((s: any) => [s.contextId, Number(s._sum.totalCoinValue || 0)])
+    );
+    const ownerIds = rooms.map((r) => r.ownerId);
+    const owners = await prisma.user.findMany({
+      where: { id: { in: ownerIds } },
+      select: { id: true, username: true, fullName: true }
+    });
+    const ownerMap = new Map<string, string>(
+      owners.map((o: any) => [o.id, o.fullName || o.username])
+    );
+    return rooms.map((room) => toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)));
   }
 
   /** The caller's own rooms (any status, non-deleted). */
   async mine(actor: RoomActor): Promise<VideoRoomView[]> {
     const rooms = await this.repo.findByOwnerId(actor.id);
-    return rooms.map(toVideoRoomView);
+    const ids = rooms.map((r) => r.id);
+    const prisma = (this.repo as any).prisma;
+    if (!prisma) {
+      return rooms.map((room) => toVideoRoomView(room, 0));
+    }
+    const sums = await prisma.giftTransaction.groupBy({
+      by: ['contextId'],
+      _sum: { totalCoinValue: true },
+      where: { contextId: { in: ids } }
+    });
+    const sumMap = new Map<string, number>(
+      sums.map((s: any) => [s.contextId, Number(s._sum.totalCoinValue || 0)])
+    );
+    const ownerIds = rooms.map((r) => r.ownerId);
+    const owners = await prisma.user.findMany({
+      where: { id: { in: ownerIds } },
+      select: { id: true, username: true, fullName: true }
+    });
+    const ownerMap = new Map<string, string>(
+      owners.map((o: any) => [o.id, o.fullName || o.username])
+    );
+    return rooms.map((room) => toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)));
   }
 
-  private paginateViews(
+  private async paginateViews(
     rooms: VideoRoom[],
     total: number,
     page: number,
     limit: number,
-  ): Paginated<VideoRoomView> {
-    return buildPaginated(rooms.map(toVideoRoomView), total, page, limit);
+  ): Promise<Paginated<VideoRoomView>> {
+    const roomIds = rooms.map((r) => r.id);
+    const prisma = (this.repo as any).prisma;
+    if (!prisma) {
+      const mapped = rooms.map((room) => toVideoRoomView(room, 0));
+      return buildPaginated(mapped, total, page, limit);
+    }
+    const sums = await prisma.giftTransaction.groupBy({
+      by: ['contextId'],
+      _sum: { totalCoinValue: true },
+      where: { contextId: { in: roomIds } }
+    });
+    const sumMap = new Map<string, number>(
+      sums.map((s: any) => [s.contextId, Number(s._sum.totalCoinValue || 0)])
+    );
+    const ownerIds = rooms.map((r) => r.ownerId);
+    const owners = await prisma.user.findMany({
+      where: { id: { in: ownerIds } },
+      select: { id: true, username: true, fullName: true }
+    });
+    const ownerMap = new Map<string, string>(
+      owners.map((o: any) => [o.id, o.fullName || o.username])
+    );
+    const mapped = rooms.map((room) => toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)));
+    return buildPaginated(mapped, total, page, limit);
   }
 
   private isPrivileged(actor: RoomActor): boolean {

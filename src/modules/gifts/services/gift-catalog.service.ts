@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import {
   CreateGiftCategoryDto,
   CreateGiftDto,
@@ -13,6 +14,7 @@ export class GiftCatalogService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: GiftAuditService,
+    private readonly media: MediaUrlResolver,
   ) {}
 
   /**
@@ -48,9 +50,6 @@ export class GiftCatalogService {
     });
   }
 
-  /**
-   * List gifts in catalog with optional category / type filter
-   */
   async listGifts(dto: GiftQueryDto) {
     const { category, type, enabled } = dto;
     const where: any = {};
@@ -70,10 +69,18 @@ export class GiftCatalogService {
       where.type = type.toUpperCase();
     }
 
-    return this.prisma.gift.findMany({
+    const gifts = await this.prisma.gift.findMany({
       where,
       orderBy: [{ sortOrder: 'asc' }, { priority: 'desc' }, { coinValue: 'asc' }],
     });
+
+    return Promise.all(
+      gifts.map(async (gift) => ({
+        ...gift,
+        thumbnailUrl: await this.media.resolve(gift.thumbnailUrl),
+        animationUrl: await this.media.resolve(gift.animationUrl),
+      })),
+    );
   }
 
   /**
@@ -90,7 +97,11 @@ export class GiftCatalogService {
       throw new NotFoundException(`Gift '${id}' not found`);
     }
 
-    return gift;
+    return {
+      ...gift,
+      thumbnailUrl: await this.media.resolve(gift.thumbnailUrl),
+      animationUrl: await this.media.resolve(gift.animationUrl),
+    };
   }
 
   /**
@@ -131,6 +142,8 @@ export class GiftCatalogService {
         minVipLevel: dto.minVipLevel ?? 0,
         comboEnabled: dto.comboEnabled ?? false,
         enabled: dto.enabled ?? true,
+        ttlValue: dto.ttlValue,
+        ttlUnit: dto.ttlUnit,
         createdBy: actorId,
       },
     });
@@ -162,6 +175,8 @@ export class GiftCatalogService {
         svgaUrl: dto.svgaUrl,
         mp4Url: dto.mp4Url,
         enabled: dto.enabled,
+        ttlValue: dto.ttlValue,
+        ttlUnit: dto.ttlUnit,
         updatedBy: actorId,
       },
     });

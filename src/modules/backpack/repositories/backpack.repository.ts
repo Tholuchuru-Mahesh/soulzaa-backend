@@ -112,7 +112,17 @@ export class BackpackRepository {
     await this.ensureDefaultPinkFrame(userId);
     const where: Prisma.BackpackItemWhereInput = {
       userId,
-      ...(filter.type ? { type: filter.type } : {}),
+      ...(filter.type
+        ? { type: filter.type }
+        : {
+            type: {
+              notIn: [
+                'FRAME',
+                'THEME',
+                'ENTRANCE_EFFECT',
+              ] as BackpackItemType[],
+            },
+          }),
       ...(filter.equipped !== undefined ? { equipped: filter.equipped } : {}),
     };
     return this.prisma.$transaction([

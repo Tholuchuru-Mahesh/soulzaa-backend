@@ -37,7 +37,10 @@ export interface RoomView {
   agoraChannel: string;
   zegoRoomId: string | null;
   createdAt: Date;
+
   endedAt: Date | null;
+  giftCoins?: number;
+  ownerName?: string;
 }
 
 /** User's room participation history item. */

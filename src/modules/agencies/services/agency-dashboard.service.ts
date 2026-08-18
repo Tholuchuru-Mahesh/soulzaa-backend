@@ -68,11 +68,8 @@ export class AgencyDashboardService {
         displayName: me?.displayName ?? null,
         avatarUrl: me?.avatarUrl ?? null,
       },
-      // `diamond` is the canonical earnings balance. `WalletCurrency.EARNINGS`
-      // and `Wallet.earningsBalance` are marked deprecated in wallet.prisma and
-      // kept only so historical ledger rows stay valid — reading them here
-      // would show a stale figure.
-      wallet: { coins: String(balances.diamond) },
+      // Use available coin seller inventory balance for the agency wallet.
+      wallet: { coins: inventory?.availableBalance.toString() ?? '0' },
       coinSeller: {
         active: isCoinSeller,
         availableBalance: inventory?.availableBalance.toString() ?? null,

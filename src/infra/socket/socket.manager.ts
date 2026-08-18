@@ -314,6 +314,11 @@ export class SocketManager {
     return undefined;
   }
 
+  /** Rooms a user is currently connected to. */
+  async getUserRooms(userId: string): Promise<string[]> {
+    return this.presence.userRooms(userId);
+  }
+
   /** Local socket ids for a user on this instance. */
   socketsForUser(userId: string): string[] {
     return [...(this.socketsByUser.get(userId) ?? [])];
