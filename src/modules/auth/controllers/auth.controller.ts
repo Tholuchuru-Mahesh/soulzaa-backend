@@ -123,7 +123,7 @@ export class AuthController {
   @Public()
   @Post('login/social')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with Google or Apple' })
+  @ApiOperation({ summary: 'Login with Google, Apple or Facebook' })
   loginSocial(@Body() dto: SocialLoginDto, @RequestMeta() meta: RequestMetadata) {
     return this.auth.loginWithSocial(
       { provider: dto.provider, idToken: dto.idToken },
