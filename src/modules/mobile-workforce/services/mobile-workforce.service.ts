@@ -8,9 +8,6 @@ import {
   RoleRequestStatus,
   RoleRequestType,
   type PlatformRole,
-  RoleRequestStage,
-  RoleRequestStatus,
-  RoleRequestType,
 } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import type { RequestMetadata } from 'src/common/interfaces/request-metadata.interface';
