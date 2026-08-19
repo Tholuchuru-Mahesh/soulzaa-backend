@@ -1,10 +1,25 @@
 // src/modules/platform-moderation/services/platform-ban.service.ts
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
-import { PlatformRoomType, PlatformUserBan, RoomStatus, VideoRoomStatus, LiveStreamStatus } from '@prisma/client';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import {
+  PlatformRoomType,
+  PlatformUserBan,
+  RoomStatus,
+  VideoRoomStatus,
+  LiveStreamStatus,
+} from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
 import { SocketManager } from 'src/infra/socket/socket.manager';
-import { PlatformBanRepository, type ListPlatformBansFilter } from '../repositories/platform-ban.repository';
+import {
+  PlatformBanRepository,
+  type ListPlatformBansFilter,
+} from '../repositories/platform-ban.repository';
 import { PlatformModerationAuditService } from './platform-moderation-audit.service';
 
 export interface BanUserInput {
@@ -100,7 +115,9 @@ export class PlatformBanService {
         }),
       ]);
     } catch (e) {
-      this.logger.error(`Failed to end active rooms for banned user ${userId}: ${(e as Error).message}`);
+      this.logger.error(
+        `Failed to end active rooms for banned user ${userId}: ${(e as Error).message}`,
+      );
     }
   }
 

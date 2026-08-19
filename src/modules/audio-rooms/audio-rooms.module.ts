@@ -177,8 +177,8 @@ import { WorkforceScopeModule } from 'src/modules/mobile-workforce/workforce-sco
     VOICE_SERVICE,
     MODERATION_SERVICE,
     ModerationService, // NEW — MobileWorkforceService needs the full report/mutation
-                        // surface, not just the read-only IModerationService contract
-                        // MODERATION_SERVICE exposes.
+    // surface, not just the read-only IModerationService contract
+    // MODERATION_SERVICE exposes.
     AUDIO_ROOM_CHAT_SERVICE,
     PK_BATTLE_SERVICE,
   ],

@@ -216,7 +216,7 @@ export class ProfileService implements IProfileService {
           isFollower: isFollower,
           isFriend: isFriend,
         };
-      } catch (_) {
+      } catch {
         // Tolerant fallback if social relations lookups encounter an unexpected error
       }
     }

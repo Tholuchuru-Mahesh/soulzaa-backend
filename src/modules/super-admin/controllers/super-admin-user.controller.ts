@@ -273,7 +273,9 @@ export class SuperAdminUserController {
     return this.userManagementService.revokeCreator(userId, actorId);
   }
 
-  @ApiOperation({ summary: 'Get user security details (login history, trusted devices, active sessions)' })
+  @ApiOperation({
+    summary: 'Get user security details (login history, trusted devices, active sessions)',
+  })
   @ApiResponse({ status: 200, description: 'User security details' })
   @RequirePermissions('user.profile.view')
   @Get(':id/security')
@@ -299,7 +301,7 @@ export class SuperAdminUserController {
     const formattedLoginHistory = loginHistory.map((lh: any) => {
       const isFailed = lh.event === 'FAILED_LOGIN';
       let loginType = 'Email & password';
-      
+
       const meta = lh.metadata as any;
       if (isFailed) {
         loginType = 'Failed login';
@@ -333,9 +335,12 @@ export class SuperAdminUserController {
     }));
 
     const deviceIds = activeSessions.map((s: any) => s.deviceId).filter(Boolean) as string[];
-    const devices = deviceIds.length > 0 ? await this.prisma.userDevice.findMany({
-      where: { id: { in: deviceIds } },
-    }) : [];
+    const devices =
+      deviceIds.length > 0
+        ? await this.prisma.userDevice.findMany({
+            where: { id: { in: deviceIds } },
+          })
+        : [];
     const deviceMap = new Map<string, any>(devices.map((d: any) => [d.id, d]));
 
     const formattedActiveSessions = activeSessions.map((s: any) => {
@@ -360,10 +365,7 @@ export class SuperAdminUserController {
   @RequirePermissions('user.session.force_logout')
   @AuditLogAction('SESSION_REVOKED', 'user_session')
   @Delete(':id/sessions/:sessionId')
-  async terminateSession(
-    @Param('id') userId: string,
-    @Param('sessionId') sessionId: string,
-  ) {
+  async terminateSession(@Param('id') userId: string, @Param('sessionId') sessionId: string) {
     await this.prisma.userSession.updateMany({
       where: { id: sessionId, userId },
       data: { revokedAt: new Date() },
@@ -384,10 +386,7 @@ export class SuperAdminUserController {
   @ApiResponse({ status: 200, description: 'Device untrusted' })
   @RequirePermissions('user.status.lock')
   @Delete(':id/devices/:deviceId')
-  async untrustDevice(
-    @Param('id') userId: string,
-    @Param('deviceId') deviceId: string,
-  ) {
+  async untrustDevice(@Param('id') userId: string, @Param('deviceId') deviceId: string) {
     await this.prisma.userDevice.updateMany({
       where: { id: deviceId, userId },
       data: { trusted: false, trustedAt: null, deletedAt: new Date() },
@@ -402,10 +401,7 @@ export class SuperAdminUserController {
   @ApiResponse({ status: 200, description: 'Device trusted' })
   @RequirePermissions('user.status.lock')
   @Put(':id/devices/:deviceId/trust')
-  async trustDevice(
-    @Param('id') userId: string,
-    @Param('deviceId') deviceId: string,
-  ) {
+  async trustDevice(@Param('id') userId: string, @Param('deviceId') deviceId: string) {
     await this.prisma.userDevice.updateMany({
       where: { id: deviceId, userId },
       data: { trusted: true, trustedAt: new Date() },

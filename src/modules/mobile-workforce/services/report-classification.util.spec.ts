@@ -1,12 +1,9 @@
 import { deriveReportPriority, deriveRuleViolated } from './report-classification.util';
 
 describe('deriveReportPriority', () => {
-  it.each(['THREATS', 'SEXUAL_CONTENT', 'ADULT_CONTENT'])(
-    '%s is Highest priority',
-    (reason) => {
-      expect(deriveReportPriority(reason)).toBe('Highest priority');
-    },
-  );
+  it.each(['THREATS', 'SEXUAL_CONTENT', 'ADULT_CONTENT'])('%s is Highest priority', (reason) => {
+    expect(deriveReportPriority(reason)).toBe('Highest priority');
+  });
 
   it.each([
     'HARASSMENT',

@@ -65,7 +65,10 @@ export class VideoRoomChatService {
   ): Promise<VideoRoomMessage> {
     const content = dto.content.trim();
     const isStaff = actor.roles?.some((r: any) => r === 'ADMIN' || r === 'SUPER_ADMIN');
-    const type = isStaff || dto.type === VideoRoomMessageType.SYSTEM ? VideoRoomMessageType.SYSTEM : (dto.type ?? VideoRoomMessageType.TEXT);
+    const type =
+      isStaff || dto.type === VideoRoomMessageType.SYSTEM
+        ? VideoRoomMessageType.SYSTEM
+        : (dto.type ?? VideoRoomMessageType.TEXT);
     const attachments = dto.attachments ?? [];
 
     // 1. Authorization + content bounds.

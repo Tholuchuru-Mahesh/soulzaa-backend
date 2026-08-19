@@ -156,13 +156,7 @@ export class MobileWorkforceController {
     @Param('roomId') roomId: string,
     @Body() body: { message: string; roomType: 'audio' | 'video' | 'stream' },
   ) {
-    return this.service.sendSystemWarning(
-      user.id,
-      user.roles,
-      roomId,
-      body.roomType,
-      body.message,
-    );
+    return this.service.sendSystemWarning(user.id, user.roles, roomId, body.roomType, body.message);
   }
 
   @ApiOperation({ summary: 'List bans issued by moderators' })
@@ -190,7 +184,10 @@ export class MobileWorkforceController {
   }
 
   @ApiOperation({ summary: 'Detailed Agency information for Official Portal' })
-  @ApiResponse({ status: 200, description: 'Agency profile, metrics, contact, and recent activities' })
+  @ApiResponse({
+    status: 200,
+    description: 'Agency profile, metrics, contact, and recent activities',
+  })
   @Get('agencies/:id')
   agencyDetails(@CurrentUser('id') userId: string, @Param('id') agencyId: string) {
     return this.service.agencyDetails(userId, agencyId);
@@ -227,12 +224,12 @@ export class MobileWorkforceController {
   }
 
   @ApiOperation({ summary: 'Detailed Creator information for Official Portal' })
-  @ApiResponse({ status: 200, description: 'Creator profile, overview metrics, and recent activities' })
+  @ApiResponse({
+    status: 200,
+    description: 'Creator profile, overview metrics, and recent activities',
+  })
   @Get('creators/:id')
-  creatorDetails(
-    @CurrentUser('id') userId: string,
-    @Param('id') creatorId: string,
-  ) {
+  creatorDetails(@CurrentUser('id') userId: string, @Param('id') creatorId: string) {
     return this.service.creatorDetails(userId, creatorId);
   }
 
@@ -259,14 +256,10 @@ export class MobileWorkforceController {
     return this.service.searchCandidates(userId, query || q || search || '');
   }
 
-
   @ApiOperation({ summary: 'Detailed recommendation info for Official Portal' })
   @ApiResponse({ status: 200, description: 'Candidate info, verification status, and history' })
   @Get('recommendations/:id')
-  recommendationDetails(
-    @CurrentUser('id') userId: string,
-    @Param('id') id: string,
-  ) {
+  recommendationDetails(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.service.recommendationDetails(userId, id);
   }
 
@@ -286,8 +279,3 @@ export class MobileWorkforceController {
     return this.service.createRecommendation(userId, body);
   }
 }
-
-
-
-
-

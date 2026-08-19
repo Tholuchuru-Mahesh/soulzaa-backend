@@ -196,7 +196,8 @@ export class SocketManager {
     // be added to public presence or announced here — this generic handler
     // is a second join path every client also uses alongside each room
     // type's own REST join, so skipping it would silently unmask them.
-    const incognito = namespace != null && INCOGNITO_MODERATION_NAMESPACES.has(namespace) && isModeratorUser(user);
+    const incognito =
+      namespace != null && INCOGNITO_MODERATION_NAMESPACES.has(namespace) && isModeratorUser(user);
     if (incognito) {
       await this.presence.joinRoom(roomId, user.id, true);
       return true;
@@ -222,7 +223,8 @@ export class SocketManager {
     await client.leave(roomId);
     (client.data.spectatorRooms as Set<string> | undefined)?.delete(roomId);
 
-    const incognito = namespace != null && INCOGNITO_MODERATION_NAMESPACES.has(namespace) && isModeratorUser(user);
+    const incognito =
+      namespace != null && INCOGNITO_MODERATION_NAMESPACES.has(namespace) && isModeratorUser(user);
     if (incognito) {
       await this.presence.leaveRoom(roomId, user.id, true);
       return;

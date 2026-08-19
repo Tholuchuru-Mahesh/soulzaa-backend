@@ -416,7 +416,9 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
 
   describe('joinStream & leaveStream presence and incognito', () => {
     it('joinStream checks global ban for non-moderators', async () => {
-      const bans = { assertNotGloballyBanned: jest.fn().mockRejectedValue(new ForbiddenException('Banned')) };
+      const bans = {
+        assertNotGloballyBanned: jest.fn().mockRejectedValue(new ForbiddenException('Banned')),
+      };
       const localSubject = new LiveStreamService(
         prisma,
         investigationRecording,
@@ -453,11 +455,18 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
         audit as never,
       );
 
-      const res = await localSubject.joinStream(STREAM_ID, { id: 'mod-1', roles: ['MODERATOR'] } as never);
+      const res = await localSubject.joinStream(STREAM_ID, {
+        id: 'mod-1',
+        roles: ['MODERATOR'],
+      } as never);
       expect(res.isAnonymousModerator).toBe(true);
       expect(presence.joinLiveStream).toHaveBeenCalledWith(STREAM_ID, 'mod-1', true);
       expect(audit.record).toHaveBeenCalledWith(
-        expect.objectContaining({ moderatorId: 'mod-1', action: 'INCOGNITO_JOIN', roomType: 'LIVE_STREAM' }),
+        expect.objectContaining({
+          moderatorId: 'mod-1',
+          action: 'INCOGNITO_JOIN',
+          roomType: 'LIVE_STREAM',
+        }),
       );
     });
 
@@ -480,7 +489,11 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
       await localSubject.leaveStream(STREAM_ID, { id: 'mod-1', roles: ['MODERATOR'] } as never);
       expect(presence.leaveLiveStream).toHaveBeenCalledWith(STREAM_ID, 'mod-1', true);
       expect(audit.record).toHaveBeenCalledWith(
-        expect.objectContaining({ moderatorId: 'mod-1', action: 'INCOGNITO_LEAVE', roomType: 'LIVE_STREAM' }),
+        expect.objectContaining({
+          moderatorId: 'mod-1',
+          action: 'INCOGNITO_LEAVE',
+          roomType: 'LIVE_STREAM',
+        }),
       );
     });
   });

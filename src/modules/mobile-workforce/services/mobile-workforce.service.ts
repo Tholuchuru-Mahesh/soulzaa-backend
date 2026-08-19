@@ -1,15 +1,12 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  Optional,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import {
   LiveStreamStatus,
   ModerationMuteType,
   ModerationStatus,
   ModeratorWarningStatus,
+  RoleRequestStage,
+  RoleRequestStatus,
+  RoleRequestType,
   type PlatformRole,
   RoleRequestStage,
   RoleRequestStatus,
@@ -254,13 +251,9 @@ export class MobileWorkforceService {
     ]);
 
     const audioReportFilter =
-      inScopeAudioRoomIds === null
-        ? {}
-        : { roomId: { in: inScopeAudioRoomIds.map((r) => r.id) } };
+      inScopeAudioRoomIds === null ? {} : { roomId: { in: inScopeAudioRoomIds.map((r) => r.id) } };
     const videoReportFilter =
-      inScopeVideoRoomIds === null
-        ? {}
-        : { roomId: { in: inScopeVideoRoomIds.map((r) => r.id) } };
+      inScopeVideoRoomIds === null ? {} : { roomId: { in: inScopeVideoRoomIds.map((r) => r.id) } };
     const streamReportFilter =
       inScopeLiveStreamIds === null
         ? {}
@@ -772,7 +765,9 @@ export class MobileWorkforceService {
         );
         const [participantsCount, reportsCount, warningsCount, bansCount] = await Promise.all([
           this.prisma.roomMember.count({ where: { roomId: r.id, isActive: true } }).catch(() => 1),
-          this.prisma.roomReport.count({ where: { roomId: r.id, status: 'PENDING' } }).catch(() => 0),
+          this.prisma.roomReport
+            .count({ where: { roomId: r.id, status: 'PENDING' } })
+            .catch(() => 0),
           this.prisma.roomMute.count({ where: { roomId: r.id } }).catch(() => 0),
           this.prisma.roomBan.count({ where: { roomId: r.id, status: 'ACTIVE' } }).catch(() => 0),
         ]);
@@ -805,10 +800,16 @@ export class MobileWorkforceService {
           Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 60000),
         );
         const [participantsCount, reportsCount, warningsCount, bansCount] = await Promise.all([
-          this.prisma.videoRoomMember.count({ where: { roomId: r.id, isActive: true } }).catch(() => 1),
-          this.prisma.videoRoomReport.count({ where: { roomId: r.id, status: 'PENDING' } }).catch(() => 0),
+          this.prisma.videoRoomMember
+            .count({ where: { roomId: r.id, isActive: true } })
+            .catch(() => 1),
+          this.prisma.videoRoomReport
+            .count({ where: { roomId: r.id, status: 'PENDING' } })
+            .catch(() => 0),
           this.prisma.videoRoomWarning.count({ where: { roomId: r.id } }).catch(() => 0),
-          this.prisma.videoRoomBlock.count({ where: { roomId: r.id, status: 'ACTIVE' } }).catch(() => 0),
+          this.prisma.videoRoomBlock
+            .count({ where: { roomId: r.id, status: 'ACTIVE' } })
+            .catch(() => 0),
         ]);
         const owner = ownerMap.get(r.ownerId);
 
@@ -839,7 +840,9 @@ export class MobileWorkforceService {
           Math.floor((Date.now() - new Date(s.createdAt).getTime()) / 60000),
         );
         const [reportsCount, bansCount] = await Promise.all([
-          this.prisma.liveStreamReport.count({ where: { streamId: s.id, status: 'PENDING' } }).catch(() => 0),
+          this.prisma.liveStreamReport
+            .count({ where: { streamId: s.id, status: 'PENDING' } })
+            .catch(() => 0),
           this.prisma.liveStreamBan.count({ where: { streamId: s.id } }).catch(() => 0),
         ]);
         const host = s.hostId ? ownerMap.get(s.hostId) : null;
@@ -865,11 +868,7 @@ export class MobileWorkforceService {
     );
 
     // Live streams tab displays active broadcast streams plus all currently live rooms
-    const allLiveStreams = [
-      ...formattedBroadcastStreams,
-      ...formattedAudio,
-      ...formattedVideo,
-    ];
+    const allLiveStreams = [...formattedBroadcastStreams, ...formattedAudio, ...formattedVideo];
 
     return {
       region: isUnrestricted ? 'ALL' : 'SCOPED',
@@ -1475,7 +1474,9 @@ export class MobileWorkforceService {
     const bansCount = isStream
       ? await this.prisma.liveStreamBan.count({ where: { streamId: roomId } }).catch(() => 0)
       : isVideo
-        ? await this.prisma.videoRoomBlock.count({ where: { roomId, status: 'ACTIVE' } }).catch(() => 0)
+        ? await this.prisma.videoRoomBlock
+            .count({ where: { roomId, status: 'ACTIVE' } })
+            .catch(() => 0)
         : await this.prisma.roomBan.count({ where: { roomId, status: 'ACTIVE' } }).catch(() => 0);
 
     const createdAt = room ? (room as any).createdAt || (room as any).startedAt : new Date();
@@ -1674,10 +1675,7 @@ export class MobileWorkforceService {
    * neither ADMIN nor SUPER_ADMIN) actually has the real shift status
    * checked.
    */
-  private async resolveShiftActive(
-    userId: string,
-    actorRoles: PlatformRole[],
-  ): Promise<boolean> {
+  private async resolveShiftActive(userId: string, actorRoles: PlatformRole[]): Promise<boolean> {
     const roles = actorRoles ?? [];
     if (roles.some((r) => (r as string) === 'ADMIN' || (r as string) === 'SUPER_ADMIN')) {
       return true;
@@ -2061,7 +2059,8 @@ export class MobileWorkforceService {
       const u = userMap.get(b.userId);
       const m = userMap.get(b.moderatorId);
       const isExpired = b.expiresAt ? b.expiresAt < now : false;
-      const status = b.status === ModerationStatus.LIFTED ? 'LIFTED' : isExpired ? 'EXPIRED' : 'ACTIVE';
+      const status =
+        b.status === ModerationStatus.LIFTED ? 'LIFTED' : isExpired ? 'EXPIRED' : 'ACTIVE';
       return {
         id: b.id,
         roomId: b.roomId,
@@ -2152,21 +2151,27 @@ export class MobileWorkforceService {
         where: { targetUserId: user.id },
       }),
       // Real wallet balance
-      this.prisma.wallet.findUnique({
-        where: { userId: user.id },
-      }).catch(() => null),
+      this.prisma.wallet
+        .findUnique({
+          where: { userId: user.id },
+        })
+        .catch(() => null),
       // Recent role requests as activity — use subjectUserId per schema
-      this.prisma.roleRequest.findMany({
-        where: { subjectUserId: user.id },
-        orderBy: { createdAt: 'desc' },
-        take: 3,
-      }).catch(() => []),
+      this.prisma.roleRequest
+        .findMany({
+          where: { subjectUserId: user.id },
+          orderBy: { createdAt: 'desc' },
+          take: 3,
+        })
+        .catch(() => []),
       // Recent room reports as activity
-      this.prisma.roomReport.findMany({
-        where: { targetUserId: user.id },
-        orderBy: { createdAt: 'desc' },
-        take: 2,
-      }).catch(() => []),
+      this.prisma.roomReport
+        .findMany({
+          where: { targetUserId: user.id },
+          orderBy: { createdAt: 'desc' },
+          take: 2,
+        })
+        .catch(() => []),
     ]);
 
     const activeRoles = userRoles.map((ur) => ur.role.name);
@@ -2194,18 +2199,22 @@ export class MobileWorkforceService {
 
     // Generate agency code from user ID — no fake IDs
     const idDigits = user.id.replace(/[^0-9]/g, '');
-    const agencyCode = idDigits.length >= 5
-      ? `AGY-${idDigits.slice(-5)}`
-      : `AGY-${user.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+    const agencyCode =
+      idDigits.length >= 5
+        ? `AGY-${idDigits.slice(-5)}`
+        : `AGY-${user.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 
     // Revenue: real earnings balance from wallet, formatted in rupees
     const earningsRaw = userWallet?.earningsBalance ?? BigInt(0);
     const earningsRupees = Number(earningsRaw) / 100;
-    const totalRevenue = earningsRupees > 0
-      ? `₹${earningsRupees >= 100000
-          ? `${(earningsRupees / 100000).toFixed(2)}L`
-          : earningsRupees.toFixed(2)}`
-      : '₹0';
+    const totalRevenue =
+      earningsRupees > 0
+        ? `₹${
+            earningsRupees >= 100000
+              ? `${(earningsRupees / 100000).toFixed(2)}L`
+              : earningsRupees.toFixed(2)
+          }`
+        : '₹0';
 
     // AgencyRelationship maps agencyId → hostId (no role filter available in schema)
     // agencyMembersCount already holds the total; hosts = all members
@@ -2213,7 +2222,13 @@ export class MobileWorkforceService {
     const hostsCount = agencyMembersCount;
 
     // Build real recent activity from DB events
-    const activities: Array<{ id: string; title: string; timeAgo: string; type: string; createdAt: Date }> = [];
+    const activities: Array<{
+      id: string;
+      title: string;
+      timeAgo: string;
+      type: string;
+      createdAt: Date;
+    }> = [];
 
     for (const rr of recentRoleRequests) {
       activities.push({
@@ -2271,7 +2286,7 @@ export class MobileWorkforceService {
       joinedDate: `Joined on ${joinDate}`,
       location: locationStr,
       overview: {
-        performanceScore: null,       // Will be implemented via analytics service
+        performanceScore: null, // Will be implemented via analytics service
         performanceRating: null,
         totalRevenue,
         totalRevenuePeriod: 'All time',
@@ -2313,19 +2328,18 @@ export class MobileWorkforceService {
         orderBy: { createdAt: 'desc' },
         take: 50,
       }),
-      this.prisma.supportTicket.findMany({
-        where: { submitterId: user.id },
-        orderBy: { createdAt: 'desc' },
-        take: 50,
-      }).catch(() => []),
+      this.prisma.supportTicket
+        .findMany({
+          where: { submitterId: user.id },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        })
+        .catch(() => []),
     ]);
 
     // Fetch reporter users to show real reporter names
     const reporterIds = [
-      ...new Set([
-        ...reports.map((r) => r.reporterId),
-        ...tickets.map((t) => t.submitterId),
-      ]),
+      ...new Set([...reports.map((r) => r.reporterId), ...tickets.map((t) => t.submitterId)]),
     ];
 
     const reporterUsers = await this.prisma.user.findMany({
@@ -2379,7 +2393,9 @@ export class MobileWorkforceService {
         reportedByName: repName,
         reportedByRole: repRole,
         category: rep.reason?.replace(/_/g, ' ') || 'Content Moderation',
-        subject: rep.description || `${rep.reason?.replace(/_/g, ' ') || 'Complaint'} filed against agency`,
+        subject:
+          rep.description ||
+          `${rep.reason?.replace(/_/g, ' ') || 'Complaint'} filed against agency`,
         description:
           rep.description ||
           `Moderation report filed regarding ${rep.reason?.replace(/_/g, ' ').toLowerCase() || 'policy violation'}.`,
@@ -2516,14 +2532,23 @@ export class MobileWorkforceService {
     }
   }
 
-
   /**
    * Format date as "18 May 2026 at 10:45 AM"
    */
   private _formatComplaintDate(dt: Date): string {
     const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December',
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     const day = dt.getDate();
     const month = months[dt.getMonth()];
@@ -2539,10 +2564,7 @@ export class MobileWorkforceService {
   /**
    * Get list of creators and metrics for Creator Management in Official Portal.
    */
-  async creatorsList(
-    officialUserId: string,
-    query?: { search?: string; category?: string },
-  ) {
+  async creatorsList(officialUserId: string, query?: { search?: string; category?: string }) {
     const scopeWhere = await this.scope.userScopeFilter(officialUserId);
 
     // 1. Metrics for Creator Management
@@ -2582,29 +2604,26 @@ export class MobileWorkforceService {
       take: 50,
     });
 
-
     const hostIds = creatorUsers.map((u) => u.id);
-    const [agencyRelationships, profiles, wallets, pendingRequestsCount] =
-      await Promise.all([
-        this.prisma.agencyRelationship.findMany({
-          where: { hostId: { in: hostIds }, status: 'ACTIVE' },
-        }),
-        this.prisma.userProfile.findMany({
-          where: { userId: { in: hostIds } },
-        }),
-        this.prisma.wallet.findMany({
-          where: { userId: { in: hostIds } },
-        }),
-        this.prisma.roleRequest
-          .count({
-            where: {
-              type: { in: ['CREATOR', 'HOST'] as any },
-              status: { in: ['SUBMITTED', 'IN_REVIEW'] },
-            },
-          })
-          .catch(() => 0),
-
-      ]);
+    const [agencyRelationships, profiles, wallets, pendingRequestsCount] = await Promise.all([
+      this.prisma.agencyRelationship.findMany({
+        where: { hostId: { in: hostIds }, status: 'ACTIVE' },
+      }),
+      this.prisma.userProfile.findMany({
+        where: { userId: { in: hostIds } },
+      }),
+      this.prisma.wallet.findMany({
+        where: { userId: { in: hostIds } },
+      }),
+      this.prisma.roleRequest
+        .count({
+          where: {
+            type: { in: ['CREATOR', 'HOST'] as any },
+            status: { in: ['SUBMITTED', 'IN_REVIEW'] },
+          },
+        })
+        .catch(() => 0),
+    ]);
 
     const agencyIds = [...new Set(agencyRelationships.map((r) => r.agencyId))];
     const agencyUsers =
@@ -2614,9 +2633,7 @@ export class MobileWorkforceService {
             select: { id: true, fullName: true, username: true },
           })
         : [];
-    const agencyMap = new Map(
-      agencyUsers.map((a) => [a.id, a.fullName || a.username]),
-    );
+    const agencyMap = new Map(agencyUsers.map((a) => [a.id, a.fullName || a.username]));
     const hostAgencyMap = new Map(
       agencyRelationships.map((r) => [r.hostId, agencyMap.get(r.agencyId)]),
     );
@@ -2624,8 +2641,7 @@ export class MobileWorkforceService {
     const walletMap = new Map(wallets.map((w) => [w.userId, w]));
 
     const items = creatorUsers.map((u) => {
-      const digits =
-        u.id.replace(/\D/g, '').slice(-5) || u.id.slice(0, 5).toUpperCase();
+      const digits = u.id.replace(/\D/g, '').slice(-5) || u.id.slice(0, 5).toUpperCase();
       const code = `CR-${digits}`;
       const name = u.fullName || u.username;
       const agencyName = hostAgencyMap.get(u.id)
@@ -2662,7 +2678,6 @@ export class MobileWorkforceService {
       };
     });
 
-
     return {
       metrics: {
         total: totalCreators,
@@ -2680,10 +2695,7 @@ export class MobileWorkforceService {
   async creatorDetails(userId: string, creatorId: string) {
     const creator = await this.prisma.user.findFirst({
       where: {
-        OR: [
-          { id: creatorId },
-          { username: creatorId },
-        ],
+        OR: [{ id: creatorId }, { username: creatorId }],
       },
     });
 
@@ -2691,36 +2703,45 @@ export class MobileWorkforceService {
       throw new NotFoundException(`Creator not found: ${creatorId}`);
     }
 
-    const [profile, stats, verification, wallet, liveStreams, videoRooms, tickets, reports, hostMember] =
-      await Promise.all([
-        this.prisma.userProfile.findUnique({ where: { userId: creator.id } }),
-        this.prisma.userStatistics.findUnique({ where: { userId: creator.id } }),
-        this.prisma.userVerification.findUnique({ where: { userId: creator.id } }),
-        this.prisma.wallet.findUnique({ where: { userId: creator.id } }),
-        this.prisma.liveStream.findMany({
-          where: { hostId: creator.id },
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-        }),
-        this.prisma.videoRoom.findMany({
-          where: { ownerId: creator.id },
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-        }),
-        this.prisma.supportTicket.findMany({
-          where: { submitterId: creator.id },
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-        }),
-        this.prisma.liveStreamReport.findMany({
-          where: { reporterId: creator.id },
-          orderBy: { createdAt: 'desc' },
-          take: 5,
-        }),
-        this.prisma.agencyRelationship.findFirst({
-          where: { hostId: creator.id, status: 'ACTIVE' },
-        }),
-      ]);
+    const [
+      profile,
+      stats,
+      verification,
+      wallet,
+      liveStreams,
+      videoRooms,
+      tickets,
+      reports,
+      hostMember,
+    ] = await Promise.all([
+      this.prisma.userProfile.findUnique({ where: { userId: creator.id } }),
+      this.prisma.userStatistics.findUnique({ where: { userId: creator.id } }),
+      this.prisma.userVerification.findUnique({ where: { userId: creator.id } }),
+      this.prisma.wallet.findUnique({ where: { userId: creator.id } }),
+      this.prisma.liveStream.findMany({
+        where: { hostId: creator.id },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      this.prisma.videoRoom.findMany({
+        where: { ownerId: creator.id },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      this.prisma.supportTicket.findMany({
+        where: { submitterId: creator.id },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      this.prisma.liveStreamReport.findMany({
+        where: { reporterId: creator.id },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      this.prisma.agencyRelationship.findFirst({
+        where: { hostId: creator.id, status: 'ACTIVE' },
+      }),
+    ]);
 
     let agencyName = 'Independent';
     if (hostMember?.agencyId) {
@@ -2734,8 +2755,7 @@ export class MobileWorkforceService {
     }
 
     const name = creator.fullName || creator.username || 'Creator';
-    const digits =
-      creator.id.replace(/\D/g, '').slice(-5) || creator.id.slice(0, 5).toUpperCase();
+    const digits = creator.id.replace(/\D/g, '').slice(-5) || creator.id.slice(0, 5).toUpperCase();
     const code = `CR-${digits}`;
 
     const joinedDate = creator.createdAt
@@ -2756,11 +2776,9 @@ export class MobileWorkforceService {
 
     const followersCount = stats?.followersCount ?? 0;
     const followers =
-      followersCount >= 1000
-        ? `${(followersCount / 1000).toFixed(1)}k`
-        : `${followersCount}`;
+      followersCount >= 1000 ? `${(followersCount / 1000).toFixed(1)}k` : `${followersCount}`;
 
-    const liveMinutes = stats?.liveMinutes ?? (liveStreams.length * 120);
+    const liveMinutes = stats?.liveMinutes ?? liveStreams.length * 120;
     const streamHours = Math.floor(liveMinutes / 60);
     const streamMins = liveMinutes % 60;
     const streamingHours = `${streamHours}h ${streamMins}m`;
@@ -2768,12 +2786,10 @@ export class MobileWorkforceService {
     const violationsCount = reports.length;
     const complaintsCount = tickets.length;
 
-    const location =
-      [profile?.city, profile?.state].filter(Boolean).join(', ') || '—';
+    const location = [profile?.city, profile?.state].filter(Boolean).join(', ') || '—';
 
     // Build real activity timeline
     const activities: Array<{
-
       icon: string;
       title: string;
       subtitle: string;
@@ -2823,7 +2839,10 @@ export class MobileWorkforceService {
       code,
       name,
       avatarUrl: profile?.avatarKey || null,
-      isVerified: verification?.verified || creator.roles?.includes('CREATOR') || creator.roles?.includes('HOST'),
+      isVerified:
+        verification?.verified ||
+        creator.roles?.includes('CREATOR') ||
+        creator.roles?.includes('HOST'),
       location,
       category: creator.roles?.includes('HOST') ? 'Hosts' : 'Creators',
       agencyName,
@@ -2844,10 +2863,7 @@ export class MobileWorkforceService {
   /**
    * Recommendations list and metrics for Official Portal
    */
-  async recommendationsList(
-    userId: string,
-    filter: { search?: string; role?: string },
-  ) {
+  async recommendationsList(userId: string, filter: { search?: string; role?: string }) {
     const roleFilter =
       filter.role && filter.role !== 'All'
         ? filter.role === 'BD'
@@ -2859,32 +2875,31 @@ export class MobileWorkforceService {
       type: roleFilter ? roleFilter : { in: ['MODERATOR', 'BUSINESS_DEVELOPMENT'] },
     };
 
-    const [allRequests, underReviewCount, approvedCount, rejectedCount] =
-      await Promise.all([
-        this.prisma.roleRequest.findMany({
-          where,
-          orderBy: { createdAt: 'desc' },
-          take: 50,
-        }),
-        this.prisma.roleRequest.count({
-          where: {
-            ...where,
-            status: { in: ['SUBMITTED', 'IN_REVIEW'] },
-          },
-        }),
-        this.prisma.roleRequest.count({
-          where: {
-            ...where,
-            status: 'APPROVED',
-          },
-        }),
-        this.prisma.roleRequest.count({
-          where: {
-            ...where,
-            status: 'REJECTED',
-          },
-        }),
-      ]);
+    const [allRequests, underReviewCount, approvedCount, rejectedCount] = await Promise.all([
+      this.prisma.roleRequest.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      this.prisma.roleRequest.count({
+        where: {
+          ...where,
+          status: { in: ['SUBMITTED', 'IN_REVIEW'] },
+        },
+      }),
+      this.prisma.roleRequest.count({
+        where: {
+          ...where,
+          status: 'APPROVED',
+        },
+      }),
+      this.prisma.roleRequest.count({
+        where: {
+          ...where,
+          status: 'REJECTED',
+        },
+      }),
+    ]);
 
     const userIds = [
       ...new Set([
@@ -2910,8 +2925,7 @@ export class MobileWorkforceService {
     const items = allRequests.map((req) => {
       const name = userMap.get(req.subjectUserId) || 'Candidate';
       const prof = profileMap.get(req.subjectUserId);
-      const location =
-        [prof?.city, prof?.state].filter(Boolean).join(', ') || '—';
+      const location = [prof?.city, prof?.state].filter(Boolean).join(', ') || '—';
 
       const roleType =
         req.type === 'MODERATOR'
@@ -2958,11 +2972,7 @@ export class MobileWorkforceService {
         submitted,
         status,
         statusColor:
-          status === 'Recommended'
-            ? '#16A34A'
-            : status === 'Rejected'
-              ? '#DC2626'
-              : '#9333EA',
+          status === 'Recommended' ? '#16A34A' : status === 'Rejected' ? '#DC2626' : '#9333EA',
       };
     });
 
@@ -3020,17 +3030,13 @@ export class MobileWorkforceService {
     });
   }
 
-
   /**
    * Detailed recommendation info for Official Portal
    */
   async recommendationDetails(userId: string, id: string) {
     const request = await this.prisma.roleRequest.findFirst({
       where: {
-        OR: [
-          { id: id.length === 36 ? id : undefined },
-          { reference: id },
-        ],
+        OR: [{ id: id.length === 36 ? id : undefined }, { reference: id }],
       },
       include: {
         actions: { orderBy: { sequence: 'asc' } },
@@ -3042,19 +3048,16 @@ export class MobileWorkforceService {
       throw new NotFoundException(`Recommendation not found: ${id}`);
     }
 
-    const [candidateUser, candidateProfile, initiatorUser] =
-      await Promise.all([
-        this.prisma.user.findUnique({ where: { id: request.subjectUserId } }),
-        this.prisma.userProfile.findUnique({
-          where: { userId: request.subjectUserId },
-        }),
-        this.prisma.user.findUnique({ where: { id: request.initiatedByUserId } }),
-      ]);
+    const [candidateUser, candidateProfile, initiatorUser] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: request.subjectUserId } }),
+      this.prisma.userProfile.findUnique({
+        where: { userId: request.subjectUserId },
+      }),
+      this.prisma.user.findUnique({ where: { id: request.initiatedByUserId } }),
+    ]);
 
-    const name =
-      candidateUser?.fullName || candidateUser?.username || 'Candidate';
-    const recommendedBy =
-      initiatorUser?.fullName || initiatorUser?.username || 'Official';
+    const name = candidateUser?.fullName || candidateUser?.username || 'Candidate';
+    const recommendedBy = initiatorUser?.fullName || initiatorUser?.username || 'Official';
 
     const roleType =
       request.type === 'MODERATOR'
@@ -3170,9 +3173,7 @@ export class MobileWorkforceService {
     const reference = `${prefix}-${String(count + 10001).slice(-5)}`;
 
     const defaultRegion = await this.prisma.region.findFirst({ select: { id: true } });
-    const regionId =
-      defaultRegion?.id || '00000000-0000-0000-0000-000000000001';
-
+    const regionId = defaultRegion?.id || '00000000-0000-0000-0000-000000000001';
 
     const reqType =
       body.roleType === 'MODERATOR'
@@ -3203,8 +3204,6 @@ export class MobileWorkforceService {
     };
   }
 
-
-
   /**
    * Convert a Date to a human-readable relative time string.
    */
@@ -3223,8 +3222,3 @@ export class MobileWorkforceService {
     return `${Math.floor(diffMon / 12)} year${Math.floor(diffMon / 12) > 1 ? 's' : ''} ago`;
   }
 }
-
-
-
-
-

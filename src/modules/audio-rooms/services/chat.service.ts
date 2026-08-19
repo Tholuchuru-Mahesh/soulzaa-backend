@@ -120,7 +120,7 @@ export class ChatService implements IAudioRoomChatService {
       actor.roles?.some((r: any) => r === 'ADMIN' || r === 'SUPER_ADMIN') ||
       (dto.type as any) === 'SYSTEM' ||
       dto.type === ChatMessageType.SYSTEM;
-    
+
     const content = dto.content.trim();
     this.assertLength(content, dto.type, cfg);
 
@@ -158,7 +158,8 @@ export class ChatService implements IAudioRoomChatService {
     // Resolve @mentions to user ids (capped).
     const mentions = await this.resolveMentions(content, actor.id, cfg.maxMentions);
 
-    const messageType = isStaff || dto.type === ChatMessageType.SYSTEM ? ChatMessageType.SYSTEM : dto.type;
+    const messageType =
+      isStaff || dto.type === ChatMessageType.SYSTEM ? ChatMessageType.SYSTEM : dto.type;
 
     const message = await this.chatRepo.createMessage({
       roomId,
@@ -599,7 +600,9 @@ export class ChatService implements IAudioRoomChatService {
   /** Membership + live + chat-enabled + not-banned + not-muted gate. */
   private async assertCanChat(roomId: string, actorOrUserId: RoomActor | string): Promise<void> {
     const userId = typeof actorOrUserId === 'string' ? actorOrUserId : actorOrUserId.id;
-    const isStaff = typeof actorOrUserId !== 'string' && actorOrUserId.roles?.some((r: any) => r === 'ADMIN' || r === 'SUPER_ADMIN');
+    const isStaff =
+      typeof actorOrUserId !== 'string' &&
+      actorOrUserId.roles?.some((r: any) => r === 'ADMIN' || r === 'SUPER_ADMIN');
     if (isStaff) return;
 
     await this.assertActiveMember(roomId, userId);

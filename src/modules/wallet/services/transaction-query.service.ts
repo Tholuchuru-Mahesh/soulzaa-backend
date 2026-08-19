@@ -249,7 +249,7 @@ export class TransactionQueryService {
           const receiver = userMap.get(gt.receiverId);
           paymentDetails = {
             giftName: gift?.displayName || gift?.name || 'Gift',
-            giftThumbnailUrl: await this.media.resolve(gift?.thumbnailUrl) || null,
+            giftThumbnailUrl: (await this.media.resolve(gift?.thumbnailUrl)) || null,
             quantity: gt.quantity,
             senderName: sender?.username || 'user',
             receiverName: receiver?.username || 'user',
@@ -267,7 +267,7 @@ export class TransactionQueryService {
             balanceAfter: e.balanceAfter.toString(),
           })),
         };
-      })
+      }),
     );
 
     return {

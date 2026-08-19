@@ -178,7 +178,8 @@ export class WarnVideoRoomUserDto {
   @ApiPropertyOptional({
     enum: ['PRIVATE', 'ROOM'],
     default: 'PRIVATE',
-    description: 'PRIVATE notifies only the target user. ROOM also posts a System-attributed chat message visible to everyone in the room.',
+    description:
+      'PRIVATE notifies only the target user. ROOM also posts a System-attributed chat message visible to everyone in the room.',
   })
   @IsOptional()
   @IsIn(['PRIVATE', 'ROOM'])

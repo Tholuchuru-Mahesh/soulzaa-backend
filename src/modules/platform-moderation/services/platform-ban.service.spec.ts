@@ -91,7 +91,11 @@ describe('PlatformBanService', () => {
       );
       expect(sockets.disconnectUserEverywhere).toHaveBeenCalledWith('target-1');
       expect(audit.record).toHaveBeenCalledWith(
-        expect.objectContaining({ moderatorId: 'mod-1', action: 'BAN_ISSUED', targetUserId: 'target-1' }),
+        expect.objectContaining({
+          moderatorId: 'mod-1',
+          action: 'BAN_ISSUED',
+          targetUserId: 'target-1',
+        }),
       );
     });
   });
@@ -120,7 +124,11 @@ describe('PlatformBanService', () => {
     });
 
     it('is idempotent — lifting an already-lifted ban does not error', async () => {
-      repo.findById.mockResolvedValueOnce({ id: 'ban-1', status: 'LIFTED', targetUserId: 'target-1' });
+      repo.findById.mockResolvedValueOnce({
+        id: 'ban-1',
+        status: 'LIFTED',
+        targetUserId: 'target-1',
+      });
       const result = await service.unbanUser('admin-1', 'ban-1');
       expect(repo.lift).not.toHaveBeenCalled();
       expect(result.status).toBe('LIFTED');

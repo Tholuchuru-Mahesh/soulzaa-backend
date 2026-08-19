@@ -181,7 +181,6 @@ export class SessionService {
       );
     }
 
-
     await this.assertNotHijacked(session, ctx);
 
     const next = await this.createSession(claims, {

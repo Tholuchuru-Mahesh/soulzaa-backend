@@ -61,7 +61,12 @@ describe('PlatformModerationAuditService', () => {
   it('record() never throws — a logging failure must not break the caller', async () => {
     prisma.platformModerationAuditLog.create.mockRejectedValueOnce(new Error('db down'));
     await expect(
-      service.record({ moderatorId: 'm1', action: 'BAN_ISSUED', roomType: 'VIDEO_ROOM', roomId: 'r1' }),
+      service.record({
+        moderatorId: 'm1',
+        action: 'BAN_ISSUED',
+        roomType: 'VIDEO_ROOM',
+        roomId: 'r1',
+      }),
     ).resolves.toBeUndefined();
   });
 });

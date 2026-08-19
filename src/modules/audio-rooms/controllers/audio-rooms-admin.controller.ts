@@ -125,7 +125,9 @@ export class AudioRoomsAdminController {
       giftRows.forEach((g) => giftsMap.set(g.id, g));
     }
 
-    const userIds = Array.from(new Set([...rows.map((r) => r.senderId), ...rows.map((r) => r.receiverId)]));
+    const userIds = Array.from(
+      new Set([...rows.map((r) => r.senderId), ...rows.map((r) => r.receiverId)]),
+    );
     const usersMap = new Map<string, any>();
     if (userIds.length > 0) {
       const userRows = await this.prisma.user.findMany({
@@ -150,7 +152,7 @@ export class AudioRoomsAdminController {
           giftName: giftInfo?.displayName || giftInfo?.name || 'Gift',
           giftThumbnailUrl: (await this.media.resolve(giftInfo?.thumbnailUrl)) || null,
         };
-      })
+      }),
     );
 
     return buildPaginated(items, total, q.page, q.limit);
@@ -213,7 +215,11 @@ export class AudioRoomsAdminController {
       where: { id },
     });
     if (!room) {
-      throw new BusinessException('Room not found', ERROR_CODES.ROOM_NOT_FOUND, HttpStatus.NOT_FOUND);
+      throw new BusinessException(
+        'Room not found',
+        ERROR_CODES.ROOM_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+      );
     }
 
     const [
@@ -276,7 +282,9 @@ export class AudioRoomsAdminController {
     const memberUserIds = activeMembers.map((m) => m.userId);
     const giftSenderIds = recentGiftsRows.map((g) => g.senderId);
     const giftReceiverIds = recentGiftsRows.map((g) => g.receiverId);
-    const allUserIds = Array.from(new Set([...memberUserIds, ...giftSenderIds, ...giftReceiverIds, room.ownerId]));
+    const allUserIds = Array.from(
+      new Set([...memberUserIds, ...giftSenderIds, ...giftReceiverIds, room.ownerId]),
+    );
 
     const usersMap = new Map<string, any>();
     if (allUserIds.length > 0) {
@@ -367,10 +375,10 @@ export class AudioRoomsAdminController {
         role: isOwner
           ? 'Host'
           : m.role === 'ADMIN'
-          ? 'Admin'
-          : m.role === 'SPEAKER'
-          ? 'Speaker'
-          : 'Member',
+            ? 'Admin'
+            : m.role === 'SPEAKER'
+              ? 'Speaker'
+              : 'Member',
         level: u?.level || 1,
         isMuted: isMuted,
         isSpeaking: isOnMic && !isMuted,
@@ -416,16 +424,21 @@ export class AudioRoomsAdminController {
           senderName: sender?.fullName || sender?.username || 'Supporter',
           senderAvatarUrl: sender?.avatarUrl || null,
           receiverId: g.receiverId,
-          receiverName: receiver?.fullName || receiver?.username || (g.receiverId === room.ownerId ? owner?.fullName || owner?.username || 'Host' : 'Recipient'),
+          receiverName:
+            receiver?.fullName ||
+            receiver?.username ||
+            (g.receiverId === room.ownerId
+              ? owner?.fullName || owner?.username || 'Host'
+              : 'Recipient'),
           receiverAvatarUrl: receiver?.avatarUrl || null,
           giftName: giftInfo?.displayName || giftInfo?.name || (isDiamond ? 'Diamond' : 'Coins'),
-          giftThumbnailUrl: await this.media.resolve(giftInfo?.thumbnailUrl) || null,
+          giftThumbnailUrl: (await this.media.resolve(giftInfo?.thumbnailUrl)) || null,
           currencyType: isDiamond ? 'diamonds' : 'coins',
           amount: coins || 0,
           amountFormatted: isDiamond ? `${coins} diamonds` : `${coins.toLocaleString()} coins`,
           createdAt: g.createdAt,
         };
-      })
+      }),
     );
 
     const recentChats = recentMessages.reverse().map((msg) => {
@@ -434,17 +447,15 @@ export class AudioRoomsAdminController {
       return {
         id: msg.id,
         senderId: msg.senderId,
-        senderName: isSystem ? 'System' : (sender?.fullName || sender?.username || 'Member'),
-        senderAvatarUrl: isSystem ? null : (sender?.avatarUrl || null),
+        senderName: isSystem ? 'System' : sender?.fullName || sender?.username || 'Member',
+        senderAvatarUrl: isSystem ? null : sender?.avatarUrl || null,
         body: msg.content,
         type: msg.type,
         createdAt: msg.createdAt,
       };
     });
 
-    const gameName = activeGameSession
-      ? String(activeGameSession.code).replace(/_/g, ' ')
-      : 'None';
+    const gameName = activeGameSession ? String(activeGameSession.code).replace(/_/g, ' ') : 'None';
 
     return {
       sessionInfo: {
@@ -492,10 +503,7 @@ export class AudioRoomsAdminController {
   @Post(':id/slow-mode')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Toggle chat slow mode for audio room' })
-  async setSlowMode(
-    @Param('id', ParseUuidPipe) id: string,
-    @Body() dto: SlowModeAdminDto,
-  ) {
+  async setSlowMode(@Param('id', ParseUuidPipe) id: string, @Body() dto: SlowModeAdminDto) {
     const seconds = dto.slowMode ? 5 : 0;
     await this.prisma.roomSettings.upsert({
       where: { roomId: id },

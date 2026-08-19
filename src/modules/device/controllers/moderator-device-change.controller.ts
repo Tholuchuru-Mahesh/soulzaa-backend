@@ -65,14 +65,22 @@ export class ModeratorDeviceChangeController {
   }
 
   @Get('pending')
-  @RequirePermissions('moderator.device.review', 'moderator.device.approve', 'admin.identity.manage')
+  @RequirePermissions(
+    'moderator.device.review',
+    'moderator.device.approve',
+    'admin.identity.manage',
+  )
   @ApiOperation({ summary: 'List all pending device change requests (Manager/Admin)' })
   pending() {
     return this.service.getPendingRequests();
   }
 
   @Get('all')
-  @RequirePermissions('moderator.device.review', 'moderator.device.approve', 'admin.identity.manage')
+  @RequirePermissions(
+    'moderator.device.review',
+    'moderator.device.approve',
+    'admin.identity.manage',
+  )
   @ApiOperation({ summary: 'List all device change requests including resolved history' })
   all() {
     return this.service.getAllRequests();
@@ -108,7 +116,11 @@ export class ModeratorDeviceChangeController {
 
   @Put(':id/reject')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('moderator.device.review', 'moderator.device.approve', 'admin.identity.manage')
+  @RequirePermissions(
+    'moderator.device.review',
+    'moderator.device.approve',
+    'admin.identity.manage',
+  )
   @ApiOperation({ summary: 'Reject a device change request (Manager/Admin)' })
   reject(
     @Param('id', ParseUuidPipe) id: string,

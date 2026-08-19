@@ -22,7 +22,10 @@ describe('ModerationController — banGlobally (platform-wide 24h ban)', () => {
     const dto = { reason: 'harassment' } as never;
     await subject.banGlobally(user, ROOM, 't1', dto);
 
-    expect(permissions.assertCanModerate).toHaveBeenCalledWith(ROOM, { id: 'u1', roles: [PlatformRole.USER] });
+    expect(permissions.assertCanModerate).toHaveBeenCalledWith(ROOM, {
+      id: 'u1',
+      roles: [PlatformRole.USER],
+    });
     expect(platformBans.banUser).toHaveBeenCalledWith({
       moderatorId: 'u1',
       targetUserId: 't1',

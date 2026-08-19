@@ -73,12 +73,17 @@ export class StateService {
    * Sequence is per-country, in creation order; the retry loop only matters
    * if an earlier slot was somehow already taken (e.g. manual DB edits).
    */
-  private async generateModeratorRegionCode(countryId: string, countryCode: string): Promise<string> {
+  private async generateModeratorRegionCode(
+    countryId: string,
+    countryCode: string,
+  ): Promise<string> {
     const existingCount = await this.prisma.state.count({ where: { countryId } });
     for (let offset = 0; offset < 5; offset++) {
       const seq = String(existingCount + 1 + offset).padStart(2, '0');
       const candidate = `${countryCode}-S-${seq}`;
-      const clash = await this.prisma.state.findUnique({ where: { moderatorRegionCode: candidate } });
+      const clash = await this.prisma.state.findUnique({
+        where: { moderatorRegionCode: candidate },
+      });
       if (!clash) return candidate;
     }
     return `${countryCode}-S-${Date.now().toString(36).toUpperCase()}`;

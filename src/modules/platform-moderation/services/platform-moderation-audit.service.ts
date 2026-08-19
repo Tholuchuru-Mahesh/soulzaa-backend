@@ -1,6 +1,10 @@
 // src/modules/platform-moderation/services/platform-moderation-audit.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { PlatformModerationActionType, PlatformRoomType, PlatformWarningScope } from '@prisma/client';
+import {
+  PlatformModerationActionType,
+  PlatformRoomType,
+  PlatformWarningScope,
+} from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 export interface RecordAuditInput {

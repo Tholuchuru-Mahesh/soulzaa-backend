@@ -13,7 +13,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { MonitoringMetrics } from '../observability/monitoring.metrics';
 
-
 export interface PresignedUpload {
   key: string;
   uploadUrl: string;
@@ -77,9 +76,7 @@ export class S3Service {
 
   private getPresignClient(): S3Client {
     let publicEndpoint =
-      process.env.S3_PUBLIC_ENDPOINT ||
-      this.config.get('storage', { infer: true })?.publicEndpoint;
-
+      process.env.S3_PUBLIC_ENDPOINT || this.config.get('storage', { infer: true })?.publicEndpoint;
 
     try {
       const candidates = [
@@ -98,7 +95,10 @@ export class S3Service {
           }
         }
       }
-    } catch (_) {}
+    } catch {
+      // Best-effort: reading the .env file is an override lookup, so a missing
+      // or unreadable file simply means "no override", not a failure.
+    }
 
     if (publicEndpoint) {
       const cfg = this.config.get('storage', { infer: true });
@@ -119,8 +119,6 @@ export class S3Service {
     return this.client;
   }
 
-
-
   async getPresignedUploadUrl(key: string, contentType?: string): Promise<PresignedUpload> {
     const command = new PutObjectCommand({
       Bucket: this.bucket,
@@ -139,7 +137,6 @@ export class S3Service {
     const client = this.getPresignClient();
     return getSignedUrl(client, command, { expiresIn: this.presignExpiry });
   }
-
 
   async deleteObject(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));

@@ -50,9 +50,7 @@ export class CardResolver {
 
       followingSet = new Set(followingRows.map((r) => r.followingId));
       followersSet = new Set(followerRows.map((r) => r.followerId));
-      friendsSet = new Set(
-        friendRows.map((r) => (r.userAId === viewerId ? r.userBId : r.userAId)),
-      );
+      friendsSet = new Set(friendRows.map((r) => (r.userAId === viewerId ? r.userBId : r.userAId)));
     }
 
     const out: SocialUserCard[] = [];

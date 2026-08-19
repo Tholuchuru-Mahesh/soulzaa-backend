@@ -240,7 +240,9 @@ export class VideoRoomsAdminController {
       giftRows.forEach((g) => giftsMap.set(g.id, g));
     }
 
-    const userIds = Array.from(new Set([...rows.map((r) => r.senderId), ...rows.map((r) => r.receiverId)]));
+    const userIds = Array.from(
+      new Set([...rows.map((r) => r.senderId), ...rows.map((r) => r.receiverId)]),
+    );
     const usersMap = new Map<string, any>();
     if (userIds.length > 0) {
       const userRows = await this.prisma.user.findMany({
@@ -264,7 +266,7 @@ export class VideoRoomsAdminController {
           giftName: giftInfo?.displayName || giftInfo?.name || 'Gift',
           giftThumbnailUrl: (await this.media.resolve(giftInfo?.thumbnailUrl)) || null,
         };
-      })
+      }),
     );
 
     return buildPaginated(items, total, q.page || 1, q.limit || 20);
@@ -338,7 +340,11 @@ export class VideoRoomsAdminController {
       where: { id, deletedAt: null },
     });
     if (!room) {
-      throw new BusinessException('Video room not found', ERROR_CODES.ROOM_NOT_FOUND, HttpStatus.NOT_FOUND);
+      throw new BusinessException(
+        'Video room not found',
+        ERROR_CODES.ROOM_NOT_FOUND,
+        HttpStatus.NOT_FOUND,
+      );
     }
 
     const [
@@ -401,7 +407,9 @@ export class VideoRoomsAdminController {
     const memberUserIds = activeMembers.map((m) => m.userId);
     const giftSenderIds = recentGiftsRows.map((g) => g.senderId);
     const giftReceiverIds = recentGiftsRows.map((g) => g.receiverId);
-    const allUserIds = Array.from(new Set([...memberUserIds, ...giftSenderIds, ...giftReceiverIds, room.ownerId]));
+    const allUserIds = Array.from(
+      new Set([...memberUserIds, ...giftSenderIds, ...giftReceiverIds, room.ownerId]),
+    );
 
     const usersMap = new Map<string, any>();
     if (allUserIds.length > 0) {
@@ -492,10 +500,10 @@ export class VideoRoomsAdminController {
         role: isOwner
           ? 'Host'
           : m.role === 'MODERATOR'
-          ? 'Admin'
-          : m.role === 'PARTICIPANT'
-          ? 'Speaker'
-          : 'Member',
+            ? 'Admin'
+            : m.role === 'PARTICIPANT'
+              ? 'Speaker'
+              : 'Member',
         level: u?.level || 1,
         isMuted: isMuted,
         isSpeaking: isOnMic && !isMuted,
@@ -541,16 +549,21 @@ export class VideoRoomsAdminController {
           senderName: sender?.fullName || sender?.username || 'Supporter',
           senderAvatarUrl: sender?.avatarUrl || null,
           receiverId: g.receiverId,
-          receiverName: receiver?.fullName || receiver?.username || (g.receiverId === room.ownerId ? owner?.fullName || owner?.username || 'Host' : 'Recipient'),
+          receiverName:
+            receiver?.fullName ||
+            receiver?.username ||
+            (g.receiverId === room.ownerId
+              ? owner?.fullName || owner?.username || 'Host'
+              : 'Recipient'),
           receiverAvatarUrl: receiver?.avatarUrl || null,
           giftName: giftInfo?.displayName || giftInfo?.name || (isDiamond ? 'Diamond' : 'Coins'),
-          giftThumbnailUrl: await this.media.resolve(giftInfo?.thumbnailUrl) || null,
+          giftThumbnailUrl: (await this.media.resolve(giftInfo?.thumbnailUrl)) || null,
           currencyType: isDiamond ? 'diamonds' : 'coins',
           amount: coins || 0,
           amountFormatted: isDiamond ? `${coins} diamonds` : `${coins.toLocaleString()} coins`,
           createdAt: g.createdAt,
         };
-      })
+      }),
     );
 
     const recentChats = recentMessages.reverse().map((msg) => {
@@ -559,17 +572,15 @@ export class VideoRoomsAdminController {
       return {
         id: msg.id,
         senderId: msg.senderId,
-        senderName: isSystem ? 'System' : (sender?.fullName || sender?.username || 'Member'),
-        senderAvatarUrl: isSystem ? null : (sender?.avatarUrl || null),
+        senderName: isSystem ? 'System' : sender?.fullName || sender?.username || 'Member',
+        senderAvatarUrl: isSystem ? null : sender?.avatarUrl || null,
         body: msg.content,
         type: msg.type,
         createdAt: msg.createdAt,
       };
     });
 
-    const gameName = activeGameSession
-      ? String(activeGameSession.code).replace(/_/g, ' ')
-      : 'None';
+    const gameName = activeGameSession ? String(activeGameSession.code).replace(/_/g, ' ') : 'None';
 
     return {
       sessionInfo: {

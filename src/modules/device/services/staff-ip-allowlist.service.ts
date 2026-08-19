@@ -209,7 +209,9 @@ export class StaffIpAllowlistService {
       },
     });
 
-    this.logger.log(`Removed device ${deviceId} (${existing.deviceIdentifier}) for staff user ${userId} by ${removedBy}`);
+    this.logger.log(
+      `Removed device ${deviceId} (${existing.deviceIdentifier}) for staff user ${userId} by ${removedBy}`,
+    );
     return updated;
   }
 

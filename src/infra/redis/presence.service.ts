@@ -109,7 +109,10 @@ export class PresenceService {
    * both sets guarantees cleanup either way.
    */
   async leaveRoomEverywhere(roomId: string, userId: string): Promise<void> {
-    await Promise.all([this.leaveRoom(roomId, userId, false), this.leaveRoom(roomId, userId, true)]);
+    await Promise.all([
+      this.leaveRoom(roomId, userId, false),
+      this.leaveRoom(roomId, userId, true),
+    ]);
   }
 
   async roomMembers(roomId: string): Promise<string[]> {

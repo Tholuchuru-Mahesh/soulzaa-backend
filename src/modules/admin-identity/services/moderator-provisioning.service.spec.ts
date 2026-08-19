@@ -328,8 +328,14 @@ describe('ModeratorProvisioningService', () => {
       prisma.userRole.findFirst = jest.fn().mockResolvedValue({
         id: 'user-role-1',
         roleScopes: [
-          { stateId: 'state-ka', state: { id: 'state-ka', name: 'Karnataka', code: 'KA', countryId: 'c1' } },
-          { stateId: 'state-ap', state: { id: 'state-ap', name: 'Andhra Pradesh', code: 'AP', countryId: 'c1' } },
+          {
+            stateId: 'state-ka',
+            state: { id: 'state-ka', name: 'Karnataka', code: 'KA', countryId: 'c1' },
+          },
+          {
+            stateId: 'state-ap',
+            state: { id: 'state-ap', name: 'Andhra Pradesh', code: 'AP', countryId: 'c1' },
+          },
         ],
       });
       const result = await service.getModeratorStates('actor-1', 'mod-1');
