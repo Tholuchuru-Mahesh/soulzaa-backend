@@ -15,7 +15,8 @@
 // from every consumer). The default output is pnpm-aware; leave it alone.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
 }
 
 datasource db {
