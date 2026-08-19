@@ -85,7 +85,8 @@ export abstract class BaseGateway
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { roomId: string },
   ): Promise<{ ok: boolean; roomId: string }> {
-    await this.manager.leaveRoom(client, body.roomId);
+    const namespace = (this.server as unknown as { name: string }).name;
+    await this.manager.leaveRoom(client, body.roomId, namespace);
     return { ok: true, roomId: body.roomId };
   }
 

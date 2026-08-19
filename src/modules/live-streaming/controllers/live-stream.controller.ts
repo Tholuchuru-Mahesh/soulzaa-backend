@@ -21,6 +21,8 @@ import type { RequestMetadata } from 'src/common/interfaces/request-metadata.int
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import { ShiftActiveGuard } from 'src/modules/moderator-shift/guards/shift-active.guard';
 import { SuspendedGuard } from 'src/modules/moderator-warning/guards/suspended.guard';
+import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { BanUserGloballyDto } from 'src/modules/platform-moderation/dto/ban-user-globally.dto';
 import { LiveStreamReportService } from '../services/live-stream-report.service';
 import { LiveStreamService } from '../services/live-stream.service';
 
@@ -35,6 +37,8 @@ class ModerateStreamUserDto {
   reason?: string;
   /** Minutes until a MUTE/BAN self-lifts. Omit for PERMANENT. */
   durationMinutes?: number;
+  /** Only meaningful for WARN: PRIVATE (default) or ROOM-wide system broadcast. */
+  scope?: 'PRIVATE' | 'ROOM';
 }
 
 class FileReportDto {
@@ -57,7 +61,28 @@ export class LiveStreamController {
   constructor(
     private readonly service: LiveStreamService,
     private readonly reports: LiveStreamReportService,
+    private readonly platformBans: PlatformBanService,
   ) {}
+
+  @Post(':id/moderation/platform-ban/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('live.stream.moderate')
+  @ApiOperation({ summary: 'Ban a user globally from all rooms for 24 hours' })
+  banGlobally(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) streamId: string,
+    @Param('userId', ParseUuidPipe) userId: string,
+    @Body() dto: BanUserGloballyDto,
+  ) {
+    return this.platformBans.banUser({
+      moderatorId: user.id,
+      targetUserId: userId,
+      reason: dto.reason,
+      roomType: 'LIVE_STREAM',
+      originRoomId: streamId,
+    });
+  }
 
   @Post()
   @RequirePermissions('live.stream.create')
@@ -65,6 +90,7 @@ export class LiveStreamController {
   createStream(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateStreamDto) {
     return this.service.createStream({
       hostId: user.id,
+      hostRoles: user.roles,
       title: dto.title,
       description: dto.description,
     });
@@ -119,6 +145,7 @@ export class LiveStreamController {
         action: dto.action,
         reason: dto.reason,
         durationMinutes: dto.durationMinutes,
+        scope: dto.scope,
       },
       meta,
     );

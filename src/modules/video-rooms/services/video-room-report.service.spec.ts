@@ -458,6 +458,7 @@ describe('VideoRoomReportService', () => {
           TARGET,
           expect.stringContaining('[Report #report-1 review]'),
           undefined,
+          'PRIVATE',
           undefined,
         );
       });

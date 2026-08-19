@@ -6,7 +6,8 @@ import { ModerationApprovalModule } from 'src/modules/moderation-approval/modera
 import { ModeratorPerformanceModule } from 'src/modules/moderator-performance/moderator-performance.module';
 import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shift.module';
 import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-warning.module';
-import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
+import { WorkforceScopeModule } from 'src/modules/mobile-workforce/workforce-scope.module';
+import { PlatformModerationModule } from 'src/modules/platform-moderation/platform-moderation.module';
 import { LiveStreamController } from './controllers/live-stream.controller';
 import { LiveStreamingController } from './controllers/live-streaming.controller';
 import { LiveStreamModerationRepository } from './repositories/live-stream-moderation.repository';
@@ -30,7 +31,8 @@ import { LiveStreamModerationApprovalListener } from './listeners/live-stream-mo
     ModeratorPerformanceModule,
     ModeratorShiftModule,
     ModeratorWarningModule,
-    MobileWorkforceModule,
+    WorkforceScopeModule,
+    PlatformModerationModule,
   ],
   controllers: [LiveStreamController, LiveStreamingController],
   providers: [

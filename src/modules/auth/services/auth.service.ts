@@ -60,6 +60,25 @@ import {
 } from 'src/modules/notification/interfaces/notification.interface';
 
 /**
+ * Roles that make an account "staff" — must log in via `staffLogin` only,
+ * never the consumer `loginWithPassword` (moderator accounts hold both USER
+ * and MODERATOR, so their credentials would otherwise work for either app).
+ * Kept as one list so `loginWithPassword`'s rejection and `staffLogin`'s
+ * acceptance never drift apart.
+ */
+const STAFF_ROLES = [
+  'MODERATOR',
+  'ADMIN',
+  'SUPER_ADMIN',
+  'COUNTRY_MANAGER',
+  'STATE_MANAGER',
+  'REGIONAL_MANAGER',
+  'COIN_SELLER',
+  'AGENT',
+  'FINANCE_MANAGER',
+];
+
+/**
  * Auth domain orchestrator. Owns the auth flows (register/login/refresh/logout/
  * verify/password) and coordinates the credential, session, OTP, and social
  * collaborators. Identity is read/written only through IUsersService; all
@@ -158,6 +177,27 @@ export class AuthService implements IAuthService {
       );
     }
 
+    // Staff accounts (moderator and above) authenticate only through
+    // `staffLogin` — never the consumer app, even though the same password
+    // would otherwise verify (a moderator account also holds the USER role
+    // for internal endpoint compatibility). Responds identically to a wrong
+    // password rather than a distinct "staff account" error, so a consumer
+    // login attempt can't be used to enumerate which emails are staff.
+    const userRoles = await this.roleSource.getRoleNames(user.id);
+    if (userRoles.some((role: string) => STAFF_ROLES.includes(role))) {
+      await this.security.recordFailure(identifier, {
+        userId: user.id,
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+        reason: 'STAFF_ACCOUNT_CONSUMER_LOGIN_BLOCKED',
+      });
+      throw new BusinessException(
+        ERROR_CODES.INVALID_CREDENTIALS,
+        'Invalid credentials',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
     this.assertActive(user);
     await this.security.recordSuccess(identifier);
     return this.issue(user, ctx, 'PASSWORD', false);
@@ -167,6 +207,10 @@ export class AuthService implements IAuthService {
     input: PasswordLoginCommand & {
       totpCode?: string;
       deviceIdentifier?: string;
+      deviceName?: string;
+      platform?: string;
+      osVersion?: string;
+      appVersion?: string;
       identifier?: string;
     },
     ctx: AuthContext,
@@ -207,19 +251,7 @@ export class AuthService implements IAuthService {
 
     // 1. Staff Role Assertion (Task 9)
     const userRoles = await this.roleSource.getRoleNames(user.id);
-    const isStaff = userRoles.some((role: string) =>
-      [
-        'MODERATOR',
-        'ADMIN',
-        'SUPER_ADMIN',
-        'COUNTRY_MANAGER',
-        'STATE_MANAGER',
-        'REGIONAL_MANAGER',
-        'COIN_SELLER',
-        'AGENT',
-        'FINANCE_MANAGER',
-      ].includes(role),
-    );
+    const isStaff = userRoles.some((role: string) => STAFF_ROLES.includes(role));
 
     if (!isStaff) {
       await this.security.recordFailure(identifier, {
@@ -269,7 +301,12 @@ export class AuthService implements IAuthService {
     // 3. Bound Device Verification (Task 11)
     if (this.deviceBinding && input.deviceIdentifier) {
       try {
-        await this.deviceBinding.assertSingleDeviceByIdentifier(user.id, input.deviceIdentifier);
+        await this.deviceBinding.assertSingleDeviceByIdentifier(user.id, input.deviceIdentifier, {
+          deviceName: input.deviceName,
+          platform: input.platform,
+          osVersion: input.osVersion,
+          appVersion: input.appVersion,
+        });
       } catch (err) {
         await this.security.recordFailure(identifier, {
           userId: user.id,
@@ -289,7 +326,10 @@ export class AuthService implements IAuthService {
             moderatorId: user.id,
             newDeviceInfo: {
               deviceIdentifier: input.deviceIdentifier,
-              ip: ctx.ip ?? null,
+              deviceName: input.deviceName,
+              platform: input.platform,
+              osVersion: input.osVersion,
+              appVersion: input.appVersion,
             },
             reason: 'Automatic: rejected login from unbound device',
           });
@@ -303,24 +343,6 @@ export class AuthService implements IAuthService {
           ERROR_CODES.DEVICE_CHANGE_PENDING,
           "This device isn't recognized. A request has been sent for admin approval.",
           HttpStatus.CONFLICT,
-        );
-      }
-    }
-
-    // 4. Staff IP Allowlist Verification (Gap B1)
-    if (this.staffIpAllowlist && ctx.ip) {
-      const allowed = await this.staffIpAllowlist.isIpAllowed(user.id, ctx.ip);
-      if (!allowed) {
-        await this.security.recordFailure(identifier, {
-          userId: user.id,
-          ip: ctx.ip,
-          userAgent: ctx.userAgent,
-          reason: 'UNAUTHORIZED_STAFF_IP',
-        });
-        throw new BusinessException(
-          ERROR_CODES.STAFF_IP_NOT_ALLOWED,
-          'Access denied: Login is restricted to approved IP addresses.',
-          HttpStatus.FORBIDDEN,
         );
       }
     }

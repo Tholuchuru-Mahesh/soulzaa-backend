@@ -178,6 +178,52 @@ describe('VideoRoomMediaService — session', () => {
     ).rejects.toThrow();
   });
 
+  describe('joinMedia — incognito moderator', () => {
+    it('bypasses the membership check', async () => {
+      const { svc, permissions } = build();
+      permissions.resolveEffectiveRole.mockResolvedValue(null);
+      await expect(
+        svc.joinMedia({ id: 'mod-1', roles: ['MODERATOR'] } as never, 'r', {} as never),
+      ).resolves.toBeDefined();
+    });
+
+    it('is never added to the visible media stage', async () => {
+      const { svc } = build();
+      const res = await svc.joinMedia(
+        { id: 'mod-1', roles: ['MODERATOR'] } as never,
+        'r',
+        {} as never,
+      );
+      expect(res.stage.participants.some((p) => p.userId === 'mod-1')).toBe(false);
+    });
+
+    it('never publishes MediaSessionCreatedEvent (identity broadcast)', async () => {
+      const { svc, bus } = build();
+      await svc.joinMedia({ id: 'mod-1', roles: ['MODERATOR'] } as never, 'r', {} as never);
+      expect(bus.publish).not.toHaveBeenCalled();
+    });
+
+    it('still creates a session row (needed for leave/heartbeat) and issues a subscriber token', async () => {
+      const { svc, mediaSessions, tokens } = build();
+      await svc.joinMedia({ id: 'mod-1', roles: ['MODERATOR'] } as never, 'r', {} as never);
+      expect(mediaSessions.start).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'mod-1', role: 'SUBSCRIBER' }),
+      );
+      expect(tokens.issueForRoom).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'mod-1', canPublish: false }),
+      );
+    });
+
+    it('leaveMedia never publishes MediaSessionClosedEvent for a moderator', async () => {
+      const { svc, mediaSessions, bus } = build();
+      await svc.joinMedia({ id: 'mod-1', roles: ['MODERATOR'] } as never, 'r', {} as never);
+      mediaSessions.find.mockResolvedValue({ joinedAt: new Date().toISOString() });
+      await svc.leaveMedia({ id: 'mod-1', roles: ['MODERATOR'] } as never, 'r');
+      expect(bus.publish).not.toHaveBeenCalled();
+      expect(mediaSessions.end).toHaveBeenCalledWith('r', 'mod-1', expect.any(BigInt));
+    });
+  });
+
   it('joinMedia throws NOT_FOUND for a missing room', async () => {
     const { svc, rooms } = build();
     rooms.findById.mockResolvedValue(null);

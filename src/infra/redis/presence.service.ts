@@ -29,6 +29,10 @@ export class PresenceService {
     return `presence:room:{${roomId}}:members`;
   }
 
+  private roomModeratorsKey(roomId: string): string {
+    return `presence:room:{${roomId}}:moderators`;
+  }
+
   // ---- Connections / online users ----
 
   /**
@@ -78,24 +82,43 @@ export class PresenceService {
 
   // ---- Room membership ----
 
-  async joinRoom(roomId: string, userId: string): Promise<void> {
-    await this.client.sadd(this.roomMembersKey(roomId), userId);
-    await this.client.expire(this.roomMembersKey(roomId), 86400);
+  async joinRoom(roomId: string, userId: string, isModerator = false): Promise<void> {
+    const key = isModerator ? this.roomModeratorsKey(roomId) : this.roomMembersKey(roomId);
+    await this.client.sadd(key, userId);
+    await this.client.expire(key, 86400);
     await this.client.sadd(this.userRoomsKey(userId), roomId);
     await this.client.expire(this.userRoomsKey(userId), 86400);
   }
 
-  async leaveRoom(roomId: string, userId: string): Promise<void> {
-    await this.client.srem(this.roomMembersKey(roomId), userId);
+  async leaveRoom(roomId: string, userId: string, isModerator = false): Promise<void> {
+    const key = isModerator ? this.roomModeratorsKey(roomId) : this.roomMembersKey(roomId);
+    await this.client.srem(key, userId);
     await this.client.srem(this.userRoomsKey(userId), roomId);
-    const count = await this.client.scard(this.roomMembersKey(roomId));
-    if (count === 0) {
-      await this.client.del(this.roomMembersKey(roomId));
+    if (!isModerator) {
+      const count = await this.client.scard(this.roomMembersKey(roomId));
+      if (count === 0) {
+        await this.client.del(this.roomMembersKey(roomId));
+      }
     }
+  }
+
+  /**
+   * Full-disconnect cleanup calls this without knowing whether the user was
+   * present as a public member or an incognito moderator for a given room —
+   * `srem` on a set the user isn't in is a harmless no-op, so removing from
+   * both sets guarantees cleanup either way.
+   */
+  async leaveRoomEverywhere(roomId: string, userId: string): Promise<void> {
+    await Promise.all([this.leaveRoom(roomId, userId, false), this.leaveRoom(roomId, userId, true)]);
   }
 
   async roomMembers(roomId: string): Promise<string[]> {
     return this.client.smembers(this.roomMembersKey(roomId));
+  }
+
+  /** Incognito moderators currently present — excluded from `roomMembers`/`roomMemberCount`. */
+  async roomModerators(roomId: string): Promise<string[]> {
+    return this.client.smembers(this.roomModeratorsKey(roomId));
   }
 
   async roomMemberCount(roomId: string): Promise<number> {
@@ -103,7 +126,11 @@ export class PresenceService {
   }
 
   async isInRoom(roomId: string, userId: string): Promise<boolean> {
-    return (await this.client.sismember(this.roomMembersKey(roomId), userId)) === 1;
+    const [inPublic, inModerators] = await Promise.all([
+      this.client.sismember(this.roomMembersKey(roomId), userId),
+      this.client.sismember(this.roomModeratorsKey(roomId), userId),
+    ]);
+    return inPublic === 1 || inModerators === 1;
   }
 
   /** Rooms a user is currently a member of (used to clean up on disconnect). */

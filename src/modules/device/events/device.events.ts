@@ -14,6 +14,7 @@ export const DEVICE_EVENTS = {
   SUSPICIOUS_LOGIN: 'device.suspicious_login',
   MODERATOR_DEVICE_CHANGE_REQUESTED: 'device.moderator_change_requested',
   MODERATOR_DEVICE_CHANGE_APPROVED: 'device.moderator_change_approved',
+  MODERATOR_DEVICE_CHANGE_REJECTED: 'device.moderator_change_rejected',
 } as const;
 
 export class DeviceRegisteredEvent extends DomainEvent<{
@@ -67,4 +68,16 @@ export class ModeratorDeviceChangeApprovedEvent extends DomainEvent<{
   approvedBy: string;
 }> {
   readonly name = DEVICE_EVENTS.MODERATOR_DEVICE_CHANGE_APPROVED;
+}
+
+/**
+ * Admin rejected a Moderator's device-change request (or revoked an approved device).
+ * Forces immediate logout of any active sessions.
+ */
+export class ModeratorDeviceChangeRejectedEvent extends DomainEvent<{
+  requestId: string;
+  moderatorId: string;
+  rejectedBy: string;
+}> {
+  readonly name = DEVICE_EVENTS.MODERATOR_DEVICE_CHANGE_REJECTED;
 }

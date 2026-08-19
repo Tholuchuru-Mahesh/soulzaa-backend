@@ -80,6 +80,16 @@ export class WarnDto {
   @MinLength(1)
   @MaxLength(MOD_REASON_MAX)
   reason!: string;
+
+  @ApiPropertyOptional({
+    enum: ['PRIVATE', 'ROOM'],
+    default: 'PRIVATE',
+    description:
+      'PRIVATE notifies only the target user. ROOM also posts a System-attributed message visible to everyone in the room.',
+  })
+  @IsOptional()
+  @IsIn(['PRIVATE', 'ROOM'])
+  scope?: 'PRIVATE' | 'ROOM';
 }
 
 /** Report another user in the room. */

@@ -31,6 +31,26 @@ export class StaffLoginDto {
   @IsOptional()
   @IsString()
   deviceIdentifier?: string;
+
+  @ApiPropertyOptional({ description: 'Device model or name (e.g. OnePlus 11)' })
+  @IsOptional()
+  @IsString()
+  deviceName?: string;
+
+  @ApiPropertyOptional({ description: 'Client platform (ANDROID, IOS, WEB)' })
+  @IsOptional()
+  @IsString()
+  platform?: string;
+
+  @ApiPropertyOptional({ description: 'OS version' })
+  @IsOptional()
+  @IsString()
+  osVersion?: string;
+
+  @ApiPropertyOptional({ description: 'App version' })
+  @IsOptional()
+  @IsString()
+  appVersion?: string;
 }
 
 @ApiTags('staff-auth')
@@ -56,6 +76,10 @@ export class StaffAuthController {
         password: dto.password,
         totpCode: dto.totpCode,
         deviceIdentifier: dto.deviceIdentifier,
+        deviceName: dto.deviceName,
+        platform: dto.platform,
+        osVersion: dto.osVersion,
+        appVersion: dto.appVersion,
       },
       ctx,
     );

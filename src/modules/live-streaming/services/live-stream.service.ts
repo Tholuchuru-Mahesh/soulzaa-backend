@@ -37,9 +37,12 @@ import {
   LIVE_STREAM_SOCKET_EVENTS,
   SYSTEM_MODERATOR_ID,
 } from '../constants/live-stream-moderation.constants';
+import { PlatformModerationAuditService } from 'src/modules/platform-moderation/services/platform-moderation-audit.service';
+import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 
 export interface CreateLiveStreamInput {
   hostId: string;
+  hostRoles?: string[];
   title?: string;
   description?: string;
 }
@@ -52,6 +55,8 @@ export interface LiveStreamModerationInput {
   reason?: string;
   /** Minutes until a MUTE/BAN self-lifts. Omit (or <=0) for PERMANENT. Ignored for WARN/KICK. */
   durationMinutes?: number;
+  /** Only meaningful for WARN: PRIVATE (default) or ROOM-wide system broadcast. */
+  scope?: 'PRIVATE' | 'ROOM';
 }
 
 @Injectable()
@@ -69,9 +74,17 @@ export class LiveStreamService {
     @Optional() private readonly auditLog?: AuditLogService,
     @Optional() @Inject(NOTIFICATION_SERVICE) private readonly notifications?: INotificationService,
     @Optional() private readonly reportRepo?: LiveStreamReportRepository,
+    @Optional() private readonly platformAudit?: PlatformModerationAuditService,
+    @Optional() private readonly platformBans?: PlatformBanService,
   ) {}
 
   async createStream(input: CreateLiveStreamInput) {
+    const isModeratorActor = (input.hostRoles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
+    if (!isModeratorActor && this.platformBans) {
+      await this.platformBans.assertNotGloballyBanned(input.hostId);
+    }
     // Get host location details if available to populate scope fields
     const host = await this.prisma.user.findUnique({
       where: { id: input.hostId },
@@ -237,6 +250,10 @@ export class LiveStreamService {
   /**
    * Real enforcement — mirrors how Audio/Video Room moderation actually
    * takes effect against a live participant (not just an audit row):
+   *  - WARN: an ephemeral `USER_WARNED` socket broadcast, System-attributed,
+   *    only when `scope === 'ROOM'` — PRIVATE (the default) sends nothing
+   *    here (the existing private-notification path elsewhere handles it).
+   *    No durable row — a warning is not a state change.
    *  - MUTE: a durable `LiveStreamMute` row + Redis mirror, checked by
    *    `assertCanSendChat` — the chat-send gate contract a future
    *    live-stream chat feature must call, exactly like the Audio Room's
@@ -255,6 +272,34 @@ export class LiveStreamService {
     streamId: string,
     input: LiveStreamModerationInput,
   ): Promise<void> {
+    if (input.action === 'WARN') {
+      if (input.scope === 'ROOM') {
+        this.sockets.emitToNamespaceRoom(
+          LIVE_STREAM_NAMESPACE,
+          streamId,
+          LIVE_STREAM_SOCKET_EVENTS.USER_WARNED,
+          {
+            streamId,
+            targetUserId: input.targetUserId,
+            moderatorId: SYSTEM_MODERATOR_ID,
+            systemMessage: input.reason ?? 'A moderator issued a warning.',
+          },
+        );
+      }
+      if (this.platformAudit) {
+        void this.platformAudit.record({
+          moderatorId: input.moderatorId,
+          action: 'WARNING_SENT',
+          roomType: 'LIVE_STREAM',
+          roomId: streamId,
+          targetUserId: input.targetUserId,
+          reason: input.reason,
+          scope: input.scope,
+        });
+      }
+      return;
+    }
+
     if (input.action === 'MUTE') {
       if (await this.moderationRepo.findActiveMute(streamId, input.targetUserId)) return;
       const expiresAt = this.resolveExpiry(input.durationMinutes);
@@ -416,6 +461,10 @@ export class LiveStreamService {
       (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
     );
 
+    if (!isModerator && this.platformBans) {
+      await this.platformBans.assertNotGloballyBanned(user.id);
+    }
+
     // The rejoin gate: a banned non-moderator viewer cannot come back until
     // the ban is lifted or expires. Mirrors Audio Room's ban check / Video
     // Room's findActiveBlock join-time check.
@@ -445,6 +494,14 @@ export class LiveStreamService {
           ),
         );
       }
+      if (this.platformAudit) {
+        void this.platformAudit.record({
+          moderatorId: user.id,
+          action: 'INCOGNITO_JOIN',
+          roomType: 'LIVE_STREAM',
+          roomId: streamId,
+        });
+      }
     }
 
     return { joined: true, isAnonymousModerator: isModerator, viewerCount };
@@ -456,6 +513,16 @@ export class LiveStreamService {
     );
     await this.presence.leaveLiveStream(streamId, user.id, isModerator);
     const viewerCount = await this.presence.liveStreamViewerCount(streamId);
+
+    if (isModerator && this.platformAudit) {
+      void this.platformAudit.record({
+        moderatorId: user.id,
+        action: 'INCOGNITO_LEAVE',
+        roomType: 'LIVE_STREAM',
+        roomId: streamId,
+      });
+    }
+
     return { left: true, viewerCount };
   }
 

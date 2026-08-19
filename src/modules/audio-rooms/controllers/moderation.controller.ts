@@ -31,9 +31,12 @@ import {
 } from '../dto/moderation.dto';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { ModerationService } from '../services/moderation.service';
+import { RoomPermissionService } from '../services/room-permission.service';
 
 import { ShiftActiveGuard } from 'src/modules/moderator-shift/guards/shift-active.guard';
 import { SuspendedGuard } from 'src/modules/moderator-warning/guards/suspended.guard';
+import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { BanUserGloballyDto } from 'src/modules/platform-moderation/dto/ban-user-globally.dto';
 
 /**
  * AR-3 moderation REST surface (base `rooms/:id/moderation/...`). JWT-guarded
@@ -46,13 +49,37 @@ import { SuspendedGuard } from 'src/modules/moderator-warning/guards/suspended.g
 @ApiBearerAuth()
 @Controller('rooms')
 export class ModerationController {
-  constructor(private readonly moderation: ModerationService) {}
+  constructor(
+    private readonly moderation: ModerationService,
+    private readonly platformBans: PlatformBanService,
+    private readonly permissions: RoomPermissionService,
+  ) {}
 
   private actor(user: AuthenticatedUser): RoomActor {
     return { id: user.id, roles: user.roles };
   }
 
   // ---- Actions on a target user ----
+
+  @Post(':id/moderation/platform-ban/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ban a user globally from all rooms for 24 hours' })
+  async banGlobally(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Param('userId', ParseUuidPipe) userId: string,
+    @Body() dto: BanUserGloballyDto,
+  ) {
+    await this.permissions.assertCanModerate(roomId, this.actor(user));
+    return this.platformBans.banUser({
+      moderatorId: user.id,
+      targetUserId: userId,
+      reason: dto.reason,
+      roomType: 'AUDIO_ROOM',
+      originRoomId: roomId,
+    });
+  }
 
   @Post(':id/moderation/kick/:userId')
   @UseGuards(ShiftActiveGuard, SuspendedGuard)
@@ -147,7 +174,14 @@ export class ModerationController {
     @Body() dto: WarnDto,
     @RequestMeta() meta: RequestMetadata,
   ) {
-    await this.moderation.warn(this.actor(user), id, userId, dto.reason, meta);
+    await this.moderation.warn(
+      this.actor(user),
+      id,
+      userId,
+      dto.reason,
+      dto.scope ?? 'PRIVATE',
+      meta,
+    );
     return { warned: true };
   }
 

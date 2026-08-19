@@ -103,18 +103,24 @@ model Country {
 
 /// Geographic State / Province entity
 model State {
-  id           String      @id @default(uuid()) @db.Uuid
-  countryId    String      @db.Uuid
-  code         String
-  name         String
-  description  String?
-  isActive     Boolean     @default(true)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  regions      Region[]
-  roleScopes   RoleScope[]
-  country      Country     @relation(fields: [countryId], references: [id], onDelete: Cascade)
-  locatedUsers User[]      @relation("UserLocationState")
+  id                  String      @id @default(uuid()) @db.Uuid
+  countryId           String      @db.Uuid
+  code                String
+  name                String
+  description         String?
+  isActive            Boolean     @default(true)
+  /// System-generated, e.g. "IN-S-04" ({country.code}-S-{sequence within
+  /// country, creation order}). Distinct from `code` (admin-typed, used for
+  /// RBAC scope matching) — this is the moderator-facing "Region ID" shown
+  /// on the Moderator Dashboard, so it can never collide or be mistyped.
+  /// Assigned once at creation by `StateService.createState`; never edited.
+  moderatorRegionCode String?     @unique
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  regions             Region[]
+  roleScopes          RoleScope[]
+  country             Country     @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  locatedUsers        User[]      @relation("UserLocationState")
 
   @@unique([countryId, code])
   @@index([countryId])

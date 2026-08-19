@@ -1,6 +1,7 @@
 import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import {
   AudioRoom,
+  ChatMessageType,
   ModerationActionType,
   ModerationBanType,
   ModerationMuteType,
@@ -27,6 +28,7 @@ import type { ReviewReportDto } from '../dto/moderation.dto';
 import type { AppealDto } from '../dto/moderation.dto';
 import type { ResolveAppealDto } from '../dto/moderation.dto';
 import { RoomLeftEvent } from '../events/audio-room.events';
+import { ChatMessageSentEvent, type ChatMessagePayload } from '../events/audio-room-chat.events';
 import {
   AppealResolvedEvent,
   AppealSubmittedEvent,
@@ -43,6 +45,8 @@ import type { IModerationService } from '../interfaces/moderation.service.interf
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repository';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
+import { ChatRepository } from '../repositories/chat.repository';
+import { PlatformModerationAuditService } from 'src/modules/platform-moderation/services/platform-moderation-audit.service';
 import {
   ModerationRepository,
   type ModeratedUserSummary,
@@ -117,6 +121,8 @@ export class ModerationService implements IModerationService {
     @Optional() @Inject(NOTIFICATION_SERVICE) private readonly notifications?: INotificationService,
     @Optional() private readonly moderatorNotify?: ModeratorNotificationService,
     @Optional() private readonly approvalService?: ModerationApprovalService,
+    @Optional() private readonly platformAudit?: PlatformModerationAuditService,
+    @Optional() private readonly chatRepo?: ChatRepository,
   ) {}
 
   // ======================= Kick / restore (the Kick List) =======================
@@ -529,6 +535,7 @@ export class ModerationService implements IModerationService {
     roomId: string,
     targetUserId: string,
     reason: string,
+    scope: 'PRIVATE' | 'ROOM' = 'PRIVATE',
     requestMeta?: RequestMetadata,
   ): Promise<void> {
     await this.assertModerationPrereqs(roomId, actor, targetUserId);
@@ -580,10 +587,122 @@ export class ModerationService implements IModerationService {
     if (this.performanceStats) {
       void this.performanceStats.recordAction(actor.id, 'WARN');
     }
+    if (this.platformAudit) {
+      void this.platformAudit.record({
+        moderatorId: actor.id,
+        action: 'WARNING_SENT',
+        roomType: 'AUDIO_ROOM',
+        roomId,
+        targetUserId,
+        reason,
+        scope,
+      });
+    }
     await this.bus.publish(
       new MemberWarnedEvent({ roomId, moderatorId: actor.id, targetUserId, reason }),
     );
     await this.notifyUser(targetUserId, 'audio_room.warned', { roomId, reason });
+
+    if (scope === 'ROOM' && this.chatRepo) {
+      const message = await this.chatRepo.createMessage({
+        roomId,
+        senderId: SYSTEM_MODERATOR_ID,
+        type: ChatMessageType.SYSTEM,
+        content: reason,
+        gifUrl: null,
+        mentions: [],
+        replyToId: null,
+      });
+      await this.bus.publish(
+        new ChatMessageSentEvent({
+          id: message.id,
+          roomId: message.roomId,
+          senderId: message.senderId,
+          type: message.type,
+          content: message.content,
+          gifUrl: message.gifUrl,
+          mentions: message.mentions,
+          replyToId: message.replyToId,
+          createdAt: message.createdAt.toISOString(),
+        } as ChatMessagePayload),
+      );
+    }
+  }
+
+  /**
+   * A moderator-issued warning not about any specific member — posted to the
+   * room's own chat feed as a `SYSTEM` message, same as [warn]'s ROOM-scope
+   * branch, but with no target user to record prereqs/investigation against.
+   * Mirrors the target-less permission pattern used by `dismissReport`/
+   * `updateReportNotes` below: `assertCanModerate` + scope check, no
+   * `assertOutranks` (nothing to outrank).
+   */
+  async broadcastWarning(
+    actor: RoomActor,
+    roomId: string,
+    reason: string,
+    requestMeta?: RequestMetadata,
+  ): Promise<void> {
+    await this.permissions.assertCanModerate(roomId, actor);
+    const room = await this.requireRoom(roomId);
+    await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
+
+    await this.repo.appendAction({
+      roomId,
+      moderatorId: actor.id,
+      targetUserId: null,
+      action: ModerationActionType.WARN,
+      reason,
+    });
+    if (this.auditLog) {
+      void this.auditLog.logAction({
+        actorId: actor.id,
+        action: 'audio_room.warn_broadcast',
+        resource: 'audio_room',
+        resourceId: roomId,
+        violationReason: reason,
+        ipAddress: requestMeta?.ip,
+        userAgent: requestMeta?.userAgent,
+        details: { reason },
+      });
+    }
+    if (this.performanceStats) {
+      void this.performanceStats.recordAction(actor.id, 'WARN');
+    }
+    if (this.platformAudit) {
+      void this.platformAudit.record({
+        moderatorId: actor.id,
+        action: 'WARNING_SENT',
+        roomType: 'AUDIO_ROOM',
+        roomId,
+        reason,
+        scope: 'ROOM',
+      });
+    }
+
+    if (!this.chatRepo) return;
+    const message = await this.chatRepo.createMessage({
+      roomId,
+      senderId: SYSTEM_MODERATOR_ID,
+      type: ChatMessageType.SYSTEM,
+      content: reason,
+      gifUrl: null,
+      mentions: [],
+      replyToId: null,
+    });
+    await this.bus.publish(
+      new ChatMessageSentEvent({
+        id: message.id,
+        roomId: message.roomId,
+        senderId: message.senderId,
+        type: message.type,
+        content: message.content,
+        gifUrl: message.gifUrl,
+        mentions: message.mentions,
+        replyToId: message.replyToId,
+        createdAt: message.createdAt.toISOString(),
+      } as ChatMessagePayload),
+    );
   }
 
   // ======================= Reports =======================

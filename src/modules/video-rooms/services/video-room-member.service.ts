@@ -37,6 +37,8 @@ import { VideoRoomSessionService } from './video-room-session.service';
 import { VideoRoomStateService } from './video-room-state.service';
 import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
 import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
+import { PlatformModerationAuditService } from 'src/modules/platform-moderation/services/platform-moderation-audit.service';
+import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 
 /** Client-supplied join fields (from JoinRoomDto) + server-derived context. */
 export interface JoinContext {
@@ -98,6 +100,8 @@ export class VideoRoomMemberService {
     @Optional() private readonly performanceStats?: ModeratorPerformanceService,
     @Optional() private readonly investigationRecording?: InvestigationRecordingService,
     @Optional() private readonly reportRepo?: VideoRoomReportRepository,
+    @Optional() private readonly platformAudit?: PlatformModerationAuditService,
+    @Optional() private readonly platformBans?: PlatformBanService,
   ) {
     this.cfg = loadVideoRoomConfig(config);
   }
@@ -130,6 +134,13 @@ export class VideoRoomMemberService {
       const isOwner = room.ownerId === actor.id;
       const privileged = isOwner || this.isPlatformAdmin(actor);
 
+      const isModerator = (actor.roles ?? []).some(
+        (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+      );
+      if (!isModerator && this.platformBans) {
+        await this.platformBans.assertNotGloballyBanned(actor.id);
+      }
+
       if (!privileged) {
         if (await this.moderation.isActivelyBlocked(roomId, actor.id)) {
           throw this.err(
@@ -154,6 +165,49 @@ export class VideoRoomMemberService {
             );
           }
         }
+      }
+
+      if (isModerator) {
+        const alreadyIncognito = await this.presence.isModeratorPresent(roomId, actor.id);
+        if (!alreadyIncognito) {
+          await this.presence.addModerator(roomId, actor.id);
+        }
+        await this.sessions.register({
+          roomId,
+          userId: actor.id,
+          socketId: ctx.socketId,
+          role: ConnectionType.SUBSCRIBER,
+          deviceId: ctx.deviceId,
+          platform: ctx.platform,
+          ip: ctx.ip,
+          sid: ctx.sid,
+        });
+        if (this.performanceStats) {
+          void this.performanceStats.recordAction(actor.id, 'ROOM_VISITED');
+        }
+        if (this.investigationRecording && this.reportRepo) {
+          void this.reportRepo.listPendingReports(roomId).then((reports) =>
+            Promise.all(
+              reports.map((report) =>
+                this.investigationRecording!.beginOrReuseRecording({
+                  moderatorId: actor.id,
+                  targetUserId: report.targetUserId,
+                  roomId,
+                  evidencePayload: { roomId, reportId: report.id, trigger: 'room_join' },
+                }),
+              ),
+            ),
+          );
+        }
+        if (this.platformAudit) {
+          void this.platformAudit.record({
+            moderatorId: actor.id,
+            action: 'INCOGNITO_JOIN',
+            roomType: 'VIDEO_ROOM',
+            roomId,
+          });
+        }
+        return this.buildSyncPayload(room, roomId);
       }
 
       if (!alreadyMember) {
@@ -200,54 +254,19 @@ export class VideoRoomMemberService {
       await this.repo.appendLog({ roomId, actorId: actor.id, action: VideoRoomLogAction.JOINED });
       await this.audit(roomId, actor.id, 'member.joined', ctx);
 
-      // RoomActor carries only { id, roles } — it is built from the access
-      // token and has never had profile fields. Reading actor.username /
-      // .name / .avatarUrl here did not compile AND emitted three undefineds,
-      // which is why clients fell through to the literal string "User".
-      // Resolve real identity from the same cache the roster uses.
       const joiner = (await this.identities.resolve([actor.id]).catch(() => null))?.get(actor.id);
-      const isModerator = (actor.roles ?? []).some(
-        (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
-      );
 
       await this.events.emitUserJoined({
         roomId,
         userId: actor.id,
-        username: isModerator ? undefined : joiner?.username,
-        name: isModerator ? undefined : (joiner?.displayName ?? undefined),
-        avatarUrl: isModerator ? undefined : (joiner?.avatarUrl ?? undefined),
+        username: joiner?.username,
+        name: joiner?.displayName ?? undefined,
+        avatarUrl: joiner?.avatarUrl ?? undefined,
         participantCount: liveCount,
       });
       await this.events.emitSessionCreated({ roomId, userId: actor.id, socketId: ctx.socketId });
       this.metrics.incJoin();
       this.metrics.setViewers(liveCount);
-
-      if (isModerator) {
-        if (this.performanceStats) {
-          void this.performanceStats.recordAction(actor.id, 'ROOM_VISITED');
-        }
-        if (this.investigationRecording && this.reportRepo) {
-          // Matches the spec's "Report Received → Moderator reviews report →
-          // Joins assigned room → Backend automatically starts secure
-          // investigation recording" flow: recording opens per pending report
-          // (not a blanket per-join recording against the room owner), with no
-          // reason yet — `completeRecording` finalizes it once the moderator's
-          // action determines one. `beginOrReuseRecording` so a reconnect or
-          // re-join doesn't stack duplicate recordings for the same report.
-          void this.reportRepo.listPendingReports(roomId).then((reports) =>
-            Promise.all(
-              reports.map((report) =>
-                this.investigationRecording!.beginOrReuseRecording({
-                  moderatorId: actor.id,
-                  targetUserId: report.targetUserId,
-                  roomId,
-                  evidencePayload: { roomId, reportId: report.id, trigger: 'room_join' },
-                }),
-              ),
-            ),
-          );
-        }
-      }
 
       return this.buildSyncPayload(room, roomId);
     });
@@ -270,6 +289,28 @@ export class VideoRoomMemberService {
         `Video room ${roomId} was not found.`,
         HttpStatus.NOT_FOUND,
       );
+    }
+
+    const isModerator = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
+
+    if (isModerator) {
+      await this.presence.removeModerator(roomId, actor.id);
+      if (dto.socketId) {
+        await this.sessions.end(dto.socketId);
+      } else {
+        await this.sessions.endUserRoomSessions(roomId, actor.id);
+      }
+      if (this.platformAudit) {
+        void this.platformAudit.record({
+          moderatorId: actor.id,
+          action: 'INCOGNITO_LEAVE',
+          roomType: 'VIDEO_ROOM',
+          roomId,
+        });
+      }
+      return;
     }
 
     await this.presence.removeViewer(roomId, actor.id);

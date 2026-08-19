@@ -13,6 +13,7 @@ export const SYSTEM_MODERATOR_ID = '00000000-0000-0000-0000-000000000000';
 
 /** Socket events broadcast to the stream's viewer room. */
 export const LIVE_STREAM_SOCKET_EVENTS = {
+  USER_WARNED: 'live_stream.user_warned',
   USER_MUTED: 'live_stream.user_muted',
   USER_KICKED: 'live_stream.user_kicked',
   USER_BANNED: 'live_stream.user_banned',

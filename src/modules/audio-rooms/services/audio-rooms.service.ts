@@ -94,6 +94,8 @@ export interface RoomParticipant {
  */
 import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
 import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
+import { PlatformModerationAuditService } from 'src/modules/platform-moderation/services/platform-moderation-audit.service';
+import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 
 /** Succession order when an owner is removed — highest wins (OWNER never chosen). */
 const OWNER_SUCCESSION_PRIORITY: Record<RoomMemberRole, number> = {
@@ -130,6 +132,8 @@ export class AudioRoomsService implements IAudioRoomsService {
     @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
     @Optional() private readonly performanceStats?: ModeratorPerformanceService,
     @Optional() private readonly investigationRecording?: InvestigationRecordingService,
+    @Optional() private readonly platformAudit?: PlatformModerationAuditService,
+    @Optional() private readonly platformBans?: PlatformBanService,
   ) {
     // Config namespaces surface raw process.env strings at runtime, so coerce.
     const cfg = this.config.get('audioRoom') as {
@@ -149,6 +153,12 @@ export class AudioRoomsService implements IAudioRoomsService {
   // ======================= Commands =======================
 
   async create(actor: RoomActor, dto: CreateRoomDto): Promise<RoomView> {
+    const isModeratorActor = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
+    if (!isModeratorActor && this.platformBans) {
+      await this.platformBans.assertNotGloballyBanned(actor.id);
+    }
     return this.locks.withLock(`audio-room:create:{${actor.id}}`, async () => {
       // Rooms are permanent and one-per-owner, so "create" on an owner who
       // already has one means "open a new session on it". Handing the row back
@@ -410,6 +420,12 @@ export class AudioRoomsService implements IAudioRoomsService {
   }
 
   async start(actor: RoomActor, roomId: string): Promise<RoomView> {
+    const isModeratorActor = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
+    if (!isModeratorActor && this.platformBans) {
+      await this.platformBans.assertNotGloballyBanned(actor.id);
+    }
     const room = await this.getManageableRoom(roomId, actor);
     return this.goLive(room, actor);
   }
@@ -486,12 +502,22 @@ export class AudioRoomsService implements IAudioRoomsService {
   async join(actor: RoomActor, roomId: string, dto: JoinRoomDto): Promise<RoomDetailView> {
     const room = await this.getLiveRoomOrThrow(roomId);
 
+    const isModeratorActor = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
+    if (!isModeratorActor && this.platformBans) {
+      await this.platformBans.assertNotGloballyBanned(actor.id);
+    }
+
     // Re-entry restrictions: a user on the kick list or with an active ban cannot
     // rejoin until a moderator restores/unbans them (AR-3).
     await this.assertNotKicked(roomId, actor.id);
     await this.assertNotBanned(roomId, actor.id);
 
-    const isOwnerOrPlatformAdmin = room.ownerId === actor.id || this.isPlatformAdmin(actor.roles);
+    // Incognito moderators bypass the password too, not just ADMIN/SUPER_ADMIN —
+    // a locked room shouldn't block the investigative access this feature exists for.
+    const isOwnerOrPlatformAdmin =
+      room.ownerId === actor.id || this.isPlatformAdmin(actor.roles) || isModeratorActor;
     const existingMember = await this.repo.getMember(roomId, actor.id);
     const isAlreadyInRoom = existingMember?.isActive === true;
 
@@ -506,6 +532,48 @@ export class AudioRoomsService implements IAudioRoomsService {
           HttpStatus.BAD_REQUEST,
         );
       }
+    }
+
+    const isModerator = isModeratorActor;
+
+    if (isModerator) {
+      if (isAlreadyInRoom) {
+        // A user promoted to MODERATOR mid-session (or otherwise already a
+        // visible participant) rejoining must become retroactively invisible
+        // — drop the stale public RoomMember row and public presence entry
+        // before adding them to the moderator-only set below. Without this,
+        // a promoted user's earlier visible join keeps counting/listing them
+        // even while "incognito".
+        await this.repo.deactivateMember(roomId, actor.id, actor.id);
+        await this.presence.leaveRoom(roomId, actor.id);
+      }
+      await this.presence.joinRoom(roomId, actor.id, true);
+      if (this.performanceStats) {
+        void this.performanceStats.recordAction(actor.id, 'ROOM_VISITED');
+      }
+      if (this.investigationRecording) {
+        void this.moderation.listPendingReports(roomId).then((reports) =>
+          Promise.all(
+            reports.map((report) =>
+              this.investigationRecording!.beginOrReuseRecording({
+                moderatorId: actor.id,
+                targetUserId: report.targetUserId,
+                roomId,
+                evidencePayload: { roomId, reportId: report.id, trigger: 'room_join' },
+              }),
+            ),
+          ),
+        );
+      }
+      if (this.platformAudit) {
+        void this.platformAudit.record({
+          moderatorId: actor.id,
+          action: 'INCOGNITO_JOIN',
+          roomType: 'AUDIO_ROOM',
+          roomId,
+        });
+      }
+      return this.getRoomDetail(roomId);
     }
 
     await this.locks.withLock(`audio-room:join:{${roomId}}`, async () => {
@@ -544,35 +612,6 @@ export class AudioRoomsService implements IAudioRoomsService {
     await this.bus.publish(
       new RoomJoinedEvent({ roomId, userId: actor.id, participantCount: count }),
     );
-    const isModerator = (actor.roles ?? []).some(
-      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
-    );
-    if (isModerator) {
-      if (this.performanceStats) {
-        void this.performanceStats.recordAction(actor.id, 'ROOM_VISITED');
-      }
-      if (this.investigationRecording) {
-        // Matches the spec's "Report Received → Moderator reviews report →
-        // Joins assigned room → Backend automatically starts secure
-        // investigation recording" flow: recording opens per pending report
-        // (not a blanket per-join recording against the room owner), with no
-        // reason yet — `completeRecording` finalizes it once the moderator's
-        // action determines one. `beginOrReuseRecording` so a reconnect or
-        // re-join doesn't stack duplicate recordings for the same report.
-        void this.moderation.listPendingReports(roomId).then((reports) =>
-          Promise.all(
-            reports.map((report) =>
-              this.investigationRecording!.beginOrReuseRecording({
-                moderatorId: actor.id,
-                targetUserId: report.targetUserId,
-                roomId,
-                evidencePayload: { roomId, reportId: report.id, trigger: 'room_join' },
-              }),
-            ),
-          ),
-        );
-      }
-    }
 
     return this.getRoomDetail(roomId);
   }
@@ -580,6 +619,23 @@ export class AudioRoomsService implements IAudioRoomsService {
   async leave(actor: RoomActor, roomId: string): Promise<void> {
     const room = await this.repo.findRoomRow(roomId);
     if (!room) throw this.roomNotFound();
+
+    const isModerator = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
+
+    if (isModerator) {
+      await this.presence.leaveRoom(roomId, actor.id, true);
+      if (this.platformAudit) {
+        void this.platformAudit.record({
+          moderatorId: actor.id,
+          action: 'INCOGNITO_LEAVE',
+          roomType: 'AUDIO_ROOM',
+          roomId,
+        });
+      }
+      return;
+    }
 
     await this.presence.leaveRoom(roomId, actor.id);
     await this.repo.deactivateMember(roomId, actor.id, actor.id);
@@ -1076,9 +1132,10 @@ export class AudioRoomsService implements IAudioRoomsService {
       const ttlMs = ban.expiresAt ? ban.expiresAt.getTime() - Date.now() : null;
       if (ttlMs === null || ttlMs > 0) {
         await this.moderation.addBanCache(roomId, userId, ttlMs);
+        const reasonText = ban.reason ? ` Reason: ${ban.reason}` : '';
         throw new BusinessException(
           ERROR_CODES.ROOM_BANNED,
-          'You are banned from this room.',
+          `You are banned from joining rooms.${reasonText}`,
           HttpStatus.FORBIDDEN,
         );
       }
@@ -1176,6 +1233,8 @@ export class AudioRoomsService implements IAudioRoomsService {
     await this.repo.trendingRemove(roomId);
     const members = await this.presence.roomMembers(roomId);
     await Promise.all(members.map((userId) => this.presence.leaveRoom(roomId, userId)));
+    const moderators = await this.presence.roomModerators(roomId);
+    await Promise.all(moderators.map((userId) => this.presence.leaveRoom(roomId, userId, true)));
   }
 
   private roomNotFound(): BusinessException {

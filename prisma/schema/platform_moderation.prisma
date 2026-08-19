@@ -1,0 +1,71 @@
+// prisma/schema/platform_moderation.prisma
+
+enum PlatformRoomType {
+  AUDIO_ROOM
+  VIDEO_ROOM
+  LIVE_STREAM
+}
+
+enum PlatformBanStatus {
+  ACTIVE
+  LIFTED
+  EXPIRED
+}
+
+enum PlatformModerationActionType {
+  INCOGNITO_JOIN
+  INCOGNITO_LEAVE
+  WARNING_SENT
+  BAN_ISSUED
+  BAN_LIFTED
+}
+
+/// Only meaningful on a WARNING_SENT audit row — null for every other action.
+enum PlatformWarningScope {
+  PRIVATE
+  ROOM
+}
+
+/// A cross-room 24h ban issued by a moderator. Unlike RoomBan/VideoRoomBlock/
+/// LiveStreamBan (each scoped to one room/stream), this blocks the target from
+/// joining ANY audio room, video room, or live stream until `expiresAt`. No
+/// FK relations (originRoomId is polymorphic across 3 room tables), but id/FK
+/// columns still use @db.Uuid to match the rest of the codebase's convention
+/// (e.g. ModeratorWarningRecord) and stay comparable against native-UUID
+/// user/room primary keys without an implicit cast.
+model PlatformUserBan {
+  id           String             @id @default(uuid()) @db.Uuid
+  targetUserId String             @db.Uuid
+  moderatorId  String             @db.Uuid
+  reason       String
+  roomType     PlatformRoomType
+  originRoomId String             @db.Uuid
+  status       PlatformBanStatus  @default(ACTIVE)
+  bannedAt     DateTime           @default(now())
+  expiresAt    DateTime
+  liftedAt     DateTime?
+  liftedBy     String?            @db.Uuid
+
+  @@index([targetUserId, status])
+  @@index([status, expiresAt])
+  @@map("platform_user_bans")
+}
+
+/// Accountability trail for the covert moderator actions this feature adds
+/// (incognito presence, warnings, global bans) — admin-visible only, never
+/// shown to room participants.
+model PlatformModerationAuditLog {
+  id           String                        @id @default(uuid()) @db.Uuid
+  moderatorId  String                        @db.Uuid
+  action       PlatformModerationActionType
+  roomType     PlatformRoomType
+  roomId       String                        @db.Uuid
+  targetUserId String?                       @db.Uuid
+  reason       String?
+  scope        PlatformWarningScope?
+  createdAt    DateTime                      @default(now())
+
+  @@index([moderatorId, createdAt])
+  @@index([targetUserId, createdAt])
+  @@map("platform_moderation_audit_logs")
+}

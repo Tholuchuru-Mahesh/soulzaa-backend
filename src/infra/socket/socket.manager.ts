@@ -23,6 +23,19 @@ function userRoom(userId: string): string {
 }
 
 /**
+ * Namespaces where a MODERATOR/ADMIN/SUPER_ADMIN joining a room must stay
+ * fully incognito — excluded from public presence and never announced to
+ * the room. Scoped deliberately (not every BaseGateway namespace) so this
+ * doesn't change behavior for /chat, /games, /gifts, /casino, etc., which
+ * were never part of the incognito-moderation feature.
+ */
+const INCOGNITO_MODERATION_NAMESPACES = new Set(['/audio-room', '/video-room', '/live']);
+
+function isModeratorUser(user: AuthenticatedUser): boolean {
+  return (user.roles ?? []).some((r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN');
+}
+
+/**
  * Central connection manager shared by every namespace gateway. Owns:
  *  - handshake JWT authentication (as Socket.IO middleware),
  *  - connection registration + presence tracking + cleanup,
@@ -125,7 +138,7 @@ export class SocketManager {
       // On the user's last socket, clear their room memberships from the store.
       if (last) {
         const rooms = await this.presence.userRooms(userId);
-        await Promise.all(rooms.map((roomId) => this.presence.leaveRoom(roomId, userId)));
+        await Promise.all(rooms.map((roomId) => this.presence.leaveRoomEverywhere(roomId, userId)));
         await this.bus.publish(new PresenceChangedEvent({ userId, online: false }));
       }
       return last;
@@ -178,6 +191,17 @@ export class SocketManager {
     }
 
     await client.join(roomId);
+
+    // Incognito moderators (see INCOGNITO_MODERATION_NAMESPACES) must never
+    // be added to public presence or announced here — this generic handler
+    // is a second join path every client also uses alongside each room
+    // type's own REST join, so skipping it would silently unmask them.
+    const incognito = namespace != null && INCOGNITO_MODERATION_NAMESPACES.has(namespace) && isModeratorUser(user);
+    if (incognito) {
+      await this.presence.joinRoom(roomId, user.id, true);
+      return true;
+    }
+
     await this.presence.joinRoom(roomId, user.id);
     const payload = {
       roomId,
@@ -193,11 +217,18 @@ export class SocketManager {
   }
 
   /** Leave a room: keep the socket room and the Redis presence set in sync. */
-  async leaveRoom(client: Socket, roomId: string): Promise<void> {
+  async leaveRoom(client: Socket, roomId: string, namespace?: string): Promise<void> {
     const user = client.data.user as AuthenticatedUser;
     await client.leave(roomId);
-    await this.presence.leaveRoom(roomId, user.id);
     (client.data.spectatorRooms as Set<string> | undefined)?.delete(roomId);
+
+    const incognito = namespace != null && INCOGNITO_MODERATION_NAMESPACES.has(namespace) && isModeratorUser(user);
+    if (incognito) {
+      await this.presence.leaveRoom(roomId, user.id, true);
+      return;
+    }
+
+    await this.presence.leaveRoom(roomId, user.id);
     const payload = {
       roomId,
       userId: user?.id,

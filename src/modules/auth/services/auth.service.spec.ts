@@ -204,14 +204,30 @@ describe('AuthService', () => {
       users.findByEmail.mockResolvedValue(makeIdentity({ roles: ['USER'] }));
       repo.getCredential.mockResolvedValue({ passwordHash: 'HASH' } as never);
       passwords.verify.mockResolvedValue(true);
-      roleSource.getRoleNames.mockResolvedValue(['ADMIN', 'USER']);
+      roleSource.getRoleNames.mockResolvedValue(['HOST', 'USER']);
 
       await service.loginWithPassword({ email: 'aditya@example.com', password: 'Str0ng@Pass' }, {});
 
       expect(sessions.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 'u1', roles: ['ADMIN', 'USER'] }),
+        expect.objectContaining({ userId: 'u1', roles: ['HOST', 'USER'] }),
         expect.anything(),
       );
+    });
+
+    it('rejects a staff account (moderator and above) — must use staffLogin instead', async () => {
+      users.findByEmail.mockResolvedValue(makeIdentity());
+      repo.getCredential.mockResolvedValue({ passwordHash: 'HASH' } as never);
+      passwords.verify.mockResolvedValue(true);
+      roleSource.getRoleNames.mockResolvedValue(['USER', 'MODERATOR']);
+
+      await expect(
+        service.loginWithPassword({ email: 'aditya@example.com', password: 'Str0ng@Pass' }, {}),
+      ).rejects.toMatchObject({ errorCode: 'INVALID_CREDENTIALS' });
+      expect(security.recordFailure).toHaveBeenCalledWith(
+        'aditya@example.com',
+        expect.objectContaining({ reason: 'STAFF_ACCOUNT_CONSUMER_LOGIN_BLOCKED' }),
+      );
+      expect(sessions.createSession).not.toHaveBeenCalled();
     });
 
     it('records a failure and throws on a bad password', async () => {
@@ -359,18 +375,6 @@ describe('AuthService', () => {
       ).rejects.toMatchObject({ errorCode: 'DEVICE_CHANGE_PENDING' });
 
       expect(deviceBinding.requestDeviceChange).toHaveBeenCalledTimes(1);
-    });
-
-    it('rejects a disallowed IP with STAFF_IP_NOT_ALLOWED, distinct from a non-staff role', async () => {
-      const staffIpAllowlist = { isIpAllowed: jest.fn().mockResolvedValue(false) };
-      const service = buildService({ staffIpAllowlist });
-
-      await expect(
-        service.staffLogin(
-          { email: 'mod@example.com', password: 'Str0ng@Pass' },
-          { ip: '10.0.0.5' },
-        ),
-      ).rejects.toMatchObject({ errorCode: 'STAFF_IP_NOT_ALLOWED' });
     });
   });
 });

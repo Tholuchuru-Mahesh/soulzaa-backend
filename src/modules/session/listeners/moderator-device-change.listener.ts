@@ -3,14 +3,15 @@ import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import {
   DEVICE_EVENTS,
   type ModeratorDeviceChangeApprovedEvent,
+  type ModeratorDeviceChangeRejectedEvent,
 } from 'src/modules/device/events/device.events';
 import { SESSION_SERVICE, type ISessionService } from '../interfaces/session.interface';
 
 /**
  * Enforces the Moderator one-device rule end to end: when Admin approves a
- * device-change request, force-logout every session on the previously bound
- * device instead of leaving its still-valid access token to expire on its
- * own (moderatorrole.txt Device Change Workflow: "Old device access removed").
+ * device-change request or rejects/revokes an approved device, force-logout
+ * every session on that account immediately instead of leaving its still-valid
+ * access token to expire on its own.
  */
 @Injectable()
 export class ModeratorDeviceChangeListener implements OnModuleInit {
@@ -24,6 +25,12 @@ export class ModeratorDeviceChangeListener implements OnModuleInit {
       DEVICE_EVENTS.MODERATOR_DEVICE_CHANGE_APPROVED,
       (event) =>
         this.sessions.adminForceLogout(event.payload.moderatorId, event.payload.approvedBy),
+    );
+
+    this.bus.subscribe<ModeratorDeviceChangeRejectedEvent>(
+      DEVICE_EVENTS.MODERATOR_DEVICE_CHANGE_REJECTED,
+      (event) =>
+        this.sessions.adminForceLogout(event.payload.moderatorId, event.payload.rejectedBy),
     );
   }
 }

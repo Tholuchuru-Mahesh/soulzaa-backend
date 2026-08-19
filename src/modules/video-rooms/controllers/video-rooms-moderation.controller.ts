@@ -37,6 +37,8 @@ import type { RoomActor } from '../interfaces/room-actor.interface';
 import { VideoRoomModerationQueryService } from '../services/video-room-moderation-query.service';
 import { VideoRoomModerationService } from '../services/video-room-moderation.service';
 import { VideoRoomReportService } from '../services/video-room-report.service';
+import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { BanUserGloballyDto } from 'src/modules/platform-moderation/dto/ban-user-globally.dto';
 
 /**
  * VR-16 moderation REST surface (base `video-rooms/:id/...`), mirroring every
@@ -65,10 +67,33 @@ export class VideoRoomsModerationController {
     private readonly moderation: VideoRoomModerationService,
     private readonly reports: VideoRoomReportService,
     private readonly query: VideoRoomModerationQueryService,
+    private readonly platformBans: PlatformBanService,
   ) {}
 
   private actor(user: AuthenticatedUser): RoomActor {
     return { id: user.id, roles: user.roles };
+  }
+
+  // ======================= Global 24h Platform Ban =======================
+
+  @Post(':id/moderation/platform-ban/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ban a user globally from all rooms for 24 hours' })
+  async banGlobally(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Param('userId', ParseUuidPipe) userId: string,
+    @Body() dto: BanUserGloballyDto,
+  ) {
+    await this.moderation.assertCanModerate(this.actor(user), roomId);
+    return this.platformBans.banUser({
+      moderatorId: user.id,
+      targetUserId: userId,
+      reason: dto.reason,
+      roomType: 'VIDEO_ROOM',
+      originRoomId: roomId,
+    });
   }
 
   // ======================= Kick =======================
@@ -277,6 +302,7 @@ export class VideoRoomsModerationController {
       dto.userId,
       dto.reason,
       dto.metadata,
+      dto.scope ?? 'PRIVATE',
       meta,
     );
   }

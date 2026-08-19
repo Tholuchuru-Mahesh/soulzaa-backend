@@ -14,6 +14,7 @@ import { AuditLogService } from 'src/modules/authorization/services/audit-log.se
 import { RoleService } from 'src/modules/authorization/services/role.service';
 import { ModeratorShiftService } from 'src/modules/moderator-shift/services/moderator-shift.service';
 import { UserLocationService } from 'src/modules/organization/services/user-location.service';
+import { SocketManager } from 'src/infra/socket/socket.manager';
 import {
   USERS_SERVICE,
   type IUsersService,
@@ -23,6 +24,7 @@ import {
   type IAdminIdentityService,
 } from '../interfaces/admin-identity.interface';
 import type { CreateModeratorDto } from '../dto/create-moderator.dto';
+import type { SetModeratorShiftDto } from '../dto/set-moderator-shift.dto';
 
 const ALL_DAYS_OF_WEEK: DayOfWeek[] = [
   DayOfWeek.MONDAY,
@@ -34,12 +36,35 @@ const ALL_DAYS_OF_WEEK: DayOfWeek[] = [
   DayOfWeek.SUNDAY,
 ];
 
+export interface ModeratorStateDetail {
+  id: string;
+  name: string;
+  code: string;
+  moderatorRegionCode: string | null;
+  countryId: string;
+  countryCode: string | null;
+  countryName: string | null;
+}
+
+export interface ModeratorShiftDetail {
+  id: string;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  timezone: string;
+  daysOfWeek: DayOfWeek[];
+  isActive: boolean;
+}
+
 /** Shape returned by the moderator roster. */
 export interface ModeratorSummary {
   id: string;
   username: string;
   email: string | null;
   status: AccountStatus;
+  states?: ModeratorStateDetail[];
+  shift?: ModeratorShiftDetail | null;
 }
 
 /**
@@ -69,6 +94,7 @@ export class ModeratorProvisioningService {
     private readonly passwords: PasswordService,
     private readonly userLocation: UserLocationService,
     private readonly moderatorShift: ModeratorShiftService,
+    private readonly socketManager?: SocketManager,
   ) {}
 
   async createModerator(
@@ -162,6 +188,14 @@ export class ModeratorProvisioningService {
       status: 'SUCCESS',
     });
 
+    if (this.socketManager) {
+      this.socketManager.emitToUserEverywhere(userId, 'moderator:dashboard_updated', {
+        moderatorId: userId,
+        type: 'created',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     return { id: userId, username, email, stateIds };
   }
 
@@ -211,32 +245,230 @@ export class ModeratorProvisioningService {
       ),
     );
 
+    if (this.socketManager) {
+      this.socketManager.emitToUserEverywhere(userId, 'moderator:scope_updated', {
+        moderatorId: userId,
+        stateIds,
+        timestamp: new Date().toISOString(),
+      });
+      this.socketManager.emitToUserEverywhere(userId, 'moderator:dashboard_updated', {
+        moderatorId: userId,
+        type: 'scope_updated',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     return { stateIds };
   }
 
-  async getModeratorStates(actorId: string, targetId: string): Promise<{ stateIds: string[] }> {
+  async getModeratorStates(
+    actorId: string,
+    targetId: string,
+  ): Promise<{ stateIds: string[]; states: ModeratorStateDetail[] }> {
     await this.assertAdminOrAbove(actorId);
 
     const role = await this.prisma.role.findUnique({ where: { name: 'MODERATOR' } });
     const userRole = role
-      ? await this.prisma.userRole.findFirst({ where: { userId: targetId, roleId: role.id } })
+      ? await this.prisma.userRole.findFirst({
+          where: { userId: targetId, roleId: role.id },
+          include: {
+            roleScopes: {
+              where: { scopeType: ScopeType.STATE },
+              include: {
+                state: {
+                  include: { country: true },
+                },
+              },
+            },
+          },
+        })
       : null;
-    if (!userRole) return { stateIds: [] };
+    if (!userRole) return { stateIds: [], states: [] };
 
-    const scopes = await this.prisma.roleScope.findMany({
-      where: { userRoleId: userRole.id, scopeType: ScopeType.STATE },
-    });
-    return { stateIds: scopes.map((s) => s.stateId).filter((id): id is string => !!id) };
+    const stateList: ModeratorStateDetail[] = [];
+    const stateIds: string[] = [];
+
+    for (const scope of userRole.roleScopes || []) {
+      const sId = scope.stateId || scope.state?.id;
+      if (sId) stateIds.push(sId);
+      if (scope.state) {
+        stateList.push({
+          id: scope.state.id,
+          name: scope.state.name,
+          code: scope.state.code,
+          moderatorRegionCode: scope.state.moderatorRegionCode,
+          countryId: scope.state.countryId,
+          countryCode: scope.state.country?.code ?? null,
+          countryName: scope.state.country?.name ?? null,
+        });
+      }
+    }
+
+    return { stateIds, states: stateList };
   }
 
   async listModerators(actorId: string): Promise<ModeratorSummary[]> {
     await this.assertAdminOrAbove(actorId);
 
     const ids = await this.roles.getUserIdsWithAnyRole(['MODERATOR']);
-    const rows = await Promise.all(ids.map((id) => this.users.findById(id)));
+    const [rows, userRoles, shifts] = await Promise.all([
+      Promise.all(ids.map((id) => this.users.findById(id))),
+      this.prisma.userRole.findMany({
+        where: { userId: { in: ids }, role: { name: 'MODERATOR' } },
+        include: {
+          roleScopes: {
+            where: { scopeType: ScopeType.STATE },
+            include: {
+              state: {
+                include: { country: true },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.moderatorShift.findMany({
+        where: { moderatorId: { in: ids }, isActive: true },
+      }),
+    ]);
+
+    const statesByUser = new Map<string, ModeratorStateDetail[]>();
+    for (const ur of userRoles) {
+      const list: ModeratorStateDetail[] = [];
+      for (const rs of ur.roleScopes) {
+        if (rs.state) {
+          list.push({
+            id: rs.state.id,
+            name: rs.state.name,
+            code: rs.state.code,
+            moderatorRegionCode: rs.state.moderatorRegionCode,
+            countryId: rs.state.countryId,
+            countryCode: rs.state.country?.code ?? null,
+            countryName: rs.state.country?.name ?? null,
+          });
+        }
+      }
+      statesByUser.set(ur.userId, list);
+    }
+
+    const shiftByUser = new Map<string, ModeratorShiftDetail>();
+    for (const s of shifts) {
+      shiftByUser.set(s.moderatorId, {
+        id: s.id,
+        startHour: s.startHour,
+        startMinute: s.startMinute,
+        endHour: s.endHour,
+        endMinute: s.endMinute,
+        timezone: s.timezone,
+        daysOfWeek: s.daysOfWeek,
+        isActive: s.isActive,
+      });
+    }
+
     return rows
       .filter((u): u is NonNullable<typeof u> => u !== null)
-      .map((u) => ({ id: u.id, username: u.username, email: u.email ?? null, status: u.status }));
+      .map((u) => ({
+        id: u.id,
+        username: u.username,
+        email: u.email ?? null,
+        status: u.status,
+        states: statesByUser.get(u.id) ?? [],
+        shift: shiftByUser.get(u.id) ?? null,
+      }));
+  }
+
+  async getModeratorShift(
+    actorId: string,
+    targetId: string,
+  ): Promise<{ shift: ModeratorShiftDetail | null }> {
+    await this.assertAdminOrAbove(actorId);
+
+    const shift = await this.prisma.moderatorShift.findFirst({
+      where: { moderatorId: targetId, isActive: true },
+    });
+
+    if (!shift) return { shift: null };
+
+    return {
+      shift: {
+        id: shift.id,
+        startHour: shift.startHour,
+        startMinute: shift.startMinute,
+        endHour: shift.endHour,
+        endMinute: shift.endMinute,
+        timezone: shift.timezone,
+        daysOfWeek: shift.daysOfWeek,
+        isActive: shift.isActive,
+      },
+    };
+  }
+
+  async setModeratorShift(
+    actorId: string,
+    targetId: string,
+    dto: SetModeratorShiftDto,
+  ): Promise<{ shift: ModeratorShiftDetail }> {
+    await this.assertAdminOrAbove(actorId);
+
+    const user = await this.users.findById(targetId);
+    if (!user) {
+      throw new NotFoundException(`User with ID '${targetId}' not found`);
+    }
+
+    const result = await this.moderatorShift.assignShift({
+      moderatorId: targetId,
+      daysOfWeek:
+        dto.shiftDaysOfWeek && dto.shiftDaysOfWeek.length > 0
+          ? dto.shiftDaysOfWeek
+          : ALL_DAYS_OF_WEEK,
+      startHour: dto.shiftStartHour,
+      startMinute: dto.shiftStartMinute,
+      endHour: dto.shiftEndHour,
+      endMinute: dto.shiftEndMinute,
+      timezone: dto.shiftTimezone ?? 'UTC',
+      assignedBy: actorId,
+    });
+
+    await this.audit.logAction({
+      actorId,
+      action: 'moderator.shift_updated',
+      resource: 'moderator_shift',
+      resourceId: targetId,
+      details: {
+        shiftId: result.id,
+        startHour: dto.shiftStartHour,
+        startMinute: dto.shiftStartMinute,
+        endHour: dto.shiftEndHour,
+        endMinute: dto.shiftEndMinute,
+        daysOfWeek: dto.shiftDaysOfWeek,
+      },
+      status: 'SUCCESS',
+    });
+
+    if (this.socketManager) {
+      this.socketManager.emitToUserEverywhere(targetId, 'moderator:shift_updated', {
+        moderatorId: targetId,
+        shift: result,
+        timestamp: new Date().toISOString(),
+      });
+      this.socketManager.emitToUserEverywhere(targetId, 'moderator:dashboard_updated', {
+        moderatorId: targetId,
+        type: 'shift_updated',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return {
+      shift: {
+        id: result.id,
+        startHour: result.startHour,
+        startMinute: result.startMinute,
+        endHour: result.endHour,
+        endMinute: result.endMinute,
+        timezone: result.timezone,
+        daysOfWeek: result.daysOfWeek,
+        isActive: result.isActive,
+      },
+    };
   }
 
   async setModeratorStatus(actorId: string, targetId: string, status: AccountStatus) {

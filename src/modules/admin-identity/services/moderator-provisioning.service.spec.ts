@@ -325,19 +325,24 @@ describe('ModeratorProvisioningService', () => {
   describe('getModeratorStates', () => {
     it('returns the current STATE-scope state ids for the moderator', async () => {
       roles.getRoleNames.mockResolvedValue(['ADMIN']);
-      prisma.userRole.findFirst = jest.fn().mockResolvedValue({ id: 'user-role-1' });
-      prisma.roleScope.findMany = jest
-        .fn()
-        .mockResolvedValue([{ stateId: 'state-ka' }, { stateId: 'state-ap' }]);
+      prisma.userRole.findFirst = jest.fn().mockResolvedValue({
+        id: 'user-role-1',
+        roleScopes: [
+          { stateId: 'state-ka', state: { id: 'state-ka', name: 'Karnataka', code: 'KA', countryId: 'c1' } },
+          { stateId: 'state-ap', state: { id: 'state-ap', name: 'Andhra Pradesh', code: 'AP', countryId: 'c1' } },
+        ],
+      });
       const result = await service.getModeratorStates('actor-1', 'mod-1');
-      expect(result).toEqual({ stateIds: ['state-ka', 'state-ap'] });
+      expect(result.stateIds).toEqual(['state-ka', 'state-ap']);
+      expect(result.states).toHaveLength(2);
+      expect(result.states[0].name).toBe('Karnataka');
     });
 
     it('returns an empty list when the moderator has no UserRole yet', async () => {
       roles.getRoleNames.mockResolvedValue(['ADMIN']);
       prisma.userRole.findFirst = jest.fn().mockResolvedValue(null);
       const result = await service.getModeratorStates('actor-1', 'mod-1');
-      expect(result).toEqual({ stateIds: [] });
+      expect(result).toEqual({ stateIds: [], states: [] });
     });
   });
 });

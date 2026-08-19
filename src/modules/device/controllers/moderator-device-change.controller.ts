@@ -15,16 +15,26 @@ import { RequirePermissions } from 'src/common/decorators/require-permissions.de
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
+import { IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import { ModeratorDeviceBindingService } from '../services/moderator-device-binding.service';
 
 class RequestDeviceChangeDto {
+  @IsOptional()
+  @IsUUID()
   oldDeviceId?: string;
+
+  @IsObject()
   newDeviceInfo!: Record<string, unknown>;
+
+  @IsOptional()
+  @IsString()
   reason?: string;
 }
 
 class ReviewDeviceChangeDto {
+  @IsOptional()
+  @IsString()
   reviewNote?: string;
 }
 
@@ -55,49 +65,56 @@ export class ModeratorDeviceChangeController {
   }
 
   @Get('pending')
-  @RequirePermissions('moderator.device.review')
+  @RequirePermissions('moderator.device.review', 'moderator.device.approve', 'admin.identity.manage')
   @ApiOperation({ summary: 'List all pending device change requests (Manager/Admin)' })
   pending() {
     return this.service.getPendingRequests();
   }
 
+  @Get('all')
+  @RequirePermissions('moderator.device.review', 'moderator.device.approve', 'admin.identity.manage')
+  @ApiOperation({ summary: 'List all device change requests including resolved history' })
+  all() {
+    return this.service.getAllRequests();
+  }
+
   @Put(':id/manager-review')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('moderator.device.review')
+  @RequirePermissions('moderator.device.review', 'admin.identity.manage')
   @ApiOperation({
     summary: 'Manager review stage for device change request (Country/Regional Manager)',
   })
   managerReview(
     @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: ReviewDeviceChangeDto,
+    @Body() dto?: ReviewDeviceChangeDto,
   ) {
-    return this.service.managerReviewDeviceChange(id, user.id, dto.reviewNote);
+    return this.service.managerReviewDeviceChange(id, user.id, dto?.reviewNote);
   }
 
   @Put(':id/approve')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('moderator.device.approve')
+  @RequirePermissions('moderator.device.approve', 'admin.identity.manage')
   @ApiOperation({
     summary: 'Approve a device change request (Admin final approval + auto device registration)',
   })
   approve(
     @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: ReviewDeviceChangeDto,
+    @Body() dto?: ReviewDeviceChangeDto,
   ) {
-    return this.service.approveDeviceChange(id, user.id, dto.reviewNote);
+    return this.service.approveDeviceChange(id, user.id, dto?.reviewNote);
   }
 
   @Put(':id/reject')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('moderator.device.review')
+  @RequirePermissions('moderator.device.review', 'moderator.device.approve', 'admin.identity.manage')
   @ApiOperation({ summary: 'Reject a device change request (Manager/Admin)' })
   reject(
     @Param('id', ParseUuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: ReviewDeviceChangeDto,
+    @Body() dto?: ReviewDeviceChangeDto,
   ) {
-    return this.service.rejectDeviceChange(id, user.id, dto.reviewNote);
+    return this.service.rejectDeviceChange(id, user.id, dto?.reviewNote);
   }
 }

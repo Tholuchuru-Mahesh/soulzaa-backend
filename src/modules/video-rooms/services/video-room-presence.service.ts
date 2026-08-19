@@ -2,19 +2,23 @@ import { Inject, Injectable } from '@nestjs/common';
 import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
 import {
   videoRoomHostsKey,
+  videoRoomModeratorsKey,
   videoRoomParticipantsKey,
   videoRoomViewersKey,
 } from '../constants/video-room.constants';
 import type { IRoomPresenceManager } from '../interfaces/room-presence-manager.interface';
 
 /**
- * Role-scoped room presence (VR-0 foundation primitive): three Redis sets per
- * room — viewers (audience), hosts, and seat-holders (participants) — so every
- * API instance sees the same live counts. All keys are hash-tagged on the room
- * id, so `clearRoom`'s multi-key DEL stays on one Cluster slot. Generic per-user
- * online/room presence is owned by the infra SocketManager/PresenceService at the
- * socket layer; this class tracks only the video-room role sets. Pure counting —
- * no capacity/permission gating.
+ * Role-scoped room presence (VR-0 foundation primitive): four Redis sets per
+ * room — viewers (audience), hosts, seat-holders (participants), and incognito
+ * moderators — so every API instance sees the same live counts. All keys are
+ * hash-tagged on the room id, so `clearRoom`'s multi-key DEL stays on one
+ * Cluster slot. Generic per-user online/room presence is owned by the infra
+ * SocketManager/PresenceService at the socket layer; this class tracks only
+ * the video-room role sets. Pure counting — no capacity/permission gating.
+ * The moderator set is excluded from every public count/list (`viewerCount`,
+ * `listActiveMembers`, etc.) — moderators are tracked here only so `join`/
+ * `leave` can toggle their own presence without ever surfacing them to others.
  */
 @Injectable()
 export class VideoRoomPresenceService implements IRoomPresenceManager {
@@ -74,14 +78,29 @@ export class VideoRoomPresenceService implements IRoomPresenceManager {
     return this.redis.scard(videoRoomParticipantsKey(roomId));
   }
 
+  // ---- Moderators (incognito presence — excluded from every public count) ----
+
+  async addModerator(roomId: string, userId: string): Promise<void> {
+    await this.redis.sadd(videoRoomModeratorsKey(roomId), userId);
+  }
+
+  async removeModerator(roomId: string, userId: string): Promise<void> {
+    await this.redis.srem(videoRoomModeratorsKey(roomId), userId);
+  }
+
+  async isModeratorPresent(roomId: string, userId: string): Promise<boolean> {
+    return (await this.redis.sismember(videoRoomModeratorsKey(roomId), userId)) === 1;
+  }
+
   // ---- Teardown ----
 
   async clearRoom(roomId: string): Promise<void> {
-    // All three keys share the {roomId} hash-tag → single-slot, Cluster-safe DEL.
+    // All four keys share the {roomId} hash-tag → single-slot, Cluster-safe DEL.
     await this.redis.del(
       videoRoomViewersKey(roomId),
       videoRoomHostsKey(roomId),
       videoRoomParticipantsKey(roomId),
+      videoRoomModeratorsKey(roomId),
     );
   }
 }

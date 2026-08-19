@@ -11,6 +11,11 @@ export interface UserScopeDetail {
   countryCode?: string | null;
   stateId?: string | null;
   stateCode?: string | null;
+  stateName?: string | null;
+  /** System-generated `{countryCode}-S-{sequence}` id, e.g. "IN-S-04" — the
+   *  moderator-facing "Region ID" (`State.moderatorRegionCode`). Distinct
+   *  from `stateCode`, which is admin-typed and used for RBAC matching. */
+  moderatorRegionCode?: string | null;
   /** Still populated for non-Moderator roles (Officials, role-request routing)
    *  that continue to use REGION-level scope; Moderators stop at State. */
   regionId?: string | null;
@@ -67,6 +72,8 @@ export class GeographicScopeResolver {
           countryCode: scope.country?.code,
           stateId: scope.stateId,
           stateCode: scope.state?.code,
+          stateName: scope.state?.name,
+          moderatorRegionCode: scope.state?.moderatorRegionCode,
           regionId: scope.regionId,
           regionCode: scope.region?.code,
         });

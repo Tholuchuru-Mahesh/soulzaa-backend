@@ -83,7 +83,7 @@ export class VoiceService implements IVoiceService {
   // ======================= Token =======================
 
   async issueToken(actor: RoomActor, roomId: string): Promise<VoiceTokenResult> {
-    await this.assertVoiceReady(roomId, actor.id);
+    await this.assertVoiceReady(roomId, actor);
     const zegoRoomId = await this.ensureZegoRoomId(roomId);
     const canPublish = await this.roomsSvc.isSpeaker(roomId, actor.id);
     return this.buildToken(actor.id, roomId, zegoRoomId, canPublish);
@@ -105,7 +105,10 @@ export class VoiceService implements IVoiceService {
     audioRoute: string | null,
     isReconnect: boolean,
   ): Promise<VoiceJoinResult> {
-    await this.assertVoiceReady(roomId, actor.id);
+    await this.assertVoiceReady(roomId, actor);
+    const isModerator = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
     const zegoRoomId = await this.ensureZegoRoomId(roomId);
     const canPublish = await this.roomsSvc.isSpeaker(roomId, actor.id);
     const role = canPublish ? VoicePublishRole.PUBLISHER : VoicePublishRole.SUBSCRIBER;
@@ -118,7 +121,14 @@ export class VoiceService implements IVoiceService {
         role,
         audioRoute,
       });
-      await this.voice.addVoicePresence(roomId, actor.id);
+      // A moderator's session row still exists (heartbeat/leave depend on it),
+      // but their presence is tracked in a separate set that never feeds the
+      // public voice-state view, count, or join/reconnect broadcasts below.
+      if (isModerator) {
+        await this.voice.addModeratorVoicePresence(roomId, actor.id);
+      } else {
+        await this.voice.addVoicePresence(roomId, actor.id);
+      }
       await this.voice.setHeartbeat(roomId, actor.id, this.heartbeatTtl);
       return result;
     });
@@ -130,22 +140,26 @@ export class VoiceService implements IVoiceService {
         userId: actor.id,
         action: isReconnect ? VoiceSessionAction.NETWORK_RECOVERED : VoiceSessionAction.RECONNECTED,
       });
-      await this.bus.publish(
-        new VoiceReconnectedEvent({
-          roomId,
-          userId: actor.id,
-          reconnectCount: session.reconnectCount,
-        }),
-      );
+      if (!isModerator) {
+        await this.bus.publish(
+          new VoiceReconnectedEvent({
+            roomId,
+            userId: actor.id,
+            reconnectCount: session.reconnectCount,
+          }),
+        );
+      }
     } else {
       await this.voice.appendVoiceSessionLog({
         roomId,
         userId: actor.id,
         action: VoiceSessionAction.JOINED,
       });
-      await this.bus.publish(
-        new VoiceJoinedEvent({ roomId, userId: actor.id, role, participantCount: count }),
-      );
+      if (!isModerator) {
+        await this.bus.publish(
+          new VoiceJoinedEvent({ roomId, userId: actor.id, role, participantCount: count }),
+        );
+      }
     }
 
     // A user can only be physically present in one room's voice channel. Doing
@@ -210,15 +224,20 @@ export class VoiceService implements IVoiceService {
       metadata: { durationSeconds: Math.floor(durationSeconds) },
     });
     const count = await this.voice.voiceCount(roomId);
-    await this.bus.publish(
-      new VoiceLeftEvent({
-        roomId,
-        userId: actor.id,
-        durationSeconds: Math.floor(durationSeconds),
-        reason: 'left',
-        participantCount: count,
-      }),
+    const isModerator = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
     );
+    if (!isModerator) {
+      await this.bus.publish(
+        new VoiceLeftEvent({
+          roomId,
+          userId: actor.id,
+          durationSeconds: Math.floor(durationSeconds),
+          reason: 'left',
+          participantCount: count,
+        }),
+      );
+    }
     await this.enqueueSessionAnalytics(roomId, session, Math.floor(durationSeconds));
     await this.rebuildVoiceState(roomId);
   }
@@ -625,26 +644,34 @@ export class VoiceService implements IVoiceService {
 
   private async clearVoiceRuntime(roomId: string, userId: string): Promise<void> {
     await this.voice.removeVoicePresence(roomId, userId);
+    await this.voice.removeModeratorVoicePresence(roomId, userId);
     await this.voice.removeSpeaking(roomId, userId);
     await this.voice.clearHeartbeat(roomId, userId);
   }
 
   private async rebuildVoiceState(roomId: string): Promise<VoiceStateSnapshot> {
-    const [sessions, speaking] = await Promise.all([
+    const [sessions, speaking, moderatorIds] = await Promise.all([
       this.voice.listActiveSessions(roomId),
       this.voice.speakingMembers(roomId),
+      this.voice.moderatorVoiceIds(roomId),
     ]);
+    // Incognito moderators' sessions exist (heartbeat/leave need them) but must
+    // never appear in this participant-facing snapshot — every caller of
+    // `GET :id/voice/state` and every `VoiceStateEvent` broadcast reads this.
+    const moderatorSet = new Set(moderatorIds);
     const snapshot: VoiceStateSnapshot = {
-      participants: sessions.map((s) => ({
-        userId: s.userId,
-        role: s.role,
-        selfMuted: s.selfMuted,
-        isSpeaking: s.isSpeaking,
-        inBackground: s.inBackground,
-        audioRoute: s.audioRoute,
-        lastQualityLevel: s.lastQualityLevel,
-      })),
-      speaking,
+      participants: sessions
+        .filter((s) => !moderatorSet.has(s.userId))
+        .map((s) => ({
+          userId: s.userId,
+          role: s.role,
+          selfMuted: s.selfMuted,
+          isSpeaking: s.isSpeaking,
+          inBackground: s.inBackground,
+          audioRoute: s.audioRoute,
+          lastQualityLevel: s.lastQualityLevel,
+        })),
+      speaking: speaking.filter((userId) => !moderatorSet.has(userId)),
     };
     await this.voice.setCachedState(roomId, snapshot);
     return snapshot;
@@ -667,7 +694,7 @@ export class VoiceService implements IVoiceService {
     });
   }
 
-  private async assertVoiceReady(roomId: string, userId: string): Promise<void> {
+  private async assertVoiceReady(roomId: string, actor: RoomActor): Promise<void> {
     if (!(await this.roomsSvc.isRoomLive(roomId))) {
       throw new BusinessException(
         ERROR_CODES.ROOM_ENDED,
@@ -675,7 +702,15 @@ export class VoiceService implements IVoiceService {
         HttpStatus.CONFLICT,
       );
     }
-    await this.roomsSvc.assertMember(roomId, userId);
+    // Incognito moderators never hold a RoomMember row (that's the whole point
+    // of invisible join) — the membership check exists for regular
+    // participants, not for platform staff monitoring the room.
+    const isModerator = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
+    if (!isModerator) {
+      await this.roomsSvc.assertMember(roomId, actor.id);
+    }
   }
 
   private async requireActiveSession(roomId: string, userId: string): Promise<VoiceSession> {

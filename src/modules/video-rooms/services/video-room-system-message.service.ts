@@ -46,6 +46,17 @@ export class VideoRoomSystemMessageService {
     await this.bus.publish(new ChatMessageSentEvent(payload));
   }
 
+  /**
+   * Free-text variant of `emit()` for content that isn't one of the fixed
+   * `SYSTEM_MESSAGE_POLICY` templates — e.g. a moderator's own warning text.
+   * Always persists (no room-size degradation — a moderator warning is not
+   * presence churn).
+   */
+  async emitCustom(roomId: string, content: string, data: Record<string, unknown>): Promise<void> {
+    const payload = await this.persistRow('MODERATOR_WARNING', roomId, content, data);
+    await this.bus.publish(new ChatMessageSentEvent(payload));
+  }
+
   private async persistRow(
     kind: string,
     roomId: string,

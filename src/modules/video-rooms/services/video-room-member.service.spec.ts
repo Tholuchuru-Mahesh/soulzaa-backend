@@ -44,6 +44,8 @@ describe('VideoRoomMemberService.join', () => {
   let locks: any;
   let seats: any;
   let identities: any;
+  let platformAudit: any;
+  let platformBans: any;
   let service: VideoRoomMemberService;
 
   const actor = (id = 'u1', roles: any[] = []) => ({ id, roles });
@@ -88,6 +90,9 @@ describe('VideoRoomMemberService.join', () => {
       addViewer: jest.fn().mockResolvedValue(undefined),
       removeViewer: jest.fn().mockResolvedValue(undefined),
       viewerCount: jest.fn().mockResolvedValue(0),
+      addModerator: jest.fn().mockResolvedValue(undefined),
+      removeModerator: jest.fn().mockResolvedValue(undefined),
+      isModeratorPresent: jest.fn().mockResolvedValue(false),
     };
     events = {
       emitUserJoined: jest.fn().mockResolvedValue(undefined),
@@ -114,6 +119,9 @@ describe('VideoRoomMemberService.join', () => {
     seats = { hasActiveRoomInvitation: jest.fn().mockResolvedValue(false) };
     identities = { resolve: jest.fn().mockResolvedValue(new Map()) };
 
+    platformAudit = { record: jest.fn().mockResolvedValue(undefined) };
+    platformBans = { assertNotGloballyBanned: jest.fn().mockResolvedValue(undefined) };
+
     service = new VideoRoomMemberService(
       repo,
       moderation,
@@ -129,6 +137,11 @@ describe('VideoRoomMemberService.join', () => {
       configMock(),
       seats as never,
       identities as never,
+      undefined,
+      undefined,
+      undefined,
+      platformAudit as never,
+      platformBans as never,
     );
   });
 
@@ -332,6 +345,59 @@ describe('VideoRoomMemberService.join', () => {
       await recordingService.join(actor('mod-1', [PlatformRole.MODERATOR]), ROOM, {}, ctx);
       await new Promise((r) => setImmediate(r));
       expect(investigationRecording.beginOrReuseRecording).not.toHaveBeenCalled();
+    });
+
+    describe('join — moderator incognito path', () => {
+      it('does not create a member row or emit UserJoined for a moderator', async () => {
+        await service.join(actor('mod-1', [PlatformRole.MODERATOR]), ROOM, {}, ctx);
+        expect(repo.upsertActiveMember).not.toHaveBeenCalled();
+        expect(events.emitUserJoined).not.toHaveBeenCalled();
+      });
+
+      it('routes the moderator into presence via addModerator', async () => {
+        await service.join(actor('mod-1', [PlatformRole.MODERATOR]), ROOM, {}, ctx);
+        expect(presence.addModerator).toHaveBeenCalledWith(ROOM, 'mod-1');
+        expect(presence.addViewer).not.toHaveBeenCalled();
+      });
+
+      it('writes an INCOGNITO_JOIN audit row', async () => {
+        await service.join(actor('mod-1', [PlatformRole.MODERATOR]), ROOM, {}, ctx);
+        expect(platformAudit.record).toHaveBeenCalledWith(
+          expect.objectContaining({
+            moderatorId: 'mod-1',
+            action: 'INCOGNITO_JOIN',
+            roomType: 'VIDEO_ROOM',
+            roomId: ROOM,
+          }),
+        );
+      });
+    });
+
+    describe('join — global ban gate', () => {
+      it('rejects a banned regular user before joining', async () => {
+        platformBans.assertNotGloballyBanned.mockRejectedValueOnce(new Error('You are banned.'));
+        await expect(service.join(actor('u1'), ROOM, {}, ctx)).rejects.toThrow('You are banned.');
+        expect(presence.addViewer).not.toHaveBeenCalled();
+      });
+
+      it('does not check the global ban for a moderator', async () => {
+        await service.join(actor('mod-1', [PlatformRole.MODERATOR]), ROOM, {}, ctx);
+        expect(platformBans.assertNotGloballyBanned).not.toHaveBeenCalled();
+      });
+
+      it('checks the global ban for a regular user', async () => {
+        await service.join(actor('u1'), ROOM, {}, ctx);
+        expect(platformBans.assertNotGloballyBanned).toHaveBeenCalledWith('u1');
+      });
+    });
+
+    describe('leave — moderator incognito path', () => {
+      it('removes the moderator from presence and does not emit UserLeft', async () => {
+        await service.leave(actor('mod-1', [PlatformRole.MODERATOR]), ROOM, { socketId: 's1' });
+        expect(presence.removeModerator).toHaveBeenCalledWith(ROOM, 'mod-1');
+        expect(presence.removeViewer).not.toHaveBeenCalled();
+        expect(events.emitUserLeft).not.toHaveBeenCalled();
+      });
     });
   });
 

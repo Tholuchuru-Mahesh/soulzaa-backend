@@ -55,6 +55,8 @@ describe('AudioRoomsService', () => {
   let bus: jest.Mocked<IEventBus>;
   let users: Record<string, jest.Mock>;
   let profiles: Partial<IProfileService>;
+  let platformAudit: Record<string, jest.Mock>;
+  let platformBans: Record<string, jest.Mock>;
   let service: AudioRoomsService;
 
   beforeEach(() => {
@@ -94,6 +96,7 @@ describe('AudioRoomsService', () => {
       joinRoom: jest.fn().mockResolvedValue(undefined),
       leaveRoom: jest.fn().mockResolvedValue(undefined),
       roomMembers: jest.fn().mockResolvedValue([]),
+      roomModerators: jest.fn().mockResolvedValue([]),
     };
     locks = {
       // Execute the critical section immediately (no real Redis lock in unit tests).
@@ -153,6 +156,9 @@ describe('AudioRoomsService', () => {
       }),
     } as unknown as ConfigService;
 
+    platformAudit = { record: jest.fn().mockResolvedValue(undefined) };
+    platformBans = { assertNotGloballyBanned: jest.fn().mockResolvedValue(undefined) };
+
     service = new AudioRoomsService(
       repo as unknown as AudioRoomsRepository,
       presence as unknown as PresenceService,
@@ -167,6 +173,10 @@ describe('AudioRoomsService', () => {
       bus,
       users as unknown as IUsersService,
       profiles as unknown as IProfileService,
+      undefined,
+      undefined,
+      platformAudit as never,
+      platformBans as never,
     );
   });
 
@@ -242,12 +252,120 @@ describe('AudioRoomsService', () => {
       await service.join(OWNER, 'room-1', {});
       expect(presence.joinRoom).toHaveBeenCalledWith('room-1', OWNER.id);
 
-      // Platform Admin bypass
+      // Platform Admin bypass (joins incognito)
       repo.findRoomRow.mockResolvedValue(
         roomRow({ ownerId: OWNER.id, isLocked: true, passwordHash: 'hashed' }),
       );
       await service.join(ADMIN, 'room-1', {});
-      expect(presence.joinRoom).toHaveBeenCalledWith('room-1', ADMIN.id);
+      expect(presence.joinRoom).toHaveBeenCalledWith('room-1', ADMIN.id, true);
+    });
+
+    it('bypasses password check for a plain MODERATOR too (investigative incognito access)', async () => {
+      const MODERATOR: RoomActor = { id: 'mod-2', roles: ['MODERATOR'] };
+      repo.findRoomRow.mockResolvedValue(
+        roomRow({ ownerId: OWNER.id, isLocked: true, passwordHash: 'hashed' }),
+      );
+      await service.join(MODERATOR, 'room-1', {});
+      expect(presence.joinRoom).toHaveBeenCalledWith('room-1', MODERATOR.id, true);
+      expect(passwords.verify).not.toHaveBeenCalled();
+    });
+
+    describe('join — moderator incognito path', () => {
+      const MODERATOR: RoomActor = { id: 'mod-1', roles: ['MODERATOR'] };
+
+      it('does not create a RoomMember row for a moderator', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        await service.join(MODERATOR, 'room-1', {});
+        expect(repo.upsertActiveMember).not.toHaveBeenCalled();
+      });
+
+      it('does not publish RoomJoinedEvent for a moderator', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        await service.join(MODERATOR, 'room-1', {});
+        expect(bus.publish).not.toHaveBeenCalledWith(
+          expect.objectContaining({ name: expect.stringContaining('Joined') }),
+        );
+      });
+
+      it('routes the moderator into presence via the isModerator flag', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        await service.join(MODERATOR, 'room-1', {});
+        expect(presence.joinRoom).toHaveBeenCalledWith('room-1', 'mod-1', true);
+      });
+
+      it('writes an INCOGNITO_JOIN audit row', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        await service.join(MODERATOR, 'room-1', {});
+        expect(platformAudit.record).toHaveBeenCalledWith(
+          expect.objectContaining({
+            moderatorId: 'mod-1',
+            action: 'INCOGNITO_JOIN',
+            roomType: 'AUDIO_ROOM',
+            roomId: 'room-1',
+          }),
+        );
+      });
+
+      it('retroactively hides a user who was already a visible member (e.g. promoted to moderator mid-session)', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        repo.getMember.mockResolvedValue({ isActive: true, role: RoomMemberRole.AUDIENCE } as any);
+
+        await service.join(MODERATOR, 'room-1', {});
+
+        expect(repo.deactivateMember).toHaveBeenCalledWith('room-1', 'mod-1', 'mod-1');
+        expect(presence.leaveRoom).toHaveBeenCalledWith('room-1', 'mod-1');
+        expect(presence.joinRoom).toHaveBeenCalledWith('room-1', 'mod-1', true);
+      });
+
+      it('does not touch deactivateMember/leaveRoom for a fresh (never-visible) moderator join', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        repo.getMember.mockResolvedValue(null);
+
+        await service.join(MODERATOR, 'room-1', {});
+
+        expect(repo.deactivateMember).not.toHaveBeenCalled();
+        expect(presence.leaveRoom).not.toHaveBeenCalled();
+        expect(presence.joinRoom).toHaveBeenCalledWith('room-1', 'mod-1', true);
+      });
+    });
+
+    describe('join — global ban gate', () => {
+      const MODERATOR: RoomActor = { id: 'mod-1', roles: ['MODERATOR'] };
+
+      it('rejects a banned regular user before joining', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        platformBans.assertNotGloballyBanned.mockRejectedValueOnce(new Error('You are banned.'));
+        await expect(service.join(OTHER, 'room-1', {})).rejects.toThrow('You are banned.');
+        expect(presence.joinRoom).not.toHaveBeenCalled();
+      });
+
+      it('does not check the global ban for a moderator', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        await service.join(MODERATOR, 'room-1', {});
+        expect(platformBans.assertNotGloballyBanned).not.toHaveBeenCalled();
+      });
+
+      it('checks the global ban for a regular user', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        await service.join(OTHER, 'room-1', {});
+        expect(platformBans.assertNotGloballyBanned).toHaveBeenCalledWith('user-2');
+      });
+    });
+
+    describe('leave — moderator incognito path', () => {
+      const MODERATOR: RoomActor = { id: 'mod-1', roles: ['MODERATOR'] };
+
+      it('does not call deactivateMember for a moderator', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        await service.leave(MODERATOR, 'room-1');
+        expect(repo.deactivateMember).not.toHaveBeenCalled();
+      });
+
+      it('removes the moderator from the moderator presence set', async () => {
+        repo.findRoomRow.mockResolvedValue(roomRow());
+        await service.leave(MODERATOR, 'room-1');
+        expect(presence.leaveRoom).toHaveBeenCalledWith('room-1', 'mod-1', true);
+      });
     });
 
     it('rejects when the room is full', async () => {
@@ -447,6 +565,16 @@ describe('AudioRoomsService', () => {
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'audio_room.ended' }),
       );
+    });
+
+    it('clears both public members and incognito moderators from presence', async () => {
+      presence.roomMembers.mockResolvedValueOnce(['listener-1']);
+      presence.roomModerators.mockResolvedValueOnce(['mod-1']);
+
+      await service.end(OWNER, 'room-1');
+
+      expect(presence.leaveRoom).toHaveBeenCalledWith('room-1', 'listener-1');
+      expect(presence.leaveRoom).toHaveBeenCalledWith('room-1', 'mod-1', true);
     });
   });
 

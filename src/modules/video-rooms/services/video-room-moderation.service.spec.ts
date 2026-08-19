@@ -77,6 +77,7 @@ describe('VideoRoomModerationService', () => {
   let reportService: any;
   let config: any;
   let scopeService: any;
+  let systemMessages: any;
   let subject: VideoRoomModerationService;
   let callOrder: string[];
   let published: { name: string; payload: any }[];
@@ -182,6 +183,7 @@ describe('VideoRoomModerationService', () => {
       get: jest.fn().mockReturnValue({ moderation: { autoMuteMinutes: 15 } }),
     };
     scopeService = { assertModeratorInScope: jest.fn().mockResolvedValue(undefined) };
+    systemMessages = { emitCustom: jest.fn().mockResolvedValue(undefined) };
     subject = new VideoRoomModerationService(
       rooms,
       moderationRepo,
@@ -197,6 +199,11 @@ describe('VideoRoomModerationService', () => {
       reportService,
       config,
       scopeService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      systemMessages,
     );
   });
 
@@ -1122,6 +1129,20 @@ describe('VideoRoomModerationService', () => {
       expect(moderationRepo.createMute).not.toHaveBeenCalled();
       expect(moderationRepo.createBlock).not.toHaveBeenCalled();
       expect(rooms.deactivateMember).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('warn — scope', () => {
+    it('defaults to PRIVATE and does not touch the system-message service', async () => {
+      await subject.warn(ACTOR, 'room-1', TARGET, 'be nice');
+      expect(systemMessages.emitCustom).not.toHaveBeenCalled();
+    });
+
+    it('scope=ROOM persists a SYSTEM chat message via VideoRoomSystemMessageService', async () => {
+      await subject.warn(ACTOR, 'room-1', TARGET, 'be nice', undefined, 'ROOM');
+      expect(systemMessages.emitCustom).toHaveBeenCalledWith('room-1', 'be nice', {
+        targetUserId: TARGET,
+      });
     });
   });
 

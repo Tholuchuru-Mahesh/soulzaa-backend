@@ -1,52 +1,45 @@
+// src/modules/video-rooms/services/video-room-presence.service.spec.ts
 import { VideoRoomPresenceService } from './video-room-presence.service';
 
-describe('VideoRoomPresenceService', () => {
-  let redis: any;
+describe('VideoRoomPresenceService — moderator presence', () => {
+  let redis: Record<string, jest.Mock>;
   let service: VideoRoomPresenceService;
 
   beforeEach(() => {
     redis = {
-      sadd: jest.fn(),
-      srem: jest.fn(),
-      sismember: jest.fn().mockResolvedValue(1),
-      scard: jest.fn().mockResolvedValue(3),
-      del: jest.fn(),
+      sadd: jest.fn().mockResolvedValue(1),
+      srem: jest.fn().mockResolvedValue(1),
+      sismember: jest.fn().mockResolvedValue(0),
+      scard: jest.fn().mockResolvedValue(0),
+      del: jest.fn().mockResolvedValue(1),
     };
-    service = new VideoRoomPresenceService(redis);
+    service = new VideoRoomPresenceService(redis as never);
   });
 
-  it('adds a viewer to the room viewers set', async () => {
-    await service.addViewer('r1', 'u1');
-    expect(redis.sadd).toHaveBeenCalledWith(expect.stringContaining('r1'), 'u1');
+  it('addModerator() writes to the moderators key, not the viewers key', async () => {
+    await service.addModerator('room-1', 'mod-1');
+    expect(redis.sadd).toHaveBeenCalledWith('video-room:{room-1}:moderators', 'mod-1');
+    expect(redis.sadd).not.toHaveBeenCalledWith('video-room:{room-1}:viewers', 'mod-1');
   });
 
-  it('reports viewer count from the set cardinality', async () => {
-    expect(await service.viewerCount('r1')).toBe(3);
+  it('viewerCount() is unaffected by moderator presence (reads only the viewers key)', async () => {
+    await service.viewerCount('room-1');
+    expect(redis.scard).toHaveBeenCalledWith('video-room:{room-1}:viewers');
   });
 
-  it('reports membership from set-membership check', async () => {
-    expect(await service.isViewer('r1', 'u1')).toBe(true);
-    redis.sismember.mockResolvedValue(0);
-    expect(await service.isHost('r1', 'u1')).toBe(false);
+  it('isModeratorPresent() reads the moderators key', async () => {
+    redis.sismember.mockResolvedValueOnce(1);
+    await expect(service.isModeratorPresent('room-1', 'mod-1')).resolves.toBe(true);
+    expect(redis.sismember).toHaveBeenCalledWith('video-room:{room-1}:moderators', 'mod-1');
   });
 
-  it('reports participant membership from set-membership check', async () => {
-    expect(await service.isParticipant('r1', 'u2')).toBe(true);
-    redis.sismember.mockResolvedValue(0);
-    expect(await service.isParticipant('r1', 'u2')).toBe(false);
-  });
-
-  it('tracks hosts and participants in distinct sets', async () => {
-    await service.addHost('r1', 'u1');
-    await service.addParticipant('r1', 'u2');
-    const hostKey = redis.sadd.mock.calls[0][0];
-    const participantKey = redis.sadd.mock.calls[1][0];
-    expect(hostKey).not.toBe(participantKey);
-  });
-
-  it('clearRoom drops all three role sets in one (single-slot) DEL', async () => {
-    await service.clearRoom('r1');
-    expect(redis.del).toHaveBeenCalledTimes(1);
-    expect(redis.del.mock.calls[0]).toHaveLength(3);
+  it('clearRoom() also deletes the moderators key', async () => {
+    await service.clearRoom('room-1');
+    expect(redis.del).toHaveBeenCalledWith(
+      'video-room:{room-1}:viewers',
+      'video-room:{room-1}:hosts',
+      'video-room:{room-1}:participants',
+      'video-room:{room-1}:moderators',
+    );
   });
 });

@@ -762,7 +762,13 @@ async function seedGeography(): Promise<void> {
     });
     totalCountries++;
 
-    for (const s of c.states) {
+    for (const [stateIndex, s] of c.states.entries()) {
+      // Same `{countryCode}-S-{sequence}` scheme as
+      // `StateService.generateModeratorRegionCode` — this seed's array order
+      // is the "creation order" for states not provisioned through the admin
+      // API. Recomputed (not just set on create) so re-running this script
+      // backfills it for states seeded before this column existed.
+      const moderatorRegionCode = `${c.code}-S-${String(stateIndex + 1).padStart(2, '0')}`;
       const state = await prisma.state.upsert({
         where: {
           countryId_code: {
@@ -776,11 +782,13 @@ async function seedGeography(): Promise<void> {
           name: s.name,
           description: s.description ?? null,
           isActive: true,
+          moderatorRegionCode,
         },
         update: {
           name: s.name,
           description: s.description ?? null,
           isActive: true,
+          moderatorRegionCode,
         },
       });
       totalStates++;

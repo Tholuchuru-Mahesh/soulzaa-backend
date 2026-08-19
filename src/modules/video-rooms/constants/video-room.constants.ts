@@ -203,6 +203,11 @@ export function videoRoomParticipantsKey(roomId: string): string {
   return `video-room:{${roomId}}:participants`;
 }
 
+/** Set of moderator user ids incognito-present in a room — VideoRoomPresenceService. */
+export function videoRoomModeratorsKey(roomId: string): string {
+  return `video-room:{${roomId}}:moderators`;
+}
+
 // ---- VR-4 seat management (single-key ops → Cluster-safe; hash-tag the room id) ----
 
 /** Authoritative versioned seat snapshot (JSON) — VideoRoomSeatStateService. */

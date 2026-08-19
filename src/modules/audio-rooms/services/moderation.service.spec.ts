@@ -13,6 +13,7 @@ import type { ModerationApprovalService } from 'src/modules/moderation-approval/
 import type { INotificationService } from 'src/modules/notification/interfaces/notification.interface';
 import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repository';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
+import { ChatRepository } from '../repositories/chat.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { ModerationService } from './moderation.service';
@@ -32,6 +33,7 @@ describe('ModerationService', () => {
   let locks: Record<string, jest.Mock>;
   let queue: Record<string, jest.Mock>;
   let bus: jest.Mocked<IEventBus>;
+  let chatRepo: Record<string, jest.Mock>;
   let service: ModerationService;
 
   beforeEach(() => {
@@ -96,6 +98,19 @@ describe('ModerationService', () => {
     locks = { withLock: jest.fn(<T>(_k: string, fn: () => Promise<T>) => fn()) as never };
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
+    chatRepo = {
+      createMessage: jest.fn().mockResolvedValue({
+        id: 'msg-1',
+        roomId: 'room-1',
+        senderId: '00000000-0000-0000-0000-000000000000',
+        type: 'SYSTEM',
+        content: 'be nice',
+        gifUrl: null,
+        mentions: [],
+        replyToId: null,
+        createdAt: new Date(),
+      }),
+    };
 
     service = new ModerationService(
       repo as unknown as ModerationRepository,
@@ -110,6 +125,14 @@ describe('ModerationService', () => {
       {
         assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
       } as unknown as WorkforceScopeService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      chatRepo as unknown as ChatRepository,
     );
   });
 
@@ -320,6 +343,34 @@ describe('ModerationService', () => {
       await expect(
         service.mute(MOD, 'r', TARGET, { type: ModerationMuteType.PERMANENT }),
       ).rejects.toBeInstanceOf(BusinessException);
+    });
+  });
+
+  describe('warn — scope', () => {
+    it('defaults to PRIVATE and does not touch chat (existing behavior preserved)', async () => {
+      await service.warn(MOD, 'room-1', TARGET, 'be nice');
+      expect(chatRepo.createMessage).not.toHaveBeenCalled();
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: expect.any(String) }),
+      );
+    });
+
+    it('scope=ROOM persists a SYSTEM chat message attributed to SYSTEM_MODERATOR_ID', async () => {
+      await service.warn(MOD, 'room-1', TARGET, 'be nice', 'ROOM');
+      expect(chatRepo.createMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roomId: 'room-1',
+          senderId: '00000000-0000-0000-0000-000000000000',
+          type: 'SYSTEM',
+          content: 'be nice',
+        }),
+      );
+    });
+
+    it('scope=ROOM still sends the existing private notification too', async () => {
+      const notifySpy = jest.spyOn(service as never, 'notifyUser');
+      await service.warn(MOD, 'room-1', TARGET, 'be nice', 'ROOM');
+      expect(notifySpy).toHaveBeenCalled();
     });
   });
 

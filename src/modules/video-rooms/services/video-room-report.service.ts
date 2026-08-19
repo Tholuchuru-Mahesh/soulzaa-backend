@@ -220,6 +220,7 @@ export class VideoRoomReportService {
           report.targetUserId,
           reason,
           undefined,
+          'PRIVATE',
           requestMeta,
         );
       } else if (dto.recommendedAction === 'MUTE') {

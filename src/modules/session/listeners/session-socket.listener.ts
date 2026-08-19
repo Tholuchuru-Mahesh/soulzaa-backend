@@ -20,6 +20,12 @@ export class SessionSocketListener implements OnModuleInit {
   onModuleInit(): void {
     this.bus.subscribe<SessionLoggedOutEvent>(SESSION_EVENTS.LOGGED_OUT, (event) => {
       if (event.payload.allDevices) {
+        this.sockets.emitToUserEverywhere(event.payload.userId, 'auth:force_logout', {
+          reason: event.payload.byAdmin ? 'ADMIN_FORCE_LOGOUT' : 'SESSION_REVOKED',
+        });
+        this.sockets.emitToUserEverywhere(event.payload.userId, 'moderator:force_logout', {
+          reason: event.payload.byAdmin ? 'ADMIN_FORCE_LOGOUT' : 'SESSION_REVOKED',
+        });
         this.sockets.disconnectUserEverywhere(event.payload.userId);
       }
     });

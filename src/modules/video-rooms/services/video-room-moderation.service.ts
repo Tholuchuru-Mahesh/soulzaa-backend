@@ -56,6 +56,7 @@ import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 import { VideoRoomMediaService } from './video-room-media.service';
 import { VideoRoomReportService } from './video-room-report.service';
 import { VideoRoomSessionService } from './video-room-session.service';
+import { VideoRoomSystemMessageService } from './video-room-system-message.service';
 import {
   VideoRoomPermissionService,
   type PermissionRoomRef,
@@ -77,6 +78,8 @@ import { ModeratorPerformanceService } from 'src/modules/moderator-performance/s
 const DEFAULT_MUTE_CHANNELS: MuteChannel[] = ['chat', 'mic'];
 
 /** The outcome of a bulk kick: who was ejected, and who was skipped and why. */
+import { PlatformModerationAuditService } from 'src/modules/platform-moderation/services/platform-moderation-audit.service';
+
 export interface KickManyResult {
   kicked: string[];
   skipped: { userId: string; reason: string }[];
@@ -117,6 +120,8 @@ export class VideoRoomModerationService {
     @Optional() private readonly auditLog?: AuditLogService,
     @Optional() private readonly performanceStats?: ModeratorPerformanceService,
     @Optional() @Inject(NOTIFICATION_SERVICE) private readonly notifications?: INotificationService,
+    @Optional() private readonly systemMessages?: VideoRoomSystemMessageService,
+    @Optional() private readonly platformAudit?: PlatformModerationAuditService,
   ) {}
 
   // ======================= Kick =======================
@@ -832,6 +837,7 @@ export class VideoRoomModerationService {
     targetUserId: string,
     reason: string,
     metadata?: Record<string, unknown>,
+    scope: 'PRIVATE' | 'ROOM' = 'PRIVATE',
     requestMeta?: RequestMetadata,
   ): Promise<void> {
     const ref = await this.assertPrereqs(
@@ -902,6 +908,17 @@ export class VideoRoomModerationService {
       if (this.performanceStats) {
         void this.performanceStats.recordAction(actor.id, 'WARN');
       }
+      if (this.platformAudit) {
+        void this.platformAudit.record({
+          moderatorId: actor.id,
+          action: 'WARNING_SENT',
+          roomType: 'VIDEO_ROOM',
+          roomId: ref.id,
+          targetUserId,
+          reason,
+          scope,
+        });
+      }
     });
 
     await this.bus.publish(
@@ -915,6 +932,67 @@ export class VideoRoomModerationService {
     );
     this.metrics.incWarning();
     await this.notifyUser(targetUserId, 'video_room.warned', { roomId: ref.id, reason });
+
+    if (scope === 'ROOM' && this.systemMessages) {
+      await this.systemMessages.emitCustom(ref.id, reason, { targetUserId });
+    }
+  }
+
+  /**
+   * A moderator-issued warning not about any specific member — posted to the
+   * room's own chat as a SYSTEM message via [VideoRoomSystemMessageService],
+   * same pipeline [warn]'s ROOM-scope branch uses, but with no target user to
+   * run the self/owner/outranks prereq chain against.
+   */
+  async broadcastWarning(
+    actor: RoomActor,
+    roomId: string,
+    reason: string,
+    requestMeta?: RequestMetadata,
+  ): Promise<void> {
+    const ref = await this.requireRoom(roomId);
+    await this.permissions.assertPermission(actor, ref, VideoRoomPermission.MUTE_USERS);
+    const room = await this.rooms.findById(roomId);
+    if (room?.ownerId) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
+    }
+
+    await this.moderationRepo.appendAction({
+      roomId: ref.id,
+      moderatorId: actor.id,
+      targetUserId: null,
+      action: VideoRoomModerationActionType.WARN,
+      reason,
+      metadata: this.auditMetadata(undefined, requestMeta),
+    });
+    if (this.auditLog) {
+      void this.auditLog.logAction({
+        actorId: actor.id,
+        action: 'video_room.warn_broadcast',
+        resource: 'video_room',
+        resourceId: ref.id,
+        violationReason: reason,
+        ipAddress: requestMeta?.ip,
+        userAgent: requestMeta?.userAgent,
+        details: { reason },
+      });
+    }
+    if (this.performanceStats) {
+      void this.performanceStats.recordAction(actor.id, 'WARN');
+    }
+    if (this.platformAudit) {
+      void this.platformAudit.record({
+        moderatorId: actor.id,
+        action: 'WARNING_SENT',
+        roomType: 'VIDEO_ROOM',
+        roomId: ref.id,
+        reason,
+        scope: 'ROOM',
+      });
+    }
+    if (this.systemMessages) {
+      await this.systemMessages.emitCustom(ref.id, reason, {});
+    }
   }
 
   // ======================= Force disconnect =======================
@@ -1209,6 +1287,18 @@ export class VideoRoomModerationService {
     await this.rooms.deactivateMember(roomId, targetUserId, actorId);
     this.sockets.disconnectUserInNamespace(VIDEO_ROOM_NAMESPACE, targetUserId);
     await this.session.endUserRoomSessions(roomId, targetUserId);
+  }
+
+  /**
+   * Authorization gate for controller actions that bypass this service's own
+   * per-action methods (currently: the platform-wide 24h ban, which calls
+   * `PlatformBanService` directly rather than routing through here). Reuses
+   * `BLOCK_USERS` — the closest existing permission tier to a durable,
+   * cross-room ban, rather than the lighter `KICK_USERS`.
+   */
+  async assertCanModerate(actor: RoomActor, roomId: string): Promise<void> {
+    const ref = await this.requireRoom(roomId);
+    await this.permissions.assertPermission(actor, ref, VideoRoomPermission.BLOCK_USERS);
   }
 
   private async requireRoom(roomId: string): Promise<PermissionRoomRef> {

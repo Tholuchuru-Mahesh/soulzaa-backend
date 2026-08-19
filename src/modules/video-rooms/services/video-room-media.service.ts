@@ -121,7 +121,15 @@ export class VideoRoomMediaService {
     ip?: string,
   ): Promise<MediaJoinResult> {
     const room = await this.loadLiveRoom(roomId);
-    await this.assertMember(room, actor.id);
+    // Incognito moderators never hold a VideoRoomMember row (that's the whole
+    // point of invisible join) — the membership check exists for regular
+    // participants, not for platform staff monitoring the room.
+    const isModerator = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
+    if (!isModerator) {
+      await this.assertMember(room, actor.id);
+    }
     const mediaRoomId = await this.ensureMediaRoomId(room, actor.id);
     const seatIndex = await this.resolveSeatIndex(roomId, actor.id);
     // The room owner is the host/broadcaster: authorise publishing even before
@@ -140,39 +148,46 @@ export class VideoRoomMediaService {
       network: dto.network ?? null,
     });
 
-    const stage = await this.mutateStage(roomId, async (base) => {
-      const nowIso = new Date().toISOString();
-      const already = base.participants.some((p) => p.userId === actor.id);
-      let participants = already
-        ? upsertParticipant(base.participants, actor.id, (p) => ({
-            ...p,
-            seatIndex,
-            role,
-            connection: ConnectionStatus.CONNECTED,
-          }))
-        : [
-            ...base.participants,
-            {
-              ...newParticipant({
-                userId: actor.id,
+    // An incognito moderator must never appear in the media stage — it's the
+    // single cached snapshot `getMediaState()` serves to every client in the
+    // room, so admitting them here would leak their identity exactly like a
+    // visible join would. The DB session row above still exists (needed for
+    // leaveMedia/heartbeat bookkeeping); only the visible stage is skipped.
+    const stage = isModerator
+      ? await this.mutateStage(roomId, async (base) => base)
+      : await this.mutateStage(roomId, async (base) => {
+          const nowIso = new Date().toISOString();
+          const already = base.participants.some((p) => p.userId === actor.id);
+          let participants = already
+            ? upsertParticipant(base.participants, actor.id, (p) => ({
+                ...p,
                 seatIndex,
                 role,
-                nowIso,
-                defaultBeauty: this.defaultBeauty(),
-              }),
-              connection: ConnectionStatus.CONNECTED,
-            },
-          ];
-      const publishers = participants
-        .filter((p) => p.userId !== actor.id && p.streamId !== null)
-        .map((p) => p.userId)
-        .slice(0, this.cfg.maxSubscriptionsPerUser);
-      participants = upsertParticipant(participants, actor.id, (p) => ({
-        ...p,
-        subscriptions: publishers,
-      }));
-      return this.mediaState.commit(roomId, base, { participants, mediaRoomId });
-    });
+                connection: ConnectionStatus.CONNECTED,
+              }))
+            : [
+                ...base.participants,
+                {
+                  ...newParticipant({
+                    userId: actor.id,
+                    seatIndex,
+                    role,
+                    nowIso,
+                    defaultBeauty: this.defaultBeauty(),
+                  }),
+                  connection: ConnectionStatus.CONNECTED,
+                },
+              ];
+          const publishers = participants
+            .filter((p) => p.userId !== actor.id && p.streamId !== null)
+            .map((p) => p.userId)
+            .slice(0, this.cfg.maxSubscriptionsPerUser);
+          participants = upsertParticipant(participants, actor.id, (p) => ({
+            ...p,
+            subscriptions: publishers,
+          }));
+          return this.mediaState.commit(roomId, base, { participants, mediaRoomId });
+        });
 
     await this.events.appendEvent({
       roomId,
@@ -180,21 +195,26 @@ export class VideoRoomMediaService {
       eventType: 'media.joined',
       payload: { userId: actor.id, seatIndex, role, ip: ip ?? null },
     });
-    await this.bus.publish(
-      new MediaSessionCreatedEvent({
-        roomId,
-        version: stage.version,
-        userId: actor.id,
-        seatIndex,
-        role,
-      }),
-    );
+    if (!isModerator) {
+      await this.bus.publish(
+        new MediaSessionCreatedEvent({
+          roomId,
+          version: stage.version,
+          userId: actor.id,
+          seatIndex,
+          role,
+        }),
+      );
+    }
 
     const mediaSession = this.tokens.issueForRoom({ userId: actor.id, mediaRoomId, canPublish });
     return { mediaSession, stage };
   }
 
   async leaveMedia(actor: RoomActor, roomId: string, ip?: string): Promise<MediaStageView> {
+    const isModerator = (actor.roles ?? []).some(
+      (r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN',
+    );
     const existing = await this.mediaSessions.find(roomId, actor.id);
     const stage = await this.mutateStage(roomId, async (base) => {
       if (!base.participants.some((p) => p.userId === actor.id)) return base; // idempotent
@@ -212,14 +232,16 @@ export class VideoRoomMediaService {
         eventType: 'media.left',
         payload: { userId: actor.id, durationSeconds: Number(durationSeconds), ip: ip ?? null },
       });
-      await this.bus.publish(
-        new MediaSessionClosedEvent({
-          roomId,
-          version: stage.version,
-          userId: actor.id,
-          durationSeconds: Number(durationSeconds),
-        }),
-      );
+      if (!isModerator) {
+        await this.bus.publish(
+          new MediaSessionClosedEvent({
+            roomId,
+            version: stage.version,
+            userId: actor.id,
+            durationSeconds: Number(durationSeconds),
+          }),
+        );
+      }
     }
     return stage;
   }

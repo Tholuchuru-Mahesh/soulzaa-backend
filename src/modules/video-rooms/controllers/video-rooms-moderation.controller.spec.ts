@@ -19,6 +19,7 @@ describe('VideoRoomsModerationController', () => {
   let moderation: any;
   let reports: any;
   let query: any;
+  let platformBans: any;
   let subject: VideoRoomsModerationController;
 
   beforeEach(() => {
@@ -32,6 +33,7 @@ describe('VideoRoomsModerationController', () => {
       unmuteAll: jest.fn().mockResolvedValue(undefined),
       warn: jest.fn().mockResolvedValue(undefined),
       forceDisconnect: jest.fn().mockResolvedValue(undefined),
+      assertCanModerate: jest.fn().mockResolvedValue(undefined),
     };
     reports = {
       report: jest.fn().mockResolvedValue({ id: 'report-1' }),
@@ -44,7 +46,8 @@ describe('VideoRoomsModerationController', () => {
       blacklistedUsers: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 }),
       warnings: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 }),
     };
-    subject = new VideoRoomsModerationController(moderation, reports, query);
+    platformBans = { banUser: jest.fn().mockResolvedValue({ id: 'ban-1' }) };
+    subject = new VideoRoomsModerationController(moderation, reports, query, platformBans as never);
   });
 
   describe('delegation — the controller decides nothing itself', () => {
@@ -112,6 +115,26 @@ describe('VideoRoomsModerationController', () => {
         't1',
         'be nice',
         { messageId: 'm1' },
+        'PRIVATE',
+        META,
+      );
+    });
+
+    it('delegates warn with an explicit ROOM scope', async () => {
+      const dto = {
+        userId: 't1',
+        reason: 'be nice',
+        metadata: { messageId: 'm1' },
+        scope: 'ROOM',
+      } as never;
+      await subject.warn(user, ROOM, dto, META);
+      expect(moderation.warn).toHaveBeenCalledWith(
+        expectedActor,
+        ROOM,
+        't1',
+        'be nice',
+        { messageId: 'm1' },
+        'ROOM',
         META,
       );
     });
@@ -193,6 +216,30 @@ describe('VideoRoomsModerationController', () => {
         ROOM,
         dto,
       );
+    });
+  });
+
+  describe('banGlobally — platform-wide 24h ban', () => {
+    it('requires moderation authorization on THIS room before issuing the ban', async () => {
+      const dto = { reason: 'harassment' } as never;
+      await subject.banGlobally(user, ROOM, 't1', dto);
+
+      expect(moderation.assertCanModerate).toHaveBeenCalledWith(expectedActor, ROOM);
+      expect(platformBans.banUser).toHaveBeenCalledWith({
+        moderatorId: 'u1',
+        targetUserId: 't1',
+        reason: 'harassment',
+        roomType: 'VIDEO_ROOM',
+        originRoomId: ROOM,
+      });
+    });
+
+    it('a non-moderator is rejected before the ban is ever issued', async () => {
+      moderation.assertCanModerate.mockRejectedValueOnce(new Error('forbidden'));
+      const dto = { reason: 'harassment' } as never;
+
+      await expect(subject.banGlobally(user, ROOM, 't1', dto)).rejects.toThrow('forbidden');
+      expect(platformBans.banUser).not.toHaveBeenCalled();
     });
   });
 

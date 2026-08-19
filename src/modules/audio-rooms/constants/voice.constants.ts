@@ -10,6 +10,16 @@ export function voicePresenceKey(roomId: string): string {
   return `audio-room:{${roomId}}:voice`;
 }
 
+/**
+ * Set of incognito moderators currently listening in the voice channel —
+ * tracked separately so they never appear in `voicePresenceKey`/`voiceCount`/
+ * `listActiveSessions`-derived participant views, matching the room-level
+ * public/moderator presence split.
+ */
+export function voiceModeratorPresenceKey(roomId: string): string {
+  return `audio-room:{${roomId}}:voice:moderators`;
+}
+
 /** Set of user ids currently speaking (active-speaker indicators). */
 export function voiceSpeakingKey(roomId: string): string {
   return `audio-room:{${roomId}}:voice:speaking`;

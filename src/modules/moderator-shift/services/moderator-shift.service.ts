@@ -114,16 +114,60 @@ export class ModeratorShiftService {
     });
   }
 
+  private getTimeInTimezone(
+    now: Date,
+    timezone?: string,
+  ): { hours: number; minutes: number; dayOfWeek: DayOfWeek } {
+    const tz = timezone && timezone.trim() !== '' ? timezone : 'UTC';
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        hour12: false,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      const parts = formatter.formatToParts(now);
+      const hStr = parts.find((p) => p.type === 'hour')?.value ?? '0';
+      const mStr = parts.find((p) => p.type === 'minute')?.value ?? '0';
+      const wStr = parts.find((p) => p.type === 'weekday')?.value ?? 'Mon';
+
+      const dowMap: Record<string, DayOfWeek> = {
+        Mon: DayOfWeek.MONDAY,
+        Tue: DayOfWeek.TUESDAY,
+        Wed: DayOfWeek.WEDNESDAY,
+        Thu: DayOfWeek.THURSDAY,
+        Fri: DayOfWeek.FRIDAY,
+        Sat: DayOfWeek.SATURDAY,
+        Sun: DayOfWeek.SUNDAY,
+      };
+
+      const parsedH = parseInt(hStr, 10);
+      return {
+        hours: parsedH === 24 ? 0 : parsedH,
+        minutes: parseInt(mStr, 10),
+        dayOfWeek: dowMap[wStr] ?? DayOfWeek.MONDAY,
+      };
+    } catch {
+      return {
+        hours: now.getUTCHours(),
+        minutes: now.getUTCMinutes(),
+        dayOfWeek: DOW_MAP[now.getUTCDay()],
+      };
+    }
+  }
+
   /**
    * Returns true if the moderator's shift is currently active.
    * Checks overrides first; falls back to the recurring schedule.
-   * All comparisons in UTC.
+   * Compares time using the shift's configured timezone.
    */
   async isWithinShift(moderatorId: string): Promise<boolean> {
     const shift = await this.getActiveShift(moderatorId);
     if (!shift) return false;
 
     const now = new Date();
+    const timeInTz = this.getTimeInTimezone(now, shift.timezone);
     const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
     // Check for a date-specific override first.
@@ -133,7 +177,8 @@ export class ModeratorShiftService {
 
     if (override) {
       return this.isInWindow(
-        now,
+        timeInTz.hours,
+        timeInTz.minutes,
         override.startHour,
         override.startMinute,
         override.endHour,
@@ -142,20 +187,27 @@ export class ModeratorShiftService {
     }
 
     // Check recurring schedule.
-    const todayDow = DOW_MAP[now.getUTCDay()];
-    if (!shift.daysOfWeek.includes(todayDow)) return false;
+    if (!shift.daysOfWeek.includes(timeInTz.dayOfWeek)) return false;
 
-    return this.isInWindow(now, shift.startHour, shift.startMinute, shift.endHour, shift.endMinute);
+    return this.isInWindow(
+      timeInTz.hours,
+      timeInTz.minutes,
+      shift.startHour,
+      shift.startMinute,
+      shift.endHour,
+      shift.endMinute,
+    );
   }
 
   private isInWindow(
-    now: Date,
+    currentH: number,
+    currentM: number,
     startH: number,
     startM: number,
     endH: number,
     endM: number,
   ): boolean {
-    const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const currentMinutes = currentH * 60 + currentM;
     const startMinutes = startH * 60 + startM;
     const endMinutes = endH * 60 + endM;
 
@@ -180,16 +232,27 @@ export class ModeratorShiftService {
 
     if (active) return { isActive: true, shift, nextShiftStartsInSeconds: null };
 
-    // Calculate seconds to next start window on the next scheduled day.
+    // Calculate seconds to next start window on the next scheduled day in timezone.
     const now = new Date();
-    const currentDay = now.getUTCDay();
-    const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const timeInTz = this.getTimeInTimezone(now, shift.timezone);
+    const currentMinutes = timeInTz.hours * 60 + timeInTz.minutes;
     const startMinutes = shift.startHour * 60 + shift.startMinute;
+
+    const DOW_ORDER: DayOfWeek[] = [
+      DayOfWeek.SUNDAY,
+      DayOfWeek.MONDAY,
+      DayOfWeek.TUESDAY,
+      DayOfWeek.WEDNESDAY,
+      DayOfWeek.THURSDAY,
+      DayOfWeek.FRIDAY,
+      DayOfWeek.SATURDAY,
+    ];
+    const currentDayIdx = DOW_ORDER.indexOf(timeInTz.dayOfWeek);
 
     // Find next scheduled day (within the next 7 days).
     let daysUntilNext: number | null = null;
     for (let d = 0; d <= 7; d++) {
-      const candidate = DOW_MAP[(currentDay + d) % 7];
+      const candidate = DOW_ORDER[(currentDayIdx + d) % 7];
       if (shift.daysOfWeek.includes(candidate)) {
         if (d === 0 && currentMinutes >= startMinutes) continue; // today already passed
         daysUntilNext = d;

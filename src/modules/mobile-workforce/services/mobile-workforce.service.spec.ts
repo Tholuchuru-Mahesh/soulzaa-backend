@@ -12,23 +12,69 @@ describe('MobileWorkforceService scope composition', () => {
   let service: MobileWorkforceService;
 
   const prisma = {
-    user: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+    user: {
+      count: jest.fn().mockResolvedValue(0),
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     roomReport: {
       findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
+      findUnique: jest.fn().mockResolvedValue(null),
     },
     videoRoomReport: {
       findMany: jest.fn().mockResolvedValue([]),
       count: jest.fn().mockResolvedValue(0),
+      findUnique: jest.fn().mockResolvedValue(null),
     },
-    liveStreamReport: { count: jest.fn().mockResolvedValue(0) },
+    liveStreamReport: {
+      count: jest.fn().mockResolvedValue(0),
+      findUnique: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     investigationRecording: { count: jest.fn().mockResolvedValue(0) },
-    audioRoom: { findMany: jest.fn().mockResolvedValue([]) },
-    videoRoom: { findMany: jest.fn().mockResolvedValue([]) },
-    liveStream: { findMany: jest.fn().mockResolvedValue([]) },
+    moderator_task_assignments: { count: jest.fn().mockResolvedValue(0) },
+    audioRoom: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+    videoRoom: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+    liveStream: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
   };
-  const scope = { userScopeFilter: jest.fn(), describeScope: jest.fn() };
+  const scope = {
+    userScopeFilter: jest.fn(),
+    describeScope: jest.fn(),
+    assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
+  };
   const scopes = { getUserScopes: jest.fn().mockResolvedValue([]) };
+  const shiftService = {
+    shiftStatus: jest
+      .fn()
+      .mockResolvedValue({ isActive: false, shift: null, nextShiftStartsInSeconds: null }),
+    isWithinShift: jest.fn().mockResolvedValue(false),
+  };
+  const audioModeration = {
+    reviewReport: jest.fn(),
+    dismissReport: jest.fn(),
+    escalateViolation: jest.fn(),
+  };
+  const videoReports = { reviewReport: jest.fn(), dismissReport: jest.fn() };
+  const videoModeration = { escalateViolation: jest.fn() };
+  const liveStreamReports = { reviewReport: jest.fn() };
+  const liveStream = { escalateViolation: jest.fn() };
+  const investigationRecording = {
+    getCaseView: jest.fn().mockResolvedValue({ recordings: [], auditLogs: [] }),
+  };
+  const permissionResolver = {
+    resolveUserPermissions: jest.fn().mockResolvedValue(new Set<string>()),
+    hasPermission: jest.fn().mockReturnValue(false),
+  };
 
   const SCOPE_FILTER = { OR: [{ stateId: 's-ka' }] };
 
@@ -41,6 +87,15 @@ describe('MobileWorkforceService scope composition', () => {
       prisma as unknown as PrismaService,
       scope as unknown as WorkforceScopeService,
       scopes as unknown as GeographicScopeResolver,
+      shiftService as any,
+      undefined,
+      audioModeration as any,
+      videoReports as any,
+      videoModeration as any,
+      liveStreamReports as any,
+      liveStream as any,
+      investigationRecording as any,
+      permissionResolver as any,
     );
   });
 
@@ -69,23 +124,41 @@ describe('MobileWorkforceService scope composition', () => {
     expect(countWhere).toEqual(listWhere);
   });
 
-  it('narrows the moderation queue to reporters in scope', async () => {
-    prisma.user.findMany.mockResolvedValue([{ id: 'u-1' }, { id: 'u-2' }]);
+  it('narrows the moderation queue to rooms/streams owned by users in scope', async () => {
+    // Scoping now mirrors reportDetails/actionReport: by room/stream OWNER,
+    // not by reporter — a report with an in-region reporter but an
+    // out-of-region room owner must not appear (it would 403 on open).
+    prisma.user.findMany.mockResolvedValue([{ id: 'owner-1' }, { id: 'owner-2' }]);
+    prisma.audioRoom.findMany.mockResolvedValueOnce([{ id: 'room-1' }]);
+    prisma.videoRoom.findMany.mockResolvedValueOnce([]);
+    prisma.liveStream.findMany.mockResolvedValueOnce([]);
 
     await service.moderationQueue('official-1');
 
-    const where = prisma.roomReport.findMany.mock.calls[0][0].where;
-    expect(where.reporterId).toEqual({ in: ['u-1', 'u-2'] });
+    expect(prisma.audioRoom.findMany.mock.calls[0][0].where).toEqual({
+      ownerId: { in: ['owner-1', 'owner-2'] },
+    });
+    expect(prisma.roomReport.findMany.mock.calls[0][0].where).toEqual({
+      roomId: { in: ['room-1'] },
+    });
+    expect(prisma.videoRoomReport.findMany.mock.calls[0][0].where).toEqual({
+      roomId: { in: [] },
+    });
+    expect(prisma.liveStreamReport.findMany.mock.calls[0][0].where).toEqual({
+      streamId: { in: [] },
+    });
   });
 
-  it('does not filter the moderation queue by reporter when unrestricted', async () => {
+  it('does not filter the moderation queue by room/stream owner when unrestricted', async () => {
     scope.userScopeFilter.mockResolvedValue({});
 
     await service.moderationQueue('admin-1');
 
-    const where = prisma.roomReport.findMany.mock.calls[0][0].where;
-    expect(where.reporterId).toBeUndefined();
+    expect(prisma.roomReport.findMany.mock.calls[0][0].where).toEqual({});
+    expect(prisma.videoRoomReport.findMany.mock.calls[0][0].where).toEqual({});
+    expect(prisma.liveStreamReport.findMany.mock.calls[0][0].where).toEqual({});
     expect(prisma.user.findMany).not.toHaveBeenCalled();
+    expect(prisma.audioRoom.findMany).not.toHaveBeenCalled();
   });
 
   describe('regionalDailyActivity — the Dashboard\'s "Assigned X" cards', () => {
@@ -141,31 +214,59 @@ describe('MobileWorkforceService scope composition', () => {
       await service.regionalDailyActivity('mod-1');
 
       expect(prisma.roomReport.count).toHaveBeenCalledWith({
-        where: { roomId: { in: ['room-a', 'room-b'] } },
+        where: { roomId: { in: ['room-a', 'room-b'] }, status: 'PENDING' },
       });
       expect(prisma.videoRoomReport.count).toHaveBeenCalledWith({
-        where: { roomId: { in: ['vroom-a'] } },
+        where: { roomId: { in: ['vroom-a'] }, status: 'PENDING' },
       });
       expect(prisma.liveStreamReport.count).toHaveBeenCalledWith({
-        where: { streamId: { in: ['stream-a'] } },
+        where: { streamId: { in: ['stream-a'] }, status: 'PENDING' },
       });
     });
 
     it('is unrestricted for platform staff: counts all reports with no id filter', async () => {
       scope.userScopeFilter.mockResolvedValue({});
       await service.regionalDailyActivity('admin-1');
-      expect(prisma.roomReport.count).toHaveBeenCalledWith({ where: {} });
-      expect(prisma.videoRoomReport.count).toHaveBeenCalledWith({ where: {} });
-      expect(prisma.liveStreamReport.count).toHaveBeenCalledWith({ where: {} });
+      expect(prisma.roomReport.count).toHaveBeenCalledWith({ where: { status: 'PENDING' } });
+      expect(prisma.videoRoomReport.count).toHaveBeenCalledWith({ where: { status: 'PENDING' } });
+      expect(prisma.liveStreamReport.count).toHaveBeenCalledWith({ where: { status: 'PENDING' } });
     });
 
-    it('assignedReportsCount is the sum across all three report surfaces', async () => {
+    it('assignedReportsCount is the sum across all three report surfaces, and only counts PENDING (open) reports', async () => {
+      // Regression guard: this count previously had no status filter at
+      // all, so it kept growing forever instead of reflecting the open
+      // backlog — REVIEWED/DISMISSED/ACTIONED reports must not count.
       scope.userScopeFilter.mockResolvedValue({});
       prisma.roomReport.count.mockResolvedValue(3);
       prisma.videoRoomReport.count.mockResolvedValue(2);
       prisma.liveStreamReport.count.mockResolvedValue(1);
       const result = await service.regionalDailyActivity('admin-1');
       expect(result.assignedReportsCount).toBe(6);
+      for (const call of prisma.roomReport.count.mock.calls) {
+        if ('status' in call[0].where) expect(call[0].where.status).toBe('PENDING');
+      }
+    });
+
+    it('reports new-report volume for today and yesterday separately, for the "vs yesterday" delta', async () => {
+      scope.userScopeFilter.mockResolvedValue({});
+      // Calls are: [PENDING, PENDING, PENDING, investigations, today x3, yesterday x3].
+      prisma.roomReport.count
+        .mockResolvedValueOnce(0) // PENDING
+        .mockResolvedValueOnce(5) // new today
+        .mockResolvedValueOnce(3); // new yesterday
+      prisma.videoRoomReport.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(1);
+      prisma.liveStreamReport.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(1)
+        .mockResolvedValueOnce(0);
+
+      const result = await service.regionalDailyActivity('admin-1');
+
+      expect(result.newReportsToday).toBe(8);
+      expect(result.newReportsYesterday).toBe(4);
     });
 
     it('matches nothing (not everything) when a STATE scope resolves to zero in-scope owners', async () => {
@@ -201,6 +302,515 @@ describe('MobileWorkforceService scope composition', () => {
       expect(investigationWhere.OR).toBeUndefined();
       const roomWhere = prisma.audioRoom.findMany.mock.calls[0][0].where;
       expect(roomWhere.ownerId).toBeUndefined();
+    });
+  });
+
+  describe('buildDelta — dashboard "vs yesterday" tile math', () => {
+    it('computes a signed percentage change', () => {
+      expect((service as any).buildDelta(46, 40, true)).toEqual({ percent: 15, favorable: true });
+    });
+
+    it('flags a decrease as unfavorable for a higher-is-better metric (e.g. reports solved)', () => {
+      expect((service as any).buildDelta(10, 20, true)).toEqual({ percent: -50, favorable: false });
+    });
+
+    it('flags an increase as unfavorable for a lower-is-better metric (e.g. avg. resolution time)', () => {
+      expect((service as any).buildDelta(24, 20, false)).toEqual({ percent: 20, favorable: false });
+    });
+
+    it('flags a decrease as favorable for a lower-is-better metric', () => {
+      expect((service as any).buildDelta(15, 20, false)).toEqual({ percent: -25, favorable: true });
+    });
+
+    it('returns no percentage when both today and yesterday are zero (nothing to compare)', () => {
+      expect((service as any).buildDelta(0, 0, true)).toEqual({ percent: null, favorable: true });
+    });
+
+    it('returns no percentage — not Infinity% — when yesterday was zero but today is not', () => {
+      expect((service as any).buildDelta(5, 0, true)).toEqual({ percent: null, favorable: true });
+      expect((service as any).buildDelta(5, 0, false)).toEqual({ percent: null, favorable: false });
+    });
+  });
+
+  describe('taskCompletionRateAsOf — live rate, not the ModeratorDailyStats column nothing writes', () => {
+    it('computes completed/assigned as of the cutoff from assignment timestamps', async () => {
+      prisma.moderator_task_assignments.count
+        .mockResolvedValueOnce(10) // assigned as of cutoff
+        .mockResolvedValueOnce(6); // completed as of cutoff
+      const cutoff = new Date('2026-08-18T00:00:00.000Z');
+
+      const rate = await (service as any).taskCompletionRateAsOf('mod-1', cutoff);
+
+      expect(rate).toBe(60);
+      expect(prisma.moderator_task_assignments.count).toHaveBeenNthCalledWith(1, {
+        where: { moderatorId: 'mod-1', createdAt: { lte: cutoff } },
+      });
+      expect(prisma.moderator_task_assignments.count).toHaveBeenNthCalledWith(2, {
+        where: { moderatorId: 'mod-1', completedAt: { lte: cutoff } },
+      });
+    });
+
+    it('returns 0 (not NaN) when nothing was assigned yet as of the cutoff', async () => {
+      prisma.moderator_task_assignments.count.mockResolvedValue(0);
+
+      const rate = await (service as any).taskCompletionRateAsOf('mod-1', new Date());
+
+      expect(rate).toBe(0);
+    });
+  });
+
+  describe('resolveReportContext', () => {
+    it('resolves an audio report and maps roomId from RoomReport', async () => {
+      prisma.roomReport.findUnique = jest.fn().mockResolvedValue({
+        id: 'r-1',
+        roomId: 'room-1',
+        reporterId: 'u-1',
+        targetUserId: 'u-2',
+        reason: 'HARASSMENT',
+        description: null,
+        status: 'PENDING',
+        createdAt: new Date('2026-08-18'),
+        assignedAt: null,
+      });
+      prisma.videoRoomReport.findUnique = jest.fn();
+      prisma.liveStreamReport.findUnique = jest.fn();
+
+      const ctx = await (service as any).resolveReportContext('r-1');
+
+      expect(ctx.roomType).toBe('audio');
+      expect(ctx.roomId).toBe('room-1');
+      expect(prisma.videoRoomReport.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('falls through to video, then live-stream, before giving up', async () => {
+      prisma.roomReport.findUnique = jest.fn().mockResolvedValue(null);
+      prisma.videoRoomReport.findUnique = jest.fn().mockResolvedValue(null);
+      prisma.liveStreamReport.findUnique = jest.fn().mockResolvedValue({
+        id: 'r-3',
+        streamId: 'stream-1',
+        reporterId: 'u-1',
+        targetUserId: 'u-2',
+        reason: 'SPAM',
+        description: null,
+        status: 'PENDING',
+        createdAt: new Date('2026-08-18'),
+      });
+
+      const ctx = await (service as any).resolveReportContext('r-3');
+
+      expect(ctx.roomType).toBe('stream');
+      expect(ctx.roomId).toBe('stream-1');
+      expect(ctx.assignedAt).toBeNull();
+    });
+
+    it('throws NotFoundException when no table has the id', async () => {
+      prisma.roomReport.findUnique = jest.fn().mockResolvedValue(null);
+      prisma.videoRoomReport.findUnique = jest.fn().mockResolvedValue(null);
+      prisma.liveStreamReport.findUnique = jest.fn().mockResolvedValue(null);
+
+      await expect((service as any).resolveReportContext('missing')).rejects.toThrow(
+        'Report not found.',
+      );
+    });
+  });
+
+  describe('moderationQueue — real priority, rule-violated, and live-stream inclusion', () => {
+    beforeEach(() => {
+      scope.userScopeFilter.mockResolvedValue({});
+      prisma.liveStreamReport.findMany = jest.fn().mockResolvedValue([]);
+      prisma.user.findMany.mockResolvedValue([]);
+    });
+
+    it('includes live-stream reports alongside audio and video', async () => {
+      prisma.roomReport.findMany.mockResolvedValue([]);
+      prisma.videoRoomReport.findMany.mockResolvedValue([]);
+      prisma.liveStreamReport.findMany.mockResolvedValue([
+        {
+          id: 'ls-1',
+          streamId: 'stream-1',
+          reporterId: 'u-1',
+          targetUserId: 'u-2',
+          reason: 'HATE_SPEECH',
+          description: null,
+          status: 'PENDING',
+          createdAt: new Date('2026-08-18T10:00:00Z'),
+          assignedAt: null,
+        },
+      ]);
+      prisma.liveStream = {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 'stream-1', title: 'Live zone', hostId: 'host-1' }]),
+        findUnique: jest.fn().mockResolvedValue(null),
+      };
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'u-1', username: 'reporter', fullName: 'Reporter' },
+        { id: 'u-2', username: 'target', fullName: 'Target' },
+        { id: 'host-1', locationState: { name: 'Karnataka' } },
+      ]);
+
+      const result = await service.moderationQueue('mod-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].roomType).toBe('stream');
+      expect(result[0].priority).toBe('Medium priority'); // HATE_SPEECH
+      expect(result[0].region).toBe('Karnataka');
+    });
+
+    it('derives priority from the real reason, not the room type', async () => {
+      prisma.roomReport.findMany.mockResolvedValue([
+        {
+          id: 'ar-1',
+          roomId: 'room-1',
+          reporterId: 'u-1',
+          targetUserId: 'u-2',
+          reason: 'THREATS',
+          description: null,
+          status: 'PENDING',
+          createdAt: new Date('2026-08-18T10:00:00Z'),
+          assignedAt: null,
+        },
+      ]);
+      prisma.videoRoomReport.findMany.mockResolvedValue([]);
+      prisma.audioRoom.findMany.mockResolvedValue([
+        { id: 'room-1', name: 'Chill vibes', ownerId: 'owner-1' },
+      ]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'u-1', username: 'reporter', fullName: 'Reporter' },
+        { id: 'u-2', username: 'target', fullName: 'Target' },
+        { id: 'owner-1', locationState: null },
+      ]);
+
+      const result = await service.moderationQueue('mod-1');
+
+      // Old behavior hardcoded every audio report to "Medium priority" regardless
+      // of reason — THREATS must now come back Highest.
+      expect(result[0].priority).toBe('Highest priority');
+      expect(result[0].ruleViolated).toBe('Threats & violence (2.3)');
+    });
+
+    it('collapses REVIEWED/ACTIONED/DISMISSED to "Resolved" and PENDING to "Under review"', async () => {
+      prisma.roomReport.findMany.mockResolvedValue([
+        {
+          id: 'ar-1',
+          roomId: 'room-1',
+          reporterId: 'u-1',
+          targetUserId: 'u-2',
+          reason: 'SPAM',
+          description: null,
+          status: 'ACTIONED',
+          createdAt: new Date(),
+          assignedAt: null,
+        },
+      ]);
+      prisma.videoRoomReport.findMany.mockResolvedValue([]);
+      prisma.audioRoom.findMany.mockResolvedValue([
+        { id: 'room-1', name: 'Room', ownerId: 'owner-1' },
+      ]);
+      prisma.user.findMany.mockResolvedValue([{ id: 'owner-1', locationState: null }]);
+
+      const result = await service.moderationQueue('mod-1');
+
+      expect(result[0].status).toBe('Resolved');
+    });
+  });
+
+  describe('reportDetails', () => {
+    const actorRoles = ['MODERATOR'] as any;
+    const usersById: Record<
+      string,
+      { username?: string; fullName?: string; locationState?: { name: string } | null }
+    > = {
+      'u-1': { username: 'reporter', fullName: 'Reporter' },
+      'u-2': { username: 'target', fullName: 'Target' },
+      'owner-1': { locationState: { name: 'Karnataka' } },
+    };
+
+    beforeEach(() => {
+      prisma.roomReport.findUnique = jest.fn();
+      prisma.videoRoomReport.findUnique = jest.fn();
+      prisma.liveStreamReport.findUnique = jest.fn();
+      prisma.audioRoom.findUnique = jest.fn();
+      prisma.videoRoom.findUnique = jest.fn();
+      prisma.liveStream.findUnique = jest.fn();
+      prisma.user.findUnique = jest
+        .fn()
+        .mockImplementation(({ where }: { where: { id: string } }) =>
+          Promise.resolve(usersById[where.id] ?? null),
+        );
+      prisma.roomReport.count = jest.fn().mockResolvedValue(0);
+      prisma.videoRoomReport.count = jest.fn().mockResolvedValue(0);
+      prisma.liveStreamReport.count = jest.fn().mockResolvedValue(0);
+      scope.userScopeFilter.mockResolvedValue({});
+      scope.assertModeratorInScope.mockResolvedValue(undefined);
+      permissionResolver.resolveUserPermissions.mockResolvedValue(new Set());
+      permissionResolver.hasPermission.mockReturnValue(false);
+      investigationRecording.getCaseView.mockResolvedValue({ recordings: [], auditLogs: [] });
+      shiftService.shiftStatus.mockResolvedValue({
+        isActive: false,
+        shift: null,
+        nextShiftStartsInSeconds: null,
+      });
+    });
+
+    const baseAudioReport = {
+      id: 'r-1',
+      roomId: 'room-1',
+      reporterId: 'u-1',
+      targetUserId: 'u-2',
+      reason: 'THREATS',
+      description: 'desc',
+      status: 'PENDING',
+      createdAt: new Date('2026-08-18T10:30:00Z'),
+      assignedAt: new Date('2026-08-18T10:32:00Z'),
+    };
+
+    it('404s when the report id matches no table', async () => {
+      prisma.roomReport.findUnique.mockResolvedValue(null);
+      prisma.videoRoomReport.findUnique.mockResolvedValue(null);
+      prisma.liveStreamReport.findUnique.mockResolvedValue(null);
+
+      await expect(service.reportDetails('mod-1', 'missing', actorRoles)).rejects.toThrow(
+        'Report not found.',
+      );
+    });
+
+    it('shows evidenceId "Pending" with no recording when the report has not been actioned yet', async () => {
+      prisma.roomReport.findUnique.mockResolvedValue(baseAudioReport);
+      prisma.audioRoom.findUnique.mockResolvedValue({ name: 'Chill vibes', ownerId: 'owner-1' });
+
+      const detail = await service.reportDetails('mod-1', 'r-1', actorRoles);
+
+      expect(detail.evidenceId).toBe('Pending');
+      expect(detail.recordingUrl).toBeNull();
+      expect(detail.priority).toBe('Highest priority'); // THREATS
+      expect(detail.region).toBe('Karnataka');
+      expect(detail.targetUserName).toBe('Target');
+    });
+
+    it('shows the real recording once one exists, gated by canViewFullEvidence', async () => {
+      prisma.roomReport.findUnique.mockResolvedValue(baseAudioReport);
+      prisma.audioRoom.findUnique.mockResolvedValue({ name: 'Chill vibes', ownerId: 'owner-1' });
+      investigationRecording.getCaseView.mockResolvedValue({
+        recordings: [
+          {
+            roomId: 'room-1',
+            liveStreamId: null,
+            evidenceId: 'EVD-abc123',
+            recordingUrl: 'https://cdn/rec.mp4',
+            startedAt: new Date('2026-08-18T10:35:00Z'),
+          },
+        ],
+        auditLogs: [],
+      });
+
+      const withoutPermission = await service.reportDetails('mod-1', 'r-1', actorRoles);
+      expect(withoutPermission.evidenceId).toBe('EVD-abc123');
+      expect(withoutPermission.recordingUrl).toBeNull();
+      expect(withoutPermission.canViewFullEvidence).toBe(false);
+
+      permissionResolver.hasPermission.mockReturnValue(true);
+      const withPermission = await service.reportDetails('mod-1', 'r-1', actorRoles);
+      expect(withPermission.recordingUrl).toBe('https://cdn/rec.mp4');
+      expect(withPermission.canViewFullEvidence).toBe(true);
+    });
+
+    it('counts previous reports against the same target user across all 3 tables, excluding this one', async () => {
+      prisma.roomReport.findUnique.mockResolvedValue(baseAudioReport);
+      prisma.audioRoom.findUnique.mockResolvedValue({ name: 'Room', ownerId: 'owner-1' });
+      prisma.roomReport.count.mockResolvedValue(2);
+      prisma.videoRoomReport.count.mockResolvedValue(1);
+      prisma.liveStreamReport.count.mockResolvedValue(0);
+
+      const detail = await service.reportDetails('mod-1', 'r-1', actorRoles);
+
+      // previousReportCount is a display string ("N previous report(s)"), not a number.
+      expect(detail.previousReportCount).toBe('3 previous reports');
+      expect(prisma.roomReport.count).toHaveBeenCalledWith({
+        where: { targetUserId: 'u-2', id: { not: 'r-1' } },
+      });
+    });
+
+    it('gates shiftActive/canTakeAction on the real shift status for a MODERATOR caller', async () => {
+      prisma.roomReport.findUnique.mockResolvedValue(baseAudioReport);
+      prisma.audioRoom.findUnique.mockResolvedValue({ name: 'Chill vibes', ownerId: 'owner-1' });
+      shiftService.shiftStatus.mockResolvedValue({
+        isActive: false,
+        shift: null,
+        nextShiftStartsInSeconds: null,
+      });
+
+      const detail = await service.reportDetails('mod-1', 'r-1', actorRoles);
+
+      expect(shiftService.shiftStatus).toHaveBeenCalledWith('mod-1');
+      expect(detail.shiftActive).toBe(false);
+      expect(detail.canTakeAction).toBe(false);
+    });
+
+    it('exempts a non-MODERATOR caller (e.g. OFFICIAL) from shift gating, mirroring ShiftActiveGuard', async () => {
+      prisma.roomReport.findUnique.mockResolvedValue(baseAudioReport);
+      prisma.audioRoom.findUnique.mockResolvedValue({ name: 'Chill vibes', ownerId: 'owner-1' });
+      // Shift status says inactive — an OFFICIAL caller must not be gated by
+      // it at all, proving the exemption actually runs, not just compiles.
+      shiftService.shiftStatus.mockResolvedValue({
+        isActive: false,
+        shift: null,
+        nextShiftStartsInSeconds: null,
+      });
+
+      const detail = await service.reportDetails('mod-1', 'r-1', ['OFFICIAL'] as any);
+
+      expect(detail.shiftActive).toBe(true);
+      expect(detail.canTakeAction).toBe(true);
+    });
+  });
+
+  describe('actionReport', () => {
+    const actorRoles = ['MODERATOR'] as any;
+    const audioCtx = {
+      id: 'r-1',
+      roomId: 'room-1',
+      reporterId: 'u-1',
+      targetUserId: 'u-2',
+      reason: 'HARASSMENT',
+      description: null,
+      status: 'PENDING',
+      createdAt: new Date(),
+      assignedAt: null,
+    };
+
+    beforeEach(() => {
+      prisma.roomReport.findUnique = jest.fn().mockResolvedValue(audioCtx);
+      prisma.videoRoomReport.findUnique = jest.fn().mockResolvedValue(null);
+      prisma.liveStreamReport.findUnique = jest.fn().mockResolvedValue(null);
+      // resolveOwnerId needs findUnique on whichever table the resolved
+      // roomType points to — stub all three so any test (audio, video, or
+      // live-stream routing) finds an owner without a "not a function" crash.
+      prisma.audioRoom.findUnique = jest.fn().mockResolvedValue({ ownerId: 'owner-1' });
+      prisma.videoRoom.findUnique = jest.fn().mockResolvedValue({ ownerId: 'owner-1' });
+      prisma.liveStream.findUnique = jest.fn().mockResolvedValue({ hostId: 'owner-1' });
+      scope.assertModeratorInScope.mockResolvedValue(undefined);
+      audioModeration.reviewReport.mockResolvedValue(undefined);
+      audioModeration.dismissReport.mockResolvedValue(undefined);
+      audioModeration.escalateViolation.mockResolvedValue(undefined);
+    });
+
+    it('rejects a blank note before touching any moderation service', async () => {
+      await expect(
+        service.actionReport('mod-1', 'r-1', { action: 'Warn', note: '   ' }, actorRoles),
+      ).rejects.toThrow('note');
+      expect(audioModeration.reviewReport).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unrecognized action', async () => {
+      await expect(
+        service.actionReport('mod-1', 'r-1', { action: 'Nonsense', note: 'x' }, actorRoles),
+      ).rejects.toThrow();
+    });
+
+    it('Warn calls reviewReport with recommendedAction WARNING on the audio surface', async () => {
+      const result = await service.actionReport(
+        'mod-1',
+        'r-1',
+        { action: 'Warn', note: 'be nice' },
+        actorRoles,
+      );
+
+      expect(audioModeration.reviewReport).toHaveBeenCalledWith(
+        { id: 'mod-1', roles: actorRoles },
+        'room-1',
+        'r-1',
+        { status: 'ACTIONED', resolution: 'be nice', recommendedAction: 'WARNING' },
+      );
+      expect(result.outcome).toBe('executed');
+    });
+
+    it('Ban reports pending_approval, not executed', async () => {
+      const result = await service.actionReport(
+        'mod-1',
+        'r-1',
+        { action: 'Ban', note: 'severe' },
+        actorRoles,
+      );
+
+      expect(audioModeration.reviewReport).toHaveBeenCalledWith(
+        expect.anything(),
+        'room-1',
+        'r-1',
+        { status: 'ACTIONED', resolution: 'severe', recommendedAction: 'BAN' },
+      );
+      expect(result.outcome).toBe('pending_approval');
+    });
+
+    it('"Close false report" calls dismissReport, not reviewReport', async () => {
+      const result = await service.actionReport(
+        'mod-1',
+        'r-1',
+        { action: 'Close false report', note: 'not a real violation' },
+        actorRoles,
+      );
+
+      expect(audioModeration.dismissReport).toHaveBeenCalledWith(
+        { id: 'mod-1', roles: actorRoles },
+        'room-1',
+        'r-1',
+        'not a real violation',
+      );
+      expect(result.outcome).toBe('dismissed');
+    });
+
+    it('Escalate reviews the report as REVIEWED then calls escalateViolation with derived severity', async () => {
+      const result = await service.actionReport(
+        'mod-1',
+        'r-1',
+        { action: 'Escalate', note: 'urgent' },
+        actorRoles,
+      );
+
+      expect(audioModeration.reviewReport).toHaveBeenCalledWith(
+        expect.anything(),
+        'room-1',
+        'r-1',
+        { status: 'REVIEWED', resolution: 'urgent' },
+      );
+      // HARASSMENT is Medium priority -> HIGH severity, not CRITICAL.
+      expect(audioModeration.escalateViolation).toHaveBeenCalledWith(
+        { id: 'mod-1', roles: actorRoles },
+        'room-1',
+        'u-2',
+        'urgent',
+        'HIGH',
+      );
+      expect(result.outcome).toBe('escalated');
+    });
+
+    it('routes to the live-stream surface with recommendedAction WARN (not WARNING)', async () => {
+      prisma.roomReport.findUnique.mockResolvedValue(null);
+      prisma.liveStreamReport.findUnique.mockResolvedValue({
+        id: 'r-2',
+        streamId: 'stream-1',
+        reporterId: 'u-1',
+        targetUserId: 'u-2',
+        reason: 'THREATS',
+        description: null,
+        status: 'PENDING',
+        createdAt: new Date(),
+      });
+      liveStreamReports.reviewReport.mockResolvedValue(undefined);
+
+      await service.actionReport('mod-1', 'r-2', { action: 'Warn', note: 'be nice' }, actorRoles);
+
+      expect(liveStreamReports.reviewReport).toHaveBeenCalledWith(
+        {
+          reportId: 'r-2',
+          streamId: 'stream-1',
+          moderatorId: 'mod-1',
+          status: 'ACTIONED',
+          resolution: 'be nice',
+          recommendedAction: 'WARN',
+        },
+        undefined,
+      );
     });
   });
 });

@@ -301,9 +301,15 @@ export class AudioRoomsRepository {
         data: { isActive: false, leftAt: endedAt, ...auditUpdate(actorId) },
       }),
       this.prisma.roomPresence.deleteMany({ where: { roomId } }),
-      this.prisma.roomStatistics.update({
+      this.prisma.roomStatistics.upsert({
         where: { roomId },
-        data: {
+        create: {
+          roomId,
+          currentParticipants: 0,
+          totalDurationSeconds: BigInt(Math.max(0, Math.floor(durationSeconds))),
+          lastActivityAt: endedAt,
+        },
+        update: {
           currentParticipants: 0,
           totalDurationSeconds: BigInt(Math.max(0, Math.floor(durationSeconds))),
           lastActivityAt: endedAt,

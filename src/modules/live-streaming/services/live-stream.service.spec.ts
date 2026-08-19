@@ -1,6 +1,10 @@
 import { ForbiddenException } from '@nestjs/common';
 import { LiveStreamStatus } from '@prisma/client';
-import { LIVE_STREAM_NAMESPACE } from '../constants/live-stream-moderation.constants';
+import {
+  LIVE_STREAM_NAMESPACE,
+  LIVE_STREAM_SOCKET_EVENTS,
+  SYSTEM_MODERATOR_ID,
+} from '../constants/live-stream-moderation.constants';
 import { LiveStreamService, type LiveStreamModerationInput } from './live-stream.service';
 
 const STREAM_ID = 'stream-1';
@@ -70,6 +74,8 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
     };
     notifications = { create: jest.fn().mockResolvedValue({}) };
     reportRepo = { listPendingReports: jest.fn().mockResolvedValue([]) };
+    const platformAudit = { record: jest.fn().mockResolvedValue(undefined) };
+    const platformBans = { assertNotGloballyBanned: jest.fn().mockResolvedValue(undefined) };
 
     subject = new LiveStreamService(
       prisma,
@@ -82,6 +88,8 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
       auditLog,
       notifications,
       reportRepo,
+      platformAudit as never,
+      platformBans as never,
     );
   });
 
@@ -316,10 +324,50 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
       expect(payload.moderatorId).not.toBe(MODERATOR_ID);
     });
 
-    it('broadcasts a system message on KICK and BAN too', async () => {
+    it('broadcasts a system message on WARN (room scope), KICK and BAN too', async () => {
+      await subject.moderateUser(baseInput({ action: 'WARN', scope: 'ROOM' }));
       await subject.moderateUser(baseInput({ action: 'KICK' }));
       await subject.moderateUser(baseInput({ action: 'BAN' }));
-      expect(sockets.emitToNamespaceRoom).toHaveBeenCalledTimes(2);
+      expect(sockets.emitToNamespaceRoom).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('moderateUser — WARN scope', () => {
+    it('scope=PRIVATE (default) does not broadcast to the room', async () => {
+      await subject.moderateUser({
+        streamId: STREAM_ID,
+        moderatorId: MODERATOR_ID,
+        targetUserId: VIEWER_ID,
+        action: 'WARN',
+        reason: 'be nice',
+      });
+      expect(sockets.emitToNamespaceRoom).not.toHaveBeenCalledWith(
+        expect.anything(),
+        STREAM_ID,
+        LIVE_STREAM_SOCKET_EVENTS.USER_WARNED,
+        expect.anything(),
+      );
+    });
+
+    it('scope=ROOM broadcasts a system message with the moderator identity anonymized', async () => {
+      await subject.moderateUser({
+        streamId: STREAM_ID,
+        moderatorId: MODERATOR_ID,
+        targetUserId: VIEWER_ID,
+        action: 'WARN',
+        reason: 'be nice',
+        scope: 'ROOM',
+      });
+      expect(sockets.emitToNamespaceRoom).toHaveBeenCalledWith(
+        LIVE_STREAM_NAMESPACE,
+        STREAM_ID,
+        LIVE_STREAM_SOCKET_EVENTS.USER_WARNED,
+        expect.objectContaining({
+          streamId: STREAM_ID,
+          moderatorId: SYSTEM_MODERATOR_ID,
+          systemMessage: 'be nice',
+        }),
+      );
     });
   });
 
@@ -363,6 +411,77 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
       await expect(
         bareSubject.escalateViolation(STREAM_ID, MODERATOR_ID, VIEWER_ID, 'reason', 'CRITICAL'),
       ).resolves.toBeDefined();
+    });
+  });
+
+  describe('joinStream & leaveStream presence and incognito', () => {
+    it('joinStream checks global ban for non-moderators', async () => {
+      const bans = { assertNotGloballyBanned: jest.fn().mockRejectedValue(new ForbiddenException('Banned')) };
+      const localSubject = new LiveStreamService(
+        prisma,
+        investigationRecording,
+        performanceStats,
+        presence,
+        moderationRepo,
+        sockets,
+        scopeService,
+        auditLog,
+        notifications,
+        reportRepo,
+        undefined,
+        bans as never,
+      );
+
+      await expect(
+        localSubject.joinStream(STREAM_ID, { id: 'user-1', roles: ['USER'] } as never),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('joinStream routes moderator anonymously and audits the action', async () => {
+      const audit = { record: jest.fn().mockResolvedValue(undefined) };
+      const localSubject = new LiveStreamService(
+        prisma,
+        investigationRecording,
+        performanceStats,
+        presence,
+        moderationRepo,
+        sockets,
+        scopeService,
+        auditLog,
+        notifications,
+        reportRepo,
+        audit as never,
+      );
+
+      const res = await localSubject.joinStream(STREAM_ID, { id: 'mod-1', roles: ['MODERATOR'] } as never);
+      expect(res.isAnonymousModerator).toBe(true);
+      expect(presence.joinLiveStream).toHaveBeenCalledWith(STREAM_ID, 'mod-1', true);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ moderatorId: 'mod-1', action: 'INCOGNITO_JOIN', roomType: 'LIVE_STREAM' }),
+      );
+    });
+
+    it('leaveStream removes moderator anonymously and audits the action', async () => {
+      const audit = { record: jest.fn().mockResolvedValue(undefined) };
+      const localSubject = new LiveStreamService(
+        prisma,
+        investigationRecording,
+        performanceStats,
+        presence,
+        moderationRepo,
+        sockets,
+        scopeService,
+        auditLog,
+        notifications,
+        reportRepo,
+        audit as never,
+      );
+
+      await localSubject.leaveStream(STREAM_ID, { id: 'mod-1', roles: ['MODERATOR'] } as never);
+      expect(presence.leaveLiveStream).toHaveBeenCalledWith(STREAM_ID, 'mod-1', true);
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ moderatorId: 'mod-1', action: 'INCOGNITO_LEAVE', roomType: 'LIVE_STREAM' }),
+      );
     });
   });
 });

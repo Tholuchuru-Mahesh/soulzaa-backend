@@ -30,7 +30,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "paths": {
-      "src/*": ["src/*"]
+      "src/*": ["src/*", "dist/*"]
     }
   },
   "include": ["src/**/*", "test/**/*"],

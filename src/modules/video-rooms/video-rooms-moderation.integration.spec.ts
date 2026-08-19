@@ -42,6 +42,7 @@ import { AuditLogService } from 'src/modules/authorization/services/audit-log.se
 import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
 import { ModeratorShiftService } from 'src/modules/moderator-shift/services/moderator-shift.service';
 import { ModeratorWarningService } from 'src/modules/moderator-warning/services/moderator-warning.service';
+import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 import type { JoinContext } from './services/video-room-member.service';
 import { VideoRoomMemberService } from './services/video-room-member.service';
 import { VideoRoomModerationQueryService } from './services/video-room-moderation-query.service';
@@ -495,6 +496,10 @@ describe('VR-16 moderation engine — DI graph (video-rooms.module.ts provider w
           provide: ModeratorWarningService,
           useValue: { isSuspended: jest.fn().mockResolvedValue(false) },
         },
+        // `banGlobally` (the platform-wide 24h ban route) takes this as its
+        // 4th constructor arg — a DI-graph stub is enough since this suite
+        // only asserts the graph resolves, not ban behavior itself.
+        { provide: PlatformBanService, useValue: {} },
       ],
     }).compile();
   });

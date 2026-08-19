@@ -170,4 +170,144 @@ export class StaffIpAllowlistService {
       orderBy: { addedAt: 'desc' },
     });
   }
+
+  /**
+   * Lists all active registered devices for a staff user.
+   */
+  async listDevices(userId: string) {
+    return this.prisma.userDevice.findMany({
+      where: { userId, deletedAt: null },
+      orderBy: { lastActiveAt: 'desc' },
+    });
+  }
+
+  /**
+   * Soft-removes / revokes a registered device for a staff account.
+   */
+  async removeDevice(userId: string, deviceId: string, removedBy: string) {
+    const existing = await this.prisma.userDevice.findFirst({
+      where: { id: deviceId, userId, deletedAt: null },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Device not found or already removed');
+    }
+
+    const updated = await this.prisma.userDevice.update({
+      where: { id: deviceId },
+      data: { deletedAt: new Date(), trusted: false, verified: false },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        actorId: removedBy,
+        action: 'STAFF_DEVICE_REMOVED',
+        resource: 'user_device',
+        resourceId: deviceId,
+        targetUserId: userId,
+        details: { deviceIdentifier: existing.deviceIdentifier, platform: existing.platform },
+      },
+    });
+
+    this.logger.log(`Removed device ${deviceId} (${existing.deviceIdentifier}) for staff user ${userId} by ${removedBy}`);
+    return updated;
+  }
+
+  /**
+   * Returns an overview of moderator accounts with their registered devices.
+   */
+  async getOverview(roleFilter: string = 'MODERATOR') {
+    const userRoles = await this.prisma.userRole.findMany({
+      where: {
+        role: { name: roleFilter },
+      },
+      include: {
+        role: {
+          select: { name: true },
+        },
+      },
+    });
+
+    const userIds = [...new Set(userRoles.map((ur) => ur.userId))];
+
+    const [users, devices, allowedIps] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: {
+          id: true,
+          username: true,
+          fullName: true,
+          email: true,
+          mobile: true,
+          status: true,
+        },
+      }),
+      this.prisma.userDevice.findMany({
+        where: { userId: { in: userIds }, deletedAt: null },
+        orderBy: { lastActiveAt: 'desc' },
+      }),
+      this.prisma.staffAllowedIp.findMany({
+        where: { userId: { in: userIds }, isActive: true },
+        orderBy: { addedAt: 'desc' },
+      }),
+    ]);
+
+    const userDetailsMap = new Map(users.map((u) => [u.id, u]));
+
+    const userMap = new Map<
+      string,
+      {
+        user: {
+          id: string;
+          username: string;
+          fullName: string | null;
+          email: string | null;
+          mobile: string | null;
+          status: string;
+        };
+        roles: string[];
+        devices: any[];
+        allowedIps: any[];
+      }
+    >();
+
+    for (const ur of userRoles) {
+      const u = userDetailsMap.get(ur.userId) ?? {
+        id: ur.userId,
+        username: 'Unknown',
+        fullName: null,
+        email: null,
+        mobile: null,
+        status: 'ACTIVE',
+      };
+
+      if (!userMap.has(ur.userId)) {
+        userMap.set(ur.userId, {
+          user: u,
+          roles: [ur.role.name],
+          devices: [],
+          allowedIps: [],
+        });
+      } else {
+        const entry = userMap.get(ur.userId)!;
+        if (!entry.roles.includes(ur.role.name)) {
+          entry.roles.push(ur.role.name);
+        }
+      }
+    }
+
+    for (const d of devices) {
+      if (userMap.has(d.userId)) {
+        userMap.get(d.userId)!.devices.push(d);
+      }
+    }
+
+    for (const ip of allowedIps) {
+      if (userMap.has(ip.userId)) {
+        userMap.get(ip.userId)!.allowedIps.push(ip);
+      }
+    }
+
+    return Array.from(userMap.values());
+  }
 }

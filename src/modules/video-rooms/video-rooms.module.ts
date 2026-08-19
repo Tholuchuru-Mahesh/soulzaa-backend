@@ -1,6 +1,7 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
 import { InvestigationRecordingModule } from 'src/modules/investigation-recording/investigation-recording.module';
+import { PlatformModerationModule } from 'src/modules/platform-moderation/platform-moderation.module';
 import { VIDEO_ROOM_MODERATION_QUEUES } from './constants/video-room-moderation.constants';
 import { VIDEO_ROOM_QUEUES } from './constants/video-room.constants';
 import {
@@ -211,7 +212,7 @@ import { VideoRoomsAdminService } from './services/video-rooms-admin.service';
 import { VideoRoomIdentityCache } from './services/video-room-identity-cache.service';
 import { VideoRoomIdentityCacheListener } from './listeners/video-room-identity-cache.listener';
 
-import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
+import { WorkforceScopeModule } from 'src/modules/mobile-workforce/workforce-scope.module';
 import { ModerationApprovalModule } from 'src/modules/moderation-approval/moderation-approval.module';
 import { ModeratorPerformanceModule } from 'src/modules/moderator-performance/moderator-performance.module';
 import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shift.module';
@@ -239,11 +240,12 @@ import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-
 @Module({
   imports: [
     InvestigationRecordingModule,
-    MobileWorkforceModule,
+    WorkforceScopeModule,
     ModerationApprovalModule,
     ModeratorPerformanceModule,
     ModeratorShiftModule,
     ModeratorWarningModule,
+    PlatformModerationModule,
     // Register the lean queue producers now; workers land with their phases.
     BullModule.registerQueue({ name: VIDEO_ROOM_QUEUES.MAIN }, { name: VIDEO_ROOM_QUEUES.CLEANUP }),
     // ---- VR-16 moderation engine: the 3 dedicated queues (Task 21) ----
@@ -526,6 +528,10 @@ import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-
     // The only exported cross-module surface.
     { provide: VIDEO_ROOMS_SERVICE, useExisting: VideoRoomsService },
   ],
-  exports: [VIDEO_ROOMS_SERVICE],
+  exports: [
+    VIDEO_ROOMS_SERVICE,
+    VideoRoomReportService, // NEW
+    VideoRoomModerationService, // NEW — escalateViolation() lives here
+  ],
 })
 export class VideoRoomsModule {}

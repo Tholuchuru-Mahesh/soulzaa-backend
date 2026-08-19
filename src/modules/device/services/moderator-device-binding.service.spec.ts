@@ -32,9 +32,12 @@ describe('ModeratorDeviceBindingService — two-tier device change approval', ()
       updateMany: jest.Mock;
       upsert: jest.Mock;
       findMany: jest.Mock;
+      findFirst: jest.Mock;
+      create: jest.Mock;
     };
     staffAllowedIp: { create: jest.Mock };
     userRole: { findMany: jest.Mock };
+    user: { findMany: jest.Mock };
   };
   let bus: { publish: jest.Mock; subscribe: jest.Mock };
   let staffIpAllowlist: { addIp: jest.Mock };
@@ -60,12 +63,17 @@ describe('ModeratorDeviceBindingService — two-tier device change approval', ()
         updateMany: jest.fn().mockResolvedValue({}),
         upsert: jest.fn().mockResolvedValue({}),
         findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
       },
       staffAllowedIp: {
         create: jest.fn().mockResolvedValue({}),
       },
       userRole: {
         findMany: jest.fn().mockResolvedValue([{ role: { name: 'MODERATOR' } }]),
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
     };
     staffIpAllowlist = { addIp: jest.fn().mockResolvedValue({}) };
@@ -94,12 +102,6 @@ describe('ModeratorDeviceBindingService — two-tier device change approval', ()
         }),
       );
       expect(prisma.userDevice.upsert).toHaveBeenCalled();
-      expect(staffIpAllowlist.addIp).toHaveBeenCalledWith(
-        'mod-1',
-        '192.168.1.50/32',
-        'Auto-registered from approved device change',
-        'admin-1',
-      );
       expect(prisma.device_change_requests.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: 'req-1' },
@@ -196,54 +198,59 @@ describe('ModeratorDeviceBindingService — two-tier device change approval', ()
         service.assertSingleDeviceByIdentifier('user-1', 'device-abc'),
       ).resolves.toBeUndefined();
 
-      expect(prisma.userDevice.findMany).not.toHaveBeenCalled();
-      expect(prisma.userDevice.upsert).not.toHaveBeenCalled();
+      expect(prisma.userDevice.findFirst).not.toHaveBeenCalled();
+      expect(prisma.userDevice.create).not.toHaveBeenCalled();
     });
 
-    it('succeeds and upserts a new row when the moderator has no existing devices', async () => {
-      prisma.userDevice.findMany.mockResolvedValue([]);
+    it('succeeds and creates a new row on initial login when moderator has no existing devices', async () => {
+      prisma.userDevice.findFirst.mockResolvedValue(null);
+      prisma.device_change_requests.findFirst.mockResolvedValue(null);
 
       await expect(
         service.assertSingleDeviceByIdentifier('mod-1', 'device-abc'),
       ).resolves.toBeUndefined();
 
-      expect(prisma.userDevice.upsert).toHaveBeenCalledWith(
+      expect(prisma.userDevice.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { userId_deviceIdentifier: { userId: 'mod-1', deviceIdentifier: 'device-abc' } },
-        }),
-      );
-    });
-
-    it('succeeds without conflict on a repeat login from the same device identifier', async () => {
-      // The filter excludes rows matching the current identifier, so a repeat
-      // login never sees its own row as "another" device.
-      prisma.userDevice.findMany.mockResolvedValue([]);
-
-      await expect(
-        service.assertSingleDeviceByIdentifier('mod-1', 'device-abc'),
-      ).resolves.toBeUndefined();
-
-      expect(prisma.userDevice.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
+          data: expect.objectContaining({
             userId: 'mod-1',
-            deletedAt: null,
-            deviceIdentifier: { not: 'device-abc' },
+            deviceIdentifier: 'device-abc',
+            trusted: true,
           }),
         }),
       );
-      expect(prisma.userDevice.upsert).toHaveBeenCalled();
     });
 
-    it('throws ConflictException when a different device identifier is already bound', async () => {
-      prisma.userDevice.findMany.mockResolvedValue([
-        { id: 'device-row-1', userId: 'mod-1', deviceIdentifier: 'device-old' },
-      ]);
+    it('succeeds on a repeat login from the same active trusted device identifier', async () => {
+      prisma.userDevice.findFirst.mockResolvedValueOnce({
+        id: 'device-row-1',
+        userId: 'mod-1',
+        deviceIdentifier: 'device-abc',
+        deletedAt: null,
+        trusted: true,
+      });
+
+      await expect(
+        service.assertSingleDeviceByIdentifier('mod-1', 'device-abc'),
+      ).resolves.toBeUndefined();
+
+      expect(prisma.userDevice.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'device-row-1' },
+          data: expect.objectContaining({ lastActiveAt: expect.any(Date) }),
+        }),
+      );
+    });
+
+    it('throws ConflictException when device identifier is not approved / has prior devices', async () => {
+      prisma.userDevice.findFirst
+        .mockResolvedValueOnce(null) // not thisActiveDevice
+        .mockResolvedValueOnce({ id: 'device-row-1', userId: 'mod-1' }); // anyEverDevice exists
 
       await expect(service.assertSingleDeviceByIdentifier('mod-1', 'device-new')).rejects.toThrow(
         ConflictException,
       );
-      expect(prisma.userDevice.upsert).not.toHaveBeenCalled();
+      expect(prisma.userDevice.create).not.toHaveBeenCalled();
     });
   });
 
@@ -335,7 +342,10 @@ describe('ModeratorDeviceBindingService — two-tier device change approval', ()
           },
         }),
       );
-      expect(result).toEqual([pendingRequest, managerReviewedRequest]);
+      expect(result).toEqual([
+        { ...pendingRequest, moderator: null },
+        { ...managerReviewedRequest, moderator: null },
+      ]);
     });
 
     it('excludes resolved APPROVED/REJECTED requests from the query filter', async () => {

@@ -7,6 +7,7 @@ import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
 import {
   VOICE_STATE_TTL_SECONDS,
   voiceHeartbeatKey,
+  voiceModeratorPresenceKey,
   voicePresenceKey,
   voiceSpeakingKey,
   voiceStateCacheKey,
@@ -223,6 +224,19 @@ export class VoiceSessionRepository {
 
   async removeVoicePresence(roomId: string, userId: string): Promise<void> {
     await this.redis.srem(voicePresenceKey(roomId), userId);
+  }
+
+  /** Incognito moderators listening in — tracked separately, never publicly counted/listed. */
+  async addModeratorVoicePresence(roomId: string, userId: string): Promise<void> {
+    await this.redis.sadd(voiceModeratorPresenceKey(roomId), userId);
+  }
+
+  async removeModeratorVoicePresence(roomId: string, userId: string): Promise<void> {
+    await this.redis.srem(voiceModeratorPresenceKey(roomId), userId);
+  }
+
+  moderatorVoiceIds(roomId: string): Promise<string[]> {
+    return this.redis.smembers(voiceModeratorPresenceKey(roomId));
   }
 
   voiceParticipants(roomId: string): Promise<string[]> {

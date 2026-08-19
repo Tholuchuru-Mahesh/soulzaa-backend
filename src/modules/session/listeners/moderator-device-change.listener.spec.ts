@@ -31,7 +31,18 @@ describe('ModeratorDeviceChangeListener', () => {
     expect(sessions.adminForceLogout).toHaveBeenCalledWith('mod-1', 'admin-1');
   });
 
-  it('subscribes only to the device-change-approved event', () => {
-    expect([...handlers.keys()]).toEqual([DEVICE_EVENTS.MODERATOR_DEVICE_CHANGE_APPROVED]);
+  it('force-logs-out active sessions when Admin rejects/revokes an approved device', async () => {
+    await handlers.get(DEVICE_EVENTS.MODERATOR_DEVICE_CHANGE_REJECTED)!({
+      payload: { requestId: 'req-1', moderatorId: 'mod-1', rejectedBy: 'admin-1' },
+    });
+
+    expect(sessions.adminForceLogout).toHaveBeenCalledWith('mod-1', 'admin-1');
+  });
+
+  it('subscribes to device-change-approved and device-change-rejected events', () => {
+    expect([...handlers.keys()]).toEqual([
+      DEVICE_EVENTS.MODERATOR_DEVICE_CHANGE_APPROVED,
+      DEVICE_EVENTS.MODERATOR_DEVICE_CHANGE_REJECTED,
+    ]);
   });
 });

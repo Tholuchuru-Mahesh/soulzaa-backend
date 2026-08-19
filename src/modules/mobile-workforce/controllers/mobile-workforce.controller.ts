@@ -1,9 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { RequestMeta } from 'src/common/decorators/request-meta.decorator';
 import { RequirePermissions } from 'src/common/decorators/require-permissions.decorator';
+import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
+import type { RequestMetadata } from 'src/common/interfaces/request-metadata.interface';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
+import { ShiftActiveGuard } from 'src/modules/moderator-shift/guards/shift-active.guard';
+import { SuspendedGuard } from 'src/modules/moderator-warning/guards/suspended.guard';
 import { MobileWorkforceService } from '../services/mobile-workforce.service';
 
 /**
@@ -52,9 +57,9 @@ export class MobileWorkforceController {
     return this.service.users(userId, q, Number(limit) || 25, Number(offset) || 0);
   }
 
-  @ApiOperation({ summary: 'Pending moderation reports within my scope' })
+  @ApiOperation({ summary: 'Moderation reports within my scope (pending and resolved)' })
   @ApiQuery({ name: 'limit', required: false, description: 'Page size (default 25, max 100)' })
-  @ApiResponse({ status: 200, description: 'Scoped pending report queue' })
+  @ApiResponse({ status: 200, description: 'Scoped report queue' })
   @Get('moderation/queue')
   moderationQueue(@CurrentUser('id') userId: string, @Query('limit') limit?: string) {
     return this.service.moderationQueue(userId, Number(limit) || 25);
@@ -109,15 +114,26 @@ export class MobileWorkforceController {
     return this.service.roomDetails(userId, roomId);
   }
 
+  @ApiOperation({
+    summary: 'Full detail for one report — evidence, region, target user, action eligibility',
+  })
+  @ApiResponse({ status: 200, description: 'Report detail' })
+  @Get('reports/:reportId')
+  reportDetails(@CurrentUser() user: AuthenticatedUser, @Param('reportId') reportId: string) {
+    return this.service.reportDetails(user.id, reportId, user.roles);
+  }
+
   @ApiOperation({ summary: 'Submit moderation decision on report' })
   @ApiResponse({ status: 200, description: 'Moderation decision applied' })
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @Post('reports/:reportId/decision')
   actionReport(
-    @CurrentUser('id') userId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('reportId') reportId: string,
-    @Body() body: { action: string; note?: string },
+    @Body() body: { action: string; note: string },
+    @RequestMeta() requestMeta: RequestMetadata,
   ) {
-    return this.service.actionReport(userId, reportId, body);
+    return this.service.actionReport(user.id, reportId, body, user.roles, requestMeta);
   }
 
   @ApiOperation({ summary: 'Apply moderation action to room participant' })
@@ -130,6 +146,40 @@ export class MobileWorkforceController {
     @Body() body: { action: string; reason?: string },
   ) {
     return this.service.moderateParticipant(userId, roomId, targetUserId, body);
+  }
+
+  @ApiOperation({ summary: 'Send an anonymous, room-wide system warning' })
+  @ApiResponse({ status: 200, description: 'System warning sent' })
+  @Post('rooms/:roomId/system-warning')
+  sendSystemWarning(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('roomId') roomId: string,
+    @Body() body: { message: string; roomType: 'audio' | 'video' | 'stream' },
+  ) {
+    return this.service.sendSystemWarning(
+      user.id,
+      user.roles,
+      roomId,
+      body.roomType,
+      body.message,
+    );
+  }
+
+  @ApiOperation({ summary: 'List bans issued by moderators' })
+  @ApiResponse({ status: 200, description: 'Bans list' })
+  @Get('bans')
+  listBans(@Query('page') page?: string, @Query('limit') limit?: string) {
+    return this.service.listModeratorBans(
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 50,
+    );
+  }
+
+  @ApiOperation({ summary: 'Lift a user ban' })
+  @ApiResponse({ status: 200, description: 'Ban revoked' })
+  @Delete('bans/:banId')
+  unbanUser(@CurrentUser('id') userId: string, @Param('banId') banId: string) {
+    return this.service.unbanUser(userId, banId);
   }
 
   @ApiOperation({ summary: 'Mark moderator task as completed' })

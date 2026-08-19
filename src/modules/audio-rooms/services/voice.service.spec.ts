@@ -61,6 +61,9 @@ describe('VoiceService', () => {
       updateQualityRolling: jest.fn().mockResolvedValue(undefined),
       addVoicePresence: jest.fn().mockResolvedValue(undefined),
       removeVoicePresence: jest.fn().mockResolvedValue(undefined),
+      addModeratorVoicePresence: jest.fn().mockResolvedValue(undefined),
+      removeModeratorVoicePresence: jest.fn().mockResolvedValue(undefined),
+      moderatorVoiceIds: jest.fn().mockResolvedValue([]),
       setHeartbeat: jest.fn().mockResolvedValue(undefined),
       clearHeartbeat: jest.fn().mockResolvedValue(undefined),
       addSpeaking: jest.fn().mockResolvedValue(undefined),
@@ -160,6 +163,35 @@ describe('VoiceService', () => {
     it('requires membership', async () => {
       roomsSvc.assertMember.mockRejectedValue(new Error('not a member'));
       await expect(service.join(ACTOR, 'room-1', {})).rejects.toBeDefined();
+    });
+
+    describe('incognito moderator', () => {
+      const MODERATOR: RoomActor = { id: 'mod-1', roles: ['MODERATOR'] };
+
+      it('bypasses the membership check', async () => {
+        roomsSvc.assertMember.mockRejectedValue(new Error('not a member'));
+        await expect(service.join(MODERATOR, 'room-1', {})).resolves.toBeDefined();
+      });
+
+      it('is tracked in the moderator-only presence set, never the public one', async () => {
+        await service.join(MODERATOR, 'room-1', {});
+        expect(voice.addModeratorVoicePresence).toHaveBeenCalledWith('room-1', 'mod-1');
+        expect(voice.addVoicePresence).not.toHaveBeenCalled();
+      });
+
+      it('never publishes voice.joined (identity broadcast)', async () => {
+        await service.join(MODERATOR, 'room-1', {});
+        expect(bus.publish).not.toHaveBeenCalledWith(
+          expect.objectContaining({ name: 'audio_room.voice_joined' }),
+        );
+      });
+
+      it('is excluded from the public voice-state participants list', async () => {
+        voice.listActiveSessions.mockResolvedValue([session({ userId: 'mod-1' })]);
+        voice.moderatorVoiceIds.mockResolvedValue(['mod-1']);
+        const res = await service.join(MODERATOR, 'room-1', {});
+        expect(res.voiceState.participants).toEqual([]);
+      });
     });
   });
 

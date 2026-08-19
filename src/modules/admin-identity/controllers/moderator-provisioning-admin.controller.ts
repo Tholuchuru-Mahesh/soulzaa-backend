@@ -19,6 +19,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { CreateModeratorDto } from '../dto/create-moderator.dto';
 import { SetAdminStatusDto } from '../dto/set-admin-status.dto';
+import { SetModeratorShiftDto } from '../dto/set-moderator-shift.dto';
 import { SetModeratorStatesDto } from '../dto/set-moderator-states.dto';
 import { ModeratorProvisioningService } from '../services/moderator-provisioning.service';
 
@@ -91,5 +92,23 @@ export class ModeratorProvisioningAdminController {
     @Body() dto: SetModeratorStatesDto,
   ) {
     return this.service.setModeratorStates(targetId, dto.stateIds, actorId);
+  }
+
+  @ApiOperation({ summary: "Get a Moderator's active shift (Admin only)" })
+  @ApiResponse({ status: 200, description: 'Current active shift' })
+  @Get(':id/shift')
+  getShift(@CurrentUser('id') actorId: string, @Param('id') targetId: string) {
+    return this.service.getModeratorShift(actorId, targetId);
+  }
+
+  @ApiOperation({ summary: "Assign or update a Moderator's working shift (Admin only)" })
+  @ApiResponse({ status: 200, description: 'Shift updated' })
+  @Put(':id/shift')
+  setShift(
+    @CurrentUser('id') actorId: string,
+    @Param('id') targetId: string,
+    @Body() dto: SetModeratorShiftDto,
+  ) {
+    return this.service.setModeratorShift(actorId, targetId, dto);
   }
 }

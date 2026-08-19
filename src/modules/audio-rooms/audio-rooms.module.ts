@@ -15,6 +15,7 @@ import { ModerationApprovalModule } from 'src/modules/moderation-approval/modera
 import { ModeratorPerformanceModule } from 'src/modules/moderator-performance/moderator-performance.module';
 import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shift.module';
 import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-warning.module';
+import { PlatformModerationModule } from 'src/modules/platform-moderation/platform-moderation.module';
 import { AUDIO_ROOMS_SERVICE } from './interfaces/audio-rooms.service.interface';
 import { AUDIO_ROOM_CHAT_SERVICE } from './interfaces/chat.service.interface';
 import { MODERATION_SERVICE } from './interfaces/moderation.service.interface';
@@ -93,7 +94,7 @@ import { VoiceService } from './services/voice.service';
  * MODERATION_SERVICE by token without importing this module (cross-module access
  * only via `interfaces/` or EVENT_BUS).
  */
-import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
+import { WorkforceScopeModule } from 'src/modules/mobile-workforce/workforce-scope.module';
 
 @Global()
 @Module({
@@ -103,7 +104,8 @@ import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workf
     ModeratorPerformanceModule,
     ModeratorShiftModule,
     ModeratorWarningModule,
-    MobileWorkforceModule,
+    PlatformModerationModule,
+    WorkforceScopeModule,
   ],
   controllers: [
     AudioRoomsController,
@@ -174,6 +176,9 @@ import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workf
     AUDIO_ROOMS_SERVICE,
     VOICE_SERVICE,
     MODERATION_SERVICE,
+    ModerationService, // NEW — MobileWorkforceService needs the full report/mutation
+                        // surface, not just the read-only IModerationService contract
+                        // MODERATION_SERVICE exposes.
     AUDIO_ROOM_CHAT_SERVICE,
     PK_BATTLE_SERVICE,
   ],

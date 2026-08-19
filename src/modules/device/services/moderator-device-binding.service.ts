@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import {
   ModeratorDeviceChangeApprovedEvent,
+  ModeratorDeviceChangeRejectedEvent,
   ModeratorDeviceChangeRequestedEvent,
 } from '../events/device.events';
 import { StaffIpAllowlistService } from './staff-ip-allowlist.service';
@@ -14,6 +15,13 @@ export interface RequestDeviceChangeInput {
   oldDeviceId?: string;
   newDeviceInfo: Record<string, unknown>;
   reason?: string;
+}
+
+export interface ModeratorDeviceInfoInput {
+  deviceName?: string;
+  platform?: string;
+  osVersion?: string;
+  appVersion?: string;
 }
 
 @Injectable()
@@ -61,12 +69,18 @@ export class ModeratorDeviceBindingService {
 
   /**
    * Moderator single-device enforcement keyed by the client-reported device
-   * identifier, for callers (staffLogin) that have no earlier step resolving
-   * a UserDevice.id the way session.service.ts's resolveDevice() does.
-   * Registers/refreshes the device row for this identifier once no conflict
-   * is found, so repeat logins from the same device stay silent.
+   * identifier, for callers (staffLogin).
+   *
+   * Rules:
+   * 1. If this device is already active, verified, and trusted (deletedAt == null), allow login and update device info.
+   * 2. If this is a newly provisioned moderator with zero prior devices and zero requests, auto-bind on first login.
+   * 3. Otherwise (unbound device, replaced device, or explicitly rejected/revoked device), block login and require admin approval.
    */
-  async assertSingleDeviceByIdentifier(userId: string, deviceIdentifier: string): Promise<void> {
+  async assertSingleDeviceByIdentifier(
+    userId: string,
+    deviceIdentifier: string,
+    deviceInfo?: ModeratorDeviceInfoInput,
+  ): Promise<void> {
     const userRoles = await this.prisma.userRole.findMany({
       where: { userId },
       include: { role: true },
@@ -74,40 +88,64 @@ export class ModeratorDeviceBindingService {
     const isModerator = userRoles.some((ur) => ur.role.name === 'MODERATOR');
     if (!isModerator) return;
 
-    const otherActiveDevices = await this.prisma.userDevice.findMany({
+    // 1. Check if this exact device is currently active, trusted, and verified
+    const thisActiveDevice = await this.prisma.userDevice.findFirst({
       where: {
         userId,
+        deviceIdentifier,
         deletedAt: null,
-        deviceIdentifier: { not: deviceIdentifier },
+        trusted: true,
       },
     });
 
-    if (otherActiveDevices.length > 0) {
-      this.logger.warn(
-        `Moderator ${userId} login blocked: active device already bound under a different identifier`,
-      );
-      throw new ConflictException(
-        'Moderators are restricted to one active device. Submit a Device Change Request to switch devices.',
-      );
+    if (thisActiveDevice) {
+      await this.prisma.userDevice.update({
+        where: { id: thisActiveDevice.id },
+        data: {
+          lastActiveAt: new Date(),
+          ...(deviceInfo?.deviceName ? { deviceName: deviceInfo.deviceName } : {}),
+          ...(deviceInfo?.platform ? { platform: deviceInfo.platform as any } : {}),
+          ...(deviceInfo?.osVersion ? { osVersion: deviceInfo.osVersion } : {}),
+          ...(deviceInfo?.appVersion ? { appVersion: deviceInfo.appVersion } : {}),
+        },
+      });
+      return;
     }
 
-    await this.prisma.userDevice.upsert({
-      where: { userId_deviceIdentifier: { userId, deviceIdentifier } },
-      create: {
-        id: randomUUID(),
-        userId,
-        deviceIdentifier,
-        platform: 'ANDROID',
-        verified: true,
-        verifiedAt: new Date(),
-        trusted: true,
-        trustedAt: new Date(),
-      },
-      update: {
-        deletedAt: null,
-        lastActiveAt: new Date(),
-      },
-    });
+    // 2. Check if this moderator has any prior devices or change requests
+    const [anyEverDevice, anyDeviceRequest] = await Promise.all([
+      this.prisma.userDevice.findFirst({ where: { userId } }),
+      this.prisma.device_change_requests.findFirst({ where: { moderatorId: userId } }),
+    ]);
+
+    // Initial first-time login auto-binding for fresh accounts
+    if (!anyEverDevice && !anyDeviceRequest) {
+      await this.prisma.userDevice.create({
+        data: {
+          id: randomUUID(),
+          userId,
+          deviceIdentifier,
+          platform: (deviceInfo?.platform as any) || 'ANDROID',
+          deviceName: deviceInfo?.deviceName || null,
+          osVersion: deviceInfo?.osVersion || null,
+          appVersion: deviceInfo?.appVersion || null,
+          verified: true,
+          verifiedAt: new Date(),
+          trusted: true,
+          trustedAt: new Date(),
+          lastActiveAt: new Date(),
+        },
+      });
+      return;
+    }
+
+    // 3. Otherwise, login is blocked
+    this.logger.warn(
+      `Moderator ${userId} login blocked: device ${deviceIdentifier} is not approved or was revoked/rejected`,
+    );
+    throw new ConflictException(
+      'Moderator device is not approved. Admin approval is required to access the moderator portal.',
+    );
   }
 
   /** Moderator submits a request to change bound device */
@@ -193,18 +231,15 @@ export class ModeratorDeviceBindingService {
     return updated;
   }
 
-  /** Stage 2: Admin approves device change and auto-registers new device */
+  /** Stage 2: Admin approves device change and auto-registers new device (also supports switching from REJECTED to APPROVED) */
   async approveDeviceChange(requestId: string, reviewerId: string, reviewNote?: string) {
     const request = await this.prisma.device_change_requests.findUnique({
       where: { id: requestId },
     });
 
     if (!request) throw new NotFoundException('Device change request not found');
-    if (
-      request.status !== DeviceChangeRequestStatus.MANAGER_REVIEWED &&
-      request.status !== DeviceChangeRequestStatus.PENDING
-    ) {
-      throw new ConflictException('Request is no longer pending approval.');
+    if (request.status === DeviceChangeRequestStatus.APPROVED) {
+      throw new ConflictException('Request is already approved.');
     }
 
     // 1. Immediately log out old device(s). Published (not written directly) so
@@ -256,7 +291,7 @@ export class ModeratorDeviceBindingService {
         deviceName: (info.deviceName ?? info.model ?? null) as string | null,
         osVersion: (info.osVersion ?? null) as string | null,
         appVersion: (info.appVersion ?? null) as string | null,
-        ipAddress: (info.ip ?? null) as string | null,
+        ipAddress: null,
         verified: true,
         verifiedAt: new Date(),
         trusted: true,
@@ -271,18 +306,6 @@ export class ModeratorDeviceBindingService {
         lastActiveAt: new Date(),
       },
     });
-
-    // 4. Auto-register the new device IP into StaffAllowedIp if provided
-    if (info.ip && typeof info.ip === 'string' && info.ip.trim()) {
-      const cleanIp = info.ip.replace(/^::ffff:/i, '').trim();
-      const cidr = cleanIp.includes('/') ? cleanIp : `${cleanIp}/32`;
-      await this.staffIpAllowlist.addIp(
-        request.moderatorId,
-        cidr,
-        'Auto-registered from approved device change',
-        reviewerId,
-      );
-    }
 
     const updated = await this.prisma.device_change_requests.update({
       where: { id: requestId },
@@ -307,19 +330,42 @@ export class ModeratorDeviceBindingService {
     return updated;
   }
 
-  /** Manager/Admin rejects device change */
+  /** Manager/Admin rejects device change (also supports switching from APPROVED to REJECTED with immediate logout) */
   async rejectDeviceChange(requestId: string, reviewerId: string, reviewNote?: string) {
     const request = await this.prisma.device_change_requests.findUnique({
       where: { id: requestId },
     });
 
     if (!request) throw new NotFoundException('Device change request not found');
-    if (
-      request.status !== DeviceChangeRequestStatus.PENDING &&
-      request.status !== DeviceChangeRequestStatus.MANAGER_REVIEWED
-    ) {
-      throw new ConflictException('Request is no longer pending review.');
+    if (request.status === DeviceChangeRequestStatus.REJECTED) {
+      throw new ConflictException('Request is already rejected.');
     }
+
+    // 1. If device was registered, revoke the device row
+    const info = (request.newDeviceInfo ?? {}) as Record<string, any>;
+    const deviceIdentifier = (info.deviceIdentifier ?? info.identifier) as string | undefined;
+    if (deviceIdentifier) {
+      await this.prisma.userDevice.updateMany({
+        where: {
+          userId: request.moderatorId,
+          deviceIdentifier,
+        },
+        data: {
+          deletedAt: new Date(),
+          trusted: false,
+          verified: false,
+        },
+      });
+    }
+
+    // 2. Force-logout moderator immediately on rejection so any active portal sessions on that device are terminated
+    await this.bus.publish(
+      new ModeratorDeviceChangeRejectedEvent({
+        requestId: request.id,
+        moderatorId: request.moderatorId,
+        rejectedBy: reviewerId,
+      }),
+    );
 
     const updated = await this.prisma.device_change_requests.update({
       where: { id: requestId },
@@ -343,19 +389,86 @@ export class ModeratorDeviceBindingService {
   }
 
   /**
-   * Requests still awaiting either review stage — PENDING (needs a Manager)
-   * or MANAGER_REVIEWED (needs an Admin's final approval). Excludes
-   * APPROVED/REJECTED, which are resolved and no longer actionable.
+   * Requests still awaiting review stage — PENDING or MANAGER_REVIEWED.
+   * Enriched with moderator user information (name, email, username).
    */
   async getPendingRequests() {
-    return this.prisma.device_change_requests.findMany({
+    const requests = await this.prisma.device_change_requests.findMany({
       where: {
         status: {
           in: [DeviceChangeRequestStatus.PENDING, DeviceChangeRequestStatus.MANAGER_REVIEWED],
         },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
     });
+
+    const moderatorIds = Array.from(new Set(requests.map((r) => r.moderatorId)));
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: moderatorIds } },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        username: true,
+        mobile: true,
+      },
+    });
+    const userMap = new Map(
+      users.map((u) => [
+        u.id,
+        {
+          id: u.id,
+          name: u.fullName ?? u.username,
+          email: u.email,
+          username: u.username,
+          phone: u.mobile,
+        },
+      ]),
+    );
+
+    return requests.map((r) => ({
+      ...r,
+      moderator: userMap.get(r.moderatorId) ?? null,
+    }));
+  }
+
+  /**
+   * List all device change requests including resolved history (APPROVED, REJECTED).
+   */
+  async getAllRequests() {
+    const requests = await this.prisma.device_change_requests.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    const moderatorIds = Array.from(new Set(requests.map((r) => r.moderatorId)));
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: moderatorIds } },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        username: true,
+        mobile: true,
+      },
+    });
+    const userMap = new Map(
+      users.map((u) => [
+        u.id,
+        {
+          id: u.id,
+          name: u.fullName ?? u.username,
+          email: u.email,
+          username: u.username,
+          phone: u.mobile,
+        },
+      ]),
+    );
+
+    return requests.map((r) => ({
+      ...r,
+      moderator: userMap.get(r.moderatorId) ?? null,
+    }));
   }
 
   async getModeratorRequests(moderatorId: string) {

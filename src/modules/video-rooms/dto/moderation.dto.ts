@@ -174,6 +174,15 @@ export class WarnVideoRoomUserDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    enum: ['PRIVATE', 'ROOM'],
+    default: 'PRIVATE',
+    description: 'PRIVATE notifies only the target user. ROOM also posts a System-attributed chat message visible to everyone in the room.',
+  })
+  @IsOptional()
+  @IsIn(['PRIVATE', 'ROOM'])
+  scope?: 'PRIVATE' | 'ROOM';
 }
 
 /** Forcibly disconnect a member's realtime session without ending their membership. */
