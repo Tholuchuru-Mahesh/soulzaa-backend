@@ -6,6 +6,7 @@
 export const STORAGE_CATEGORIES = {
   PROFILE_IMAGE: 'profile-images',
   ROOM_BACKGROUND: 'room-backgrounds',
+  EVENT_BANNER: 'event-banners',
   GIFT_ASSET: 'gift-assets',
   COSMETIC_ASSET: 'cosmetic-assets',
   VIDEO: 'videos',
@@ -48,6 +49,14 @@ export const STORAGE_POLICIES: Record<MediaCategory, StoragePolicy> = {
     prefix: STORAGE_CATEGORIES.ROOM_BACKGROUND,
     isImage: true,
     allowedMime: IMAGE_MIME,
+    maxSizeBytes: 10 * MB,
+  },
+  [STORAGE_CATEGORIES.EVENT_BANNER]: {
+    prefix: STORAGE_CATEGORIES.EVENT_BANNER,
+    isImage: true,
+    allowedMime: IMAGE_MIME,
+    // 16:9 event banners run larger than a room cover; same ceiling as
+    // room-backgrounds so the mobile picker's limits stay uniform.
     maxSizeBytes: 10 * MB,
   },
   [STORAGE_CATEGORIES.GIFT_ASSET]: {

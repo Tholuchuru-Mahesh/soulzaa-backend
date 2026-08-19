@@ -23,6 +23,10 @@ export type EventCategory = (typeof EVENT_CATEGORIES)[number];
 
 export const EVENT_STATUSES = [
   'DRAFT',
+  // Agency has submitted; awaiting Official/Admin review.
+  'PENDING_APPROVAL',
+  'APPROVED',
+  'REJECTED',
   'SCHEDULED',
   'REGISTRATION_OPEN',
   'REGISTRATION_CLOSED',
@@ -57,6 +61,8 @@ export const EVENT_AUDIT_ACTIONS = [
   'EVENT_UNREGISTERED',
   'EVENT_PARTICIPATED',
   'EVENT_STATUS_CHANGED',
+  'EVENT_SUBMITTED_FOR_APPROVAL',
+  'EVENT_DRAFT_UPDATED',
 ] as const;
 export type EventAuditAction = (typeof EVENT_AUDIT_ACTIONS)[number];
 

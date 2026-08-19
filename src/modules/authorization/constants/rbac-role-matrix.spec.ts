@@ -1,7 +1,11 @@
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 
-import { DEFAULT_ROLE_PERMISSIONS, SYSTEM_ROLES } from './rbac-permissions.constants';
+import {
+  DEFAULT_PERMISSIONS,
+  DEFAULT_ROLE_PERMISSIONS,
+  SYSTEM_ROLES,
+} from './rbac-permissions.constants';
 
 const MODULES_ROOT = join(__dirname, '../../..', 'modules');
 
@@ -224,5 +228,20 @@ describe('RBAC role matrix (PRD Authority Matrix)', () => {
       (role) => !Array.isArray(DEFAULT_ROLE_PERMISSIONS[role]),
     );
     expect(rolesWithoutGrants).toEqual([]);
+  });
+
+  it('lets AGENCY author and submit events but never publish or manage them', () => {
+    const agency = grants('AGENCY');
+    expect(agency).toContain('event.create');
+    expect(agency).toContain('event.submit_for_approval');
+    // The whole point of the approval workflow: an agency cannot make an event live.
+    expect(agency).not.toContain('event.publish');
+    expect(agency).not.toContain('event.manage');
+  });
+
+  it('declares every permission granted to AGENCY', () => {
+    const declared = new Set(DEFAULT_PERMISSIONS.map((p) => p.code));
+    const undeclared = grants('AGENCY').filter((c) => !declared.has(c));
+    expect(undeclared).toEqual([]);
   });
 });

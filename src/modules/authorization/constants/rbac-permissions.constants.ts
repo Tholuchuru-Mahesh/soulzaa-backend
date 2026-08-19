@@ -542,6 +542,14 @@ export const DEFAULT_PERMISSIONS = [
     displayName: 'Publish Event',
     description: 'Can publish scheduled events',
   },
+  {
+    code: 'event.submit_for_approval',
+    module: 'event',
+    action: 'submit_for_approval',
+    category: 'EVENT',
+    displayName: 'Submit Event For Approval',
+    description: 'Can submit a draft event for Official/Admin approval',
+  },
 
   // Analytics
   {
@@ -1835,6 +1843,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     // Events & tasks
     'event.create',
     'event.publish',
+    'event.submit_for_approval',
     'event.manage',
     'event.configuration.manage',
     'event.audit.view',
@@ -1959,6 +1968,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'coin_seller.settlement.history.view',
     'event.create',
     'event.publish',
+    'event.submit_for_approval',
     'task.manage',
     'revenue.view',
     'revenue.history.view',
@@ -2046,6 +2056,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'room.create',
     'agency.settlement.view',
     'agency.settlement.history.view',
+    // Authors events and submits them for approval. Deliberately NOT
+    // 'event.publish' or 'event.manage': making an event live is the
+    // Official/Admin half of the workflow.
+    'event.create',
+    'event.submit_for_approval',
   ],
 
   /** Coin Seller permission set, activated inside an existing Agency account. */

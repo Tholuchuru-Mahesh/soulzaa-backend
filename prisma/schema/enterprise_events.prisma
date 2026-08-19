@@ -1,7 +1,7 @@
 /// Enterprise Platform Event Definition
 model EventDefinition {
-  id                 String              @id @default(uuid()) @db.Uuid
-  code               String              @unique
+  id                 String    @id @default(uuid()) @db.Uuid
+  code               String    @unique
   name               String
   description        String?
   category           String
@@ -14,22 +14,32 @@ model EventDefinition {
   participationRules Json?
   eligibilityRules   Json?
   rewardDefinition   Json?
-  maxParticipants    Int                 @default(1000)
-  visibility         String              @default("PUBLIC")
+  maxParticipants    Int       @default(1000)
+  visibility         String    @default("PUBLIC")
   country            String?
   region             String?
   season             String?
-  priority           Int                 @default(0)
-  status             String              @default("DRAFT")
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  countryId          String?             @db.Uuid
-  regionId           String?             @db.Uuid
-  scopeCountry       Country?            @relation("EventScopeCountry", fields: [countryId], references: [id])
-  scopeRegion        Region?             @relation("EventScopeRegion", fields: [regionId], references: [id])
-  participants       EventParticipant[]
-  registrations      EventRegistration[]
-  rewards            EventReward[]
+  priority           Int       @default(0)
+  status             String    @default("DRAFT")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  countryId          String?   @db.Uuid
+  regionId           String?   @db.Uuid
+
+  /// The user who authored this definition. Null for events created before
+  /// agency authoring existed, and for seeded platform events.
+  createdBy String? @db.Uuid
+
+  /// The owning agency. By the convention every agency route follows, an
+  /// agency's id IS its user id, so for agency-authored events this equals
+  /// createdBy. It diverges once agency staff can author on the agency's
+  /// behalf. Scopes `GET /drafts/mine`.
+  agencyId      String?             @db.Uuid
+  scopeCountry  Country?            @relation("EventScopeCountry", fields: [countryId], references: [id])
+  scopeRegion   Region?             @relation("EventScopeRegion", fields: [regionId], references: [id])
+  participants  EventParticipant[]
+  registrations EventRegistration[]
+  rewards       EventReward[]
 
   @@index([category])
   @@index([status])
@@ -37,6 +47,7 @@ model EventDefinition {
   @@index([country])
   @@index([countryId])
   @@index([regionId])
+  @@index([agencyId, status])
   @@map("event_definitions")
 }
 

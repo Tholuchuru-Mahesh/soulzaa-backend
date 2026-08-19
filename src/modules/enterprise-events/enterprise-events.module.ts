@@ -4,10 +4,12 @@ import { QueueModule } from 'src/infra/queue/queue.module';
 import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
 import { ENTERPRISE_EVENT_QUEUES } from './constants/event-jobs.constants';
 import { EnterpriseEventController } from './controllers/event.controller';
+import { EventDraftController } from './controllers/event-draft.controller';
 import { EnterpriseEventProcessor } from './processors/event.processor';
 import { EventLifecycleScheduler } from './services/event.scheduler';
 import { EventAuditService } from './services/event-audit.service';
 import { EventConfigurationService } from './services/event-configuration.service';
+import { EventDraftService } from './services/event-draft.service';
 import { EventEligibilityService } from './services/event-eligibility.service';
 import { EventEventService } from './services/event-event.service';
 import { EventParticipationService } from './services/event-participation.service';
@@ -27,7 +29,7 @@ import { EventProgressionListener } from './listeners/event-progression.listener
     QueueModule,
     BullModule.registerQueue({ name: ENTERPRISE_EVENT_QUEUES.LIFECYCLE }),
   ],
-  controllers: [EnterpriseEventController],
+  controllers: [EnterpriseEventController, EventDraftController],
   providers: [
     // Phase 16: Enterprise Events Engine Services
     EventProgressionListener,
@@ -45,6 +47,7 @@ import { EventProgressionListener } from './listeners/event-progression.listener
     EventService,
     EventStatisticsService,
     EventQueryService,
+    EventDraftService,
   ],
   exports: [
     EventConfigurationService,
@@ -59,6 +62,7 @@ import { EventProgressionListener } from './listeners/event-progression.listener
     EventService,
     EventStatisticsService,
     EventQueryService,
+    EventDraftService,
   ],
 })
 export class EnterpriseEventsModule {}
