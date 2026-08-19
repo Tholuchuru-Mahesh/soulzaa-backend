@@ -11,6 +11,7 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import { FeatureFlagService } from 'src/modules/platform-configuration/services/feature-flag.service';
 import { CoinEconomyService } from 'src/modules/treasury/services/coin-economy.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import { WalletMetrics } from '../metrics/wallet.metrics';
 import { WalletRepository } from '../repositories/wallet.repository';
 import { BalanceService } from './balance.service';
@@ -111,6 +112,7 @@ describe('Phase 3: Enterprise Wallet & Double-Entry Ledger Infrastructure', () =
         { provide: LockService, useValue: mockLockService },
         { provide: EVENT_BUS, useValue: mockEventBus },
         { provide: WalletMetrics, useValue: mockWalletMetrics },
+        { provide: MediaUrlResolver, useValue: { resolve: jest.fn() } },
       ],
     }).compile();
 

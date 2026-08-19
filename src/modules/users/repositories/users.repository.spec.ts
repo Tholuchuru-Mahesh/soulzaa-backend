@@ -64,7 +64,7 @@ describe('UsersRepository.createWithProfile', () => {
 
     await new UsersRepository(prisma as never).createWithProfile({ username: 'a' } as never);
 
-    expect(tx.userProfile.create).toHaveBeenCalledWith({ data: { userId: 'u1' } });
+    expect(tx.userProfile.create).toHaveBeenCalledWith({ data: { userId: 'u1', city: null, state: null } });
     expect(tx.userStatistics.create).toHaveBeenCalledWith({ data: { userId: 'u1' } });
     expect(tx.userVerification.create).toHaveBeenCalledWith({ data: { userId: 'u1' } });
   });

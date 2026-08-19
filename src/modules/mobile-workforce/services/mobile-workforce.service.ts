@@ -2185,7 +2185,7 @@ export class MobileWorkforceService {
         .toUpperCase() || 'AG';
 
     const stateName = user.locationState?.name || userProfile?.state || null;
-    const countryName = user.locationCountry?.name || user.country || null;
+    const countryName = user.locationCountry?.name || null;
     const locationStr = [stateName, countryName].filter(Boolean).join(', ') || null;
 
     const joinDate = new Date(user.createdAt).toLocaleDateString('en-GB', {

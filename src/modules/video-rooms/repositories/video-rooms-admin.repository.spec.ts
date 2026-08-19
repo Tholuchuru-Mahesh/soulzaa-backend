@@ -23,6 +23,9 @@ describe('VideoRoomsAdminRepository', () => {
         count: jest.fn(),
         create: jest.fn(),
       },
+      gift: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({

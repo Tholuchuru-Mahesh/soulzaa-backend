@@ -6,7 +6,8 @@ import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
 import { VideoRoomReportRepository } from '../repositories/video-room-report.repository';
 import { VideoRoomReportStatus } from '@prisma/client';
-
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 describe('VideoRoomsAdminController', () => {
   let controller: VideoRoomsAdminController;
   let adminServiceMock: any;
@@ -60,6 +61,8 @@ describe('VideoRoomsAdminController', () => {
         { provide: VideoRoomsRepository, useValue: roomsRepoMock },
         { provide: VideoRoomModerationRepository, useValue: moderationRepoMock },
         { provide: VideoRoomReportRepository, useValue: reportRepoMock },
+        { provide: PrismaService, useValue: {} },
+        { provide: MediaUrlResolver, useValue: { resolve: jest.fn() } },
       ],
     }).compile();
 
