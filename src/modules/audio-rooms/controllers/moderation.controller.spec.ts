@@ -12,7 +12,7 @@ describe('ModerationController — banGlobally (platform-wide 24h ban)', () => {
   let subject: ModerationController;
 
   beforeEach(() => {
-    moderation = {};
+    moderation = { forceDisconnect: jest.fn().mockResolvedValue(undefined) };
     platformBans = { banUser: jest.fn().mockResolvedValue({ id: 'ban-1' }) };
     permissions = { assertCanModerate: jest.fn().mockResolvedValue(undefined) };
     subject = new ModerationController(moderation, platformBans, permissions);
