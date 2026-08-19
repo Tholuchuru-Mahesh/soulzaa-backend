@@ -54,11 +54,7 @@ export class FollowService {
     }
     const created = await this.repo.create(followerId, targetId);
     if (!created) {
-      throw new BusinessException(
-        ERROR_CODES.ALREADY_FOLLOWING,
-        'You already follow this user',
-        HttpStatus.CONFLICT,
-      );
+      return { following: true };
     }
     await this.profile.incrementStatistic(targetId, 'followersCount', 1);
     await this.profile.incrementStatistic(followerId, 'followingCount', 1);
@@ -82,14 +78,24 @@ export class FollowService {
     return { following: false };
   }
 
-  async followers(userId: string, page: number, limit: number): Promise<Paginated<SocialUserCard>> {
+  async followers(
+    userId: string,
+    page: number,
+    limit: number,
+    viewerId?: string,
+  ): Promise<Paginated<SocialUserCard>> {
     const { ids, total } = await this.repo.pageFollowerIds(userId, (page - 1) * limit, limit);
-    return buildPaginated(await this.cards.resolve(ids), total, page, limit);
+    return buildPaginated(await this.cards.resolve(ids, viewerId), total, page, limit);
   }
 
-  async following(userId: string, page: number, limit: number): Promise<Paginated<SocialUserCard>> {
+  async following(
+    userId: string,
+    page: number,
+    limit: number,
+    viewerId?: string,
+  ): Promise<Paginated<SocialUserCard>> {
     const { ids, total } = await this.repo.pageFollowingIds(userId, (page - 1) * limit, limit);
-    return buildPaginated(await this.cards.resolve(ids), total, page, limit);
+    return buildPaginated(await this.cards.resolve(ids, viewerId), total, page, limit);
   }
 
   /**
@@ -111,6 +117,6 @@ export class FollowService {
     const common = mine.filter((id) => theirSet.has(id));
     const total = common.length;
     const slice = common.slice((page - 1) * limit, (page - 1) * limit + limit);
-    return buildPaginated(await this.cards.resolve(slice), total, page, limit);
+    return buildPaginated(await this.cards.resolve(slice, viewerId), total, page, limit);
   }
 }

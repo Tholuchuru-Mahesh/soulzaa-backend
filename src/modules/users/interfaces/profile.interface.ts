@@ -66,6 +66,9 @@ export interface ProfileView {
   equippedFrameTtlSeconds?: number | null;
   /** True for platform staff accounts. Never rendered to ordinary users. */
   isHiddenAccount: boolean;
+  isFollowing?: boolean;
+  isFollower?: boolean;
+  isFriend?: boolean;
   createdAt: Date;
 }
 

@@ -187,7 +187,41 @@ export class ProfileService implements IProfileService {
     if (user.isHiddenAccount && !(await this.viewerIsStaff(viewerId))) return null;
     const allowed = await this.privacy.check(viewerId ?? null, user.id, PrivacyAction.VIEW_PROFILE);
     if (!allowed) return null;
-    return this.getProfileView(user.id);
+    const view = await this.getProfileView(user.id);
+    if (!view) return null;
+
+    if (viewerId && viewerId !== user.id) {
+      try {
+        const [uA, uB] = viewerId < user.id ? [viewerId, user.id] : [user.id, viewerId];
+        const [following, follower, friendship] = await Promise.all([
+          this.prisma.follow.findUnique({
+            where: { followerId_followingId: { followerId: viewerId, followingId: user.id } },
+            select: { id: true },
+          }),
+          this.prisma.follow.findUnique({
+            where: { followerId_followingId: { followerId: user.id, followingId: viewerId } },
+            select: { id: true },
+          }),
+          this.prisma.friendship.findUnique({
+            where: { userAId_userBId: { userAId: uA, userBId: uB } },
+            select: { id: true },
+          }),
+        ]);
+        const isFollow = following !== null;
+        const isFollower = follower !== null;
+        const isFriend = friendship !== null || (isFollow && isFollower);
+        return {
+          ...view,
+          isFollowing: isFollow,
+          isFollower: isFollower,
+          isFriend: isFriend,
+        };
+      } catch (_) {
+        // Tolerant fallback if social relations lookups encounter an unexpected error
+      }
+    }
+
+    return view;
   }
 
   /**

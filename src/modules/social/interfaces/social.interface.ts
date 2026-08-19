@@ -18,6 +18,9 @@ export interface SocialUserCard {
   verified: boolean;
   level: number;
   vipLevel: number;
+  isFollowing?: boolean;
+  isFollower?: boolean;
+  isFriend?: boolean;
 }
 
 /** Rich presence snapshot for a user (privacy-gated fields may be null). */

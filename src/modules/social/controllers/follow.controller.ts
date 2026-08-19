@@ -48,14 +48,22 @@ export class FollowController {
 
   @Get('followers/:userId')
   @ApiOperation({ summary: "List a user's followers" })
-  listFollowers(@Param('userId', ParseUUIDPipe) userId: string, @Query() q: PaginationQueryDto) {
-    return this.follow.followers(userId, q.page, q.limit);
+  listFollowers(
+    @CurrentUser('id') viewerId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query() q: PaginationQueryDto,
+  ) {
+    return this.follow.followers(userId, q.page, q.limit, viewerId);
   }
 
   @Get('following/:userId')
   @ApiOperation({ summary: 'List who a user follows' })
-  listFollowing(@Param('userId', ParseUUIDPipe) userId: string, @Query() q: PaginationQueryDto) {
-    return this.follow.following(userId, q.page, q.limit);
+  listFollowing(
+    @CurrentUser('id') viewerId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query() q: PaginationQueryDto,
+  ) {
+    return this.follow.following(userId, q.page, q.limit, viewerId);
   }
 
   @Get('mutual/:userId')

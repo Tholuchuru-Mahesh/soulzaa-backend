@@ -142,6 +142,12 @@ describe('ProfileService', () => {
       region: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      follow: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      friendship: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
     } as unknown as PrismaService;
     // `resolveEquippedFrameUrl` reaches through the repository's own prisma
     // handle (`this.users['prisma']`), not the service's — mock it there.
@@ -349,6 +355,20 @@ describe('ProfileService', () => {
       users.findByIdOrPrefix.mockResolvedValue(makeUser({ id: UUID }));
       privacy.check.mockResolvedValue(false);
       expect(await service.getPublicProfile(UUID, 'viewer')).toBeNull();
+    });
+
+    it('populates isFollowing, isFollower and isFriend when viewer is authenticated', async () => {
+      users.findByIdOrPrefix.mockResolvedValue(makeUser({ id: UUID }));
+      users.findById.mockResolvedValue(makeUser({ id: UUID }));
+      (prisma.follow.findUnique as jest.Mock)
+        .mockResolvedValueOnce({ id: 'f-1' }) // viewer follows user
+        .mockResolvedValueOnce(null); // user does not follow viewer
+      (prisma.friendship.findUnique as jest.Mock).mockResolvedValueOnce(null);
+
+      const view = await service.getPublicProfile(UUID, 'viewer-1');
+      expect(view?.isFollowing).toBe(true);
+      expect(view?.isFollower).toBe(false);
+      expect(view?.isFriend).toBe(false);
     });
   });
 
