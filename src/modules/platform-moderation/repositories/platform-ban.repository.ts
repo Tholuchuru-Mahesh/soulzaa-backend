@@ -9,6 +9,7 @@ export interface CreatePlatformBanInput {
   reason: string;
   roomType: PlatformRoomType;
   originRoomId: string;
+  reportId?: string | null;
   expiresAt: Date;
 }
 
@@ -28,6 +29,16 @@ export class PlatformBanRepository {
   findActive(targetUserId: string): Promise<PlatformUserBan | null> {
     return this.prisma.platformUserBan.findFirst({
       where: { targetUserId, status: PlatformBanStatus.ACTIVE },
+    });
+  }
+
+  /** Every currently-ACTIVE, not-yet-expired ban — used to re-prime the Redis
+   * enforcement cache (see PlatformBanReconciliationScheduler). Excludes rows
+   * whose `expiresAt` has passed but were never explicitly lifted, since
+   * nothing currently sweeps `status` to EXPIRED on a timer. */
+  listActive(): Promise<PlatformUserBan[]> {
+    return this.prisma.platformUserBan.findMany({
+      where: { status: PlatformBanStatus.ACTIVE, expiresAt: { gt: new Date() } },
     });
   }
 

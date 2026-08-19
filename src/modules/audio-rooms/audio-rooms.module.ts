@@ -28,6 +28,7 @@ import { GiftSocketListener } from './listeners/gift-socket.listener';
 import { LuckyPacketSocketListener } from './listeners/lucky-packet-socket.listener';
 import { ModerationSocketListener } from './listeners/moderation-socket.listener';
 import { AudioRoomModerationApprovalListener } from './listeners/moderation-approval.listener';
+import { AudioRoomPlatformBanListener } from './listeners/platform-ban.listener';
 import { RoomUtilitiesSocketListener } from './listeners/room-utilities-socket.listener';
 import { PkGiftListener } from './listeners/pk-gift.listener';
 import { PkSocketListener } from './listeners/pk-socket.listener';
@@ -156,6 +157,7 @@ import { WorkforceScopeModule } from 'src/modules/mobile-workforce/workforce-sco
     VoiceLifecycleListener,
     ModerationSocketListener,
     AudioRoomModerationApprovalListener,
+    AudioRoomPlatformBanListener,
     ChatSocketListener,
     GiftSocketListener,
     TreasureSocketListener,

@@ -40,20 +40,16 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.bus.subscribe<UserKickedEvent>(VIDEO_ROOM_MODERATION_EVENTS.KICKED, (e) =>
-      this.room(
-        e.payload.roomId,
-        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_KICKED,
-        this.anonymize(e.payload),
-      ),
-    );
-    this.bus.subscribe<UserBlacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.BLACKLISTED, (e) =>
-      this.room(
-        e.payload.roomId,
-        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED,
-        this.anonymize(e.payload),
-      ),
-    );
+    this.bus.subscribe<UserKickedEvent>(VIDEO_ROOM_MODERATION_EVENTS.KICKED, (e) => {
+      const payload = this.anonymize(e.payload);
+      this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_KICKED, payload);
+      this.user(e.payload.targetUserId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_KICKED, payload);
+    });
+    this.bus.subscribe<UserBlacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.BLACKLISTED, (e) => {
+      const payload = this.anonymize(e.payload);
+      this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED, payload);
+      this.user(e.payload.targetUserId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED, payload);
+    });
     this.bus.subscribe<UserUnblacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.UNBLACKLISTED, (e) =>
       this.room(
         e.payload.roomId,
@@ -84,12 +80,11 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
     );
     this.bus.subscribe<UserForceDisconnectedEvent>(
       VIDEO_ROOM_MODERATION_EVENTS.FORCE_DISCONNECTED,
-      (e) =>
-        this.room(
-          e.payload.roomId,
-          VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED,
-          this.anonymize(e.payload),
-        ),
+      (e) => {
+        const payload = this.anonymize(e.payload);
+        this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED, payload);
+        this.user(e.payload.targetUserId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED, payload);
+      },
     );
     this.bus.subscribe<UserReportedEvent>(VIDEO_ROOM_MODERATION_EVENTS.REPORTED, (e) =>
       e.payload.recipientIds.forEach((id) =>

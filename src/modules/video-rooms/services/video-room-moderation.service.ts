@@ -1019,7 +1019,6 @@ export class VideoRoomModerationService {
 
     await this.locks.withLock(moderationLockKey(ref.id), async () => {
       await this.session.endUserRoomSessions(ref.id, targetUserId);
-      this.sockets.disconnectUserInNamespace(VIDEO_ROOM_NAMESPACE, targetUserId);
       await this.moderationRepo.appendAction({
         roomId: ref.id,
         moderatorId: actor.id,
@@ -1051,6 +1050,7 @@ export class VideoRoomModerationService {
         reason: reason ?? null,
       }),
     );
+    this.sockets.disconnectUserInNamespace(VIDEO_ROOM_NAMESPACE, targetUserId);
   }
 
   // ======================= Auto-moderation (system) =======================

@@ -1,5 +1,6 @@
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { GeographicScopeResolver } from 'src/modules/authorization/services/geographic-scope-resolver.service';
+import { SYSTEM_MODERATOR_ID } from 'src/modules/audio-rooms/constants/moderation.constants';
 import { MobileWorkforceService } from './mobile-workforce.service';
 import { WorkforceScopeService } from './workforce-scope.service';
 
@@ -46,6 +47,29 @@ describe('MobileWorkforceService scope composition', () => {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue(null),
     },
+    roomMember: {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    },
+    videoRoomMember: {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    },
+    roomMessage: { findMany: jest.fn().mockResolvedValue([]) },
+    videoRoomMessage: { findMany: jest.fn().mockResolvedValue([]) },
+    roomLiveSession: { findFirst: jest.fn().mockResolvedValue(null) },
+    platformUserBan: { count: jest.fn().mockResolvedValue(0) },
+    userProfile: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+    userStatistics: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+    roomBan: { count: jest.fn().mockResolvedValue(0) },
+    videoRoomBlock: { count: jest.fn().mockResolvedValue(0) },
+    liveStreamBan: { count: jest.fn().mockResolvedValue(0) },
   };
   const scope = {
     userScopeFilter: jest.fn(),
@@ -811,6 +835,216 @@ describe('MobileWorkforceService scope composition', () => {
         },
         undefined,
       );
+    });
+  });
+
+  describe('roomDetails — moderator "Room Details" chat card and participants', () => {
+    const room = {
+      id: 'room-1',
+      name: 'Chill vibes',
+      ownerId: 'owner-1',
+      visibility: 'PUBLIC',
+      createdAt: new Date('2026-08-19T09:00:00Z'),
+      imageKey: null,
+    };
+
+    beforeEach(() => {
+      prisma.audioRoom.findUnique.mockResolvedValue(room);
+      prisma.videoRoom.findUnique.mockResolvedValue(null);
+      prisma.liveStream.findUnique.mockResolvedValue(null);
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'owner-1',
+        username: 'owner',
+        fullName: 'Owner Name',
+      });
+      prisma.roomMember.findMany.mockResolvedValue([]);
+      prisma.roomMember.count.mockResolvedValue(0);
+      prisma.roomMessage.findMany.mockResolvedValue([]);
+      prisma.roomReport.findMany.mockResolvedValue([]);
+      prisma.roomReport.count.mockResolvedValue(0);
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.userStatistics.findMany.mockResolvedValue([]);
+      prisma.userStatistics.findUnique.mockResolvedValue(null);
+      prisma.userProfile.findMany.mockResolvedValue([]);
+      prisma.userProfile.findUnique.mockResolvedValue(null);
+      prisma.roomBan.count.mockResolvedValue(0);
+      prisma.platformUserBan.count.mockResolvedValue(0);
+      prisma.roomLiveSession.findFirst.mockResolvedValue(null);
+    });
+
+    it('attributes SYSTEM and ANNOUNCEMENT messages to "System" and resolves a real sender name + avatar for normal messages, exactly like the in-room chat', async () => {
+      prisma.roomMessage.findMany.mockResolvedValue([
+        {
+          id: 'm-sys',
+          senderId: SYSTEM_MODERATOR_ID,
+          type: 'SYSTEM',
+          content: 'User was warned for spam.',
+          createdAt: new Date('2026-08-19T10:05:00Z'),
+        },
+        {
+          id: 'm-ann',
+          senderId: 'mod-1',
+          type: 'ANNOUNCEMENT',
+          content: 'This room is being monitored.',
+          createdAt: new Date('2026-08-19T10:06:00Z'),
+        },
+        {
+          id: 'm-txt',
+          senderId: 'user-2',
+          type: 'TEXT',
+          content: 'hii',
+          createdAt: new Date('2026-08-19T10:07:00Z'),
+        },
+      ]);
+      // mod-1 is a real moderator account but must still read as System because
+      // the message TYPE is ANNOUNCEMENT — matching the audio-rooms-admin
+      // "getLiveSession" reference implementation.
+      // user-2's fullName is deliberately set to something that is NOT their
+      // username (mirroring real data: a user's fullName can coincidentally
+      // match unrelated text, e.g. their own room's name). The live in-room
+      // chat (chat_author_provider.dart) resolves senders by username only,
+      // never fullName, so the moderator chat card must match that — not
+      // fall back to fullName first.
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'mod-1', username: 'mod1', fullName: 'Moderator One' },
+        { id: 'user-2', username: 'user2', fullName: 'Not The Username' },
+      ]);
+      prisma.userProfile.findMany.mockResolvedValue([
+        { userId: 'user-2', avatarKey: 'avatars/user2.jpg' },
+      ]);
+
+      const detail = await service.roomDetails('mod-1', 'room-1');
+
+      expect(detail.chatMessages).toEqual([
+        expect.objectContaining({
+          id: 'm-sys',
+          sender: 'System',
+          isSystem: true,
+          avatarUrl: null,
+          message: 'User was warned for spam.',
+        }),
+        expect.objectContaining({
+          id: 'm-ann',
+          sender: 'System',
+          isSystem: true,
+          avatarUrl: null,
+          message: 'This room is being monitored.',
+        }),
+        expect.objectContaining({
+          id: 'm-txt',
+          sender: 'user2',
+          isSystem: false,
+          avatarUrl: 'avatars/user2.jpg',
+          message: 'hii',
+        }),
+      ]);
+    });
+
+    it('fetches each participant\'s real level and avatar from UserStatistics/UserProfile instead of a hardcoded constant', async () => {
+      prisma.roomMember.findMany.mockResolvedValue([
+        {
+          userId: 'user-3',
+          roomId: 'room-1',
+          role: 'MEMBER',
+          isActive: true,
+          joinedAt: new Date('2026-08-19T09:30:00Z'),
+        },
+      ]);
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'user-3', username: 'user3', fullName: 'User Three' },
+      ]);
+      prisma.userStatistics.findMany.mockResolvedValue([{ userId: 'user-3', level: 27 }]);
+      prisma.userProfile.findMany.mockResolvedValue([
+        { userId: 'user-3', avatarKey: 'avatars/user3.jpg' },
+      ]);
+
+      const detail = await service.roomDetails('mod-1', 'room-1');
+
+      expect(detail.participants).toEqual([
+        expect.objectContaining({
+          id: 'user-3',
+          name: 'User Three',
+          handle: '@user3',
+          level: 27,
+          avatarUrl: 'avatars/user3.jpg',
+        }),
+      ]);
+    });
+
+    it('reportsCount reflects the true total, not the take:20 display-list length', async () => {
+      // findMany is capped for the display list; count is the source of truth
+      // for the stat-bar number and must not silently cap at the same 20.
+      prisma.roomReport.findMany.mockResolvedValue(
+        Array.from({ length: 20 }, (_, i) => ({
+          id: `r-${i}`,
+          reporterId: 'u-1',
+          reason: 'SPAM',
+          createdAt: new Date('2026-08-19T10:00:00Z'),
+        })),
+      );
+      prisma.roomReport.count.mockResolvedValue(47);
+
+      const detail = await service.roomDetails('mod-1', 'room-1');
+
+      expect(detail.reportsCount).toBe(47);
+      expect(detail.activeReports).toHaveLength(20);
+      expect(prisma.roomReport.count).toHaveBeenCalledWith({
+        where: { roomId: 'room-1', status: 'PENDING' },
+      });
+    });
+
+    it('bansCount is sourced from PlatformUserBan.originRoomId (the 24h global ban action), not the legacy room-scoped ban table', async () => {
+      // A decoy value on the legacy table proves the stat no longer reads it.
+      prisma.roomBan.count.mockResolvedValue(999);
+      prisma.platformUserBan.count.mockResolvedValue(3);
+
+      const detail = await service.roomDetails('mod-1', 'room-1');
+
+      expect(detail.bansCount).toBe(3);
+      expect(prisma.platformUserBan.count).toHaveBeenCalledWith({
+        where: { originRoomId: 'room-1', roomType: 'AUDIO_ROOM' },
+      });
+    });
+
+    it('participantsCount reflects a true count, not the paginated member-list length', async () => {
+      // The member list itself stays capped (take: 50) for display, but the
+      // stat-bar number must come from a real count query.
+      prisma.roomMember.findMany.mockResolvedValue([]);
+      prisma.roomMember.count.mockResolvedValue(73);
+
+      const detail = await service.roomDetails('mod-1', 'room-1');
+
+      expect(detail.participantsCount).toBe(73);
+      expect(prisma.roomMember.count).toHaveBeenCalledWith({
+        where: { roomId: 'room-1', isActive: true },
+      });
+    });
+
+    it('sessionTime is measured from this broadcast\'s RoomLiveSession, not the permanent room row\'s createdAt', async () => {
+      // AudioRoom.ownerId is unique — one room row is reused across every
+      // broadcast, so room.createdAt (10 days ago here) is the wrong basis
+      // for "how long has THIS session been live".
+      jest.useFakeTimers().setSystemTime(new Date('2026-08-19T12:05:00Z'));
+      try {
+        prisma.audioRoom.findUnique.mockResolvedValue({
+          ...room,
+          createdAt: new Date('2026-08-09T12:00:00Z'),
+        });
+        prisma.roomLiveSession.findFirst.mockResolvedValue({
+          startedAt: new Date('2026-08-19T12:00:00Z'),
+        });
+
+        const detail = await service.roomDetails('mod-1', 'room-1');
+
+        expect(detail.sessionTime).toBe('5m');
+        expect(prisma.roomLiveSession.findFirst).toHaveBeenCalledWith({
+          where: { roomId: 'room-1', status: 'LIVE' },
+          orderBy: { startedAt: 'desc' },
+          select: { startedAt: true },
+        });
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });

@@ -151,6 +151,10 @@ export class PresenceService {
     return `presence:livestream:{${streamId}}:moderators`;
   }
 
+  private userLiveStreamsKey(userId: string): string {
+    return `presence:user:{${userId}}:livestreams`;
+  }
+
   async joinLiveStream(streamId: string, userId: string, isModerator: boolean): Promise<void> {
     if (isModerator) {
       // Ephemeral invisible presence for moderators
@@ -160,6 +164,11 @@ export class PresenceService {
       // Public viewer presence
       await this.client.sadd(this.liveStreamViewersKey(streamId), userId);
       await this.client.expire(this.liveStreamViewersKey(streamId), 86400);
+      // Reverse index — mirrors `userRoomsKey` for audio/video rooms — so a
+      // platform ban can find which stream(s) a viewer is currently watching
+      // without scanning every active stream's viewer set.
+      await this.client.sadd(this.userLiveStreamsKey(userId), streamId);
+      await this.client.expire(this.userLiveStreamsKey(userId), 86400);
     }
   }
 
@@ -168,6 +177,7 @@ export class PresenceService {
       await this.client.srem(this.liveStreamModeratorsKey(streamId), userId);
     } else {
       await this.client.srem(this.liveStreamViewersKey(streamId), userId);
+      await this.client.srem(this.userLiveStreamsKey(userId), streamId);
     }
   }
 
@@ -179,5 +189,10 @@ export class PresenceService {
   /** Public viewer list — EXCLUDES moderators. */
   async liveStreamViewers(streamId: string): Promise<string[]> {
     return this.client.smembers(this.liveStreamViewersKey(streamId));
+  }
+
+  /** Streams this user is currently watching as a public viewer (used to eject them on a platform ban). */
+  async userLiveStreams(userId: string): Promise<string[]> {
+    return this.client.smembers(this.userLiveStreamsKey(userId));
   }
 }

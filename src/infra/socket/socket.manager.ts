@@ -297,6 +297,21 @@ export class SocketManager {
   }
 
   /**
+   * Emit an event to one user's sockets within a single namespace only (e.g.
+   * `/live`), leaving their sockets on every other namespace — DMs, other
+   * rooms, calling, etc. — untouched. Mirrors `disconnectUserInNamespace`'s
+   * namespace resolution. A no-op if that namespace has not initialised yet.
+   */
+  emitToUserInNamespace(namespace: string, userId: string, event: string, payload: unknown): void {
+    const server = this.serverForNamespace(namespace);
+    if (!server) {
+      this.logger.warn(`emitToUserInNamespace: no server for namespace "${namespace}"`);
+      return;
+    }
+    this.emitToUser(server, userId, event, payload);
+  }
+
+  /**
    * Broadcast an event to everyone in a room on a specific namespace (e.g.
    * `/audio-room`), cross-instance via the Redis adapter. Domain modules push
    * realtime room updates through this from an event-bus listener rather than

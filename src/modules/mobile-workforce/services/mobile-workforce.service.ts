@@ -27,6 +27,8 @@ import { LiveStreamReportService } from 'src/modules/live-streaming/services/liv
 import { LiveStreamService } from 'src/modules/live-streaming/services/live-stream.service';
 import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
 import { PermissionResolver } from 'src/modules/authorization/services/permission-resolver.service';
+import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { SYSTEM_MODERATOR_ID } from 'src/modules/audio-rooms/constants/moderation.constants';
 import { deriveReportPriority, deriveRuleViolated } from './report-classification.util';
 
 /**
@@ -103,6 +105,7 @@ export class MobileWorkforceService {
     private readonly liveStream?: LiveStreamService,
     private readonly investigationRecording?: InvestigationRecordingService,
     private readonly permissionResolver?: PermissionResolver,
+    @Optional() private readonly platformBans?: PlatformBanService,
   ) {}
 
   /** What geography am I responsible for? Drives the client's header and filters. */
@@ -1333,22 +1336,34 @@ export class MobileWorkforceService {
         orderBy: { joinedAt: 'desc' },
       });
       const memberUserIds = members.map((m) => m.userId);
-      const memberUsers =
+      const [memberUsers, memberStats, memberProfiles] =
         memberUserIds.length > 0
-          ? await this.prisma.user.findMany({
-              where: { id: { in: memberUserIds } },
-              select: { id: true, username: true, fullName: true },
-            })
-          : [];
+          ? await Promise.all([
+              this.prisma.user.findMany({
+                where: { id: { in: memberUserIds } },
+                select: { id: true, username: true, fullName: true },
+              }),
+              this.prisma.userStatistics.findMany({
+                where: { userId: { in: memberUserIds } },
+                select: { userId: true, level: true },
+              }),
+              this.prisma.userProfile.findMany({
+                where: { userId: { in: memberUserIds } },
+                select: { userId: true, avatarKey: true },
+              }),
+            ])
+          : [[], [], []];
       const memberUserMap = new Map(memberUsers.map((u) => [u.id, u]));
+      const memberLevelMap = new Map(memberStats.map((s) => [s.userId, s.level]));
+      const memberAvatarMap = new Map(memberProfiles.map((p) => [p.userId, p.avatarKey]));
       participants = members.map((m) => {
         const u = memberUserMap.get(m.userId);
         return {
           id: m.userId,
           name: u?.fullName || u?.username || 'User',
           handle: `@${u?.username || m.userId.substring(0, 6)}`,
-          level: 38,
-          avatarUrl: 'assets/Moderator_UI/Rectangle 67.png',
+          level: memberLevelMap.get(m.userId) ?? 1,
+          avatarUrl: memberAvatarMap.get(m.userId) || 'assets/Moderator_UI/Rectangle 67.png',
           role: m.role,
           joinedAt: m.joinedAt.toISOString(),
         };
@@ -1360,22 +1375,34 @@ export class MobileWorkforceService {
         orderBy: { joinedAt: 'desc' },
       });
       const memberUserIds = members.map((m) => m.userId);
-      const memberUsers =
+      const [memberUsers, memberStats, memberProfiles] =
         memberUserIds.length > 0
-          ? await this.prisma.user.findMany({
-              where: { id: { in: memberUserIds } },
-              select: { id: true, username: true, fullName: true },
-            })
-          : [];
+          ? await Promise.all([
+              this.prisma.user.findMany({
+                where: { id: { in: memberUserIds } },
+                select: { id: true, username: true, fullName: true },
+              }),
+              this.prisma.userStatistics.findMany({
+                where: { userId: { in: memberUserIds } },
+                select: { userId: true, level: true },
+              }),
+              this.prisma.userProfile.findMany({
+                where: { userId: { in: memberUserIds } },
+                select: { userId: true, avatarKey: true },
+              }),
+            ])
+          : [[], [], []];
       const memberUserMap = new Map(memberUsers.map((u) => [u.id, u]));
+      const memberLevelMap = new Map(memberStats.map((s) => [s.userId, s.level]));
+      const memberAvatarMap = new Map(memberProfiles.map((p) => [p.userId, p.avatarKey]));
       participants = members.map((m) => {
         const u = memberUserMap.get(m.userId);
         return {
           id: m.userId,
           name: u?.fullName || u?.username || 'User',
           handle: `@${u?.username || m.userId.substring(0, 6)}`,
-          level: 38,
-          avatarUrl: 'assets/Moderator_UI/Rectangle 67.png',
+          level: memberLevelMap.get(m.userId) ?? 1,
+          avatarUrl: memberAvatarMap.get(m.userId) || 'assets/Moderator_UI/Rectangle 67.png',
           role: m.role,
           joinedAt: m.joinedAt.toISOString(),
         };
@@ -1383,12 +1410,16 @@ export class MobileWorkforceService {
     }
 
     if (participants.length === 0 && owner) {
+      const [ownerStats, ownerProfile] = await Promise.all([
+        this.prisma.userStatistics.findUnique({ where: { userId: owner.id } }),
+        this.prisma.userProfile.findUnique({ where: { userId: owner.id } }),
+      ]);
       participants.push({
         id: owner.id,
         name: owner.fullName || owner.username || 'Host',
         handle: `@${owner.username}`,
-        level: 42,
-        avatarUrl: 'assets/Moderator_UI/Rectangle 67.png',
+        level: ownerStats?.level ?? 1,
+        avatarUrl: ownerProfile?.avatarKey || 'assets/Moderator_UI/Rectangle 67.png',
         role: 'OWNER',
         joinedAt: new Date().toISOString(),
       });
@@ -1411,6 +1442,14 @@ export class MobileWorkforceService {
             take: 20,
             orderBy: { createdAt: 'desc' },
           });
+
+    // reports above is capped (take: 20) for the display list; the stat-bar
+    // number must reflect the true total, not the capped list length.
+    const reportsCount = isStream
+      ? await this.prisma.liveStreamReport.count({ where: { streamId: roomId, status: 'PENDING' } })
+      : isVideo
+        ? await this.prisma.videoRoomReport.count({ where: { roomId, status: 'PENDING' } })
+        : await this.prisma.roomReport.count({ where: { roomId, status: 'PENDING' } });
 
     const reporterIds = reports.map((r) => r.reporterId);
     const reporterUsers =
@@ -1446,41 +1485,85 @@ export class MobileWorkforceService {
             orderBy: { createdAt: 'asc' },
           });
 
-    const senderIds = chatMessages.map((m) => m.senderId);
-    const senders =
+    const senderIds = [...new Set(chatMessages.map((m) => m.senderId))];
+    const [senders, senderProfiles] =
       senderIds.length > 0
-        ? await this.prisma.user.findMany({
-            where: { id: { in: senderIds } },
-            select: { id: true, username: true, fullName: true },
-          })
-        : [];
+        ? await Promise.all([
+            this.prisma.user.findMany({
+              where: { id: { in: senderIds } },
+              select: { id: true, username: true, fullName: true },
+            }),
+            this.prisma.userProfile.findMany({
+              where: { userId: { in: senderIds } },
+              select: { userId: true, avatarKey: true },
+            }),
+          ])
+        : [[], []];
     const senderMap = new Map(senders.map((u) => [u.id, u]));
+    const senderAvatarMap = new Map(senderProfiles.map((p) => [p.userId, p.avatarKey]));
 
     const formattedChat = chatMessages.map((m) => {
       const sender = senderMap.get(m.senderId);
-      const senderName = sender?.fullName || sender?.username || 'User';
+      const msgType = (m as any).type;
+      const isSystem =
+        msgType === 'SYSTEM' ||
+        msgType === 'ANNOUNCEMENT' ||
+        m.senderId === SYSTEM_MODERATOR_ID ||
+        !sender;
+      const senderName = isSystem
+        ? 'System'
+        : (sender?.username || sender?.fullName || 'User');
+      const avatarUrl = isSystem ? null : (senderAvatarMap.get(m.senderId) || null);
       return {
         id: m.id,
-        initial: (senderName[0] || 'U').toUpperCase(),
+        initial: isSystem ? 'S' : (senderName[0] || 'U').toUpperCase(),
         sender: senderName,
+        avatarUrl,
+        isSystem,
         message: m.content,
         time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
     });
 
-    const bansCount = isStream
-      ? await this.prisma.liveStreamBan.count({ where: { streamId: roomId } }).catch(() => 0)
-      : isVideo
-        ? await this.prisma.videoRoomBlock
-            .count({ where: { roomId, status: 'ACTIVE' } })
-            .catch(() => 0)
-        : await this.prisma.roomBan.count({ where: { roomId, status: 'ACTIVE' } }).catch(() => 0);
+    // The moderator's "Ban (24h, all rooms)" action writes a PlatformUserBan
+    // (see PlatformBanService.banUser), not a RoomBan/VideoRoomBlock/
+    // LiveStreamBan row — those legacy per-room tables never see that action,
+    // so the stat must be sourced from PlatformUserBan.originRoomId instead.
+    const bansCount = await this.prisma.platformUserBan
+      .count({
+        where: {
+          originRoomId: roomId,
+          roomType: isStream ? 'LIVE_STREAM' : isVideo ? 'VIDEO_ROOM' : 'AUDIO_ROOM',
+        },
+      })
+      .catch(() => 0);
 
-    const createdAt = room ? (room as any).createdAt || (room as any).startedAt : new Date();
+    // Audio rooms are one permanent row per owner, reused across every
+    // broadcast (AudioRoom.ownerId is unique) — room.createdAt is when the
+    // row was first created, not when THIS live session started. The actual
+    // per-session start lives in RoomLiveSession (see AudioRoomsService's
+    // goLive/endRoomInternal, which opens/closes one of these per broadcast).
+    const openLiveSession = !isVideo && !isStream
+      ? await this.prisma.roomLiveSession.findFirst({
+          where: { roomId, status: 'LIVE' },
+          orderBy: { startedAt: 'desc' },
+          select: { startedAt: true },
+        })
+      : null;
+    const fallbackStartedAt = room
+      ? (room as any).startedAt || (room as any).createdAt
+      : new Date();
+    const sessionStartedAt = openLiveSession?.startedAt || fallbackStartedAt;
     const sessionMinutes = Math.max(
       1,
-      Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000),
+      Math.floor((Date.now() - new Date(sessionStartedAt).getTime()) / 60000),
     );
+
+    const liveParticipantsCount = isStream
+      ? (liveStream as any)?.viewerCount ?? 0
+      : isVideo
+        ? await this.prisma.videoRoomMember.count({ where: { roomId, isActive: true } })
+        : await this.prisma.roomMember.count({ where: { roomId, isActive: true } });
 
     const roomPrefix = isStream ? 'LS' : isVideo ? 'VR' : 'AR';
     const defaultImage = isVideo
@@ -1493,8 +1576,8 @@ export class MobileWorkforceService {
       category: isStream ? 'Live stream' : isVideo ? 'Video room' : 'Audio room',
       isPublic: (room as any)?.visibility === 'PUBLIC' || (room as any)?.isPublic !== false,
       isVerified: true,
-      participantsCount: Math.max(1, participants.length),
-      reportsCount: reports.length,
+      participantsCount: Math.max(1, liveParticipantsCount),
+      reportsCount,
       warningsCount: 0,
       bansCount,
       imageUrl: (room as any)?.imageKey || (room as any)?.thumbnailKey || defaultImage,
@@ -1964,6 +2047,37 @@ export class MobileWorkforceService {
           expiresAt: new Date(Date.now() + QUICK_MUTE_DURATION_MINUTES * 60_000),
         },
       });
+    } else if (action.includes('warn')) {
+      const warnReason = data.reason?.trim() || 'Please follow community guidelines.';
+      const u = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { roles: true },
+      });
+      const actor = { id: userId, roles: (u?.roles as any) ?? ['MODERATOR'] };
+      const isAudio = await this.prisma.audioRoom.findUnique({
+        where: { id: roomId },
+        select: { id: true },
+      });
+      if (isAudio && this.audioModeration) {
+        await this.audioModeration.warn(actor, roomId, targetUserId, warnReason, 'PRIVATE');
+      } else {
+        const isVideo = await this.prisma.videoRoom.findUnique({
+          where: { id: roomId },
+          select: { id: true },
+        });
+        if (isVideo && this.videoModeration) {
+          await this.videoModeration.warn(actor, roomId, targetUserId, warnReason, undefined, 'PRIVATE');
+        } else if (this.liveStream) {
+          await this.liveStream.moderateUser({
+            streamId: roomId,
+            moderatorId: userId,
+            targetUserId,
+            action: 'WARN',
+            reason: warnReason,
+            scope: 'PRIVATE',
+          });
+        }
+      }
     }
 
     return { success: true, roomId, targetUserId, action: data.action };
@@ -2003,10 +2117,13 @@ export class MobileWorkforceService {
         throw new NotFoundException('Video room moderation is unavailable.');
       }
       await this.videoModeration.broadcastWarning(actor, roomId, reason);
+    } else if (roomType === 'stream') {
+      if (!this.liveStream) {
+        throw new NotFoundException('Live stream moderation is unavailable.');
+      }
+      await this.liveStream.broadcastWarning(actor, roomId, reason);
     } else {
-      throw new BadRequestException(
-        'Room-wide system warnings are not yet supported for live streams.',
-      );
+      throw new BadRequestException(`Unsupported roomType: ${roomType}`);
     }
 
     return {
@@ -2021,61 +2138,57 @@ export class MobileWorkforceService {
   }
 
   /**
-   * List all bans issued by moderators for SuperAdmin panel.
+   * List 24h platform-wide bans (`PlatformUserBan`, issued via
+   * `PlatformBanService.banUser()`) for the SuperAdmin panel. This is
+   * deliberately NOT `RoomBan` — that's a separate, older, room-scoped ban
+   * table (from `ModerationService.ban()`) that only blocks re-joining one
+   * specific room. The panel's own heading ("24-Hour Moderation Bans") only
+   * matches what `PlatformUserBan` actually is.
    */
   async listModeratorBans(page = 1, limit = 50) {
+    if (!this.platformBans) return { items: [], total: 0, page, limit, totalPages: 0 };
     const skip = (page - 1) * limit;
-    const [bans, total] = await Promise.all([
-      this.prisma.roomBan.findMany({
-        where: {
-          moderatorId: { not: undefined },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.roomBan.count({
-        where: {
-          moderatorId: { not: undefined },
-        },
-      }),
-    ]);
+    const [bans, total] = await this.platformBans.list({}, skip, limit);
 
-    const userIds = Array.from(new Set(bans.map((b) => b.userId)));
-    const modIds = Array.from(new Set(bans.map((b) => b.moderatorId)));
+    const userIds = Array.from(new Set(bans.map((b) => b.targetUserId).filter(Boolean)));
+    const modIds = Array.from(new Set(bans.map((b) => b.moderatorId).filter(Boolean)));
     const allUserIds = Array.from(new Set([...userIds, ...modIds]));
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validUserIds = allUserIds.filter((id) => typeof id === 'string' && uuidRegex.test(id));
 
-    const users = await this.prisma.user.findMany({
-      where: { id: { in: allUserIds } },
-      select: { id: true, username: true, fullName: true, email: true },
-    });
+    const users = validUserIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: validUserIds } },
+          select: { id: true, username: true, fullName: true, email: true },
+        })
+      : [];
     const userMap = new Map(users.map((u) => [u.id, u]));
 
     const now = new Date();
     const items = bans.map((b) => {
-      const u = userMap.get(b.userId);
+      const u = userMap.get(b.targetUserId);
       const m = userMap.get(b.moderatorId);
-      const isExpired = b.expiresAt ? b.expiresAt < now : false;
-      const status =
-        b.status === ModerationStatus.LIFTED ? 'LIFTED' : isExpired ? 'EXPIRED' : 'ACTIVE';
+      const isExpired = b.expiresAt < now;
+      const status = b.status === 'LIFTED' ? 'REVOKED' : isExpired ? 'EXPIRED' : 'ACTIVE';
+      const isSystem = b.moderatorId === '00000000-0000-0000-0000-000000000000' || b.moderatorId === 'system';
       return {
         id: b.id,
-        roomId: b.roomId,
+        roomType: b.roomType,
+        originRoomId: b.originRoomId,
         targetUser: {
-          id: b.userId,
+          id: b.targetUserId,
           username: u?.username ?? 'Unknown',
           fullName: u?.fullName ?? 'Unknown User',
           email: u?.email ?? '',
         },
         moderator: {
           id: b.moderatorId,
-          username: m?.username ?? 'Moderator',
-          fullName: m?.fullName ?? 'Moderator',
+          username: m?.username ?? (isSystem ? 'System' : 'Moderator'),
+          fullName: m?.fullName ?? (isSystem ? 'System Moderator' : 'Moderator'),
           email: m?.email ?? '',
         },
-        reason: b.reason ?? 'Violating community guidelines',
-        type: b.type,
-        bannedAt: b.createdAt,
+        reason: b.reason,
+        bannedAt: b.bannedAt,
         expiresAt: b.expiresAt,
         status,
       };
@@ -2085,15 +2198,11 @@ export class MobileWorkforceService {
   }
 
   /**
-   * Unban / lift a user ban.
+   * Lift a 24h platform-wide ban (`PlatformUserBan`) — see [listModeratorBans].
    */
   async unbanUser(adminOrModId: string, banId: string) {
-    const ban = await this.prisma.roomBan.findUnique({ where: { id: banId } });
-    if (!ban) throw new NotFoundException('Ban record not found.');
-    await this.prisma.roomBan.update({
-      where: { id: banId },
-      data: { status: ModerationStatus.LIFTED, liftedBy: adminOrModId, liftedAt: new Date() },
-    });
+    if (!this.platformBans) throw new NotFoundException('Ban record not found.');
+    await this.platformBans.unbanUser(adminOrModId, banId);
     return { success: true, banId, unbannedBy: adminOrModId, status: 'LIFTED' };
   }
 

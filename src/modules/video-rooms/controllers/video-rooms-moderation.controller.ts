@@ -86,14 +86,21 @@ export class VideoRoomsModerationController {
     @Param('userId', ParseUuidPipe) userId: string,
     @Body() dto: BanUserGloballyDto,
   ) {
-    await this.moderation.assertCanModerate(this.actor(user), roomId);
-    return this.platformBans.banUser({
+    const actor = this.actor(user);
+    await this.moderation.assertCanModerate(actor, roomId);
+    const result = await this.platformBans.banUser({
       moderatorId: user.id,
       targetUserId: userId,
       reason: dto.reason,
       roomType: 'VIDEO_ROOM',
       originRoomId: roomId,
     });
+    // Best-effort: eject them from the room being investigated right now if
+    // they're an active participant there (not its owner — a room they own
+    // is already force-ended by `banUser` above). Failures are expected and
+    // swallowed — see the audio-room controller's identical courtesy step.
+    void this.moderation.forceDisconnect(actor, roomId, userId, dto.reason).catch(() => {});
+    return result;
   }
 
   // ======================= Kick =======================
@@ -300,6 +307,28 @@ export class VideoRoomsModerationController {
       this.actor(user),
       roomId,
       dto.userId,
+      dto.reason,
+      dto.metadata,
+      dto.scope ?? 'PRIVATE',
+      meta,
+    );
+  }
+
+  @Post(':id/moderation/warn/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Issue a warning to a member by param userId' })
+  warnByParam(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Param('userId', ParseUuidPipe) userId: string,
+    @Body() dto: { reason: string; scope?: 'PRIVATE' | 'ROOM'; metadata?: Record<string, unknown> },
+    @RequestMeta() meta: RequestMetadata,
+  ) {
+    return this.moderation.warn(
+      this.actor(user),
+      roomId,
+      userId,
       dto.reason,
       dto.metadata,
       dto.scope ?? 'PRIVATE',

@@ -9,6 +9,7 @@ import { ModeratorShiftModule } from 'src/modules/moderator-shift/moderator-shif
 import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-warning.module';
 import { LiveStreamingModule } from 'src/modules/live-streaming/live-streaming.module';
 import { InvestigationRecordingModule } from 'src/modules/investigation-recording/investigation-recording.module';
+import { PlatformModerationModule } from 'src/modules/platform-moderation/platform-moderation.module';
 
 /**
  * Mobile console for the operational workforce — Country Manager, Official and
@@ -34,6 +35,7 @@ import { InvestigationRecordingModule } from 'src/modules/investigation-recordin
     WorkforceScopeModule,
     LiveStreamingModule,
     InvestigationRecordingModule,
+    PlatformModerationModule,
   ],
   controllers: [MobileWorkforceController, ModeratorLiveMonitoringController],
   providers: [MobileWorkforceService],

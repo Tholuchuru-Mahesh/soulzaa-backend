@@ -69,19 +69,32 @@ export class LiveStreamController {
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('live.stream.moderate')
   @ApiOperation({ summary: 'Ban a user globally from all rooms for 24 hours' })
-  banGlobally(
+  async banGlobally(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) streamId: string,
     @Param('userId', ParseUuidPipe) userId: string,
     @Body() dto: BanUserGloballyDto,
   ) {
-    return this.platformBans.banUser({
+    const result = await this.platformBans.banUser({
       moderatorId: user.id,
       targetUserId: userId,
       reason: dto.reason,
       roomType: 'LIVE_STREAM',
       originRoomId: streamId,
     });
+    // Best-effort: eject them from the stream being investigated right now
+    // if they're currently watching it. Failures are expected and swallowed
+    // — see the audio-room controller's identical courtesy step.
+    void this.service
+      .moderateUser({
+        streamId,
+        moderatorId: user.id,
+        targetUserId: userId,
+        action: 'KICK',
+        reason: dto.reason,
+      })
+      .catch(() => {});
+    return result;
   }
 
   @Post()

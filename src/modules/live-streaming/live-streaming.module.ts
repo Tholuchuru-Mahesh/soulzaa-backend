@@ -16,6 +16,7 @@ import { LiveStreamReportService } from './services/live-stream-report.service';
 import { LiveStreamService } from './services/live-stream.service';
 import { LiveStreamingService } from './services/live-streaming.service';
 import { LiveStreamModerationApprovalListener } from './listeners/live-stream-moderation-approval.listener';
+import { LiveStreamPlatformBanListener } from './listeners/live-stream-platform-ban.listener';
 
 /**
  * Live Streaming domain — streams, participants, moderation & territory-scoped counts.
@@ -42,6 +43,7 @@ import { LiveStreamModerationApprovalListener } from './listeners/live-stream-mo
     LiveStreamReportRepository,
     LiveStreamReportService,
     LiveStreamModerationApprovalListener,
+    LiveStreamPlatformBanListener,
     PrismaService,
   ],
   exports: [LiveStreamService, LiveStreamingService, LiveStreamReportService],

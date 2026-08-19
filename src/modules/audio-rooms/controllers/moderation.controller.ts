@@ -71,14 +71,23 @@ export class ModerationController {
     @Param('userId', ParseUuidPipe) userId: string,
     @Body() dto: BanUserGloballyDto,
   ) {
-    await this.permissions.assertCanModerate(roomId, this.actor(user));
-    return this.platformBans.banUser({
+    const actor = this.actor(user);
+    await this.permissions.assertCanModerate(roomId, actor);
+    const result = await this.platformBans.banUser({
       moderatorId: user.id,
       targetUserId: userId,
       reason: dto.reason,
       roomType: 'AUDIO_ROOM',
       originRoomId: roomId,
     });
+    // Best-effort: if the target is currently an active participant in the
+    // room being investigated (not its owner — a room they own is already
+    // force-ended by `banUser` above), eject them right now instead of
+    // leaving them connected until their next API call 403s. Failures
+    // (not a member, or they *are* the owner) are expected and swallowed —
+    // this is a courtesy on top of the ban, not a load-bearing step of it.
+    void this.moderation.forceDisconnect(actor, roomId, userId, dto.reason).catch(() => {});
+    return result;
   }
 
   @Post(':id/moderation/kick/:userId')

@@ -248,12 +248,74 @@ export class LiveStreamService {
   }
 
   /**
+   * Broadcast an anonymous system warning to everyone in the live stream.
+   */
+  async broadcastWarning(
+    actor: { id: string; roles?: string[] },
+    streamId: string,
+    reason: string,
+    requestMeta?: RequestMetadata,
+  ): Promise<void> {
+    const stream = await this.prisma.liveStream.findUnique({
+      where: { id: streamId },
+    });
+    if (!stream) {
+      throw new NotFoundException('Live stream not found.');
+    }
+    await this.scopeService.assertModeratorInScope(actor.id, stream.hostId);
+
+    const payload = {
+      streamId,
+      targetUserId: null,
+      moderatorId: SYSTEM_MODERATOR_ID,
+      systemMessage: reason,
+      scope: 'ROOM',
+    };
+
+    this.sockets.emitToNamespaceRoom(
+      LIVE_STREAM_NAMESPACE,
+      streamId,
+      LIVE_STREAM_SOCKET_EVENTS.USER_WARNED,
+      payload,
+    );
+
+    if (this.auditLog) {
+      void this.auditLog.logAction({
+        actorId: actor.id,
+        action: 'live_stream.warn_broadcast',
+        resource: 'live_stream',
+        resourceId: streamId,
+        liveStreamId: streamId,
+        violationReason: reason,
+        ipAddress: requestMeta?.ip,
+        userAgent: requestMeta?.userAgent,
+        details: { reason },
+      });
+    }
+
+    if (this.performanceStats) {
+      void this.performanceStats.recordAction(actor.id, 'WARN');
+    }
+
+    if (this.platformAudit) {
+      void this.platformAudit.record({
+        moderatorId: actor.id,
+        action: 'WARNING_SENT',
+        roomType: 'LIVE_STREAM',
+        roomId: streamId,
+        reason,
+        scope: 'ROOM',
+      });
+    }
+  }
+
+  /**
    * Real enforcement — mirrors how Audio/Video Room moderation actually
    * takes effect against a live participant (not just an audit row):
-   *  - WARN: an ephemeral `USER_WARNED` socket broadcast, System-attributed,
-   *    only when `scope === 'ROOM'` — PRIVATE (the default) sends nothing
-   *    here (the existing private-notification path elsewhere handles it).
-   *    No durable row — a warning is not a state change.
+   *  - WARN: an ephemeral `USER_WARNED` socket event, System-attributed.
+   *    ROOM scope broadcasts to everyone in the stream; PRIVATE (the
+   *    default) targets only the recipient's sockets on `/live`. No durable
+   *    row either way — a warning is not a state change.
    *  - MUTE: a durable `LiveStreamMute` row + Redis mirror, checked by
    *    `assertCanSendChat` — the chat-send gate contract a future
    *    live-stream chat feature must call, exactly like the Audio Room's
@@ -273,17 +335,25 @@ export class LiveStreamService {
     input: LiveStreamModerationInput,
   ): Promise<void> {
     if (input.action === 'WARN') {
+      const payload = {
+        streamId,
+        targetUserId: input.targetUserId,
+        moderatorId: SYSTEM_MODERATOR_ID,
+        systemMessage: input.reason ?? 'A moderator issued a warning.',
+      };
       if (input.scope === 'ROOM') {
         this.sockets.emitToNamespaceRoom(
           LIVE_STREAM_NAMESPACE,
           streamId,
           LIVE_STREAM_SOCKET_EVENTS.USER_WARNED,
-          {
-            streamId,
-            targetUserId: input.targetUserId,
-            moderatorId: SYSTEM_MODERATOR_ID,
-            systemMessage: input.reason ?? 'A moderator issued a warning.',
-          },
+          payload,
+        );
+      } else {
+        this.sockets.emitToUserInNamespace(
+          LIVE_STREAM_NAMESPACE,
+          input.targetUserId,
+          LIVE_STREAM_SOCKET_EVENTS.USER_WARNED,
+          payload,
         );
       }
       if (this.platformAudit) {

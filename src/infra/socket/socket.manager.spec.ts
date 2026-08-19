@@ -104,3 +104,38 @@ describe('SocketManager — incognito moderator join/leave', () => {
     });
   });
 });
+
+describe('SocketManager — namespace-scoped user targeting', () => {
+  let manager: SocketManager;
+
+  beforeEach(() => {
+    manager = new SocketManager(
+      {} as never, // tokenService
+      {} as never, // presence
+      {} as never, // metrics
+      {} as never, // event bus
+      {} as never, // roleSource
+      new Map() as never, // joinPolicies
+    );
+  });
+
+  describe('emitToUserInNamespace', () => {
+    it('emits only to the target user within the given namespace', () => {
+      const emit = jest.fn();
+      const to = jest.fn(() => ({ emit }));
+      const server = { name: '/live', to } as never;
+      manager.registerServer(server);
+
+      manager.emitToUserInNamespace('/live', 'user-1', 'user.warned', { reason: 'be nice' });
+
+      expect(to).toHaveBeenCalledWith('user:user-1');
+      expect(emit).toHaveBeenCalledWith('user.warned', { reason: 'be nice' });
+    });
+
+    it('is a no-op when the namespace has not registered a server yet', () => {
+      expect(() =>
+        manager.emitToUserInNamespace('/live', 'user-1', 'user.warned', {}),
+      ).not.toThrow();
+    });
+  });
+});

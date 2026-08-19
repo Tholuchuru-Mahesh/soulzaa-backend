@@ -13,9 +13,13 @@ import {
   VideoRoomStatus,
   LiveStreamStatus,
 } from '@prisma/client';
+import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
 import { SocketManager } from 'src/infra/socket/socket.manager';
+import { RoomEndedEvent } from 'src/modules/audio-rooms/events/audio-room.events';
+import { RoomClosedEvent } from 'src/modules/video-rooms/events/video-room.events';
+import { UserGloballyBannedEvent, UserGloballyUnbannedEvent } from '../events/platform-ban.events';
 import {
   PlatformBanRepository,
   type ListPlatformBansFilter,
@@ -28,11 +32,12 @@ export interface BanUserInput {
   reason: string;
   roomType: PlatformRoomType;
   originRoomId: string;
+  reportId?: string;
 }
 
 const BAN_DURATION_SECONDS = 86400;
 
-function banRedisKey(userId: string): string {
+export function banRedisKey(userId: string): string {
   return `platform-ban:user:${userId}`;
 }
 
@@ -46,6 +51,7 @@ export class PlatformBanService {
     @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
     private readonly sockets: SocketManager,
     private readonly prisma: PrismaService,
+    @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
 
   async banUser(input: BanUserInput): Promise<PlatformUserBan> {
@@ -61,6 +67,7 @@ export class PlatformBanService {
       reason,
       roomType: input.roomType,
       originRoomId: input.originRoomId,
+      reportId: input.reportId ?? null,
       expiresAt,
     });
 
@@ -71,8 +78,33 @@ export class PlatformBanService {
       BAN_DURATION_SECONDS,
     );
 
-    this.sockets.disconnectUserEverywhere(input.targetUserId);
-    void this.endActiveRoomsFor(input.targetUserId);
+    // Awaited, not fire-and-forget: it fully self-catches (see below) so this
+    // can never fail the ban, but the caller's HTTP response — and the
+    // moderator client's own immediate UI refresh right after it — must not
+    // be able to race ahead of the room actually being torn down. Otherwise
+    // that refresh sometimes lands before the DB status flip / "closed"
+    // broadcast commit and still shows the room as live.
+    await this.endActiveRoomsFor(input.targetUserId);
+    void this.bus.publish(
+      new UserGloballyBannedEvent({
+        targetUserId: input.targetUserId,
+        moderatorId: input.moderatorId,
+        reason,
+      }),
+    );
+    // Deliberately NOT immediate, and deliberately last: the room-specific
+    // ejections above (the synchronous kick the calling controller issues for
+    // the room being investigated, plus this event's own room-type listeners
+    // for every other room the target is active in) each notify the target's
+    // client with a real "you were removed" event *before* disconnecting
+    // their socket in that one namespace. A blunt, instant disconnect-
+    // everywhere here would race ahead of all of that and win — killing the
+    // connection before any of those targeted notifications can be delivered,
+    // so the consumer app never visibly updates even though the ban itself
+    // succeeded. This still eventually severs whatever those room-specific
+    // kicks don't cover (DMs, notifications, calling), just after giving them
+    // a head start.
+    setTimeout(() => this.sockets.disconnectUserEverywhere(input.targetUserId), 3000);
 
     void this.audit.record({
       moderatorId: input.moderatorId,
@@ -95,11 +127,37 @@ export class PlatformBanService {
    * just disconnected above). Direct Prisma `updateMany` rather than routing
    * through each room type's lifecycle service: those services all now depend
    * on `PlatformBanService` for the create/start ban check, so injecting them
-   * back here would be circular. Best-effort and non-blocking (`void`'d by the
-   * caller) — a failure here must never fail the ban itself.
+   * back here would be circular. Awaited by the caller (so the room is
+   * actually gone by the time the ban response comes back) but still
+   * best-effort — every failure path here is caught internally, so it can
+   * never fail the ban itself.
+   *
+   * A raw DB status flip alone is not enough: `ModerationService.forceDisconnect`
+   * (the controller's synchronous "eject from the room under investigation"
+   * step) deliberately no-ops against the room's own owner — it can only evict
+   * a *member*, and an owner isn't tracked as one. So when the ban target owns
+   * the room, this is the ONLY step that closes it, and everyone still
+   * connected needs the same real-time teardown a normal end-room does
+   * (socket "closed" broadcast, seat/stage clear) or they're left staring at a
+   * room that looks live until an unrelated sweep eventually notices it's
+   * empty. Publishing the same lifecycle events `AudioRoomsService`/
+   * `VideoRoomLifecycleService` publish on a normal end reuses their existing,
+   * already-wired listeners for this — no new coupling, since events (unlike
+   * services) don't create a circular dependency.
    */
   private async endActiveRoomsFor(userId: string): Promise<void> {
     try {
+      const [liveAudioRoom, liveVideoRooms] = await Promise.all([
+        this.prisma.audioRoom.findFirst({
+          where: { ownerId: userId, status: RoomStatus.LIVE },
+          select: { id: true, createdAt: true },
+        }),
+        this.prisma.videoRoom.findMany({
+          where: { ownerId: userId, status: VideoRoomStatus.LIVE },
+          select: { id: true, createdAt: true },
+        }),
+      ]);
+
       await Promise.all([
         this.prisma.audioRoom.updateMany({
           where: { ownerId: userId, status: RoomStatus.LIVE },
@@ -114,6 +172,28 @@ export class PlatformBanService {
           data: { status: LiveStreamStatus.ENDED, endedAt: new Date() },
         }),
       ]);
+
+      const now = Date.now();
+      if (liveAudioRoom) {
+        await this.bus.publish(
+          new RoomEndedEvent({
+            roomId: liveAudioRoom.id,
+            actorId: userId,
+            ownerId: userId,
+            durationSeconds: Math.floor((now - liveAudioRoom.createdAt.getTime()) / 1000),
+          }),
+        );
+      }
+      for (const room of liveVideoRooms) {
+        await this.bus.publish(
+          new RoomClosedEvent({
+            roomId: room.id,
+            actorId: userId,
+            ownerId: userId,
+            durationSeconds: Math.floor((now - room.createdAt.getTime()) / 1000),
+          }),
+        );
+      }
     } catch (e) {
       this.logger.error(
         `Failed to end active rooms for banned user ${userId}: ${(e as Error).message}`,
@@ -149,6 +229,34 @@ export class PlatformBanService {
       roomId: ban.originRoomId,
       targetUserId: ban.targetUserId,
     });
+
+    void this.bus.publish(
+      new UserGloballyUnbannedEvent({
+        targetUserId: ban.targetUserId,
+        moderatorId: adminId,
+        reason: 'lifted',
+      }),
+    );
+
+    const unbanPayload = {
+      roomId: ban.originRoomId,
+      targetUserId: ban.targetUserId,
+      moderatorId: '00000000-0000-0000-0000-000000000000',
+      reason: 'lifted',
+      systemMessage: 'User ban was lifted by an administrator.',
+    };
+
+    this.sockets.emitToUserEverywhere(ban.targetUserId, 'room.unbanned', unbanPayload);
+    this.sockets.emitToUserEverywhere(ban.targetUserId, 'userUnblacklisted', unbanPayload);
+    this.sockets.emitToUserEverywhere(ban.targetUserId, 'platform-moderation.user-unbanned', unbanPayload);
+
+    if (ban.originRoomId) {
+      if (ban.roomType === PlatformRoomType.AUDIO_ROOM) {
+        this.sockets.emitToNamespaceRoom('/audio-room', ban.originRoomId, 'room.unbanned', unbanPayload);
+      } else if (ban.roomType === PlatformRoomType.VIDEO_ROOM) {
+        this.sockets.emitToNamespaceRoom('/video-room', ban.originRoomId, 'userUnblacklisted', unbanPayload);
+      }
+    }
 
     return lifted;
   }

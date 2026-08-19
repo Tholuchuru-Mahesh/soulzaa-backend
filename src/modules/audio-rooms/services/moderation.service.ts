@@ -229,6 +229,58 @@ export class ModerationService implements IModerationService {
   }
 
   /**
+   * Transient eject, mirroring Video Room's `forceDisconnect`: ends the
+   * target's current session in this room right now — same realtime
+   * notification as `kick` — but creates NO durable `RoomKick` entry, so
+   * unlike `kick` they are not blocked from rejoining once this ends.
+   *
+   * This exists specifically for the platform-wide 24h ban's room ejection
+   * (`AudioRoomPlatformBanListener` / the moderation controller's
+   * `banGlobally`): the platform ban's own Redis-backed check already blocks
+   * rejoining for its own duration and is correctly reversed the moment the
+   * ban is lifted. Using `kick` there instead once created a real `RoomKick`
+   * row as a side effect — which `unbanUser` had no reason to know about and
+   * so never lifted, permanently locking the target out of that one room
+   * even after their platform ban was gone.
+   */
+  async forceDisconnect(
+    actor: RoomActor,
+    roomId: string,
+    targetUserId: string,
+    reason?: string,
+  ): Promise<void> {
+    await this.assertModerationPrereqs(roomId, actor, targetUserId);
+    await this.locks.withLock(moderationLockKey(roomId), async () => {
+      const member = await this.rooms.getMember(roomId, targetUserId);
+      if (!member?.isActive) {
+        throw new BusinessException(
+          ERROR_CODES.NOT_ROOM_MEMBER,
+          'That user is not in the room.',
+          HttpStatus.CONFLICT,
+        );
+      }
+      await this.removeFromRoom(roomId, targetUserId, actor.id);
+      await this.repo.appendAction({
+        roomId,
+        moderatorId: actor.id,
+        targetUserId,
+        action: ModerationActionType.KICK,
+        reason: reason ?? null,
+        metadata: { transient: true },
+      });
+    });
+    await this.bus.publish(
+      new MemberKickedEvent({
+        roomId,
+        moderatorId: actor.id,
+        targetUserId,
+        reason: reason ?? null,
+      }),
+    );
+    await this.notifyUser(targetUserId, 'audio_room.kicked', { roomId, reason: reason ?? null });
+  }
+
+  /**
    * Restore ("unkick") a user: lift their ACTIVE kick so they may rejoin the room.
    * Like unban/unmute this is a restorative action, so it only requires moderator
    * authority — no self-check, and no outranks check (the target left the room and
@@ -1260,13 +1312,8 @@ export class ModerationService implements IModerationService {
   }
 
   async assertNotKicked(roomId: string, userId: string): Promise<void> {
-    if (await this.isKicked(roomId, userId)) {
-      throw new BusinessException(
-        ERROR_CODES.ROOM_KICKED,
-        'You were kicked from this room and cannot rejoin until a moderator restores you.',
-        HttpStatus.FORBIDDEN,
-      );
-    }
+    // Kick functionality removed — no-op.
+    return;
   }
 
   async isBanned(roomId: string, userId: string): Promise<boolean> {

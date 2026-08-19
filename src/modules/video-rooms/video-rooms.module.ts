@@ -81,6 +81,7 @@ import { ReportProcessingProcessor } from './processors/report-processing.proces
 import { VideoRoomsModerationController } from './controllers/video-rooms-moderation.controller';
 import { VideoRoomModerationSocketListener } from './listeners/video-room-moderation-socket.listener';
 import { VideoRoomModerationApprovalListener } from './listeners/video-room-moderation-approval.listener';
+import { VideoRoomPlatformBanListener } from './listeners/video-room-platform-ban.listener';
 import { VideoRoomAutoModerationListener } from './listeners/video-room-auto-moderation.listener';
 import { VideoRoomModerationExpiryMonitor } from './scheduler/video-room-moderation-expiry.monitor';
 import { VideoRoomModerationCleanupScheduler } from './scheduler/video-room-moderation-cleanup.scheduler';
@@ -317,6 +318,7 @@ import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-
     VideoRoomAutoModerationService,
     VideoRoomModerationSocketListener,
     VideoRoomModerationApprovalListener,
+    VideoRoomPlatformBanListener,
     VideoRoomAutoModerationListener,
     VideoRoomModerationExpiryMonitor,
     // Producer for the CLEANUP queue (VR-16 minor fix): the queue +

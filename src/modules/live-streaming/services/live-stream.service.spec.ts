@@ -66,7 +66,11 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
       addBanMirror: jest.fn().mockResolvedValue(undefined),
       isActivelyBanned: jest.fn().mockResolvedValue(false),
     };
-    sockets = { disconnectUserInNamespace: jest.fn(), emitToNamespaceRoom: jest.fn() };
+    sockets = {
+      disconnectUserInNamespace: jest.fn(),
+      emitToNamespaceRoom: jest.fn(),
+      emitToUserInNamespace: jest.fn(),
+    };
     auditLog = { logAction: jest.fn().mockResolvedValue(undefined) };
     scopeService = {
       assertModeratorInScope: jest.fn().mockResolvedValue(undefined),
@@ -346,6 +350,27 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
         STREAM_ID,
         LIVE_STREAM_SOCKET_EVENTS.USER_WARNED,
         expect.anything(),
+      );
+    });
+
+    it('scope=PRIVATE (default) sends a targeted, anonymized socket event to just the target user', async () => {
+      await subject.moderateUser({
+        streamId: STREAM_ID,
+        moderatorId: MODERATOR_ID,
+        targetUserId: VIEWER_ID,
+        action: 'WARN',
+        reason: 'be nice',
+      });
+
+      expect(sockets.emitToUserInNamespace).toHaveBeenCalledWith(
+        LIVE_STREAM_NAMESPACE,
+        VIEWER_ID,
+        LIVE_STREAM_SOCKET_EVENTS.USER_WARNED,
+        expect.objectContaining({
+          streamId: STREAM_ID,
+          moderatorId: SYSTEM_MODERATOR_ID,
+          systemMessage: 'be nice',
+        }),
       );
     });
 

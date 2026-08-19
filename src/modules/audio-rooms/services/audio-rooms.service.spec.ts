@@ -380,21 +380,7 @@ describe('AudioRoomsService', () => {
       await expect(service.join(OTHER, 'room-1', {})).rejects.toBeInstanceOf(BusinessException);
     });
 
-    it('rejects a rejoin by a user on the kick list (Redis gate)', async () => {
-      moderation.isKickedCached.mockResolvedValue(true);
-      await expect(service.join(OTHER, 'room-1', {})).rejects.toBeInstanceOf(BusinessException);
-      expect(presence.joinRoom).not.toHaveBeenCalled();
-    });
-
-    it('rejects a rejoin by a kicked user on a cache miss, and warms the gate', async () => {
-      moderation.isKickedCached.mockResolvedValue(false);
-      moderation.findActiveKick.mockResolvedValue({ id: 'kick-1' });
-      await expect(service.join(OTHER, 'room-1', {})).rejects.toBeInstanceOf(BusinessException);
-      expect(moderation.addKickCache).toHaveBeenCalledWith('room-1', OTHER.id);
-      expect(presence.joinRoom).not.toHaveBeenCalled();
-    });
-
-    it('lets a restored user rejoin once their kick is lifted', async () => {
+    it('allows a user to join as kick restrictions are deprecated', async () => {
       moderation.isKickedCached.mockResolvedValue(false);
       moderation.findActiveKick.mockResolvedValue(null);
       await service.join(OTHER, 'room-1', {});

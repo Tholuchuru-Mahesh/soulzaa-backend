@@ -107,10 +107,11 @@ export class MobileWorkforceController {
   @Get('rooms/:roomId/details')
   roomDetails(
     @CurrentUser('id') userId: string,
+    @Param('roomId') paramRoomId?: string,
     @Query('roomId') queryRoomId?: string,
     @Query('id') queryId?: string,
   ) {
-    const roomId = queryRoomId || queryId || '';
+    const roomId = paramRoomId || queryRoomId || queryId || '';
     return this.service.roomDetails(userId, roomId);
   }
 
