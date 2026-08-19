@@ -116,33 +116,40 @@ export class ChatService implements IAudioRoomChatService {
 
   async sendMessage(actor: RoomActor, roomId: string, dto: SendMessageDto): Promise<RoomMessage> {
     const cfg = this.chatConfig();
-    await this.assertCanChat(roomId, actor.id);
-
+    const isStaff =
+      actor.roles?.some((r: any) => r === 'ADMIN' || r === 'SUPER_ADMIN') ||
+      (dto.type as any) === 'SYSTEM' ||
+      dto.type === ChatMessageType.SYSTEM;
+    
     const content = dto.content.trim();
     this.assertLength(content, dto.type, cfg);
 
-    // Anti-abuse gates (rate → slow-mode → duplicate).
-    if (await this.chatRepo.hitRateLimit(roomId, actor.id, cfg.rateMax, cfg.rateWindowSeconds)) {
-      throw new BusinessException(
-        ERROR_CODES.CHAT_RATE_LIMITED,
-        'You are sending messages too quickly.',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-    if (await this.chatRepo.isSlowModeActive(roomId, actor.id)) {
-      throw new BusinessException(
-        ERROR_CODES.CHAT_SLOW_MODE,
-        'Slow mode is enabled — please wait before sending again.',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-    const hash = this.hashContent(content);
-    if (await this.chatRepo.isDuplicate(roomId, actor.id, hash, cfg.dedupWindowSeconds)) {
-      throw new BusinessException(
-        ERROR_CODES.DUPLICATE_MESSAGE,
-        'Duplicate message ignored.',
-        HttpStatus.CONFLICT,
-      );
+    if (!isStaff) {
+      await this.assertCanChat(roomId, actor);
+
+      // Anti-abuse gates (rate → slow-mode → duplicate).
+      if (await this.chatRepo.hitRateLimit(roomId, actor.id, cfg.rateMax, cfg.rateWindowSeconds)) {
+        throw new BusinessException(
+          ERROR_CODES.CHAT_RATE_LIMITED,
+          'You are sending messages too quickly.',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      if (await this.chatRepo.isSlowModeActive(roomId, actor.id)) {
+        throw new BusinessException(
+          ERROR_CODES.CHAT_SLOW_MODE,
+          'Slow mode is enabled — please wait before sending again.',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      const hash = this.hashContent(content);
+      if (await this.chatRepo.isDuplicate(roomId, actor.id, hash, cfg.dedupWindowSeconds)) {
+        throw new BusinessException(
+          ERROR_CODES.DUPLICATE_MESSAGE,
+          'Duplicate message ignored.',
+          HttpStatus.CONFLICT,
+        );
+      }
     }
 
     // Blocked-word moderation (mask / reject / escalate).
@@ -151,10 +158,12 @@ export class ChatService implements IAudioRoomChatService {
     // Resolve @mentions to user ids (capped).
     const mentions = await this.resolveMentions(content, actor.id, cfg.maxMentions);
 
+    const messageType = isStaff || dto.type === ChatMessageType.SYSTEM ? ChatMessageType.SYSTEM : dto.type;
+
     const message = await this.chatRepo.createMessage({
       roomId,
       senderId: actor.id,
-      type: dto.type,
+      type: messageType,
       content: finalContent,
       gifUrl: dto.gifUrl ?? null,
       mentions,
@@ -588,7 +597,11 @@ export class ChatService implements IAudioRoomChatService {
   }
 
   /** Membership + live + chat-enabled + not-banned + not-muted gate. */
-  private async assertCanChat(roomId: string, userId: string): Promise<void> {
+  private async assertCanChat(roomId: string, actorOrUserId: RoomActor | string): Promise<void> {
+    const userId = typeof actorOrUserId === 'string' ? actorOrUserId : actorOrUserId.id;
+    const isStaff = typeof actorOrUserId !== 'string' && actorOrUserId.roles?.some((r: any) => r === 'ADMIN' || r === 'SUPER_ADMIN');
+    if (isStaff) return;
+
     await this.assertActiveMember(roomId, userId);
     if (!(await this.rooms.findLiveRoomRow(roomId))) {
       throw new BusinessException(
@@ -764,6 +777,7 @@ export class ChatService implements IAudioRoomChatService {
       id: message.id,
       roomId: message.roomId,
       senderId: message.senderId,
+      senderName: message.type === ChatMessageType.SYSTEM ? 'System' : undefined,
       type: message.type,
       content: message.content,
       gifUrl: message.gifUrl,

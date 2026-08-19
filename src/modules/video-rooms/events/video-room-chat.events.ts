@@ -32,6 +32,7 @@ export interface ChatMessagePayload {
   roomId: string;
   messageId: string;
   senderId: string;
+  senderName?: string;
   type: string;
   content: string;
   /**

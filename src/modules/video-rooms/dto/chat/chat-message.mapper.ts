@@ -30,6 +30,7 @@ export function toChatMessagePayload(message: VideoRoomMessage): ChatMessagePayl
     roomId: message.roomId,
     messageId: message.id,
     senderId: message.senderId,
+    senderName: message.type === 'SYSTEM' ? 'System' : undefined,
     type: message.type,
     content: message.content,
     status: deriveChatMessageStatus(message),

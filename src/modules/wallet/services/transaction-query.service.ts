@@ -3,6 +3,7 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LedgerQueryDto, TransactionQueryFilterDto, WalletQueryDto } from '../dto/wallet-query.dto';
 import { BalanceService } from './balance.service';
 import { WalletService } from './wallet.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 
 @Injectable()
 export class TransactionQueryService {
@@ -10,6 +11,7 @@ export class TransactionQueryService {
     private readonly prisma: PrismaService,
     private readonly walletService: WalletService,
     private readonly balanceService: BalanceService,
+    private readonly media: MediaUrlResolver,
   ) {}
 
   /**
@@ -218,52 +220,55 @@ export class TransactionQueryService {
       if (gt.receiverWalletTxnId) gtMap.set(gt.receiverWalletTxnId, gt);
     }
 
-    const items = txs.map((t) => {
-      const po = poMap.get(t.id);
-      const wr = wrMap.get(t.id);
-      const gt = gtMap.get(t.id);
+    const items = await Promise.all(
+      txs.map(async (t) => {
+        const po = poMap.get(t.id);
+        const wr = wrMap.get(t.id);
+        const gt = gtMap.get(t.id);
 
-      // Construct a rich payment/details block
-      let paymentDetails: any = null;
-      if (po) {
-        paymentDetails = {
-          priceAmount: po.priceAmount.toString(),
-          currency: po.currency,
-          provider: po.provider,
-          orderNumber: po.orderNumber,
-          packageName: po.package?.name,
-        };
-      } else if (wr) {
-        paymentDetails = {
-          payoutAmountCoins: wr.netPayoutAmountCoins.toString(),
-          payoutMethod: wr.payoutMethod,
-          payoutDetails: wr.payoutDetails,
-          status: wr.status,
-        };
-      } else if (gt) {
-        const gift = giftMap.get(gt.giftId);
-        const sender = userMap.get(gt.senderId);
-        const receiver = userMap.get(gt.receiverId);
-        paymentDetails = {
-          giftName: gift?.name || 'Gift',
-          quantity: gt.quantity,
-          senderName: sender?.username || 'user',
-          receiverName: receiver?.username || 'user',
-        };
-      }
+        // Construct a rich payment/details block
+        let paymentDetails: any = null;
+        if (po) {
+          paymentDetails = {
+            priceAmount: po.priceAmount.toString(),
+            currency: po.currency,
+            provider: po.provider,
+            orderNumber: po.orderNumber,
+            packageName: po.package?.name,
+          };
+        } else if (wr) {
+          paymentDetails = {
+            payoutAmountCoins: wr.netPayoutAmountCoins.toString(),
+            payoutMethod: wr.payoutMethod,
+            payoutDetails: wr.payoutDetails,
+            status: wr.status,
+          };
+        } else if (gt) {
+          const gift = giftMap.get(gt.giftId);
+          const sender = userMap.get(gt.senderId);
+          const receiver = userMap.get(gt.receiverId);
+          paymentDetails = {
+            giftName: gift?.displayName || gift?.name || 'Gift',
+            giftThumbnailUrl: await this.media.resolve(gift?.thumbnailUrl) || null,
+            quantity: gt.quantity,
+            senderName: sender?.username || 'user',
+            receiverName: receiver?.username || 'user',
+          };
+        }
 
-      return {
-        ...t,
-        amount: t.amount.toString(),
-        paymentDetails,
-        ledgerEntries: t.ledgerEntries.map((e) => ({
-          ...e,
-          amount: e.amount.toString(),
-          balanceBefore: e.balanceBefore.toString(),
-          balanceAfter: e.balanceAfter.toString(),
-        })),
-      };
-    });
+        return {
+          ...t,
+          amount: t.amount.toString(),
+          paymentDetails,
+          ledgerEntries: t.ledgerEntries.map((e) => ({
+            ...e,
+            amount: e.amount.toString(),
+            balanceBefore: e.balanceBefore.toString(),
+            balanceAfter: e.balanceAfter.toString(),
+          })),
+        };
+      })
+    );
 
     return {
       total,

@@ -14,6 +14,7 @@ export interface SocialUserCard {
   username: string;
   fullName: string | null;
   avatarUrl: string | null;
+  equippedFrameUrl?: string | null;
   verified: boolean;
   level: number;
   vipLevel: number;

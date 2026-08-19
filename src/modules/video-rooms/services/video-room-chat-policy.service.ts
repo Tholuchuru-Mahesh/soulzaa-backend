@@ -67,24 +67,31 @@ export class VideoRoomChatPolicyService {
     input: SendPolicyInput,
   ): Promise<SendPolicyResult> {
     const room = await this.loadLiveRoom(roomId);
-    await this.assertActiveMember(roomId, actor.id);
+    const isStaff = actor.roles?.some((r: any) => r === 'ADMIN' || r === 'SUPER_ADMIN');
 
-    const settings = await this.rooms.requireSettings(roomId);
-    if (!settings.allowChat) {
-      throw new BusinessException(
-        ERROR_CODES.CHAT_DISABLED,
-        'Chat is disabled in this room.',
-        HttpStatus.FORBIDDEN,
-      );
+    if (!isStaff) {
+      await this.assertActiveMember(roomId, actor.id);
+
+      const settings = await this.rooms.requireSettings(roomId);
+      if (!settings.allowChat) {
+        throw new BusinessException(
+          ERROR_CODES.CHAT_DISABLED,
+          'Chat is disabled in this room.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      await this.assertNotBlockedOrMuted(roomId, actor.id);
+
+      const role = await this.permissions.resolveEffectiveRole(room, actor.id);
+      this.assertContent(input, settings);
+      this.assertMode(actor, input.type, role, settings?.chatMode ?? VideoRoomChatMode.NORMAL);
+
+      return { room, settings: settings as VideoRoomSettings, role };
     }
 
-    await this.assertNotBlockedOrMuted(roomId, actor.id);
-
-    const role = await this.permissions.resolveEffectiveRole(room, actor.id);
-    this.assertContent(input, settings);
-    this.assertMode(actor, input.type, role, settings?.chatMode ?? VideoRoomChatMode.NORMAL);
-
-    return { room, settings: settings as VideoRoomSettings, role };
+    const settings = await this.rooms.requireSettings(roomId);
+    return { room, settings: settings as VideoRoomSettings, role: VideoRoomMemberRole.HOST };
   }
 
   /** Edit: author only, inside the window, on a live text-ish message. */

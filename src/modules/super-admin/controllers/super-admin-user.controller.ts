@@ -34,6 +34,7 @@ import {
 } from '../dto/role-assignment.dto';
 import { UserSearchFilterDto } from '../dto/user-query.dto';
 import { UserManagementService } from '../services/user-management.service';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @ApiTags('Super Admin - User & Role Management')
 @ApiBearerAuth()
@@ -44,6 +45,7 @@ import { UserManagementService } from '../services/user-management.service';
 export class SuperAdminUserController {
   constructor(
     private readonly userManagementService: UserManagementService,
+    private readonly prisma: PrismaService,
     @Inject(ROLE_SOURCE) private readonly roleSource: IRoleSource,
   ) {}
 
@@ -269,5 +271,157 @@ export class SuperAdminUserController {
   @Delete(':id/creator')
   async revokeCreator(@Param('id') userId: string, @CurrentUser('id') actorId: string) {
     return this.userManagementService.revokeCreator(userId, actorId);
+  }
+
+  @ApiOperation({ summary: 'Get user security details (login history, trusted devices, active sessions)' })
+  @ApiResponse({ status: 200, description: 'User security details' })
+  @RequirePermissions('user.profile.view')
+  @Get(':id/security')
+  async getUserSecurityDetails(@Param('id') id: string) {
+    const [loginHistory, initialDevices, activeSessions] = await Promise.all([
+      this.prisma.sessionHistory.findMany({
+        where: { userId: id },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      this.prisma.userDevice.findMany({
+        where: { userId: id, deletedAt: null },
+        orderBy: { lastActiveAt: 'desc' },
+      }),
+      this.prisma.userSession.findMany({
+        where: { userId: id, revokedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { lastActivityAt: 'desc' },
+      }),
+    ]);
+
+    const trustedDevices = initialDevices;
+
+    const formattedLoginHistory = loginHistory.map((lh: any) => {
+      const isFailed = lh.event === 'FAILED_LOGIN';
+      let loginType = 'Email & password';
+      
+      const meta = lh.metadata as any;
+      if (isFailed) {
+        loginType = 'Failed login';
+      } else if (meta?.provider) {
+        if (meta.provider === 'GOOGLE') loginType = 'Google Login';
+        else if (meta.provider === 'APPLE') loginType = 'Apple Login';
+        else if (meta.provider === 'MOBILE_OTP') loginType = 'OTP Login';
+      } else if (meta?.method) {
+        if (meta.method === 'google') loginType = 'Google Login';
+        else if (meta.method === 'apple') loginType = 'Apple Login';
+        else if (meta.method === 'otp' || meta.method === 'mobile') loginType = 'OTP Login';
+      }
+
+      return {
+        id: lh.id,
+        createdAt: lh.createdAt,
+        loginType,
+        ipAddress: lh.ip || '—',
+        location: lh.country ? `${lh.country}` : 'Unknown',
+        device: lh.deviceType ? `${lh.deviceType} (${lh.os || 'Unknown'})` : lh.userAgent || '—',
+        status: isFailed ? 'Failed' : 'Success',
+      };
+    });
+
+    const formattedTrustedDevices = trustedDevices.map((d: any) => ({
+      id: d.id,
+      device: d.deviceName || d.deviceType || 'Unknown Device',
+      firstTrustedOn: d.trustedAt || d.createdAt,
+      lastUsed: d.lastActiveAt || d.updatedAt,
+      status: d.trusted ? 'Trusted' : 'Untrusted',
+    }));
+
+    const deviceIds = activeSessions.map((s: any) => s.deviceId).filter(Boolean) as string[];
+    const devices = deviceIds.length > 0 ? await this.prisma.userDevice.findMany({
+      where: { id: { in: deviceIds } },
+    }) : [];
+    const deviceMap = new Map<string, any>(devices.map((d: any) => [d.id, d]));
+
+    const formattedActiveSessions = activeSessions.map((s: any) => {
+      const dev = s.deviceId ? deviceMap.get(s.deviceId) : null;
+      return {
+        id: s.id,
+        device: dev?.deviceName || dev?.deviceType || s.userAgent || 'Unknown Device',
+        ipAddress: s.createdByIp || dev?.ipAddress || '—',
+        location: dev?.country || 'Unknown',
+      };
+    });
+
+    return {
+      loginHistory: formattedLoginHistory,
+      trustedDevices: formattedTrustedDevices,
+      activeSessions: formattedActiveSessions,
+    };
+  }
+
+  @ApiOperation({ summary: 'Revoke/terminate a specific active user session' })
+  @ApiResponse({ status: 200, description: 'Session terminated' })
+  @RequirePermissions('user.session.force_logout')
+  @AuditLogAction('SESSION_REVOKED', 'user_session')
+  @Delete(':id/sessions/:sessionId')
+  async terminateSession(
+    @Param('id') userId: string,
+    @Param('sessionId') sessionId: string,
+  ) {
+    await this.prisma.userSession.updateMany({
+      where: { id: sessionId, userId },
+      data: { revokedAt: new Date() },
+    });
+    // Record audit event in SessionHistory
+    await this.prisma.sessionHistory.create({
+      data: {
+        userId,
+        sessionId,
+        event: 'REVOKED',
+        metadata: { revokedBy: 'SUPER_ADMIN' },
+      },
+    });
+    return { success: true };
+  }
+
+  @ApiOperation({ summary: 'Remove/untrust a trusted device' })
+  @ApiResponse({ status: 200, description: 'Device untrusted' })
+  @RequirePermissions('user.status.lock')
+  @Delete(':id/devices/:deviceId')
+  async untrustDevice(
+    @Param('id') userId: string,
+    @Param('deviceId') deviceId: string,
+  ) {
+    await this.prisma.userDevice.updateMany({
+      where: { id: deviceId, userId },
+      data: { trusted: false, trustedAt: null, deletedAt: new Date() },
+    });
+    await this.prisma.trustedDevice.deleteMany({
+      where: { deviceId, userId },
+    });
+    return { success: true };
+  }
+
+  @ApiOperation({ summary: 'Trust a user device' })
+  @ApiResponse({ status: 200, description: 'Device trusted' })
+  @RequirePermissions('user.status.lock')
+  @Put(':id/devices/:deviceId/trust')
+  async trustDevice(
+    @Param('id') userId: string,
+    @Param('deviceId') deviceId: string,
+  ) {
+    await this.prisma.userDevice.updateMany({
+      where: { id: deviceId, userId },
+      data: { trusted: true, trustedAt: new Date() },
+    });
+    const existing = await this.prisma.trustedDevice.findFirst({
+      where: { deviceId, userId },
+    });
+    if (!existing) {
+      await this.prisma.trustedDevice.create({
+        data: {
+          userId,
+          deviceId,
+          trustedAt: new Date(),
+        },
+      });
+    }
+    return { success: true };
   }
 }

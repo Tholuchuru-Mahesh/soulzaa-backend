@@ -66,11 +66,26 @@ export class VideoRoomsAdminRepository {
       this.prisma.giftTransaction.count({ where }),
     ]);
 
-    const items = rows.map((r) => ({
-      ...r,
-      totalCoinValue: r.totalCoinValue.toString(),
-      creatorEarnings: r.creatorEarnings.toString(),
-    }));
+    const giftIds = Array.from(new Set(rows.map((r) => r.giftId)));
+    const giftsMap = new Map<string, any>();
+    if (giftIds.length > 0) {
+      const giftRows = await this.prisma.gift.findMany({
+        where: { id: { in: giftIds } },
+        select: { id: true, name: true, thumbnailUrl: true, displayName: true },
+      });
+      giftRows.forEach((g) => giftsMap.set(g.id, g));
+    }
+
+    const items = rows.map((r) => {
+      const giftInfo = giftsMap.get(r.giftId);
+      return {
+        ...r,
+        totalCoinValue: r.totalCoinValue.toString(),
+        creatorEarnings: r.creatorEarnings.toString(),
+        giftName: giftInfo?.displayName || giftInfo?.name || 'Gift',
+        giftThumbnailUrl: giftInfo?.thumbnailUrl || null,
+      };
+    });
 
     return { items, total };
   }

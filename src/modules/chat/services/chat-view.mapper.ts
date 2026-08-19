@@ -257,6 +257,7 @@ export class ChatViewMapper {
           username: c.username,
           fullName: c.fullName,
           avatarUrl: c.avatarUrl,
+          equippedFrameUrl: c.equippedFrameUrl ?? null,
           verified: c.verified,
           level: c.level,
           vipLevel: c.vipLevel,
