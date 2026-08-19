@@ -138,4 +138,106 @@ export class MobileWorkforceController {
   completeTask(@CurrentUser('id') userId: string, @Param('taskId') taskId: string) {
     return this.service.completeTask(userId, taskId);
   }
+
+  @ApiOperation({ summary: 'Detailed Agency information for Official Portal' })
+  @ApiResponse({ status: 200, description: 'Agency profile, metrics, contact, and recent activities' })
+  @Get('agencies/:id')
+  agencyDetails(@CurrentUser('id') userId: string, @Param('id') agencyId: string) {
+    return this.service.agencyDetails(userId, agencyId);
+  }
+
+  @ApiOperation({ summary: 'List of complaints for Agency' })
+  @ApiResponse({ status: 200, description: 'Complaints list and breakdown metrics' })
+  @Get('agencies/:id/complaints')
+  agencyComplaints(@CurrentUser('id') userId: string, @Param('id') agencyId: string) {
+    return this.service.agencyComplaints(userId, agencyId);
+  }
+
+  @ApiOperation({ summary: 'Resolve or Escalate an Agency Complaint' })
+  @ApiResponse({ status: 200, description: 'Complaint actioned' })
+  @Post('agencies/:id/complaints/:complaintId/action')
+  actionAgencyComplaint(
+    @CurrentUser('id') userId: string,
+    @Param('id') agencyId: string,
+    @Param('complaintId') complaintId: string,
+    @Body() body: { action: 'RESOLVE' | 'ESCALATE'; note?: string },
+  ) {
+    return this.service.actionAgencyComplaint(userId, agencyId, complaintId, body);
+  }
+
+  @ApiOperation({ summary: 'List of creators and metrics for Official Portal' })
+  @ApiResponse({ status: 200, description: 'Creators list and metrics' })
+  @Get('creators')
+  creatorsList(
+    @CurrentUser('id') userId: string,
+    @Query('search') search?: string,
+    @Query('category') category?: string,
+  ) {
+    return this.service.creatorsList(userId, { search, category });
+  }
+
+  @ApiOperation({ summary: 'Detailed Creator information for Official Portal' })
+  @ApiResponse({ status: 200, description: 'Creator profile, overview metrics, and recent activities' })
+  @Get('creators/:id')
+  creatorDetails(
+    @CurrentUser('id') userId: string,
+    @Param('id') creatorId: string,
+  ) {
+    return this.service.creatorDetails(userId, creatorId);
+  }
+
+  @ApiOperation({ summary: 'List of recommendations and metrics for Official Portal' })
+  @ApiResponse({ status: 200, description: 'Recommendations list and metrics' })
+  @Get('recommendations')
+  recommendationsList(
+    @CurrentUser('id') userId: string,
+    @Query('search') search?: string,
+    @Query('role') role?: string,
+  ) {
+    return this.service.recommendationsList(userId, { search, role });
+  }
+
+  @ApiOperation({ summary: 'Search candidate users for recommendation' })
+  @ApiResponse({ status: 200, description: 'Candidate users matching search query' })
+  @Get('recommendations/candidates/search')
+  searchCandidates(
+    @CurrentUser('id') userId: string,
+    @Query('query') query?: string,
+    @Query('q') q?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.service.searchCandidates(userId, query || q || search || '');
+  }
+
+
+  @ApiOperation({ summary: 'Detailed recommendation info for Official Portal' })
+  @ApiResponse({ status: 200, description: 'Candidate info, verification status, and history' })
+  @Get('recommendations/:id')
+  recommendationDetails(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.service.recommendationDetails(userId, id);
+  }
+
+  @ApiOperation({ summary: 'Submit a new recommendation for Official Portal' })
+  @ApiResponse({ status: 201, description: 'Recommendation submitted' })
+  @Post('recommendations')
+  createRecommendation(
+    @CurrentUser('id') userId: string,
+    @Body()
+    body: {
+      candidateUserId: string;
+      roleType: 'MODERATOR' | 'BUSINESS_DEVELOPMENT' | 'CREATOR' | 'HOST';
+      reason: string;
+      region?: string;
+    },
+  ) {
+    return this.service.createRecommendation(userId, body);
+  }
 }
+
+
+
+
+

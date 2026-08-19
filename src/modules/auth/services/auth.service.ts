@@ -102,6 +102,8 @@ export class AuthService implements IAuthService {
       gender: input.gender ?? null,
       dateOfBirth: new Date(input.dateOfBirth),
       country: input.country,
+      state: input.state ?? null,
+      city: input.city ?? null,
       preferredLanguage: input.preferredLanguage ?? null,
       isGuest: false,
     });
@@ -357,10 +359,12 @@ export class AuthService implements IAuthService {
         null,
         `User_${phoneNumber.replace(/\D/g, '').slice(-4)}`,
       );
+      const defaultCountry = phoneNumber.startsWith('+91') ? 'India' : null;
       user = await this.users.createIdentity({
         username,
         mobile: phoneNumber,
         fullName: `User ${phoneNumber.slice(-4)}`,
+        country: defaultCountry,
         isGuest: false,
       });
       await this.bus.publish(

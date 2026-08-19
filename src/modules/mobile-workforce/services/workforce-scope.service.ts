@@ -91,9 +91,11 @@ export class WorkforceScopeService {
         push({ countryId: scope.countryId });
       } else if (scope.scopeType === 'STATE' && scope.stateId) {
         push({ stateId: scope.stateId });
-        // Migration bridge — see the class comment.
-        if (this.countryBridgeEnabled && scope.countryId) {
-          push({ stateId: null, countryId: scope.countryId });
+      } else if (scope.scopeType === 'REGION') {
+        if (scope.stateId) {
+          push({ stateId: scope.stateId });
+        } else if (scope.countryId) {
+          push({ countryId: scope.countryId });
         }
       }
     }

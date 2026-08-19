@@ -59,6 +59,18 @@ export class RegisterDto {
   @Length(2, 64)
   country!: string;
 
+  @ApiPropertyOptional({ example: 'Karnataka' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  state?: string;
+
+  @ApiPropertyOptional({ example: 'Bengaluru' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 100)
+  city?: string;
+
   @ApiPropertyOptional({ example: 'en' })
   @IsOptional()
   @IsString()

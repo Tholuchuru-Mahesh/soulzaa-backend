@@ -9,7 +9,10 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as fs from 'fs';
+import * as path from 'path';
 import { MonitoringMetrics } from '../observability/monitoring.metrics';
+
 
 export interface PresignedUpload {
   key: string;
@@ -67,12 +70,56 @@ export class S3Service {
       credentials,
     };
     this.client = new S3Client({ ...common, endpoint: cfg.endpoint || undefined });
-    // Sign presigned URLs with the public host when one is configured, so the
-    // client can actually reach the object (server↔MinIO stays on [client]).
     this.presignClient = cfg.publicEndpoint
       ? new S3Client({ ...common, endpoint: cfg.publicEndpoint })
       : this.client;
   }
+
+  private getPresignClient(): S3Client {
+    let publicEndpoint =
+      process.env.S3_PUBLIC_ENDPOINT ||
+      this.config.get('storage', { infer: true })?.publicEndpoint;
+
+
+    try {
+      const candidates = [
+        path.resolve(process.cwd(), '.env'),
+        path.resolve(process.cwd(), '..', '.env'),
+        path.resolve(__dirname, '../../../.env'),
+        path.resolve(__dirname, '../../../../.env'),
+      ];
+      for (const envPath of candidates) {
+        if (fs.existsSync(envPath)) {
+          const envContent = fs.readFileSync(envPath, 'utf8');
+          const match = envContent.match(/S3_PUBLIC_ENDPOINT=([^\r\n]+)/);
+          if (match && match[1]) {
+            publicEndpoint = match[1].trim();
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (publicEndpoint) {
+      const cfg = this.config.get('storage', { infer: true });
+      const forcePathStyle = String(cfg?.forcePathStyle ?? true) === 'true';
+      const credentials =
+        cfg?.accessKeyId && cfg?.secretAccessKey
+          ? { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey }
+          : undefined;
+      return new S3Client({
+        region: cfg?.region || 'us-east-1',
+        forcePathStyle,
+        requestChecksumCalculation: 'WHEN_REQUIRED' as const,
+        responseChecksumValidation: 'WHEN_REQUIRED' as const,
+        credentials,
+        endpoint: publicEndpoint,
+      });
+    }
+    return this.client;
+  }
+
+
 
   async getPresignedUploadUrl(key: string, contentType?: string): Promise<PresignedUpload> {
     const command = new PutObjectCommand({
@@ -80,7 +127,8 @@ export class S3Service {
       Key: key,
       ContentType: contentType,
     });
-    const uploadUrl = await getSignedUrl(this.presignClient, command, {
+    const client = this.getPresignClient();
+    const uploadUrl = await getSignedUrl(client, command, {
       expiresIn: this.presignExpiry,
     });
     return { key, uploadUrl, expiresInSeconds: this.presignExpiry };
@@ -88,8 +136,10 @@ export class S3Service {
 
   async getPresignedDownloadUrl(key: string): Promise<string> {
     const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
-    return getSignedUrl(this.presignClient, command, { expiresIn: this.presignExpiry });
+    const client = this.getPresignClient();
+    return getSignedUrl(client, command, { expiresIn: this.presignExpiry });
   }
+
 
   async deleteObject(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));

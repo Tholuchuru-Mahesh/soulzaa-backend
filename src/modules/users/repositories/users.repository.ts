@@ -66,10 +66,65 @@ export class UsersRepository {
    * gifting, families, VIP, withdrawals, role requests. Writing it here, in the
    * same transaction, is what makes that state unrepresentable.
    */
-  createWithProfile(data: Prisma.UserCreateInput): Promise<User> {
+  async createWithProfile(
+    data: Prisma.UserCreateInput,
+    extra?: { state?: string | null; city?: string | null },
+  ): Promise<User> {
+    if (data.country && !data.locationCountry) {
+      const c = await this.prisma.country.findFirst({
+        where: {
+          OR: [
+            { name: { contains: data.country as string, mode: 'insensitive' } },
+            { code: { equals: data.country as string, mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (c) data.locationCountry = { connect: { id: c.id } };
+    }
+
+    if (extra?.state && !data.locationState) {
+      const s = await this.prisma.state.findFirst({
+        where: {
+          OR: [
+            { name: { contains: extra.state, mode: 'insensitive' } },
+            { code: { equals: extra.state, mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (s) {
+        data.locationState = { connect: { id: s.id } };
+        if (!data.locationCountry && s.countryId) {
+          data.locationCountry = { connect: { id: s.countryId } };
+        }
+      }
+    }
+
+    if (extra?.city && !data.locationRegion) {
+      const r = await this.prisma.region.findFirst({
+        where: {
+          OR: [
+            { name: { contains: extra.city, mode: 'insensitive' } },
+            { code: { equals: extra.city, mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (r) {
+        data.locationRegion = { connect: { id: r.id } };
+        if (!data.locationState && r.stateId) {
+          data.locationState = { connect: { id: r.stateId } };
+        }
+      }
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({ data });
-      await tx.userProfile.create({ data: { userId: user.id } });
+      await tx.userProfile.create({
+        data: {
+          userId: user.id,
+          state: extra?.state ?? null,
+          city: extra?.city ?? null,
+        },
+      });
       await tx.userStatistics.create({ data: { userId: user.id } });
       await tx.userVerification.create({ data: { userId: user.id } });
 

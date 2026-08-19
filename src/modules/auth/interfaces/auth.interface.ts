@@ -61,6 +61,8 @@ export interface RegisterCommand {
   gender?: 'MALE' | 'FEMALE' | 'OTHER';
   dateOfBirth: string; // ISO date
   country: string;
+  state?: string;
+  city?: string;
   preferredLanguage?: string;
 }
 

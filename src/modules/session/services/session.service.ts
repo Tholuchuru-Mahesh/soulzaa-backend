@@ -152,6 +152,27 @@ export class SessionService {
 
     // Reuse detection: a revoked/rotated session or hash mismatch = token theft.
     if (session.revokedAt || session.refreshTokenHash !== sha256(presentedToken)) {
+      // Grace period for concurrent refreshes (e.g. parallel requests within 30s of rotation)
+      if (
+        session.revokedAt &&
+        session.replacedBySessionId &&
+        session.refreshTokenHash === sha256(presentedToken) &&
+        Date.now() - session.revokedAt.getTime() < 30000
+      ) {
+        const replacement = await this.repo.getSession(session.replacedBySessionId);
+        if (replacement && !replacement.revokedAt && replacement.expiresAt.getTime() > Date.now()) {
+          const tv = await this.currentEpoch(userId);
+          const pair = await this.tokens.signPair({
+            sub: claims.userId,
+            roles: claims.roles,
+            isGuest: claims.isGuest,
+            sid: replacement.id,
+            tv,
+          });
+          return { ...pair, tokenType: 'Bearer' };
+        }
+      }
+
       await this.revokeAllForUser(userId, 'reuse', ctx);
       throw new BusinessException(
         ERROR_CODES.TOKEN_REUSE_DETECTED,
@@ -159,6 +180,7 @@ export class SessionService {
         HttpStatus.UNAUTHORIZED,
       );
     }
+
 
     await this.assertNotHijacked(session, ctx);
 

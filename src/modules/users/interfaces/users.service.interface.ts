@@ -38,6 +38,11 @@ export interface CreateIdentityInput {
   gender?: Gender | null;
   dateOfBirth?: Date | null;
   country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  countryId?: string | null;
+  stateId?: string | null;
+  regionId?: string | null;
   preferredLanguage?: string | null;
   roles?: PlatformRole[];
   isGuest?: boolean;
@@ -52,6 +57,11 @@ export interface PromoteGuestInput {
   gender?: Gender | null;
   dateOfBirth?: Date | null;
   country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  countryId?: string | null;
+  stateId?: string | null;
+  regionId?: string | null;
   preferredLanguage?: string | null;
 }
 

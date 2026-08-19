@@ -66,18 +66,27 @@ export class UsersService implements IUsersService {
     try {
       // Creates the identity row + default profile/statistics/verification rows
       // atomically (all users-module-owned tables).
-      const user = await this.repo.createWithProfile({
-        username: input.username,
-        email: input.email ? input.email.toLowerCase() : null,
-        mobile: input.mobile ?? null,
-        fullName: input.fullName ?? null,
-        gender: input.gender ?? null,
-        dateOfBirth: input.dateOfBirth ?? null,
-        country: input.country ?? null,
-        preferredLanguage: input.preferredLanguage ?? null,
-        roles: input.roles ?? ['USER'],
-        isGuest: input.isGuest ?? false,
-      });
+      const user = await this.repo.createWithProfile(
+        {
+          username: input.username,
+          email: input.email ? input.email.toLowerCase() : null,
+          mobile: input.mobile ?? null,
+          fullName: input.fullName ?? null,
+          gender: input.gender ?? null,
+          dateOfBirth: input.dateOfBirth ?? null,
+          country: input.country ?? null,
+          ...(input.countryId && { locationCountry: { connect: { id: input.countryId } } }),
+          ...(input.stateId && { locationState: { connect: { id: input.stateId } } }),
+          ...(input.regionId && { locationRegion: { connect: { id: input.regionId } } }),
+          preferredLanguage: input.preferredLanguage ?? null,
+          roles: input.roles ?? ['USER'],
+          isGuest: input.isGuest ?? false,
+        },
+        {
+          state: input.state ?? null,
+          city: input.city ?? null,
+        },
+      );
       return this.toIdentity(user)!;
     } catch (err) {
       throw this.mapUniqueViolation(err);
