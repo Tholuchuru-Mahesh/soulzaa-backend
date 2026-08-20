@@ -74,9 +74,31 @@ describe('FamiliesService', () => {
       listRequests: jest.fn().mockResolvedValue([[], 0]),
       logAction: jest.fn().mockResolvedValue(undefined),
       listLogs: jest.fn().mockResolvedValue([[], 0]),
+      findBan: jest.fn().mockResolvedValue(null),
+      createBan: jest.fn().mockResolvedValue({ id: 'ban-1' }),
+      deleteBan: jest.fn().mockResolvedValue(undefined),
+      getUserSummary: jest.fn().mockResolvedValue({ username: 'user_1', fullName: 'User One', avatarKey: null }),
+    };
+    const mockConfigService = {
+      getFamilyConfig: jest.fn().mockResolvedValue({
+        maxMembers: 100,
+        creationCost: 0,
+        defaultRole: 'MEMBER',
+        autoApprove: false,
+        joinCooldownSeconds: 0,
+        renameCost: 0,
+      }),
+    };
+    const mockPrisma = {
+      familyHistory: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
-    service = new FamiliesService(repo as unknown as FamiliesRepository, bus);
+    service = new FamiliesService(
+      repo as unknown as FamiliesRepository,
+      bus,
+      mockConfigService as any,
+      mockPrisma as any,
+    );
   });
 
   describe('create', () => {

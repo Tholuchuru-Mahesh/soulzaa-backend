@@ -264,19 +264,73 @@ describe('Phase 17: Enterprise Tasks & Missions Engine', () => {
         status: 'ACTIVE',
         resetPolicy: 'DAILY',
         rewardDefinition: { type: 'EXP', amount: 100 },
-        progressRules: { eventCodes: ['GIFT_SENT'], operator: 'ANY' },
+        progressRules: { eventCodes: ['gift.sent'], operator: 'ANY' },
       };
       mockPrismaService.taskDefinition.findMany.mockResolvedValue([taskDef]);
       mockPrismaService.taskProgress.findUnique.mockResolvedValue(null);
 
       const summary = await evaluationService.evaluateEvent({
         userId: 'user-1',
-        eventCode: 'GIFT_SENT',
+        eventCode: 'gift.sent',
       });
 
       expect(summary.evaluated).toBe(1);
       expect(summary.progressed).toBe(1);
       expect(summary.completed).toBe(1);
+    });
+
+    it('should dynamically accumulate durationMinutes for room.duration_updated', async () => {
+      const durationTask = {
+        id: 'task-stay-20',
+        requiredProgress: 20,
+        status: 'ACTIVE',
+        resetPolicy: 'DAILY',
+        progressRules: { eventCodes: ['room.duration_updated'], incrementField: 'durationMinutes' },
+      };
+      mockPrismaService.taskDefinition.findMany.mockResolvedValue([durationTask]);
+      mockPrismaService.taskProgress.findUnique.mockResolvedValue(null);
+
+      const spyIncrement = jest.spyOn(progressService, 'incrementProgress');
+
+      await evaluationService.evaluateEvent({
+        userId: 'user-1',
+        eventCode: 'room.duration_updated',
+        metadata: { durationMinutes: 15 },
+      });
+
+      expect(spyIncrement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-stay-20',
+          incrementBy: 15,
+        }),
+      );
+    });
+
+    it('should dynamically accumulate coin recharge amount for wallet.credited', async () => {
+      const rechargeTask = {
+        id: 'task-recharge-2000',
+        requiredProgress: 2000,
+        status: 'ACTIVE',
+        resetPolicy: 'DAILY',
+        progressRules: { eventCodes: ['wallet.credited'], incrementField: 'amount' },
+      };
+      mockPrismaService.taskDefinition.findMany.mockResolvedValue([rechargeTask]);
+      mockPrismaService.taskProgress.findUnique.mockResolvedValue(null);
+
+      const spyIncrement = jest.spyOn(progressService, 'incrementProgress');
+
+      await evaluationService.evaluateEvent({
+        userId: 'user-1',
+        eventCode: 'wallet.credited',
+        metadata: { amount: 500, currency: 'GAME' },
+      });
+
+      expect(spyIncrement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-recharge-2000',
+          incrementBy: 500,
+        }),
+      );
     });
   });
 

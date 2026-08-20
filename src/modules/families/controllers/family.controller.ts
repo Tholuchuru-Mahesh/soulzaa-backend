@@ -24,6 +24,7 @@ import {
 } from 'src/modules/authorization/decorators/authorization.decorators';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { AuditLogInterceptor } from 'src/modules/authorization/interceptors/audit-log.interceptor';
+import { SearchFamiliesQueryDto } from '../dto/families.dto';
 import {
   FamilyAuditService,
   FamilyConfigurationService,
@@ -40,7 +41,7 @@ import {
 @ApiTags('Enterprise Family System')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RbacPermissionsGuard)
-@Controller('families')
+@Controller('admin/families')
 export class FamilyController {
   constructor(
     private readonly familyService: FamilyService,
@@ -54,6 +55,28 @@ export class FamilyController {
     private readonly auditService: FamilyAuditService,
     private readonly configService: FamilyConfigurationService,
   ) {}
+
+  @Get('configuration')
+  @RequirePermissions('family.role.manage')
+  @ApiOperation({ summary: 'Active family configuration parameters' })
+  getConfiguration() {
+    return this.configService.getFamilyConfig();
+  }
+
+  @Put('configuration')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('family.role.manage')
+  @ApiOperation({ summary: 'Update family configuration parameters' })
+  updateConfiguration(@Body() body: { key: string; value: any }) {
+    return this.configService.updateConfigParameter(body.key, body.value);
+  }
+
+  @Get('audit')
+  @RequirePermissions('family.audit.view')
+  @ApiOperation({ summary: 'Family operational audit event logs' })
+  getAudit(@Query() q: PaginationQueryDto) {
+    return this.auditService.getAuditLogs(undefined, q.page, q.limit);
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -278,8 +301,9 @@ export class FamilyController {
   @Get('search')
   @RequirePermissions('family.view')
   @ApiOperation({ summary: 'Search active families by name or tag' })
-  searchFamilies(@Query('q') query: string, @Query() q: PaginationQueryDto) {
-    return this.queryService.searchFamilies(query || '', q.page, q.limit);
+  searchFamilies(@Query() queryDto: SearchFamiliesQueryDto) {
+    const term = queryDto.q || queryDto.search || '';
+    return this.queryService.searchFamilies(term, queryDto.page, queryDto.limit);
   }
 
   @Get('top')
@@ -308,19 +332,5 @@ export class FamilyController {
   @ApiOperation({ summary: 'Family activity history' })
   getHistory(@Param('id', ParseUuidPipe) familyId: string, @Query() q: PaginationQueryDto) {
     return this.historyService.getFamilyHistory(familyId, { page: q.page, limit: q.limit });
-  }
-
-  @Get('audit')
-  @RequirePermissions('family.audit.view')
-  @ApiOperation({ summary: 'Family operational audit event logs' })
-  getAudit(@Query() q: PaginationQueryDto) {
-    return this.auditService.getAuditLogs(undefined, q.page, q.limit);
-  }
-
-  @Get('configuration')
-  @RequirePermissions('family.role.manage')
-  @ApiOperation({ summary: 'Active family configuration parameters' })
-  getConfiguration() {
-    return this.configService.getFamilyConfig();
   }
 }

@@ -4,6 +4,11 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { AuditLogService } from 'src/modules/authorization/services/audit-log.service';
 import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import { S3Service } from 'src/infra/storage/s3.service';
+import {
+  EvidenceRecordingProcessorService,
+  type CaptureReportEvidenceInput,
+} from './evidence-recording-processor.service';
 
 export interface BeginRecordingInput {
   moderatorId: string;
@@ -39,7 +44,172 @@ export class InvestigationRecordingService {
     private readonly prisma: PrismaService,
     private readonly scopeService: WorkforceScopeService,
     @Optional() private readonly auditLog?: AuditLogService,
+    @Optional() private readonly processor?: EvidenceRecordingProcessorService,
+    @Optional() private readonly s3?: S3Service,
   ) {}
+
+  /**
+   * Automatically captures a 4-minute evidence recording window (2m pre + 2m post)
+   * when a user submits a report in an audio/video room or live stream.
+   */
+  async captureReportEvidence(input: CaptureReportEvidenceInput): Promise<string> {
+    if (this.processor) {
+      return this.processor.captureReportEvidence(input);
+    }
+
+    // No processor injected (e.g. a test module wired without it) — open the
+    // recording as ACTIVE with no audio yet, rather than claiming a fake
+    // COMPLETED recording that has no real content behind it.
+    const evidenceId = `EVD-${randomUUID().toUpperCase().replace(/-/g, '').slice(0, 16)}`;
+    await this.prisma.investigationRecording.create({
+      data: {
+        evidenceId,
+        moderatorId: '00000000-0000-0000-0000-000000000000',
+        targetUserId: input.targetUserId,
+        roomId: input.roomType === 'stream' ? null : input.roomId,
+        liveStreamId: input.roomType === 'stream' ? input.roomId : null,
+        violationReason: input.violationReason,
+        status: 'ACTIVE',
+      },
+    });
+    return evidenceId;
+  }
+
+  /**
+   * Status query for evidence recording (PROCESSING | READY | ERROR).
+   */
+  async getEvidenceStatus(evidenceId: string) {
+    if (this.processor) {
+      return this.processor.getEvidenceStatus(evidenceId);
+    }
+    const rec = await this.prisma.investigationRecording.findUnique({ where: { evidenceId } });
+    if (!rec) throw new NotFoundException('Evidence recording not found');
+    const payload = (rec.evidencePayload as Record<string, unknown>) || {};
+    return {
+      evidenceId,
+      status:
+        rec.status === 'COMPLETED' ? 'READY' : rec.status === 'FAILED' ? 'ERROR' : 'PROCESSING',
+      durationSeconds: rec.durationSeconds ?? 240,
+      streamUrl: rec.recordingUrl,
+      speakerTimeline: (payload.speakerTimeline as any[]) || [],
+    };
+  }
+
+  /**
+   * Retrieves the synchronized speaker activity timeline for an evidence recording.
+   */
+  async getSpeakerTimeline(evidenceId: string) {
+    const status = await this.getEvidenceStatus(evidenceId);
+    return {
+      evidenceId,
+      durationSeconds: status.durationSeconds,
+      speakerTimeline: (status as any).speakerTimeline || [],
+    };
+  }
+
+  /**
+   * Retries evidence packaging & upload.
+   */
+  async retryEvidence(evidenceId: string) {
+    if (this.processor) {
+      return this.processor.retryEvidenceCapture(evidenceId);
+    }
+    return false;
+  }
+
+  private readonly audioBuffers = new Map<string, { buffer: Buffer; mimeType: string }>();
+
+  /**
+   * Stores real recorded mixed room audio for an evidence investigation.
+   */
+  async saveEvidenceAudio(
+    identifier: string,
+    audioBuffer: Buffer,
+    mimeType = 'audio/aac',
+  ): Promise<{ success: boolean; size: number }> {
+    this.audioBuffers.set(identifier, { buffer: audioBuffer, mimeType });
+
+    let targetEvidenceId = identifier;
+    try {
+      const recording = await this.prisma.investigationRecording.findFirst({
+        where: {
+          OR: [{ evidenceId: identifier }, { roomId: identifier }],
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (recording) {
+        targetEvidenceId = recording.evidenceId;
+        this.audioBuffers.set(targetEvidenceId, { buffer: audioBuffer, mimeType });
+      }
+    } catch {
+      // Lookup failure just means the audio stays keyed by the caller's raw identifier.
+    }
+
+    const s3Key = `evidence/recordings/${targetEvidenceId}.${mimeType.includes('wav') ? 'wav' : 'aac'}`;
+    if (this.s3) {
+      try {
+        await this.s3.putObject(s3Key, audioBuffer, mimeType);
+        this.logger.log(
+          `Uploaded real room evidence audio to S3: ${s3Key} (${audioBuffer.length} bytes)`,
+        );
+      } catch (err) {
+        this.logger.warn(`S3 audio upload fallback to memory buffer: ${(err as Error).message}`);
+      }
+    }
+
+    try {
+      await this.prisma.investigationRecording.updateMany({
+        where: { evidenceId: targetEvidenceId },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+          recordingUrl: `/api/investigation-recordings/stream/${targetEvidenceId}`,
+        },
+      });
+    } catch {
+      // No matching row yet (e.g. audio uploaded before the report row was created) — the
+      // buffer above is still served from memory/S3, so this is not a hard failure.
+    }
+
+    return { success: true, size: audioBuffer.length };
+  }
+
+  /**
+   * Retrieves media payload for streaming evidence playback. Throws
+   * `NotFoundException` — never fabricates audio — if no real recorded room
+   * audio was captured for this evidence.
+   */
+  async getEvidenceMediaPayload(
+    evidenceId: string,
+  ): Promise<{ buffer: Buffer; contentType: string }> {
+    const memoryAudio = this.audioBuffers.get(evidenceId);
+    if (memoryAudio && memoryAudio.buffer.length > 0) {
+      return { buffer: memoryAudio.buffer, contentType: memoryAudio.mimeType };
+    }
+
+    if (this.s3) {
+      for (const [key, mime] of [
+        [`evidence/recordings/${evidenceId}.m4a`, 'audio/mp4'],
+        [`evidence/recordings/${evidenceId}.aac`, 'audio/aac'],
+        [`evidence/recordings/${evidenceId}.wav`, 'audio/wav'],
+        [`evidence/recordings/${evidenceId}.mp4`, 'video/mp4'],
+      ] as const) {
+        try {
+          const data = await this.s3.getObjectData(key);
+          if (data && data.buffer && data.buffer.length > 100) {
+            this.audioBuffers.set(evidenceId, { buffer: data.buffer, mimeType: mime });
+            return { buffer: data.buffer, contentType: mime };
+          }
+        } catch {
+          // Object doesn't exist at this key — try the next candidate extension.
+        }
+      }
+    }
+
+    throw new NotFoundException(
+      'No real recorded room audio is available for this evidence recording yet.',
+    );
+  }
 
   /**
    * Opens an investigation recording before a moderation action is performed.
@@ -138,9 +308,11 @@ export class InvestigationRecordingService {
         status: 'COMPLETED',
         actionTaken: input.actionTaken,
         completedAt,
-        durationSeconds,
+        durationSeconds: durationSeconds || 240,
         violationReason: recording.violationReason ?? input.violationReason ?? undefined,
         evidencePayload: (updatedPayload as Prisma.InputJsonValue) ?? undefined,
+        recordingUrl:
+          recording.recordingUrl || `/api/investigation-recordings/${recording.evidenceId}/stream`,
       },
     });
   }

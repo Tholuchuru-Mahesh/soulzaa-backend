@@ -178,6 +178,19 @@ export class S3Service {
     }
   }
 
+  /** Download an object buffer and content type for streaming endpoints. */
+  async getObjectData(key: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    try {
+      const res = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      const bytes = await res.Body!.transformToByteArray();
+      const buffer = Buffer.from(bytes);
+      const contentType = res.ContentType || 'image/jpeg';
+      return { buffer, contentType };
+    } catch (err) {
+      return null;
+    }
+  }
+
   /** Bucket reachability check for the storage health indicator. */
   async headBucket(): Promise<boolean> {
     await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));

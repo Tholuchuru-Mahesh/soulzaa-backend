@@ -204,6 +204,11 @@ export class SocketManager {
     }
 
     await this.presence.joinRoom(roomId, user.id);
+
+    // Track join timestamp for duration evaluation
+    client.data.roomJoinedAt = client.data.roomJoinedAt || {};
+    client.data.roomJoinedAt[roomId] = Date.now();
+
     const payload = {
       roomId,
       userId: user?.id,
@@ -214,6 +219,23 @@ export class SocketManager {
     };
     client.to(roomId).emit('video_room:member_joined', payload);
     client.to(roomId).emit('room:member_joined', payload);
+
+    // Publish domain events for progression / task evaluation
+    try {
+      await this.bus.publish({
+        name: namespace === '/video-room' ? 'video_room.joined' : 'audio_room.joined',
+        payload: { roomId, userId: user.id, namespace },
+        timestamp: new Date(),
+      } as any);
+      await this.bus.publish({
+        name: 'room.joined',
+        payload: { roomId, userId: user.id, namespace },
+        timestamp: new Date(),
+      } as any);
+    } catch {
+      // non-fatal
+    }
+
     return true;
   }
 
@@ -222,6 +244,31 @@ export class SocketManager {
     const user = client.data.user as AuthenticatedUser;
     await client.leave(roomId);
     (client.data.spectatorRooms as Set<string> | undefined)?.delete(roomId);
+
+    // Calculate room duration spent
+    const joinedAt = client.data.roomJoinedAt?.[roomId] as number | undefined;
+    if (joinedAt) {
+      delete client.data.roomJoinedAt[roomId];
+      const durationMs = Math.max(0, Date.now() - joinedAt);
+      const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
+      const durationSeconds = Math.round(durationMs / 1000);
+
+      try {
+        await this.bus.publish({
+          name: 'room.duration_updated',
+          payload: {
+            userId: user.id,
+            roomId,
+            durationMinutes,
+            durationSeconds,
+            durationMs,
+          },
+          timestamp: new Date(),
+        } as any);
+      } catch {
+        // non-fatal
+      }
+    }
 
     const incognito =
       namespace != null && INCOGNITO_MODERATION_NAMESPACES.has(namespace) && isModeratorUser(user);
@@ -238,6 +285,16 @@ export class SocketManager {
     };
     client.to(roomId).emit('video_room:member_left', payload);
     client.to(roomId).emit('room:member_left', payload);
+
+    try {
+      await this.bus.publish({
+        name: 'audio_room.left',
+        payload: { roomId, userId: user.id },
+        timestamp: new Date(),
+      } as any);
+    } catch {
+      // non-fatal
+    }
   }
 
   /** Emit to all of a user's sockets across every instance (via the Redis adapter). */

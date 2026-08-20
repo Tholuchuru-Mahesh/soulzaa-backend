@@ -71,14 +71,16 @@ export class FamilyMemberService {
     const lockKey = `family:member:${targetUserId}`;
 
     return this.locks.withLock(lockKey, async () => {
-      const actor = await this.permissionService.getMember(familyId, actorUserId);
+      const isActorAdmin = await this.permissionService.isSystemAdmin(actorUserId);
       const target = await this.permissionService.getMember(familyId, targetUserId);
 
-      if (target.role === 'FOUNDER') {
-        throw new BadRequestException('Cannot kick the family founder.');
+      if (!isActorAdmin) {
+        const actor = await this.permissionService.getMember(familyId, actorUserId);
+        if (target.role === 'FOUNDER') {
+          throw new BadRequestException('Cannot kick the family founder.');
+        }
+        this.permissionService.assertHigherRank(actor.role, target.role);
       }
-
-      this.permissionService.assertHigherRank(actor.role, target.role);
 
       await this.prisma.$transaction([
         this.prisma.familyMember.delete({ where: { id: target.id } }),
@@ -114,16 +116,19 @@ export class FamilyMemberService {
   async banMember(input: BanMemberInput) {
     const { familyId, actorUserId, targetUserId, reason } = input;
 
-    const actor = await this.permissionService.getMember(familyId, actorUserId);
+    const isActorAdmin = await this.permissionService.isSystemAdmin(actorUserId);
     const target = await this.prisma.familyMember.findFirst({
       where: { familyId, userId: targetUserId },
     });
 
-    if (target) {
-      if (target.role === 'FOUNDER') {
-        throw new BadRequestException('Cannot ban the family founder.');
+    if (!isActorAdmin) {
+      const actor = await this.permissionService.getMember(familyId, actorUserId);
+      if (target) {
+        if (target.role === 'FOUNDER') {
+          throw new BadRequestException('Cannot ban the family founder.');
+        }
+        this.permissionService.assertHigherRank(actor.role, target.role);
       }
-      this.permissionService.assertHigherRank(actor.role, target.role);
     }
 
     await this.prisma.$transaction([

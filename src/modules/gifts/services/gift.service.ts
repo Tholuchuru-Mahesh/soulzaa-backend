@@ -27,7 +27,12 @@ import { GIFT_WALLET_REFERENCE_TYPE } from '../constants/gifts.constants';
 import { walletLockKey } from 'src/modules/wallet/constants/wallet.constants';
 
 import type { GiftHistoryDto, SendGiftDto } from '../dto/gift.dto';
-import { GiftComboEvent, GiftLuckyWinEvent, GiftSentEvent } from '../events/gift.events';
+import {
+  GiftComboEvent,
+  GiftLuckyWinEvent,
+  GiftReceivedEvent,
+  GiftSentEvent,
+} from '../events/gift.events';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
 import type { GiftContextRequest } from '../interfaces/gift-context-handler.interface';
 import { GiftRepository } from '../repositories/gift.repository';
@@ -609,6 +614,21 @@ export class GiftService {
         luckyMultiplier: txn.luckyMultiplier,
         isLuckyWin: txn.isLuckyWin,
         senderExp: txn.senderExp,
+        receiverExp: txn.receiverExp,
+        createdAt: txn.createdAt.toISOString(),
+      }),
+    );
+    await this.bus.publish(
+      new GiftReceivedEvent({
+        transactionId: txn.id,
+        userId: txn.receiverId,
+        receiverId: txn.receiverId,
+        senderId: txn.senderId,
+        giftId: txn.giftId,
+        giftName: gift.name,
+        quantity: txn.quantity,
+        totalCoinValue: totalNum,
+        creatorEarnings: earningsNum,
         receiverExp: txn.receiverExp,
         createdAt: txn.createdAt.toISOString(),
       }),

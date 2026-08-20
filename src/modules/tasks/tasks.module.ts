@@ -15,6 +15,7 @@ import { TaskService } from './services/task.service';
 import { TaskStatisticsService } from './services/task-statistics.service';
 import { TaskValidationService } from './services/task-validation.service';
 import { TaskProgressionListener } from './listeners/task-progression.listener';
+import { TaskRewardExecutionListener } from './listeners/task-reward-execution.listener';
 import { ModeratorTaskAssignmentService } from './services/moderator-task-assignment.service';
 
 @Global()
@@ -24,6 +25,7 @@ import { ModeratorTaskAssignmentService } from './services/moderator-task-assign
   providers: [
     // Phase 17: Enterprise Tasks & Missions Engine Services
     TaskProgressionListener,
+    TaskRewardExecutionListener,
     TaskConfigurationService,
     TaskValidationService,
     TaskAuditService,

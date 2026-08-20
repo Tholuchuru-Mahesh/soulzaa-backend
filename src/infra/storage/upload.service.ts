@@ -111,6 +111,16 @@ export class UploadService {
     return this.s3.getPresignedDownloadUrl(key);
   }
 
+  /** Public or general presigned GET. */
+  async getPublicOrPresignedUrl(key: string): Promise<string> {
+    return this.s3.getPresignedDownloadUrl(key);
+  }
+
+  /** Direct buffer download for streaming. */
+  async getObjectData(key: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    return this.s3.getObjectData(key);
+  }
+
   /** Owner-scoped delete. */
   async deleteUpload(key: string, userId: string): Promise<void> {
     this.assertOwner(key, userId);

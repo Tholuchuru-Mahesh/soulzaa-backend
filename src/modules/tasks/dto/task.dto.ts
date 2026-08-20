@@ -60,8 +60,24 @@ export class CreateTaskDto {
   requiredProgress?: number;
 
   @ApiPropertyOptional({
+    description: 'Triggering domain event code (e.g. user.logged_in, audio_room.joined, room.duration_updated, wallet.credited, gift.sent, gift.received)',
+    example: 'audio_room.joined',
+  })
+  @IsOptional()
+  @IsString()
+  eventCode?: string;
+
+  @ApiPropertyOptional({
+    description: 'Field in event payload to accumulate progress from (e.g. durationMinutes, amount, totalCoinValue). Defaults to 1 per event if omitted.',
+    example: 'durationMinutes',
+  })
+  @IsOptional()
+  @IsString()
+  incrementField?: string;
+
+  @ApiPropertyOptional({
     description: 'JSON progress evaluation rule',
-    example: { eventCodes: ['GIFT_SENT'], operator: 'ANY' },
+    example: { eventCodes: ['audio_room.joined'], incrementField: 'durationMinutes', operator: 'ANY' },
   })
   @IsOptional()
   @IsObject()
@@ -128,6 +144,94 @@ export class UpdateTaskStatusDto {
   @ApiProperty({ enum: TASK_STATUSES })
   @IsEnum(TASK_STATUSES)
   status!: string;
+}
+
+export class UpdateTaskDto {
+  @ApiPropertyOptional({ description: 'Display name' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'Description' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ enum: TASK_CATEGORIES, description: 'Task category' })
+  @IsOptional()
+  @IsEnum(TASK_CATEGORIES)
+  category?: string;
+
+  @ApiPropertyOptional({ description: 'Task objective summary' })
+  @IsOptional()
+  @IsString()
+  objective?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  requiredProgress?: number;
+
+  @ApiPropertyOptional({
+    description: 'Triggering domain event code (e.g. user.logged_in, audio_room.joined, room.duration_updated, wallet.credited, gift.sent, gift.received)',
+  })
+  @IsOptional()
+  @IsString()
+  eventCode?: string;
+
+  @ApiPropertyOptional({
+    description: 'Field in event payload to accumulate progress from',
+  })
+  @IsOptional()
+  @IsString()
+  incrementField?: string;
+
+  @ApiPropertyOptional({
+    description: 'JSON progress evaluation rule',
+  })
+  @IsOptional()
+  @IsObject()
+  progressRules?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: 'JSON completion rules' })
+  @IsOptional()
+  @IsObject()
+  completionRules?: Record<string, any>;
+
+  @ApiPropertyOptional({
+    description: 'Reward definition JSON',
+  })
+  @IsOptional()
+  @IsObject()
+  rewardDefinition?: Record<string, any>;
+
+  @ApiPropertyOptional({ enum: TASK_VISIBILITIES })
+  @IsOptional()
+  @IsEnum(TASK_VISIBILITIES)
+  visibility?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  priority?: number;
+
+  @ApiPropertyOptional({ enum: TASK_DIFFICULTIES })
+  @IsOptional()
+  @IsEnum(TASK_DIFFICULTIES)
+  difficulty?: string;
+
+  @ApiPropertyOptional({ enum: RESET_POLICIES })
+  @IsOptional()
+  @IsEnum(RESET_POLICIES)
+  resetPolicy?: string;
+
+  @ApiPropertyOptional({ enum: TASK_STATUSES })
+  @IsOptional()
+  @IsEnum(TASK_STATUSES)
+  status?: string;
 }
 
 // ─── Mission Definition DTOs ──────────────────────────────────────────

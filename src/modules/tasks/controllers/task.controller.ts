@@ -21,6 +21,7 @@ import {
   CreateTaskDto,
   EvaluateTaskEventDto,
   UpdateTaskConfigurationDto,
+  UpdateTaskDto,
   UpdateTaskStatusDto,
 } from '../dto/task.dto';
 import { MissionProgressService } from '../services/mission-progress.service';
@@ -102,6 +103,36 @@ export class TaskController {
     return this.queryService.getTasksByCategory(category);
   }
 
+  // ─── End-User Self-Service ───────────────────────────────────────────
+
+  @Get('me')
+  @ApiOperation({ summary: 'Get current user active tasks with progress overlay' })
+  @ApiQuery({ name: 'category', required: false })
+  async getMyActiveTasks(@CurrentUser('id') userId: string, @Query('category') category?: string) {
+    return this.queryService.getUserActiveTasks(userId, category);
+  }
+
+  @Get('me/missions')
+  @ApiOperation({ summary: 'Get current user mission progress records' })
+  async getMyMissions(@CurrentUser('id') userId: string) {
+    return this.missionProgressService.getUserMissionProgress(userId);
+  }
+
+  @Post('me/claim/:taskId')
+  @ApiOperation({ summary: 'Claim reward for a completed task' })
+  async claimMyTaskReward(@Param('taskId') taskId: string, @CurrentUser('id') userId: string) {
+    return this.rewardService.dispatchReward(userId, taskId, undefined, undefined, userId);
+  }
+
+  @Post('me/missions/claim/:missionId')
+  @ApiOperation({ summary: 'Claim reward for a completed mission' })
+  async claimMyMissionReward(
+    @Param('missionId') missionId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.rewardService.dispatchReward(userId, undefined, missionId, undefined, userId);
+  }
+
   @Get('missions/:idOrCode')
   @RequirePermissions('task.view')
   @ApiOperation({ summary: 'Get mission by ID or code' })
@@ -114,6 +145,24 @@ export class TaskController {
   @ApiOperation({ summary: 'Get task by ID or code' })
   async getTask(@Param('idOrCode') idOrCode: string) {
     return this.taskService.getTaskDefinition(idOrCode);
+  }
+
+  @Patch(':id')
+  @RequirePermissions('task.manage')
+  @ApiOperation({ summary: 'Update task definition parameters, event triggers, or rewards' })
+  async updateTask(
+    @Param('id') id: string,
+    @Body() dto: UpdateTaskDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.taskService.updateTask(id, { ...dto, actorId: user?.id });
+  }
+
+  @Post('seed-defaults')
+  @RequirePermissions('task.manage')
+  @ApiOperation({ summary: 'Seed or update all standard ecosystem event-driven tasks' })
+  async seedDefaults() {
+    return this.taskService.seedDefaultTasks();
   }
 
   @Patch(':id/status')

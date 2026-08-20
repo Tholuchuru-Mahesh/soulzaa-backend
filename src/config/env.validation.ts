@@ -221,6 +221,18 @@ export const envSchema = z.object({
   ZEGO_SERVER_SECRET: z.string().optional(),
   ZEGO_TOKEN_EXPIRY_SECONDS: z.coerce.number().int().positive().default(3600),
 
+  // ---- ZEGOCLOUD Cloud Recording (server-side mixed-room-audio capture for
+  // investigation evidence). Requires "Cloud Recording" enabled for the AppID
+  // above in the ZEGO Console. ZEGO_CLOUD_RECORD_CALLBACK_BASE_URL must be a
+  // publicly reachable URL ZEGO's servers can POST segment-ready callbacks to.
+  ZEGO_CLOUD_RECORD_API_BASE_URL: z.string().url().default('https://cloudrecord-api.zego.im'),
+  ZEGO_CLOUD_RECORD_CALLBACK_BASE_URL: z.string().url().optional(),
+  ZEGO_CLOUD_RECORD_SEGMENT_INTERVAL_SECONDS: z.coerce.number().int().positive().default(300),
+  // Shared secret we mint into the NotifyUrl we hand ZEGO, and check back on
+  // the inbound callback — ZEGO simply echoes the URL we gave it, so this
+  // authenticates the callback without depending on ZEGO's own signing.
+  ZEGO_CLOUD_RECORD_CALLBACK_SECRET: z.string().optional(),
+
   // ---- Google Geocoding (self-service user location capture) ----
   GOOGLE_GEOCODING_API_KEY: z.string().optional(),
 

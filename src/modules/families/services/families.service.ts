@@ -1,13 +1,17 @@
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import { Family, FamilyJoinRequest, FamilyMember } from '@prisma/client';
+import { HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Family, FamilyJoinRequest, FamilyMember, WalletCurrency, WalletTxnReason } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { SocketManager } from 'src/infra/socket/socket.manager';
+import { WALLET_SERVICE, type IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import {
   CreateFamilyDto,
   ManageRequestDto,
   PromoteMemberDto,
+  SendFamilyMessageDto,
   TransferLeadershipDto,
   UpdateFamilyDto,
 } from '../dto/families.dto';
@@ -19,6 +23,7 @@ import {
 } from '../events/families.events';
 import type { IFamiliesService } from '../interfaces/families.service.interface';
 import { FamiliesRepository } from '../repositories/families.repository';
+import { FamilyConfigurationService } from './family-configuration.service';
 
 const FAMILY_LEVEL_LADDER: { level: number; minExp: bigint }[] = [
   { level: 1, minExp: 0n },
@@ -40,7 +45,32 @@ export class FamiliesService implements IFamiliesService {
   constructor(
     private readonly repo: FamiliesRepository,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    private readonly configService: FamilyConfigurationService,
+    private readonly prisma: PrismaService,
+    @Optional() private readonly sockets?: SocketManager,
+    @Optional() @Inject(WALLET_SERVICE) private readonly walletService?: IWalletService,
   ) {}
+
+  private emitSystemMessage(familyId: string, content: string): void {
+    try {
+      if (!this.sockets) return;
+      const message = {
+        id: `sys_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        familyId,
+        senderId: 'system',
+        senderName: 'System',
+        senderRole: 'MEMBER',
+        content,
+        avatarUrl: null,
+        timestamp: new Date().toISOString(),
+        isSystem: true,
+      };
+      this.sockets.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:message', {
+        familyId,
+        message,
+      });
+    } catch (_) {}
+  }
 
   // ---- IFamiliesService (cross-module interface) ----
 
@@ -72,7 +102,16 @@ export class FamiliesService implements IFamiliesService {
 
     if (newLevel > family.level) {
       this.logger.log(`Family ${family.name} (${familyId}) leveled up to Level ${newLevel}`);
+      this.emitSystemMessage(familyId, `🎉 Family leveled up to Level ${newLevel}!`);
     }
+
+    try {
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:updated', {
+        familyId,
+        exp: Number(newExp),
+        level: newLevel,
+      });
+    } catch (_) {}
   }
 
   async incrementMemberContribution(userId: string, points: number): Promise<void> {
@@ -80,11 +119,34 @@ export class FamiliesService implements IFamiliesService {
     const member = await this.repo.findMemberByUserId(userId);
     if (!member) return;
 
-    await this.repo.updateMember(member.id, {
+    const updated = await this.repo.updateMember(member.id, {
       expContribution: {
         increment: points,
       },
+      coinContribution: {
+        increment: points,
+      },
     });
+
+    try {
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${member.familyId}`, 'family:member_contribution', {
+        familyId: member.familyId,
+        userId,
+        contributionPoints: Number(updated.coinContribution ?? updated.expContribution ?? 0),
+        pointsAdded: points,
+      });
+    } catch (_) {}
+  }
+
+  private serializeFamily(f: any): any {
+    if (!f) return f;
+    return {
+      ...f,
+      logoKey: f.logo ?? f.logoKey ?? null,
+      logo: f.logo ?? f.logoKey ?? null,
+      leaderId: f.founderId ?? f.leaderId,
+      autoAccept: f.privacy === 'PUBLIC' || f.autoAccept === true,
+    };
   }
 
   private calculateLevel(exp: bigint): number {
@@ -100,6 +162,10 @@ export class FamiliesService implements IFamiliesService {
   }
 
   // ---- Standard Domain Logic ----
+
+  async getConfig() {
+    return this.configService.getFamilyConfig();
+  }
 
   async create(creatorId: string, dto: CreateFamilyDto): Promise<Family> {
     const existingMember = await this.repo.findMemberByUserId(creatorId);
@@ -120,6 +186,29 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
+    const config = await this.configService.getFamilyConfig();
+
+    // Check creation cost if coin economy is enforced
+    if (config.creationCost > 0 && this.walletService) {
+      try {
+        await this.walletService.debit({
+          userId: creatorId,
+          currency: WalletCurrency.GOLD,
+          amount: Number(config.creationCost),
+          reason: WalletTxnReason.COSMETIC_PURCHASE,
+          idempotencyKey: `family:create:${creatorId}:${Date.now()}`,
+          referenceType: 'FAMILY_CREATION',
+          metadata: { description: `Creation of Family "${dto.name}"` },
+        });
+      } catch (err: any) {
+        throw new BusinessException(
+          ERROR_CODES.INSUFFICIENT_BALANCE,
+          `Insufficient coins to create a family. Required: ${config.creationCost} coins.`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+
     const family = await this.repo.createFamily(
       {
         name: dto.name,
@@ -128,7 +217,8 @@ export class FamiliesService implements IFamiliesService {
         logo: dto.logoKey,
         founderId: creatorId,
         memberCount: 1,
-        maxMembers: 100,
+        maxMembers: config.maxMembers || 100,
+        privacy: dto.autoAccept === true ? 'PUBLIC' : 'PRIVATE',
       },
       {
         userId: creatorId,
@@ -144,7 +234,7 @@ export class FamiliesService implements IFamiliesService {
       }),
     );
 
-    return family;
+    return this.serializeFamily(family);
   }
 
   async get(id: string): Promise<Family> {
@@ -156,14 +246,18 @@ export class FamiliesService implements IFamiliesService {
         HttpStatus.NOT_FOUND,
       );
     }
-    return family;
+    return this.serializeFamily(family);
   }
 
   async update(userId: string, familyId: string, dto: UpdateFamilyDto): Promise<Family> {
-    await this.get(familyId);
+    const family = await this.get(familyId);
 
     const member = await this.repo.findMemberByUserId(userId);
-    if (!member || member.familyId !== familyId) {
+    const isFounder = family.founderId === userId || (family as any).leaderId === userId;
+    const roleUpper = member?.role?.toUpperCase() || '';
+    const isAllowedRole = ['FOUNDER', 'CO_FOUNDER', 'LEADER', 'CO_LEADER', 'OWNER', 'ADMIN', 'ELDER'].includes(roleUpper);
+
+    if (!isFounder && (!member || member.familyId !== familyId)) {
       throw new BusinessException(
         ERROR_CODES.NOT_IN_FAMILY,
         'You are not a member of this family.',
@@ -171,7 +265,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (!['FOUNDER', 'CO_FOUNDER'].includes(member.role)) {
+    if (!isFounder && !isAllowedRole) {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only Leaders and Co-Leaders can edit family details.',
@@ -179,10 +273,48 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    const updated = await this.repo.updateFamily(familyId, dto as any);
+    const updateData: any = {};
+    if (dto.name !== undefined && dto.name !== family.name) {
+      const config = await this.configService.getFamilyConfig();
+      if (config.renameCost > 0 && this.walletService) {
+        try {
+          await this.walletService.debit({
+            userId,
+            currency: WalletCurrency.GOLD,
+            amount: Number(config.renameCost),
+            reason: WalletTxnReason.COSMETIC_PURCHASE,
+            idempotencyKey: `family:rename:${familyId}:${Date.now()}`,
+            referenceType: 'FAMILY_RENAME',
+            metadata: { description: `Rename Family to "${dto.name}"` },
+          });
+        } catch (err: any) {
+          throw new BusinessException(
+            ERROR_CODES.INSUFFICIENT_BALANCE,
+            `Insufficient coins to rename family. Required: ${config.renameCost} coins.`,
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      }
+      updateData.name = dto.name;
+    }
+    if (dto.description !== undefined) updateData.description = dto.description;
+    const logoVal = dto.logoKey ?? dto.logo;
+    if (logoVal !== undefined) updateData.logo = logoVal;
+    if (dto.autoAccept !== undefined) updateData.privacy = dto.autoAccept ? 'PUBLIC' : 'PRIVATE';
+
+    const updated = await this.repo.updateFamily(familyId, updateData);
     await this.repo.logAction(familyId, userId, 'EDIT_PROFILE', dto as any);
 
-    return updated;
+    const serialized = this.serializeFamily(updated);
+
+    try {
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:updated', {
+        familyId,
+        family: serialized,
+      });
+    } catch (_) {}
+
+    return serialized;
   }
 
   async join(userId: string, familyId: string): Promise<any> {
@@ -195,9 +327,37 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    const family = await this.get(familyId);
+    const config = await this.configService.getFamilyConfig();
 
-    if (family.privacy === 'PUBLIC') {
+    // Check join cooldown if user previously left or was removed from any family
+    if (config.joinCooldownSeconds > 0) {
+      const recentLeave = await this.prisma.familyHistory.findFirst({
+        where: {
+          userId,
+          action: { in: ['LEAVE', 'KICK', 'MEMBER_LEFT', 'MEMBER_KICKED'] },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (recentLeave) {
+        const elapsedSeconds = Math.floor((Date.now() - recentLeave.createdAt.getTime()) / 1000);
+        if (elapsedSeconds < config.joinCooldownSeconds) {
+          const remainingSeconds = config.joinCooldownSeconds - elapsedSeconds;
+          const remainingMinutes = Math.ceil(remainingSeconds / 60);
+          throw new BusinessException(
+            ERROR_CODES.JOIN_COOLDOWN_ACTIVE,
+            `Join cooldown active. Please wait ${remainingMinutes} minute(s) before joining another family.`,
+            HttpStatus.FORBIDDEN,
+          );
+        }
+      }
+    }
+
+    const family = await this.get(familyId);
+    const isAutoAccept = family.privacy === 'PUBLIC' || (family as any).autoAccept === true || config.autoApprove === true;
+    const defaultRole = config.defaultRole || 'MEMBER';
+
+    if (isAutoAccept) {
       if (family.memberCount >= family.maxMembers) {
         throw new BusinessException(
           ERROR_CODES.FAMILY_LIMIT_REACHED,
@@ -206,8 +366,21 @@ export class FamiliesService implements IFamiliesService {
         );
       }
 
-      await this.repo.addMember(familyId, userId, 'MEMBER');
+      // Prevent kicked/banned users from auto-joining even on PUBLIC families
+      const ban = await this.repo.findBan(familyId, userId);
+      if (ban) {
+        throw new BusinessException(
+          ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
+          'You are not allowed to join this family.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      await this.repo.addMember(familyId, userId, defaultRole);
       await this.repo.logAction(familyId, userId, 'JOIN');
+
+      const user = await this.repo.getUserSummary(userId);
+      this.emitSystemMessage(familyId, `${user.fullName || user.username} joined the family`);
 
       await this.bus.publish(
         new FamilyMemberJoinedEvent({
@@ -225,6 +398,16 @@ export class FamiliesService implements IFamiliesService {
         ERROR_CODES.JOIN_REQUEST_EXISTS,
         'You already have a pending join request for this family.',
         HttpStatus.CONFLICT,
+      );
+    }
+
+    // Block banned/kicked users from submitting a new request
+    const ban = await this.repo.findBan(familyId, userId);
+    if (ban) {
+      throw new BusinessException(
+        ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
+        'You are not allowed to join this family.',
+        HttpStatus.FORBIDDEN,
       );
     }
 
@@ -259,8 +442,11 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    const [rows, total] = await this.repo.listRequests(familyId, 'PENDING', q.skip, q.limit);
-    return buildPaginated(rows, total, q.page, q.limit);
+    const pageNum = Number(q.page) || 1;
+    const limitNum = Number(q.limit) || 20;
+    const skipNum = typeof q.skip === 'number' ? q.skip : (pageNum - 1) * limitNum;
+    const [rows, total] = await this.repo.listRequests(familyId, 'PENDING', skipNum, limitNum);
+    return buildPaginated(rows, total, pageNum, limitNum);
   }
 
   async handleRequest(
@@ -324,7 +510,44 @@ export class FamiliesService implements IFamiliesService {
         );
       }
 
-      const newMember = await this.repo.acceptRequest(requestId, familyId, request.userId, actorId);
+      // Safety: do not approve a request from a currently-banned user
+      const ban = await this.repo.findBan(familyId, request.userId);
+      if (ban) {
+        await this.repo.rejectRequest(requestId, familyId, request.userId, actorId);
+        throw new BusinessException(
+          ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
+          'This user is banned from the family and cannot be approved.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      const config = await this.configService.getFamilyConfig();
+      const newMember = await this.repo.acceptRequest(
+        requestId,
+        familyId,
+        request.userId,
+        actorId,
+        config.defaultRole || 'MEMBER',
+      );
+
+      const target = await this.repo.getUserSummary(request.userId);
+      const actor = await this.repo.getUserSummary(actorId);
+      this.emitSystemMessage(
+        familyId,
+        `${target.fullName || target.username} joined the family (approved by ${actor.fullName || actor.username})`,
+      );
+
+      try {
+        const count = await this.repo.countMembers(familyId);
+        this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:member_joined', {
+          familyId,
+          userId: request.userId,
+        });
+        this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:updated', {
+          familyId,
+          memberCount: count,
+        });
+      } catch (_) {}
 
       await this.bus.publish(
         new FamilyMemberJoinedEvent({
@@ -359,6 +582,22 @@ export class FamiliesService implements IFamiliesService {
     }
 
     await this.repo.removeMember(familyId, userId, userId);
+
+    const user = await this.repo.getUserSummary(userId);
+    this.emitSystemMessage(familyId, `${user.fullName || user.username} left the family`);
+
+    try {
+      const count = await this.repo.countMembers(familyId);
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:member_left', {
+        familyId,
+        userId,
+        kicked: false,
+      });
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:updated', {
+        familyId,
+        memberCount: count,
+      });
+    } catch (_) {}
 
     await this.bus.publish(
       new FamilyMemberLeftEvent({
@@ -414,6 +653,31 @@ export class FamiliesService implements IFamiliesService {
 
     await this.repo.removeMember(familyId, kickUserId, actorId);
 
+    // Create a ban record so the kicked user cannot immediately re-join
+    // (applies to both PUBLIC auto-join and PRIVATE request paths).
+    await this.repo.createBan(familyId, kickUserId, actorId, 'Removed by moderator');
+
+    const targetUser = await this.repo.getUserSummary(kickUserId);
+    const actorUser = await this.repo.getUserSummary(actorId);
+    this.emitSystemMessage(
+      familyId,
+      `${targetUser.fullName || targetUser.username} was removed from the family by ${actorUser.fullName || actorUser.username}`,
+    );
+
+    try {
+      const count = await this.repo.countMembers(familyId);
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:member_left', {
+        familyId,
+        userId: kickUserId,
+        kicked: true,
+        actorId,
+      });
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:updated', {
+        familyId,
+        memberCount: count,
+      });
+    } catch (_) {}
+
     await this.bus.publish(
       new FamilyMemberLeftEvent({
         familyId,
@@ -425,6 +689,7 @@ export class FamiliesService implements IFamiliesService {
   }
 
   async promote(actorId: string, familyId: string, dto: PromoteMemberDto): Promise<FamilyMember> {
+    const family = await this.get(familyId);
     const actor = await this.repo.findMemberByUserId(actorId);
     if (!actor || actor.familyId !== familyId) {
       throw new BusinessException(
@@ -443,7 +708,16 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (target.role === 'FOUNDER') {
+    const actorRole = actor.role.toUpperCase();
+    const isActorLeader = ['FOUNDER', 'LEADER'].includes(actorRole);
+    const isActorCoLeader = ['CO_FOUNDER', 'CO_LEADER'].includes(actorRole);
+
+    let targetRole = dto.role.toUpperCase();
+    if (targetRole === 'CO_LEADER') targetRole = 'CO_FOUNDER';
+    if (targetRole === 'LEADER') targetRole = 'FOUNDER';
+
+    const currentTargetRole = target.role.toUpperCase();
+    if (['FOUNDER', 'LEADER'].includes(currentTargetRole)) {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'You cannot promote or demote the family Leader. Use leadership transfer.',
@@ -451,7 +725,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (dto.role === 'CO_FOUNDER' && actor.role !== 'FOUNDER') {
+    if (['CO_FOUNDER', 'CO_LEADER'].includes(targetRole) && !isActorLeader) {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only the Leader can promote a member to Co-Leader.',
@@ -459,7 +733,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (target.role === 'CO_FOUNDER' && actor.role !== 'FOUNDER') {
+    if (['CO_FOUNDER', 'CO_LEADER'].includes(currentTargetRole) && !isActorLeader) {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only the Leader can demote a Co-Leader.',
@@ -467,7 +741,7 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    if (actor.role !== 'FOUNDER' && actor.role !== 'CO_FOUNDER') {
+    if (!isActorLeader && !isActorCoLeader) {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only Leaders and Co-Leaders can promote or demote members.',
@@ -475,13 +749,29 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    const updated = await this.repo.updateMember(target.id, { role: dto.role });
+    const updated = await this.repo.updateMember(target.id, { role: targetRole });
 
     await this.repo.logAction(familyId, actorId, 'PROMOTE_MEMBER', {
       targetUserId: dto.userId,
       oldRole: target.role,
-      newRole: dto.role,
+      newRole: targetRole,
     });
+
+    const targetUser = await this.repo.getUserSummary(dto.userId);
+    const actorUser = await this.repo.getUserSummary(actorId);
+    const roleName = targetRole.replace(/_/g, ' ');
+    this.emitSystemMessage(
+      familyId,
+      `${targetUser.fullName || targetUser.username} was promoted to ${roleName} by ${actorUser.fullName || actorUser.username}`,
+    );
+
+    try {
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:member_updated', {
+        familyId,
+        userId: dto.userId,
+        role: targetRole,
+      });
+    } catch (_) {}
 
     return updated;
   }
@@ -492,8 +782,14 @@ export class FamiliesService implements IFamiliesService {
     dto: TransferLeadershipDto,
   ): Promise<Family> {
     const family = await this.get(familyId);
+    const actorMember = await this.repo.findMemberByUserId(actorId);
 
-    if (family.founderId !== actorId) {
+    const isLeader =
+      actorMember != null &&
+      ['FOUNDER', 'LEADER'].includes(actorMember.role.toUpperCase()) &&
+      actorMember.familyId === familyId;
+
+    if (!isLeader) {
       throw new BusinessException(
         ERROR_CODES.FAMILY_ROLE_FORBIDDEN,
         'Only the family Leader can transfer leadership.',
@@ -509,7 +805,6 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    const actorMember = await this.repo.findMemberByUserId(actorId);
     const targetMember = await this.repo.findMemberByUserId(dto.userId);
 
     if (!actorMember || !targetMember || targetMember.familyId !== familyId) {
@@ -529,7 +824,21 @@ export class FamiliesService implements IFamiliesService {
       newLeaderId: dto.userId,
     });
 
-    return updatedFamily;
+    const targetUser = await this.repo.getUserSummary(dto.userId);
+    const actorUser = await this.repo.getUserSummary(actorId);
+    this.emitSystemMessage(
+      familyId,
+      `${actorUser.fullName || actorUser.username} transferred family leadership to ${targetUser.fullName || targetUser.username}`,
+    );
+
+    try {
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:updated', {
+        familyId,
+        leaderId: dto.userId,
+      });
+    } catch (_) {}
+
+    return this.serializeFamily(updatedFamily);
   }
 
   async disband(actorId: string, familyId: string): Promise<void> {
@@ -545,6 +854,12 @@ export class FamiliesService implements IFamiliesService {
 
     await this.repo.deleteFamily(familyId, actorId);
 
+    try {
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:disbanded', {
+        familyId,
+      });
+    } catch (_) {}
+
     await this.bus.publish(
       new FamilyDeletedEvent({
         familyId,
@@ -554,16 +869,20 @@ export class FamiliesService implements IFamiliesService {
   }
 
   async listFamilies(page = 1, limit = 20, search?: string): Promise<Paginated<Family>> {
-    const skip = (page - 1) * limit;
-    const [rows, total] = await this.repo.listFamilies(skip, limit, search);
-    return buildPaginated(rows, total, page, limit);
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 20;
+    const skip = (pageNum - 1) * limitNum;
+    const [rows, total] = await this.repo.listFamilies(skip, limitNum, search);
+    return buildPaginated(rows.map((r) => this.serializeFamily(r)), total, pageNum, limitNum);
   }
 
   async listMembers(familyId: string, page = 1, limit = 20): Promise<Paginated<FamilyMember>> {
     await this.get(familyId);
-    const skip = (page - 1) * limit;
-    const [rows, total] = await this.repo.listMembers(familyId, skip, limit);
-    return buildPaginated(rows, total, page, limit);
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 20;
+    const skip = (pageNum - 1) * limitNum;
+    const [rows, total] = await this.repo.listMembers(familyId, skip, limitNum);
+    return buildPaginated(rows, total, pageNum, limitNum);
   }
 
   async listLogs(userId: string, familyId: string, page = 1, limit = 20): Promise<Paginated<any>> {
@@ -576,8 +895,92 @@ export class FamiliesService implements IFamiliesService {
       );
     }
 
-    const skip = (page - 1) * limit;
-    const [rows, total] = await this.repo.listLogs(familyId, skip, limit);
-    return buildPaginated(rows, total, page, limit);
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 20;
+    const skip = (pageNum - 1) * limitNum;
+    const [rows, total] = await this.repo.listLogs(familyId, skip, limitNum);
+    return buildPaginated(rows, total, pageNum, limitNum);
+  }
+
+  async getMyFamily(userId: string): Promise<any> {
+    const member = await this.repo.findMemberByUserId(userId);
+    if (!member) return null;
+    const family = await this.get(member.familyId);
+    return {
+      family,
+      role: member.role,
+      member,
+    };
+  }
+
+  async listMessages(userId: string, familyId: string, page = 1, limit = 50): Promise<Paginated<any>> {
+    const member = await this.repo.findMemberByUserId(userId);
+    if (!member || member.familyId !== familyId) {
+      throw new BusinessException(
+        ERROR_CODES.NOT_IN_FAMILY,
+        'You are not a member of this family.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 50;
+    const skip = (pageNum - 1) * limitNum;
+    const [rows, total] = await this.repo.listMessages(familyId, skip, limitNum);
+    return buildPaginated(rows, total, pageNum, limitNum);
+  }
+
+  async sendMessage(userId: string, familyId: string, dto: SendFamilyMessageDto): Promise<any> {
+    const member = await this.repo.findMemberByUserId(userId);
+    if (!member || member.familyId !== familyId) {
+      throw new BusinessException(
+        ERROR_CODES.NOT_IN_FAMILY,
+        'You are not a member of this family.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const userSummary = await this.repo.getUserSummary(userId);
+    const senderName = userSummary.fullName || userSummary.username || 'Member';
+    const avatarUrl = userSummary.avatarKey || null;
+    const content = dto.content || '';
+
+    const record = await this.repo.createMessage(
+      familyId,
+      userId,
+      content,
+      senderName,
+      member.role,
+      avatarUrl,
+      dto.mediaType,
+      dto.mediaUrl,
+      dto.mediaName,
+      dto.mediaSize,
+    );
+
+    const message = {
+      id: record.id,
+      familyId,
+      senderId: userId,
+      senderName,
+      senderRole: member.role,
+      content,
+      mediaType: dto.mediaType || null,
+      mediaUrl: dto.mediaUrl || null,
+      mediaName: dto.mediaName || null,
+      mediaSize: dto.mediaSize || null,
+      avatarUrl,
+      timestamp: record.createdAt,
+      isSystem: false,
+    };
+
+    try {
+      this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:message', {
+        familyId,
+        message,
+      });
+    } catch (_) {}
+
+    return message;
   }
 }

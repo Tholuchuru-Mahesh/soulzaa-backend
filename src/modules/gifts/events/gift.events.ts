@@ -10,6 +10,7 @@ import { DomainEvent } from 'src/common/events';
  */
 export const GIFT_EVENTS = {
   SENT: 'gift.sent',
+  RECEIVED: 'gift.received',
   COMBO: 'gift.combo',
   LUCKY_WIN: 'gift.lucky_win',
   REFUNDED: 'gift.refunded',
@@ -39,6 +40,22 @@ export interface GiftSentPayload {
 
 export class GiftSentEvent extends DomainEvent<GiftSentPayload> {
   readonly name = GIFT_EVENTS.SENT;
+}
+
+export class GiftReceivedEvent extends DomainEvent<{
+  transactionId: string;
+  userId: string;
+  receiverId: string;
+  senderId: string;
+  giftId: string;
+  giftName: string;
+  quantity: number;
+  totalCoinValue: number;
+  creatorEarnings: number;
+  receiverExp: number;
+  createdAt: string;
+}> {
+  readonly name = GIFT_EVENTS.RECEIVED;
 }
 
 export class GiftComboEvent extends DomainEvent<{

@@ -25,6 +25,8 @@ import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/wor
 import { LiveStreamReportRepository } from '../repositories/live-stream-report.repository';
 import { LiveStreamService } from './live-stream.service';
 
+import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
+
 /** Report reasons that page a moderator immediately rather than waiting in the normal report queue. */
 const HIGH_PRIORITY_REPORT_REASONS: LiveStreamReportReason[] = [
   LiveStreamReportReason.THREATS,
@@ -72,6 +74,7 @@ export class LiveStreamReportService {
     @Optional() private readonly auditLog?: AuditLogService,
     @Optional() private readonly moderatorNotify?: ModeratorNotificationService,
     @Optional() private readonly approvalService?: ModerationApprovalService,
+    @Optional() private readonly investigationRecording?: InvestigationRecordingService,
   ) {}
 
   async fileReport(input: FileLiveStreamReportInput): Promise<LiveStreamReport> {
@@ -96,6 +99,19 @@ export class LiveStreamReportService {
       reason: input.reason,
       description: input.description ?? null,
     });
+
+    if (this.investigationRecording) {
+      void this.investigationRecording.captureReportEvidence({
+        reportId: report.id,
+        roomId: input.streamId,
+        roomType: 'stream',
+        targetUserId: input.targetUserId,
+        reporterId: input.reporterId,
+        violationReason: input.reason,
+        description: input.description,
+        ownerId: stream?.hostId ?? null,
+      });
+    }
 
     if (this.moderatorNotify && HIGH_PRIORITY_REPORT_REASONS.includes(input.reason)) {
       const moderatorIds = await this.scopeService.resolveModeratorsInScope(stream.hostId);

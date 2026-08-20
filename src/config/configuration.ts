@@ -266,6 +266,10 @@ export const zegoConfig = registerAs('zego', () => ({
   appId: env().ZEGO_APP_ID,
   serverSecret: env().ZEGO_SERVER_SECRET,
   tokenExpirySeconds: env().ZEGO_TOKEN_EXPIRY_SECONDS,
+  cloudRecordApiBaseUrl: env().ZEGO_CLOUD_RECORD_API_BASE_URL,
+  cloudRecordCallbackBaseUrl: env().ZEGO_CLOUD_RECORD_CALLBACK_BASE_URL,
+  cloudRecordSegmentIntervalSeconds: env().ZEGO_CLOUD_RECORD_SEGMENT_INTERVAL_SECONDS,
+  cloudRecordCallbackSecret: env().ZEGO_CLOUD_RECORD_CALLBACK_SECRET,
 }));
 
 export const geocodingConfig = registerAs('geocoding', () => ({

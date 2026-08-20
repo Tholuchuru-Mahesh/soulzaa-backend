@@ -1,3 +1,4 @@
+import { Optional } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -10,6 +11,7 @@ import type { AuthenticatedUser } from '../../common/interfaces/authenticated-us
 import { GameLobbyStatus } from '@prisma/client';
 import { GamesRepository } from '../../modules/games/repositories/games.repository';
 import { GamesService } from '../../modules/games/services/games.service';
+import { RoomMediaBufferService } from '../../modules/investigation-recording/services/room-media-buffer.service';
 import { BaseGateway } from './base.gateway';
 import { SocketManager } from './socket.manager';
 
@@ -36,6 +38,18 @@ export class ChatGateway extends BaseGateway {
   constructor(manager: SocketManager) {
     super(manager);
   }
+
+  @SubscribeMessage('family:message')
+  async onFamilyMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { familyId: string; message: any },
+  ) {
+    if (body?.familyId && body?.message) {
+      const roomId = `family_${body.familyId}`;
+      this.server.to(roomId).emit('family:message', body);
+    }
+    return { ok: true };
+  }
 }
 
 @WebSocketGateway({ namespace: '/call' })
@@ -49,8 +63,33 @@ export class CallGateway extends BaseGateway {
 @WebSocketGateway({ namespace: '/audio-room' })
 export class AudioRoomGateway extends BaseGateway {
   @WebSocketServer() protected readonly server!: Server;
-  constructor(manager: SocketManager) {
+  constructor(
+    manager: SocketManager,
+    @Optional() private readonly bufferService?: RoomMediaBufferService,
+  ) {
     super(manager);
+  }
+
+  @SubscribeMessage('room:speaker_activity')
+  handleSpeakerActivity(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { roomId: string; isSpeaking: boolean; seatNumber?: number; name?: string; avatarUrl?: string },
+  ) {
+    const user = client.data.user as AuthenticatedUser | undefined;
+    if (!payload?.roomId) return;
+    const userId = user?.id || client.id;
+    const rawUsername = user?.username;
+    const userName = payload.name || (typeof rawUsername === 'string' ? rawUsername : undefined) || 'Speaker';
+    if (this.bufferService) {
+      this.bufferService.recordSpeakerActivity(
+        payload.roomId,
+        userId,
+        userName,
+        payload.seatNumber,
+        payload.isSpeaking,
+        payload.avatarUrl,
+      );
+    }
   }
 }
 

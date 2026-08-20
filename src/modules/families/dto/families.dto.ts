@@ -25,23 +25,45 @@ export class CreateFamilyDto {
   @MaxLength(200)
   description?: string;
 
-  @ApiPropertyOptional({ description: 'S3 object key for the family logo' })
+  @ApiPropertyOptional({ description: 'S3 object key or URL for the family logo' })
   @IsString()
   @IsOptional()
   logoKey?: string;
+
+  @ApiPropertyOptional({ description: 'S3 object key or URL for the family logo (alias)' })
+  @IsString()
+  @IsOptional()
+  logo?: string;
+
+  @ApiPropertyOptional({ description: 'Whether anyone can join directly without approval' })
+  @IsBoolean()
+  @IsOptional()
+  autoAccept?: boolean;
 }
 
 export class UpdateFamilyDto {
-  @ApiPropertyOptional({ description: 'Updated description', maxLength: 200 })
+  @ApiPropertyOptional({ description: 'Updated family name', minLength: 3, maxLength: 30 })
+  @IsString()
+  @IsOptional()
+  @Length(3, 30)
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'A short description of the family', maxLength: 200 })
   @IsString()
   @IsOptional()
   @MaxLength(200)
   description?: string;
 
-  @ApiPropertyOptional({ description: 'Updated S3 logo key' })
+  @ApiPropertyOptional({ description: 'Updated S3 logo key or URL' })
   @IsString()
   @IsOptional()
   logoKey?: string;
+
+  @ApiPropertyOptional({ description: 'Updated S3 logo key or URL (alias)' })
+  @IsString()
+  @IsOptional()
+  logo?: string;
 
   @ApiPropertyOptional({ description: 'Whether requests are auto-accepted' })
   @IsBoolean()
@@ -61,8 +83,8 @@ export class PromoteMemberDto {
   @IsNotEmpty()
   userId!: string;
 
-  @ApiProperty({ description: 'New role for the member', enum: ['CO_FOUNDER', 'ELDER', 'MEMBER'] })
-  @IsEnum(['CO_FOUNDER', 'ELDER', 'MEMBER'])
+  @ApiProperty({ description: 'New role for the member', enum: ['CO_FOUNDER', 'CO_LEADER', 'ELDER', 'MEMBER'] })
+  @IsEnum(['CO_FOUNDER', 'CO_LEADER', 'ELDER', 'MEMBER', 'FOUNDER', 'LEADER'])
   role!: any;
 }
 
@@ -79,3 +101,51 @@ export class TransferLeadershipDto {
   @IsNotEmpty()
   userId!: string;
 }
+
+export class SendFamilyMessageDto {
+  @ApiPropertyOptional({ description: 'Message content text' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(2000)
+  content?: string;
+
+  @ApiPropertyOptional({ description: 'Type of media attachment', enum: ['IMAGE', 'VIDEO', 'DOCUMENT', 'AUDIO'] })
+  @IsString()
+  @IsOptional()
+  mediaType?: string;
+
+  @ApiPropertyOptional({ description: 'Media storage URL or direct link' })
+  @IsString()
+  @IsOptional()
+  mediaUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Media file name' })
+  @IsString()
+  @IsOptional()
+  mediaName?: string;
+
+  @ApiPropertyOptional({ description: 'Media size in bytes' })
+  @IsOptional()
+  mediaSize?: number;
+}
+
+export class SearchFamiliesQueryDto {
+  @ApiPropertyOptional({ description: 'Search keyword for family name or tag' })
+  @IsString()
+  @IsOptional()
+  q?: string;
+
+  @ApiPropertyOptional({ description: 'Search keyword alias' })
+  @IsString()
+  @IsOptional()
+  search?: string;
+
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20 })
+  @IsOptional()
+  limit?: number;
+}
+

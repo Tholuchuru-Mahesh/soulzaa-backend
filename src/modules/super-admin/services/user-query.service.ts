@@ -322,6 +322,11 @@ export class UserQueryService {
           familyId: fam.id,
           familyName: fam.name,
           familyRole: familyMember.role,
+          id: fam.id,
+          name: fam.name,
+          role: familyMember.role,
+          logo: fam.logo,
+          logoKey: fam.logo,
         };
       }
     }

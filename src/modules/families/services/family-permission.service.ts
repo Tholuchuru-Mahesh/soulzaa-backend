@@ -36,13 +36,43 @@ export class FamilyPermissionService {
   }
 
   /**
+   * Checks if a user is a platform SUPER_ADMIN or ADMIN.
+   */
+  async isSystemAdmin(userId: string): Promise<boolean> {
+    if (!userId) return false;
+    try {
+      const userRoles = await this.prisma.userRole.findMany({
+        where: { userId, suspendedAt: null },
+        include: { role: true },
+      });
+      return userRoles.some((ur) => ['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'OFFICIAL'].includes(ur.role.name));
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Verifies member role in family and returns membership object.
+   * If the user is a platform admin (Super Admin), returns virtual root authority.
    */
   async getMember(familyId: string, userId: string) {
     const member = await this.prisma.familyMember.findFirst({
       where: { familyId, userId },
     });
     if (!member) {
+      const isAdmin = await this.isSystemAdmin(userId);
+      if (isAdmin) {
+        return {
+          id: `admin_${userId}`,
+          familyId,
+          userId,
+          role: 'FOUNDER',
+          points: BigInt(0),
+          expContribution: BigInt(0),
+          coinContribution: BigInt(0),
+          joinedAt: new Date(),
+        };
+      }
       throw new ForbiddenException('User is not a member of this family');
     }
     return member;

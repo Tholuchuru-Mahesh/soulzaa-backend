@@ -798,12 +798,16 @@ export class ModerationService implements IModerationService {
       reportId: report.id,
       recipientIds,
     });
-    if (this.moderatorNotify && HIGH_PRIORITY_REPORT_REASONS.includes(dto.reason)) {
-      await Promise.all(
-        recipientIds.map((moderatorId) =>
-          this.moderatorNotify!.notifyHighPriorityReport(moderatorId, report.id, dto.reason),
-        ),
-      );
+    if (this.investigationRecording) {
+      void this.investigationRecording.captureReportEvidence({
+        reportId: report.id,
+        roomId,
+        roomType: 'audio',
+        targetUserId: dto.targetUserId,
+        reporterId: reporter.id,
+        violationReason: dto.reason,
+        description: dto.description,
+      });
     }
     return report;
   }

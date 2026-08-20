@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import { FamilyAuditService } from './family-audit.service';
@@ -35,6 +35,8 @@ export interface UpdateFamilyInput {
   privacy?: string;
   announcement?: string;
   welcomeMessage?: string;
+  maxMembers?: number;
+  status?: string;
 }
 
 @Injectable()
@@ -132,14 +134,21 @@ export class FamilyService {
   async updateFamily(input: UpdateFamilyInput) {
     const { familyId, actorUserId } = input;
 
-    const member = await this.permissionService.getMember(familyId, actorUserId);
-    if (!['FOUNDER', 'CO_FOUNDER', 'ELDER'].includes(member.role)) {
-      throw new ForbiddenException('You do not have permission to update family profile');
+    const isAdmin = await this.permissionService.isSystemAdmin(actorUserId);
+    if (!isAdmin) {
+      const member = await this.permissionService.getMember(familyId, actorUserId);
+      if (!['FOUNDER', 'CO_FOUNDER', 'ELDER'].includes(member.role)) {
+        throw new ForbiddenException('You do not have permission to update family profile');
+      }
     }
 
     const updated = await this.prisma.family.update({
       where: { id: familyId },
       data: {
+        ...(input.name ? { name: input.name } : {}),
+        ...(input.tag ? { tag: input.tag } : {}),
+        ...(input.maxMembers ? { maxMembers: input.maxMembers } : {}),
+        ...(input.status ? { status: input.status } : {}),
         badge: input.badge,
         logo: input.logo,
         banner: input.banner,
@@ -168,11 +177,17 @@ export class FamilyService {
     const lockKey = `family:transfer:${familyId}`;
 
     return this.locks.withLock(lockKey, async () => {
-      const currentFounder = await this.permissionService.getMember(familyId, currentFounderId);
-      if (currentFounder.role !== 'FOUNDER') {
-        throw new ForbiddenException('Only the current family founder can transfer ownership');
+      const family = await this.prisma.family.findUnique({ where: { id: familyId } });
+      if (!family) throw new NotFoundException('Family not found');
+
+      const isAdmin = await this.permissionService.isSystemAdmin(currentFounderId);
+      if (!isAdmin && family.founderId !== currentFounderId) {
+        throw new ForbiddenException('Only the current family founder or Super Admin can transfer ownership');
       }
 
+      const currentFounderMember = await this.prisma.familyMember.findFirst({
+        where: { familyId, role: 'FOUNDER' },
+      });
       const newFounder = await this.permissionService.getMember(familyId, newFounderId);
 
       await this.prisma.$transaction([
@@ -187,16 +202,20 @@ export class FamilyService {
           data: { role: 'FOUNDER' },
         }),
         // Update old founder role to CO_FOUNDER
-        this.prisma.familyMember.update({
-          where: { id: currentFounder.id },
-          data: { role: 'CO_FOUNDER' },
-        }),
+        ...(currentFounderMember && currentFounderMember.id !== newFounder.id
+          ? [
+              this.prisma.familyMember.update({
+                where: { id: currentFounderMember.id },
+                data: { role: 'CO_FOUNDER' },
+              }),
+            ]
+          : []),
         this.prisma.familyHistory.create({
           data: {
             familyId,
             userId: newFounderId,
             action: 'OWNER_TRANSFERRED',
-            details: { previousFounderId: currentFounderId },
+            details: { previousFounderId: family.founderId, actorId: currentFounderId },
           },
         }),
       ]);
@@ -205,7 +224,7 @@ export class FamilyService {
         'OWNER_TRANSFERRED',
         familyId,
         newFounderId,
-        { previousFounderId: currentFounderId },
+        { previousFounderId: family.founderId },
         currentFounderId,
       );
 
@@ -214,12 +233,15 @@ export class FamilyService {
   }
 
   /**
-   * Disbands / deletes a family (Founder only).
+   * Disbands / deletes a family (Founder or Super Admin).
    */
   async deleteFamily(familyId: string, founderId: string) {
-    const member = await this.permissionService.getMember(familyId, founderId);
-    if (member.role !== 'FOUNDER') {
-      throw new ForbiddenException('Only the founder can delete or disband the family');
+    const isAdmin = await this.permissionService.isSystemAdmin(founderId);
+    if (!isAdmin) {
+      const member = await this.permissionService.getMember(familyId, founderId);
+      if (member.role !== 'FOUNDER') {
+        throw new ForbiddenException('Only the founder or Super Admin can delete or disband the family');
+      }
     }
 
     await this.prisma.$transaction([

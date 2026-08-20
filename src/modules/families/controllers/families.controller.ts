@@ -20,6 +20,7 @@ import {
   KickMemberDto,
   ManageRequestDto,
   PromoteMemberDto,
+  SendFamilyMessageDto,
   TransferLeadershipDto,
   UpdateFamilyDto,
 } from '../dto/families.dto';
@@ -27,7 +28,7 @@ import { FamiliesService } from '../services/families.service';
 
 @ApiTags('families')
 @ApiBearerAuth()
-@Controller('families-v1')
+@Controller('families')
 export class FamiliesController {
   constructor(private readonly families: FamiliesService) {}
 
@@ -42,6 +43,19 @@ export class FamiliesController {
   @ApiOperation({ summary: 'List and search families' })
   list(@Query() q: PaginationQueryDto & { search?: string }) {
     return this.families.listFamilies(q.page, q.limit, q.search);
+  }
+
+  @Get('me')
+  @NotGuest()
+  @ApiOperation({ summary: 'Get current user family and membership details' })
+  getMyFamily(@CurrentUser('id') userId: string) {
+    return this.families.getMyFamily(userId);
+  }
+
+  @Get('config')
+  @ApiOperation({ summary: 'Get active dynamic family configurations and limits' })
+  getConfig() {
+    return this.families.getConfig();
   }
 
   @Get(':id')
@@ -165,5 +179,28 @@ export class FamiliesController {
     @Query() q: PaginationQueryDto,
   ) {
     return this.families.listLogs(userId, id, q.page, q.limit);
+  }
+
+  @Get(':id/messages')
+  @NotGuest()
+  @ApiOperation({ summary: 'Get family group chat message history' })
+  listMessages(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Query() q: PaginationQueryDto,
+  ) {
+    return this.families.listMessages(userId, id, q.page, q.limit);
+  }
+
+  @Post(':id/messages')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Send a message to the family group chat' })
+  sendMessage(
+    @CurrentUser('id') userId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: SendFamilyMessageDto,
+  ) {
+    return this.families.sendMessage(userId, id, dto);
   }
 }

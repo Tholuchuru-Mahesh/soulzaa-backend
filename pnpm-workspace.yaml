@@ -43,6 +43,7 @@ allowBuilds:
   '@prisma/engines': true
   '@scarf/scarf': true
   '@swc/core': true
+  ffmpeg-static: true
   msgpackr-extract: true
   prisma: true
   protobufjs: true
@@ -53,8 +54,8 @@ onlyBuiltDependencies:
   - '@prisma/engines'
   - '@scarf/scarf'
   - '@swc/core'
+  - ffmpeg-static
   - msgpackr-extract
   - prisma
   - protobufjs
   - sharp
-

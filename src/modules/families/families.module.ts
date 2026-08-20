@@ -5,6 +5,7 @@ import { FamiliesController } from './controllers/families.controller';
 import { FAMILIES_SERVICE } from './interfaces/families.service.interface';
 import { FamiliesRepository } from './repositories/families.repository';
 import { FamiliesService } from './services/families.service';
+import { FamilyProgressionListener } from './listeners/family-progression.listener';
 import {
   FamilyAuditService,
   FamilyConfigurationService,
@@ -32,6 +33,7 @@ import {
       provide: FAMILIES_SERVICE,
       useClass: FamiliesService,
     },
+    FamilyProgressionListener,
     FamilyConfigurationService,
     FamilyValidationService,
     FamilyPermissionService,

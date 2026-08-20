@@ -13,8 +13,13 @@
  * upward would invert the dependency. These strings are the published contract.
  */
 export const PROGRESSION_EVENT_NAMES: readonly string[] = [
+  // Auth / Login
+  'user.logged_in',
+  'user.active',
+  'auth.login',
   // Gifting
   'gift.sent',
+  'gift.received',
   'gift.combo',
   'gift.lucky_win',
   // Progression
@@ -23,17 +28,27 @@ export const PROGRESSION_EVENT_NAMES: readonly string[] = [
   // Social / family
   'family.created',
   'family.member_joined',
+  'social.followed',
+  'social.unfollowed',
+  'social.friend.accepted',
   'social.friend.added',
   // Rooms
   'audio_room.created',
   'audio_room.joined',
+  'audio_room.left',
+  'audio_room.voice_joined',
+  'audio_room.seat_joined',
+  'room.joined',
+  'room.duration_updated',
   'video_room.created',
   'video_room.joined',
   // Games
   'game.settled',
-  // Economy
+  // Economy / Recharge
   'wallet.credited',
+  'wallet.debited',
   'coin_purchase.completed',
+  'recharge.success',
   // Treasure
   'treasure.box_opened',
   'treasure.rocket_completed',
@@ -48,15 +63,28 @@ export const PROGRESSION_EVENT_NAMES: readonly string[] = [
  * The user a progression signal belongs to.
  *
  * Payload shapes differ across domains, so this probes the conventional fields in
- * priority order. `senderId` sits above `actorId` because gifting credits the
- * sender. Returns null when a payload carries no subject (room-scoped events such
- * as `audio_room.ended`), which callers treat as "nothing to progress".
+ * priority order. Supports senders, receivers, actors, owners, members, and followers.
+ * Returns null when a payload carries no subject (room-scoped events such as
+ * `audio_room.ended`), which callers treat as "nothing to progress".
  */
 export function resolveProgressionSubject(payload: unknown): string | null {
   if (!payload || typeof payload !== 'object') return null;
   const record = payload as Record<string, unknown>;
 
-  const direct = ['userId', 'senderId', 'actorId', 'ownerId', 'hostId'];
+  const direct = [
+    'userId',
+    'senderId',
+    'receiverId',
+    'actorId',
+    'ownerId',
+    'hostId',
+    'requesterId',
+    'addresseeId',
+    'followerId',
+    'followingId',
+    'memberId',
+    'playerId',
+  ];
   for (const field of direct) {
     const value = record[field];
     if (typeof value === 'string' && value.length > 0) return value;

@@ -37,6 +37,7 @@ import { ProgressionSocketListener } from './listeners/progression-socket.listen
 import { RoomCosmeticsSocketListener } from './listeners/room-cosmetics-socket.listener';
 import { TreasureSocketListener } from './listeners/treasure-socket.listener';
 import { VoiceLifecycleListener } from './listeners/voice-lifecycle.listener';
+import { RoomRecordingLifecycleListener } from './listeners/room-recording-lifecycle.listener';
 import { VoiceSeatSyncListener } from './listeners/voice-seat-sync.listener';
 import { VoiceSocketListener } from './listeners/voice-socket.listener';
 import { AudioRoomSeatsRepository } from './repositories/audio-room-seats.repository';
@@ -155,6 +156,7 @@ import { WorkforceScopeModule } from 'src/modules/mobile-workforce/workforce-sco
     VoiceSocketListener,
     VoiceSeatSyncListener,
     VoiceLifecycleListener,
+    RoomRecordingLifecycleListener,
     ModerationSocketListener,
     AudioRoomModerationApprovalListener,
     AudioRoomPlatformBanListener,

@@ -21,6 +21,7 @@ import { QueueModule } from './queue/queue.module';
 import { DistributedLockService } from './redis/distributed-lock.service';
 import { EnterpriseCacheService } from './redis/enterprise-cache.service';
 import { RedisModule } from './redis/redis.module';
+import { RoomMediaBufferModule } from './room-media-buffer/room-media-buffer.module';
 import { CircuitBreakerService } from './resilience/circuit-breaker.service';
 import { SecurityAuditService } from './security/security-audit.service';
 import { GracefulShutdownService } from './shutdown/graceful-shutdown.service';
@@ -42,6 +43,7 @@ import { ZegoModule } from './zego/zego.module';
     StorageModule,
     AgoraModule,
     ZegoModule,
+    RoomMediaBufferModule,
     GeocodingModule,
     AuthInfraModule,
     SocketModule,

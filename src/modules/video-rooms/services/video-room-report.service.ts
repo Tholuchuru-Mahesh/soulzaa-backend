@@ -47,6 +47,8 @@ import {
 import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
 import { VideoRoomModerationService } from './video-room-moderation.service';
 
+import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
+
 /** Report reasons that page a moderator immediately rather than waiting in the normal report queue. */
 const HIGH_PRIORITY_REPORT_REASONS: VideoRoomReportReason[] = [
   VideoRoomReportReason.THREATS,
@@ -84,6 +86,7 @@ export class VideoRoomReportService {
     @Optional() private readonly performanceStats?: ModeratorPerformanceService,
     @Optional() private readonly moderatorNotify?: ModeratorNotificationService,
     @Optional() private readonly approvalService?: ModerationApprovalService,
+    @Optional() private readonly investigationRecording?: InvestigationRecordingService,
   ) {}
 
   /**
@@ -150,6 +153,19 @@ export class VideoRoomReportService {
       reason: dto.reason,
       description: dto.description,
     });
+
+    if (this.investigationRecording) {
+      void this.investigationRecording.captureReportEvidence({
+        reportId: report.id,
+        roomId: ref.id,
+        roomType: 'video',
+        targetUserId: dto.targetUserId,
+        reporterId: reporter.id,
+        violationReason: dto.reason,
+        description: dto.description,
+        ownerId: ref.ownerId,
+      });
+    }
 
     await this.notifyRecipients(ref, report, reporter.id);
     return report;

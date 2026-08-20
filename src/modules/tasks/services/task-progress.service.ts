@@ -52,8 +52,8 @@ export class TaskProgressService {
 
     const progressBefore = existing?.currentProgress ?? 0;
 
-    // If already completed in non-repeatable state, do not increment further
-    if (existing?.isCompleted && !existing?.completedAt) {
+    // If already completed for this period, do not increment further
+    if (existing?.isCompleted) {
       return {
         progressBefore,
         progressAfter: progressBefore,

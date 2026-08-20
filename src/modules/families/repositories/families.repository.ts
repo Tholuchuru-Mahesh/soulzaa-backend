@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Family, FamilyJoinRequest, FamilyMember, Prisma } from '@prisma/client';
+import { Family, FamilyBan, FamilyJoinRequest, FamilyMember, Prisma } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 @Injectable()
@@ -26,6 +26,12 @@ export class FamiliesRepository {
   findMemberByUserId(userId: string): Promise<FamilyMember | null> {
     return this.prisma.familyMember.findUnique({
       where: { userId },
+    });
+  }
+
+  countMembers(familyId: string): Promise<number> {
+    return this.prisma.familyMember.count({
+      where: { familyId },
     });
   }
 
@@ -112,14 +118,14 @@ export class FamiliesRepository {
   async addMember(
     familyId: string,
     userId: string,
-    role: string = 'MEMBER',
+    role: any = 'MEMBER',
   ): Promise<FamilyMember> {
     return this.prisma.$transaction(async (tx) => {
       const member = await tx.familyMember.create({
         data: {
           familyId,
           userId,
-          role,
+          role: role || 'MEMBER',
         },
       });
 
@@ -162,6 +168,30 @@ export class FamiliesRepository {
     });
   }
 
+  // ---- Ban helpers ----
+
+  findBan(familyId: string, userId: string): Promise<FamilyBan | null> {
+    return this.prisma.familyBan.findUnique({
+      where: { familyId_userId: { familyId, userId } },
+    });
+  }
+
+  createBan(familyId: string, userId: string, bannedById: string, reason?: string): Promise<FamilyBan> {
+    return this.prisma.familyBan.upsert({
+      where: { familyId_userId: { familyId, userId } },
+      create: { familyId, userId, bannedById, reason },
+      update: { bannedById, reason },
+    });
+  }
+
+  deleteBan(familyId: string, userId: string): Promise<number> {
+    return this.prisma.familyBan
+      .deleteMany({ where: { familyId, userId } })
+      .then((r) => r.count);
+  }
+
+  // ---- Join-request helpers ----
+
   createRequest(data: Prisma.FamilyJoinRequestUncheckedCreateInput): Promise<FamilyJoinRequest> {
     return this.prisma.familyJoinRequest.create({ data });
   }
@@ -178,6 +208,7 @@ export class FamiliesRepository {
     familyId: string,
     userId: string,
     actorId: string,
+    role: any = 'MEMBER',
   ): Promise<FamilyMember> {
     return this.prisma.$transaction(async (tx) => {
       await tx.familyJoinRequest.update({
@@ -189,7 +220,7 @@ export class FamiliesRepository {
         data: {
           familyId,
           userId,
-          role: 'MEMBER',
+          role: role || 'MEMBER',
         },
       });
 
@@ -251,25 +282,57 @@ export class FamiliesRepository {
     return this.prisma.$transaction([
       this.prisma.family.findMany({
         where,
-        skip,
-        take,
+        skip: Number(skip) || 0,
+        take: Number(take) || 20,
         orderBy: { level: 'desc' },
       }),
       this.prisma.family.count({ where }),
     ]);
   }
 
-  listMembers(familyId: string, skip: number, take: number): Promise<[FamilyMember[], number]> {
+  async listMembers(familyId: string, skip: number, take: number): Promise<[any[], number]> {
     const where = { familyId };
-    return this.prisma.$transaction([
+    const [members, total] = await this.prisma.$transaction([
       this.prisma.familyMember.findMany({
         where,
-        skip,
-        take,
-        orderBy: { role: 'asc' },
+        skip: Number(skip) || 0,
+        take: Number(take) || 20,
+        orderBy: { expContribution: 'desc' },
       }),
       this.prisma.familyMember.count({ where }),
     ]);
+
+    const userIds = members.map((m) => m.userId);
+    const users = userIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, username: true, fullName: true },
+        })
+      : [];
+    const profiles = userIds.length > 0
+      ? await this.prisma.userProfile.findMany({
+          where: { userId: { in: userIds } },
+          select: { userId: true, avatarKey: true },
+        })
+      : [];
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const profileMap = new Map(profiles.map((p) => [p.userId, p]));
+
+    const enriched = members.map((m) => {
+      const u = userMap.get(m.userId);
+      const p = profileMap.get(m.userId);
+      const points = Number(m.coinContribution ?? m.expContribution ?? 0);
+      return {
+        ...m,
+        contributionPoints: points,
+        coinContribution: points,
+        expContribution: points,
+        username: u?.username || u?.fullName,
+        avatarKey: p?.avatarKey,
+      };
+    });
+
+    return [enriched, total];
   }
 
   /**
@@ -304,8 +367,8 @@ export class FamiliesRepository {
     return this.prisma.$transaction([
       this.prisma.familyJoinRequest.findMany({
         where,
-        skip,
-        take,
+        skip: Number(skip) || 0,
+        take: Number(take) || 20,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.familyJoinRequest.count({ where }),
@@ -323,13 +386,188 @@ export class FamiliesRepository {
     });
   }
 
+  async getUserSummary(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { username: true, fullName: true },
+    });
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId },
+      select: { avatarKey: true },
+    });
+    return {
+      username: user?.username || 'Member',
+      fullName: user?.fullName || null,
+      avatarKey: profile?.avatarKey || null,
+    };
+  }
+
+  createMessage(
+    familyId: string,
+    userId: string,
+    content: string,
+    senderName: string,
+    senderRole: string,
+    avatarUrl?: string | null,
+    mediaType?: string | null,
+    mediaUrl?: string | null,
+    mediaName?: string | null,
+    mediaSize?: number | null,
+  ) {
+    return this.prisma.familyHistory.create({
+      data: {
+        familyId,
+        userId,
+        action: 'CHAT_MESSAGE',
+        details: {
+          content,
+          senderName,
+          senderRole,
+          avatarUrl: avatarUrl ?? null,
+          mediaType: mediaType ?? null,
+          mediaUrl: mediaUrl ?? null,
+          mediaName: mediaName ?? null,
+          mediaSize: mediaSize ?? null,
+        },
+      },
+    });
+  }
+
+  formatActivityLog(
+    action: string,
+    actorUserId: string | null,
+    details: Record<string, any>,
+    nameMap: Map<string, string>,
+  ): string {
+    const actor = actorUserId ? (nameMap.get(actorUserId) || 'A member') : 'A member';
+    const targetUserId =
+      details.kickedUserId ||
+      details.acceptedUserId ||
+      details.rejectedUserId ||
+      details.targetUserId ||
+      details.newLeaderId;
+    const target = targetUserId ? (nameMap.get(targetUserId) || 'A member') : 'A member';
+
+    switch (action.toUpperCase()) {
+      case 'CREATE':
+      case 'FAMILY_CREATED':
+        return `${actor} created the family`;
+      case 'JOIN':
+      case 'MEMBER_JOINED':
+        return `${actor} joined the family`;
+      case 'ACCEPT_REQUEST':
+      case 'JOIN_REQUEST_APPROVED':
+        return `${target} joined the family (approved by ${actor})`;
+      case 'REJECT_REQUEST':
+      case 'JOIN_REQUEST_REJECTED':
+        return `${target}'s join request was declined by ${actor}`;
+      case 'LEAVE':
+      case 'MEMBER_LEFT':
+        return `${actor} left the family`;
+      case 'KICK':
+      case 'MEMBER_KICKED':
+        return `${target} was removed from the family by ${actor}`;
+      case 'MEMBER_BANNED':
+        return `${target} was banned from the family by ${actor}`;
+      case 'PROMOTE':
+      case 'PROMOTE_MEMBER':
+      case 'ROLE_ASSIGNED': {
+        const role = (details.newRole || details.role || 'Officer').replace(/_/g, ' ');
+        return `${target} was promoted to ${role} by ${actor}`;
+      }
+      case 'TRANSFER_LEADERSHIP':
+        return `${actor} transferred family leadership to ${target}`;
+      case 'EDIT_PROFILE':
+      case 'SETTINGS_UPDATED':
+      case 'UPDATE':
+      case 'FAMILY_UPDATED':
+        return `${actor} updated the family settings`;
+      default:
+        return `${actor}: ${action.toLowerCase().replace(/_/g, ' ')}`;
+    }
+  }
+
+  async listMessages(familyId: string, skip: number, take: number): Promise<[any[], number]> {
+    const where = { familyId };
+    const [records, total] = await this.prisma.$transaction([
+      this.prisma.familyHistory.findMany({
+        where,
+        skip: Number(skip) || 0,
+        take: Number(take) || 50,
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.familyHistory.count({ where }),
+    ]);
+
+    // Collect all referenced user IDs for a single batch lookup
+    const userIds = new Set<string>();
+    for (const r of records) {
+      if (r.userId) userIds.add(r.userId);
+      const details = (r.details as Record<string, any>) || {};
+      if (details.kickedUserId) userIds.add(details.kickedUserId);
+      if (details.acceptedUserId) userIds.add(details.acceptedUserId);
+      if (details.rejectedUserId) userIds.add(details.rejectedUserId);
+      if (details.targetUserId) userIds.add(details.targetUserId);
+      if (details.newLeaderId) userIds.add(details.newLeaderId);
+      if (details.actorId) userIds.add(details.actorId);
+    }
+
+    const users =
+      userIds.size > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: [...userIds] } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [];
+    const nameMap = new Map<string, string>(
+      users.map((u) => [u.id, u.fullName || u.username || 'Member']),
+    );
+
+    const items = records.map((r) => {
+      const details = (r.details as Record<string, any>) || {};
+      if (r.action === 'CHAT_MESSAGE') {
+        return {
+          id: r.id,
+          familyId: r.familyId,
+          senderId: r.userId || '',
+          senderName: details.senderName || nameMap.get(r.userId || '') || 'Member',
+          senderRole: details.senderRole || 'MEMBER',
+          content: details.content || '',
+          mediaType: details.mediaType || null,
+          mediaUrl: details.mediaUrl || null,
+          mediaName: details.mediaName || null,
+          mediaSize: details.mediaSize || null,
+          avatarUrl: details.avatarUrl || null,
+          timestamp: r.createdAt,
+          isSystem: false,
+        };
+      }
+
+      // Format human-readable activity log as a system message
+      const systemContent = this.formatActivityLog(r.action, r.userId, details, nameMap);
+      return {
+        id: r.id,
+        familyId: r.familyId,
+        senderId: 'system',
+        senderName: 'System',
+        senderRole: 'MEMBER',
+        content: systemContent,
+        avatarUrl: null,
+        timestamp: r.createdAt,
+        isSystem: true,
+      };
+    });
+
+    return [items, total];
+  }
+
   listLogs(familyId: string, skip: number, take: number) {
     const where = { familyId };
     return this.prisma.$transaction([
       this.prisma.familyHistory.findMany({
         where,
-        skip,
-        take,
+        skip: Number(skip) || 0,
+        take: Number(take) || 20,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.familyHistory.count({ where }),
