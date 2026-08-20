@@ -27,7 +27,7 @@ describe('RoleAssignmentService — actor authority comes from the RBAC store', 
   const mockPrisma = {
     user: { findUnique: jest.fn() },
     role: { findFirst: jest.fn() },
-    userRole: { findUnique: jest.fn() },
+    userRole: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     roleScope: { findFirst: jest.fn() },
   };
   const mockRoleService = {

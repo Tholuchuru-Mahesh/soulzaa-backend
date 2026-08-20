@@ -124,6 +124,9 @@ export class RoleAssignmentService {
       );
     }
 
+    // 4b. Validation Rule: One assignable role per account.
+    await this.assertRoleIsExclusive(userId, user.username, role.name);
+
     // 5. Validation Rule: Geographic Scope Entity Verification & Single Country Manager Limit
     if (dto.scopeType === ScopeType.COUNTRY && dto.countryId) {
       const country = await this.countryService.getCountryById(dto.countryId);
@@ -189,6 +192,57 @@ export class RoleAssignmentService {
       roleName: role.name,
       scopeType: dto.scopeType ?? ScopeType.GLOBAL,
     };
+  }
+
+  /**
+   * Roles nobody appoints: USER comes with the account, HOST and CREATOR are
+   * earned through the product. None of them is an assignment, so none of them
+   * may block one.
+   */
+  private static readonly AUTOMATIC_ROLES: ReadonlySet<string> = new Set([
+    'USER',
+    'HOST',
+    'CREATOR',
+  ]);
+
+  /**
+   * The one pair an operator may build. Coin Seller is activated *inside* an
+   * existing Agency account rather than replacing it, so the two coexist.
+   */
+  private static readonly COMBINABLE_ROLES: ReadonlySet<string> = new Set([
+    'AGENCY',
+    'COIN_SELLER',
+  ]);
+
+  /**
+   * An account holds one assignable role. Stacking a second one silently leaves
+   * the holder with the union of both permission sets — which is how an Agency
+   * ended up carrying Official authority.
+   *
+   * Reads the granted rows rather than the resolver: the hierarchy would report
+   * every inherited role and refuse every assignment.
+   */
+  private async assertRoleIsExclusive(
+    userId: string,
+    username: string,
+    roleName: string,
+  ): Promise<void> {
+    const rows = await this.prisma.userRole.findMany({
+      where: { userId, suspendedAt: null },
+      include: { role: { select: { name: true } } },
+    });
+
+    const held = rows
+      .map((r) => r.role.name)
+      .filter((name) => !RoleAssignmentService.AUTOMATIC_ROLES.has(name));
+    if (held.length === 0) return;
+
+    const combined = [...new Set([...held, roleName])];
+    if (combined.every((name) => RoleAssignmentService.COMBINABLE_ROLES.has(name))) return;
+
+    throw new ConflictException(
+      `User '${username}' already holds ${held.join(', ')}. An account may hold only one role — remove it before assigning ${roleName}.`,
+    );
   }
 
   /**
