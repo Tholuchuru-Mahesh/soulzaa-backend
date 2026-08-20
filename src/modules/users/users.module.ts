@@ -1,10 +1,12 @@
 import { Global, Module } from '@nestjs/common';
 import { UsersController } from './controllers/users.controller';
+import { OfficialBadgeSyncListener } from './listeners/official-badge-sync.listener';
 import { PROFILE_SERVICE } from './interfaces/profile.interface';
 import { USERS_SERVICE } from './interfaces/users.service.interface';
 import { ProfileRepository } from './repositories/profile.repository';
 import { UsersRepository } from './repositories/users.repository';
 import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
+import { OfficialBadgeService } from './services/official-badge.service';
 import { ProfileService } from './services/profile.service';
 import {
   PostgresUserSearchProvider,
@@ -30,6 +32,8 @@ import { UsersService } from './services/users.service';
     ProfileRepository,
     UsersService,
     ProfileService,
+    OfficialBadgeService,
+    OfficialBadgeSyncListener,
     MediaUrlResolver,
     PostgresUserSearchProvider,
     { provide: USERS_SERVICE, useExisting: UsersService },

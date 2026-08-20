@@ -13,6 +13,16 @@ export interface IRoleSource {
   /** Effective role names for a user, including roles inherited via hierarchy. */
   getRoleNames(userId: string): Promise<string[]>;
   /**
+   * Roles granted to this account, without the hierarchy expansion.
+   *
+   * `getRoleNames` answers "what may this user do", which is the right question
+   * for a guard but the wrong one for an identity projection: with
+   * ADMIN → COUNTRY_MANAGER → OFFICIAL in the hierarchy, every admin reads as an
+   * official. Callers that describe *who an account is* — badges, staff flags —
+   * want the appointment, not the inheritance.
+   */
+  getDirectRoleNames(userId: string): Promise<string[]>;
+  /**
    * Reverse lookup: every user holding at least one of these roles. Directly
    * assigned only — a reconciliation job wants the accounts that *were granted*
    * a role, not everyone who inherits its permissions.

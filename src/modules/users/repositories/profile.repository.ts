@@ -119,6 +119,35 @@ export class ProfileRepository {
     });
   }
 
+  /**
+   * Grant or clear the role-derived OFFICIAL badge. Separate from
+   * `reviewVerification` because there is no application to review — an
+   * Official is appointed by an operator, so the row is written straight to its
+   * decided state.
+   */
+  setOfficialBadge(userId: string, grant: boolean): Promise<UserVerification> {
+    return this.prisma.userVerification.update({
+      where: { userId },
+      data: grant
+        ? {
+            verified: true,
+            status: VerificationStatus.APPROVED,
+            type: VerificationType.OFFICIAL,
+            rejectionReason: null,
+            reviewedAt: new Date(),
+          }
+        : {
+            verified: false,
+            status: VerificationStatus.NONE,
+            type: null,
+            documentKey: null,
+            rejectionReason: null,
+            reviewedAt: null,
+            reviewedBy: null,
+          },
+    });
+  }
+
   reviewVerification(
     userId: string,
     input: { approve: boolean; reviewedBy: string; reason?: string },

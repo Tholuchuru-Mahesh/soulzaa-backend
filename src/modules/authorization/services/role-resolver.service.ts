@@ -101,6 +101,15 @@ export class RoleResolver {
   }
 
   /**
+   * Effective role names *as granted*, skipping hierarchy expansion. Implements
+   * the IRoleSource port for callers projecting identity rather than access.
+   */
+  async getDirectRoleNames(userId: string): Promise<string[]> {
+    const roles = await this.getDirectUserRoles(userId);
+    return roles.map((r) => r.name);
+  }
+
+  /**
    * Checks if a user possesses a specific role (directly or hierarchically).
    */
   async hasRole(userId: string, targetRoleName: string): Promise<boolean> {

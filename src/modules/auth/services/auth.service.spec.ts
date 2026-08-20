@@ -121,6 +121,7 @@ describe('AuthService', () => {
     };
     roleSource = {
       getRoleNames: jest.fn().mockResolvedValue([]),
+      getDirectRoleNames: jest.fn().mockResolvedValue([]),
       getUserIdsWithAnyRole: jest.fn().mockResolvedValue([]),
     };
     const config = { get: () => ({ passwordResetTtlSeconds: 900 }) } as unknown as ConfigService;
