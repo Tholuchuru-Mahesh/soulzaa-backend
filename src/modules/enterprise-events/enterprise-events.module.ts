@@ -3,12 +3,14 @@ import { Global, Module } from '@nestjs/common';
 import { QueueModule } from 'src/infra/queue/queue.module';
 import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
 import { ENTERPRISE_EVENT_QUEUES } from './constants/event-jobs.constants';
+import { AdminAgencyEventController } from './controllers/admin-agency-event.controller';
 import { AdminChallengeController } from './controllers/admin-challenge.controller';
 import { ChallengeController } from './controllers/challenge.controller';
 import { EnterpriseEventController } from './controllers/event.controller';
 import { EventDraftController } from './controllers/event-draft.controller';
 import { EnterpriseEventProcessor } from './processors/event.processor';
 import { EventLifecycleScheduler } from './services/event.scheduler';
+import { AgencyEventReviewService } from './services/agency-event-review.service';
 import { ChallengeService } from './services/challenge.service';
 import { EventAuditService } from './services/event-audit.service';
 import { EventConfigurationService } from './services/event-configuration.service';
@@ -37,6 +39,7 @@ import { EventProgressionListener } from './listeners/event-progression.listener
     EventDraftController,
     ChallengeController,
     AdminChallengeController,
+    AdminAgencyEventController,
   ],
   providers: [
     // Phase 16: Enterprise Events Engine Services
@@ -44,6 +47,7 @@ import { EventProgressionListener } from './listeners/event-progression.listener
     EventLifecycleScheduler,
     EnterpriseEventProcessor,
     EventConfigurationService,
+    AgencyEventReviewService,
     EventValidationService,
     EventAuditService,
     EventEventService,
