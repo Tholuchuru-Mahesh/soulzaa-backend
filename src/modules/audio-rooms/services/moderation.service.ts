@@ -1311,7 +1311,7 @@ export class ModerationService implements IModerationService {
     return (await this.repo.findActiveKick(roomId, userId)) !== null;
   }
 
-  async assertNotKicked(roomId: string, userId: string): Promise<void> {
+  async assertNotKicked(_roomId: string, _userId: string): Promise<void> {
     // Kick functionality removed — no-op.
     return;
   }

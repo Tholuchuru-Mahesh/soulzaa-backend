@@ -69,52 +69,53 @@ describe('VideoRoomModerationSocketListener', () => {
   });
 
   it('bridges every remaining room-broadcast moderation event to its mapped client event with anonymized identity', () => {
-    const cases: Array<[string, VideoRoomModerationSocketEvent, Record<string, unknown>, boolean]> = [
+    const cases: Array<[string, VideoRoomModerationSocketEvent, Record<string, unknown>, boolean]> =
       [
-        VIDEO_ROOM_MODERATION_EVENTS.BLACKLISTED,
-        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED,
-        { roomId: 'r1', moderatorId: 'm1', targetUserId: 'u1', reason: 'ban-worthy' },
-        true,
-      ],
-      [
-        VIDEO_ROOM_MODERATION_EVENTS.UNBLACKLISTED,
-        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNBLACKLISTED,
-        { roomId: 'r1', moderatorId: 'm1', targetUserId: 'u1' },
-        false,
-      ],
-      [
-        VIDEO_ROOM_MODERATION_EVENTS.MUTED,
-        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_MUTED,
-        {
-          roomId: 'r1',
-          moderatorId: 'm1',
-          targetUserId: 'u1',
-          type: 'TEMPORARY',
-          reason: null,
-          expiresAt: null,
-          channels: ['MIC'],
-        },
-        false,
-      ],
-      [
-        VIDEO_ROOM_MODERATION_EVENTS.UNMUTED,
-        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNMUTED,
-        {
-          roomId: 'r1',
-          moderatorId: 'm1',
-          targetUserId: 'u1',
-          channels: ['MIC'],
-          reason: 'lifted',
-        },
-        false,
-      ],
-      [
-        VIDEO_ROOM_MODERATION_EVENTS.FORCE_DISCONNECTED,
-        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED,
-        { roomId: 'r1', moderatorId: 'm1', targetUserId: 'u1', reason: null },
-        true,
-      ],
-    ];
+        [
+          VIDEO_ROOM_MODERATION_EVENTS.BLACKLISTED,
+          VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED,
+          { roomId: 'r1', moderatorId: 'm1', targetUserId: 'u1', reason: 'ban-worthy' },
+          true,
+        ],
+        [
+          VIDEO_ROOM_MODERATION_EVENTS.UNBLACKLISTED,
+          VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNBLACKLISTED,
+          { roomId: 'r1', moderatorId: 'm1', targetUserId: 'u1' },
+          false,
+        ],
+        [
+          VIDEO_ROOM_MODERATION_EVENTS.MUTED,
+          VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_MUTED,
+          {
+            roomId: 'r1',
+            moderatorId: 'm1',
+            targetUserId: 'u1',
+            type: 'TEMPORARY',
+            reason: null,
+            expiresAt: null,
+            channels: ['MIC'],
+          },
+          false,
+        ],
+        [
+          VIDEO_ROOM_MODERATION_EVENTS.UNMUTED,
+          VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNMUTED,
+          {
+            roomId: 'r1',
+            moderatorId: 'm1',
+            targetUserId: 'u1',
+            channels: ['MIC'],
+            reason: 'lifted',
+          },
+          false,
+        ],
+        [
+          VIDEO_ROOM_MODERATION_EVENTS.FORCE_DISCONNECTED,
+          VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED,
+          { roomId: 'r1', moderatorId: 'm1', targetUserId: 'u1', reason: null },
+          true,
+        ],
+      ];
 
     for (const [busEvent, clientEvent, payload, shouldEmitToUser] of cases) {
       sockets.emitToNamespaceRoom.mockClear();

@@ -105,7 +105,11 @@ describe('PlatformBanService', () => {
           86400,
         );
         expect(audit.record).toHaveBeenCalledWith(
-          expect.objectContaining({ moderatorId: 'mod-1', action: 'BAN_ISSUED', targetUserId: 'target-1' }),
+          expect.objectContaining({
+            moderatorId: 'mod-1',
+            action: 'BAN_ISSUED',
+            targetUserId: 'target-1',
+          }),
         );
 
         // Not called immediately — the room-specific kick flows (issued by the
@@ -130,9 +134,7 @@ describe('PlatformBanService', () => {
         reportId: 'report-1',
       });
 
-      expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ reportId: 'report-1' }),
-      );
+      expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ reportId: 'report-1' }));
     });
 
     it('omits reportId when the caller does not supply one (existing direct-ban callers)', async () => {
@@ -144,12 +146,10 @@ describe('PlatformBanService', () => {
         originRoomId: 'room-1',
       });
 
-      expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ reportId: null }),
-      );
+      expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ reportId: null }));
     });
 
-    it('room teardown (DB flip + RoomEndedEvent) is complete by the time banUser() resolves — not fire-and-forget racing the caller\'s own refresh', async () => {
+    it("room teardown (DB flip + RoomEndedEvent) is complete by the time banUser() resolves — not fire-and-forget racing the caller's own refresh", async () => {
       prisma.audioRoom.findFirst.mockResolvedValueOnce({
         id: 'audio-room-1',
         createdAt: new Date(Date.now() - 120_000),
@@ -276,7 +276,11 @@ describe('PlatformBanService', () => {
     });
 
     it('is idempotent — lifting an already-lifted ban does not error', async () => {
-      repo.findById.mockResolvedValueOnce({ id: 'ban-1', status: 'LIFTED', targetUserId: 'target-1' });
+      repo.findById.mockResolvedValueOnce({
+        id: 'ban-1',
+        status: 'LIFTED',
+        targetUserId: 'target-1',
+      });
       const result = await service.unbanUser('admin-1', 'ban-1');
       expect(repo.lift).not.toHaveBeenCalled();
       expect(result.status).toBe('LIFTED');

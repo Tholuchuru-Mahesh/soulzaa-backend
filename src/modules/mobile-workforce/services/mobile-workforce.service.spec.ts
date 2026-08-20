@@ -1156,7 +1156,7 @@ describe('MobileWorkforceService scope composition', () => {
       ]);
     });
 
-    it('fetches each participant\'s real level and avatar from UserStatistics/UserProfile instead of a hardcoded constant', async () => {
+    it("fetches each participant's real level and avatar from UserStatistics/UserProfile instead of a hardcoded constant", async () => {
       prisma.roomMember.findMany.mockResolvedValue([
         {
           userId: 'user-3',
@@ -1236,7 +1236,7 @@ describe('MobileWorkforceService scope composition', () => {
       });
     });
 
-    it('sessionTime is measured from this broadcast\'s RoomLiveSession, not the permanent room row\'s createdAt', async () => {
+    it("sessionTime is measured from this broadcast's RoomLiveSession, not the permanent room row's createdAt", async () => {
       // AudioRoom.ownerId is unique — one room row is reused across every
       // broadcast, so room.createdAt (10 days ago here) is the wrong basis
       // for "how long has THIS session been live".

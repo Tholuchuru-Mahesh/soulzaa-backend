@@ -9,7 +9,6 @@ import {
 import {
   LiveStreamStatus,
   ModerationMuteType,
-  ModerationStatus,
   ModeratorWarningStatus,
   PlatformRole,
   RoleRequestStage,
@@ -1525,10 +1524,8 @@ export class MobileWorkforceService {
         msgType === 'ANNOUNCEMENT' ||
         m.senderId === SYSTEM_MODERATOR_ID ||
         !sender;
-      const senderName = isSystem
-        ? 'System'
-        : (sender?.username || sender?.fullName || 'User');
-      const avatarUrl = isSystem ? null : (senderAvatarMap.get(m.senderId) || null);
+      const senderName = isSystem ? 'System' : sender?.username || sender?.fullName || 'User';
+      const avatarUrl = isSystem ? null : senderAvatarMap.get(m.senderId) || null;
       return {
         id: m.id,
         initial: isSystem ? 'S' : (senderName[0] || 'U').toUpperCase(),
@@ -1558,13 +1555,14 @@ export class MobileWorkforceService {
     // row was first created, not when THIS live session started. The actual
     // per-session start lives in RoomLiveSession (see AudioRoomsService's
     // goLive/endRoomInternal, which opens/closes one of these per broadcast).
-    const openLiveSession = !isVideo && !isStream
-      ? await this.prisma.roomLiveSession.findFirst({
-          where: { roomId, status: 'LIVE' },
-          orderBy: { startedAt: 'desc' },
-          select: { startedAt: true },
-        })
-      : null;
+    const openLiveSession =
+      !isVideo && !isStream
+        ? await this.prisma.roomLiveSession.findFirst({
+            where: { roomId, status: 'LIVE' },
+            orderBy: { startedAt: 'desc' },
+            select: { startedAt: true },
+          })
+        : null;
     const fallbackStartedAt = room
       ? (room as any).startedAt || (room as any).createdAt
       : new Date();
@@ -1575,7 +1573,7 @@ export class MobileWorkforceService {
     );
 
     const liveParticipantsCount = isStream
-      ? (liveStream as any)?.viewerCount ?? 0
+      ? ((liveStream as any)?.viewerCount ?? 0)
       : isVideo
         ? await this.prisma.videoRoomMember.count({ where: { roomId, isActive: true } })
         : await this.prisma.roomMember.count({ where: { roomId, isActive: true } });
@@ -2182,7 +2180,14 @@ export class MobileWorkforceService {
           select: { id: true },
         });
         if (isVideo && this.videoModeration) {
-          await this.videoModeration.warn(actor, roomId, targetUserId, warnReason, undefined, 'PRIVATE');
+          await this.videoModeration.warn(
+            actor,
+            roomId,
+            targetUserId,
+            warnReason,
+            undefined,
+            'PRIVATE',
+          );
         } else if (this.liveStream) {
           await this.liveStream.moderateUser({
             streamId: roomId,
@@ -2272,12 +2277,13 @@ export class MobileWorkforceService {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const validUserIds = allUserIds.filter((id) => typeof id === 'string' && uuidRegex.test(id));
 
-    const users = validUserIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: validUserIds } },
-          select: { id: true, username: true, fullName: true, email: true },
-        })
-      : [];
+    const users =
+      validUserIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: validUserIds } },
+            select: { id: true, username: true, fullName: true, email: true },
+          })
+        : [];
     const userMap = new Map(users.map((u) => [u.id, u]));
 
     const now = new Date();
@@ -2286,7 +2292,8 @@ export class MobileWorkforceService {
       const m = userMap.get(b.moderatorId);
       const isExpired = b.expiresAt < now;
       const status = b.status === 'LIFTED' ? 'REVOKED' : isExpired ? 'EXPIRED' : 'ACTIVE';
-      const isSystem = b.moderatorId === '00000000-0000-0000-0000-000000000000' || b.moderatorId === 'system';
+      const isSystem =
+        b.moderatorId === '00000000-0000-0000-0000-000000000000' || b.moderatorId === 'system';
       return {
         id: b.id,
         roomType: b.roomType,

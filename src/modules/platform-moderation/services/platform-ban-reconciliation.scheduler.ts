@@ -34,7 +34,9 @@ export class PlatformBanReconciliationScheduler {
     try {
       activeBans = await this.repo.listActive();
     } catch (e) {
-      this.logger.error(`Failed to load active platform bans for reconciliation: ${(e as Error).message}`);
+      this.logger.error(
+        `Failed to load active platform bans for reconciliation: ${(e as Error).message}`,
+      );
       return;
     }
 

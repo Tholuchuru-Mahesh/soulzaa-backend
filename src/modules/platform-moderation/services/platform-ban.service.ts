@@ -248,13 +248,27 @@ export class PlatformBanService {
 
     this.sockets.emitToUserEverywhere(ban.targetUserId, 'room.unbanned', unbanPayload);
     this.sockets.emitToUserEverywhere(ban.targetUserId, 'userUnblacklisted', unbanPayload);
-    this.sockets.emitToUserEverywhere(ban.targetUserId, 'platform-moderation.user-unbanned', unbanPayload);
+    this.sockets.emitToUserEverywhere(
+      ban.targetUserId,
+      'platform-moderation.user-unbanned',
+      unbanPayload,
+    );
 
     if (ban.originRoomId) {
       if (ban.roomType === PlatformRoomType.AUDIO_ROOM) {
-        this.sockets.emitToNamespaceRoom('/audio-room', ban.originRoomId, 'room.unbanned', unbanPayload);
+        this.sockets.emitToNamespaceRoom(
+          '/audio-room',
+          ban.originRoomId,
+          'room.unbanned',
+          unbanPayload,
+        );
       } else if (ban.roomType === PlatformRoomType.VIDEO_ROOM) {
-        this.sockets.emitToNamespaceRoom('/video-room', ban.originRoomId, 'userUnblacklisted', unbanPayload);
+        this.sockets.emitToNamespaceRoom(
+          '/video-room',
+          ban.originRoomId,
+          'userUnblacklisted',
+          unbanPayload,
+        );
       }
     }
 

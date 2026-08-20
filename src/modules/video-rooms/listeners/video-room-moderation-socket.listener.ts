@@ -48,7 +48,11 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
     this.bus.subscribe<UserBlacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.BLACKLISTED, (e) => {
       const payload = this.anonymize(e.payload);
       this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED, payload);
-      this.user(e.payload.targetUserId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED, payload);
+      this.user(
+        e.payload.targetUserId,
+        VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED,
+        payload,
+      );
     });
     this.bus.subscribe<UserUnblacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.UNBLACKLISTED, (e) =>
       this.room(
@@ -82,8 +86,16 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
       VIDEO_ROOM_MODERATION_EVENTS.FORCE_DISCONNECTED,
       (e) => {
         const payload = this.anonymize(e.payload);
-        this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED, payload);
-        this.user(e.payload.targetUserId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED, payload);
+        this.room(
+          e.payload.roomId,
+          VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED,
+          payload,
+        );
+        this.user(
+          e.payload.targetUserId,
+          VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_FORCE_DISCONNECTED,
+          payload,
+        );
       },
     );
     this.bus.subscribe<UserReportedEvent>(VIDEO_ROOM_MODERATION_EVENTS.REPORTED, (e) =>

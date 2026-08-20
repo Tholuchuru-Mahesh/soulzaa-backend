@@ -1093,7 +1093,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     return room;
   }
 
-  private async assertNotKicked(roomId: string, userId: string): Promise<void> {
+  private async assertNotKicked(_roomId: string, _userId: string): Promise<void> {
     // Kick functionality removed — no-op.
     return;
   }
