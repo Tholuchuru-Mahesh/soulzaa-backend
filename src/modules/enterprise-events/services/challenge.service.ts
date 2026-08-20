@@ -183,13 +183,16 @@ export class ChallengeService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const userIds = [...new Set(rows.map((r) => r.agencyId || r.createdBy).filter(Boolean))] as string[];
-    const users = userIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: userIds } },
-          select: { id: true, username: true, fullName: true },
-        })
-      : [];
+    const userIds = [
+      ...new Set(rows.map((r) => r.agencyId || r.createdBy).filter(Boolean)),
+    ] as string[];
+    const users =
+      userIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [];
     const userMap = new Map(users.map((u) => [u.id, u.fullName || u.username || u.id]));
 
     return rows.map((r) => {
@@ -197,8 +200,8 @@ export class ChallengeService {
       const submitterId = r.agencyId || r.createdBy;
       return {
         ...wire,
-        submittedBy: submitterId ? (userMap.get(submitterId) || submitterId) : 'Platform Agency',
-        agencyName: submitterId ? (userMap.get(submitterId) || submitterId) : 'Platform Agency',
+        submittedBy: submitterId ? userMap.get(submitterId) || submitterId : 'Platform Agency',
+        agencyName: submitterId ? userMap.get(submitterId) || submitterId : 'Platform Agency',
       };
     });
   }
@@ -212,7 +215,10 @@ export class ChallengeService {
       data: { status: 'APPROVED' },
     });
 
-    await this.audit.logAudit('EVENT_STATUS_CHANGED', id, actorId, { status: 'APPROVED', name: updated.name });
+    await this.audit.logAudit('EVENT_STATUS_CHANGED', id, actorId, {
+      status: 'APPROVED',
+      name: updated.name,
+    });
 
     // Realtime notification over sockets
     try {
@@ -254,7 +260,11 @@ export class ChallengeService {
       },
     });
 
-    await this.audit.logAudit('EVENT_STATUS_CHANGED', id, actorId, { status: 'REJECTED', reason, name: updated.name });
+    await this.audit.logAudit('EVENT_STATUS_CHANGED', id, actorId, {
+      status: 'REJECTED',
+      reason,
+      name: updated.name,
+    });
 
     // Realtime notification over sockets
     try {

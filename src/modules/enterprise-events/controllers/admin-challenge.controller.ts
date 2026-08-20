@@ -46,10 +46,7 @@ export class AdminChallengeController {
   @RequirePermissions('event.manage')
   @ApiOperation({ summary: 'Approve a submitted challenge' })
   @ApiResponse({ status: 200, description: 'Challenge approved' })
-  approve(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  approve(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.challenges.approveChallenge(id, user.id);
   }
 
