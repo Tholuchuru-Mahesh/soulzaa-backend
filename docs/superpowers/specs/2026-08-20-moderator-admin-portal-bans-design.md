@@ -33,6 +33,35 @@ This spec only closes gaps in features that already exist in some form. No new r
 
 Corrected scope (per explicit follow-up): this is **not** a reuse of the individual 24h ban aimed at the owner. It is a separate action with its own fields and its own narrower enforcement (blocks only room-creation for the owner, not login or joining).
 
+**Hard requirement — keep these two concepts fully separate throughout implementation:** Broad Ban must NOT be implemented as "call the individual-ban logic with the owner's id." It gets its own record (see below), its own service, its own guard, and its own endpoint. `PlatformUserBan` (Item 1) and the Broad-ban record are two independent tables with independent lifecycles — a Broad ban must never write to `PlatformUserBan`, and issuing a Broad ban must never trigger Item 1's account-wide login block. The only thing the two features share on purpose is the delivery mechanism for the "Soulzaa Official" message and the general room-teardown event pipeline (`RoomEndedEvent`/`RoomClosedEvent` + socket disconnect) — not ban state, not ban records, not enforcement guards.
+
+**Explicit runtime behavior — moderator-initiated flow:**
+
+```
+Moderator → Room Details → "Broad Ban" (reason + proof + description)
+                                  ↓
+                    Broad-ban record created (own table, 24h expiry)
+                                  ↓
+                    That specific room is force-ended now
+                                  ↓
+              Everyone currently inside is automatically removed
+                     (RoomEndedEvent/RoomClosedEvent + socket disconnect)
+                                  ↓
+        Every removed user is shown the "Soulzaa Official" message,
+                  containing the selected ban reason
+                                  ↓
+              Every removed user is routed to Home — not Login
+```
+
+**Explicit runtime behavior — Broad owner's standing while the ban is active:**
+
+```
+Broad owner, ban active:
+  ❌ Cannot create a new Broad (blocked at the create call sites only)
+  ✅ Can still log in normally (Item 1's login gate does not apply here)
+  ✅ Can still join other Broads (no join-time check for this ban type)
+```
+
 **Reuse:**
 - Reason values from `ReportReason`/`VideoRoomReportReason` (dropdown — no new categories).
 - `reason` + `description` DTO shape.
@@ -69,9 +98,24 @@ Remove the **"Warn"** and **"Join"** buttons from room cards in `moderator_rooms
 
 Doesn't exist for any ban type today (only create/lift exist anywhere in the codebase, for both `PlatformUserBan` and the new Broad-ban record).
 
-- New backend endpoint, alongside the existing lift endpoint, that pushes `expiresAt` forward by an admin-selected duration and re-primes the Redis TTL. Shared by both Banned Users (`PlatformUserBan`) and Banned Broads (Item 2's model) — one endpoint shape, two callers.
-- On extend, re-send the Item 1 "Soulzaa Official" message showing the updated duration (reusing that messaging path, not a new one) to the affected user (Item 6) or Broad owner (Item 7).
-- Admin Portal: "Extend Ban" button added next to the existing "Revoke Ban"/"Lift Ban" button in both Banned Users and Banned Broads sections, with a duration selector (the one legitimate new duration-selection UI in this whole spec — everywhere else duration is fixed at 24h).
+- New backend endpoint **shape** (same request/response contract, same duration-selection UI pattern), implemented as **two separate call targets** — one against `PlatformUserBan`, one against the Broad-ban record from Item 2 — never a single handler that treats both tables as the same thing. Each pushes that record's own `expiresAt` forward by an admin-selected duration and re-primes that record's own Redis TTL key.
+- Admin Portal: "Extend Ban" and "Revoke Ban" both present in **both** sections, each acting only on its own record type:
+
+```
+Admin → Banned Users tab → row → Extend Ban (pick duration) / Revoke Ban
+              ↓ (on extend)
+    PlatformUserBan.expiresAt pushed forward
+              ↓
+    User receives "Soulzaa Official" message with the NEW ban duration
+
+Admin → Banned Broads tab → row → Extend Ban (pick duration) / Revoke Ban
+              ↓ (on extend)
+    Broad-ban record's expiresAt pushed forward
+              ↓
+    Broad owner receives "Soulzaa Official" message with the NEW Broad-ban duration
+```
+
+- Both extend flows reuse Item 1's "Soulzaa Official" delivery mechanism (same label, same transport) — they do not each build their own notification path.
 
 ## Explicit non-goals
 
