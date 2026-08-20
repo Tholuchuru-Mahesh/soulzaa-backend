@@ -3,10 +3,13 @@ import { Global, Module } from '@nestjs/common';
 import { QueueModule } from 'src/infra/queue/queue.module';
 import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
 import { ENTERPRISE_EVENT_QUEUES } from './constants/event-jobs.constants';
+import { AdminChallengeController } from './controllers/admin-challenge.controller';
+import { ChallengeController } from './controllers/challenge.controller';
 import { EnterpriseEventController } from './controllers/event.controller';
 import { EventDraftController } from './controllers/event-draft.controller';
 import { EnterpriseEventProcessor } from './processors/event.processor';
 import { EventLifecycleScheduler } from './services/event.scheduler';
+import { ChallengeService } from './services/challenge.service';
 import { EventAuditService } from './services/event-audit.service';
 import { EventConfigurationService } from './services/event-configuration.service';
 import { EventDraftService } from './services/event-draft.service';
@@ -29,7 +32,12 @@ import { EventProgressionListener } from './listeners/event-progression.listener
     QueueModule,
     BullModule.registerQueue({ name: ENTERPRISE_EVENT_QUEUES.LIFECYCLE }),
   ],
-  controllers: [EnterpriseEventController, EventDraftController],
+  controllers: [
+    EnterpriseEventController,
+    EventDraftController,
+    ChallengeController,
+    AdminChallengeController,
+  ],
   providers: [
     // Phase 16: Enterprise Events Engine Services
     EventProgressionListener,
@@ -48,6 +56,7 @@ import { EventProgressionListener } from './listeners/event-progression.listener
     EventStatisticsService,
     EventQueryService,
     EventDraftService,
+    ChallengeService,
   ],
   exports: [
     EventConfigurationService,
@@ -63,6 +72,7 @@ import { EventProgressionListener } from './listeners/event-progression.listener
     EventStatisticsService,
     EventQueryService,
     EventDraftService,
+    ChallengeService,
   ],
 })
 export class EnterpriseEventsModule {}
