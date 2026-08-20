@@ -38,7 +38,11 @@ export class AdminIdentityService implements IAdminIdentityService {
   ) {}
 
   async syncHiddenState(userId: string): Promise<void> {
-    const names = await this.roles.getRoleNames(userId);
+    // Granted roles only. The hierarchy runs OFFICIAL → MODERATOR, so the
+    // expanded set would hide every Official (and Country Manager, and Admin)
+    // behind the moderator-anonymity rule — costing them the public profile the
+    // Official Portal assumes they have.
+    const names = await this.roles.getDirectRoleNames(userId);
     const shouldHide = names.some((name) => HIDDEN_ROLE_SET.has(name));
     await this.users.setHiddenAccount(userId, shouldHide);
     // The profile snapshot is cached and carries the flag; without this a

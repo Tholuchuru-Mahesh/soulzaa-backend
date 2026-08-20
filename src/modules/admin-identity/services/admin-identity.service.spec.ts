@@ -2,7 +2,11 @@ import { HIDDEN_ROLES, AdminIdentityService } from './admin-identity.service';
 
 describe('AdminIdentityService.syncHiddenState', () => {
   const users = { setHiddenAccount: jest.fn(), findById: jest.fn() } as any;
-  const roles = { getRoleNames: jest.fn(), getUserIdsWithAnyRole: jest.fn() } as any;
+  const roles = {
+    getDirectRoleNames: jest.fn(),
+    getRoleNames: jest.fn(),
+    getUserIdsWithAnyRole: jest.fn(),
+  } as any;
   const profiles = { invalidateProfile: jest.fn() } as any;
   let service: AdminIdentityService;
 
@@ -12,31 +16,44 @@ describe('AdminIdentityService.syncHiddenState', () => {
   });
 
   it('hides an account holding ADMIN', async () => {
-    roles.getRoleNames.mockResolvedValue(['ADMIN']);
+    roles.getDirectRoleNames.mockResolvedValue(['ADMIN']);
     await service.syncHiddenState('u-1');
     expect(users.setHiddenAccount).toHaveBeenCalledWith('u-1', true);
   });
 
   it('hides an account holding SUPER_ADMIN', async () => {
-    roles.getRoleNames.mockResolvedValue(['SUPER_ADMIN']);
+    roles.getDirectRoleNames.mockResolvedValue(['SUPER_ADMIN']);
     await service.syncHiddenState('u-2');
     expect(users.setHiddenAccount).toHaveBeenCalledWith('u-2', true);
   });
 
   it('unhides an account whose privileged role was revoked', async () => {
-    roles.getRoleNames.mockResolvedValue(['HOST']);
+    roles.getDirectRoleNames.mockResolvedValue(['HOST']);
     await service.syncHiddenState('u-3');
     expect(users.setHiddenAccount).toHaveBeenCalledWith('u-3', false);
   });
 
   it('hides a MODERATOR — moderator identities are anonymous too', async () => {
-    roles.getRoleNames.mockResolvedValue(['MODERATOR']);
+    roles.getDirectRoleNames.mockResolvedValue(['MODERATOR']);
     await service.syncHiddenState('u-4');
     expect(users.setHiddenAccount).toHaveBeenCalledWith('u-4', true);
   });
 
+  it('does not hide an Official, whose inherited roles include MODERATOR', async () => {
+    // The RBAC hierarchy runs OFFICIAL → MODERATOR, so the expanded set puts a
+    // hidden role on every Official. Hiding them costs them their public
+    // profile — and the Official badge with it, since resolveView strips
+    // verification from a hidden account.
+    roles.getDirectRoleNames.mockResolvedValue(['OFFICIAL', 'USER']);
+    roles.getRoleNames.mockResolvedValue(['OFFICIAL', 'MODERATOR', 'HOST', 'USER']);
+
+    await service.syncHiddenState('official-1');
+
+    expect(users.setHiddenAccount).toHaveBeenCalledWith('official-1', false);
+  });
+
   it('invalidates the cached profile so the change takes effect immediately', async () => {
-    roles.getRoleNames.mockResolvedValue(['ADMIN']);
+    roles.getDirectRoleNames.mockResolvedValue(['ADMIN']);
     await service.syncHiddenState('u-1');
     expect(profiles.invalidateProfile).toHaveBeenCalledWith('u-1');
   });
@@ -44,7 +61,11 @@ describe('AdminIdentityService.syncHiddenState', () => {
 
 describe('AdminIdentityService.isHidden', () => {
   const users = { setHiddenAccount: jest.fn(), findById: jest.fn() } as any;
-  const roles = { getRoleNames: jest.fn(), getUserIdsWithAnyRole: jest.fn() } as any;
+  const roles = {
+    getDirectRoleNames: jest.fn(),
+    getRoleNames: jest.fn(),
+    getUserIdsWithAnyRole: jest.fn(),
+  } as any;
   const profiles = { invalidateProfile: jest.fn() } as any;
   const service = new AdminIdentityService(users, roles, profiles);
 
@@ -63,7 +84,11 @@ describe('AdminIdentityService.isHidden', () => {
 
 describe('AdminIdentityService.backfill', () => {
   const users = { setHiddenAccount: jest.fn(), findById: jest.fn() } as any;
-  const roles = { getRoleNames: jest.fn(), getUserIdsWithAnyRole: jest.fn() } as any;
+  const roles = {
+    getDirectRoleNames: jest.fn(),
+    getRoleNames: jest.fn(),
+    getUserIdsWithAnyRole: jest.fn(),
+  } as any;
   const profiles = { invalidateProfile: jest.fn() } as any;
   const service = new AdminIdentityService(users, roles, profiles);
 
