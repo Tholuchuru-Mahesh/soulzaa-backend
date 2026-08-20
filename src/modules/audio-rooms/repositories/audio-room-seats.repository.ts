@@ -28,7 +28,7 @@ export interface StageSnapshot {
     isLocked: boolean;
     isMuted: boolean;
   }>;
-  queue: Array<{ userId: string; position: number }>;
+  queue: Array<{ userId: string; position: number; requestId?: string | null }>;
   settings: {
     speakerSeatCount: number;
     premiumAdminSeatCount: number;

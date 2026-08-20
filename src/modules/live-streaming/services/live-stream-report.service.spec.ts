@@ -4,7 +4,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { LiveStreamReportReason, LiveStreamReportStatus } from '@prisma/client';
+import { LiveStreamReportReason, LiveStreamReportStatus, PlatformRole } from '@prisma/client';
 import type { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
 import { LiveStreamReportService } from './live-stream-report.service';
 
@@ -13,6 +13,7 @@ const REPORTER_ID = 'reporter-1';
 const TARGET_ID = 'target-1';
 const MODERATOR_ID = 'mod-1';
 const REPORT_ID = 'report-1';
+const MODERATOR_ROLES: PlatformRole[] = [PlatformRole.MODERATOR];
 
 const PENDING_REPORT = {
   id: REPORT_ID,
@@ -111,11 +112,65 @@ describe('LiveStreamReportService', () => {
   });
 
   describe('reviewReport', () => {
+    // Audio's ModerationService.reviewReport gates on assertCanModerate and
+    // video's on REVIEW_REPORTS; live-stream never got the equivalent, so a
+    // caller who could reach the moderator-portal report queue without
+    // moderator authority could drive a report decision here.
+    describe('actor role authorization', () => {
+      it.each([[PlatformRole.OFFICIAL], [PlatformRole.COUNTRY_MANAGER]])(
+        'rejects an actor holding only %s',
+        async (role) => {
+          await expect(
+            service.reviewReport({
+              streamId: STREAM_ID,
+              reportId: REPORT_ID,
+              moderatorId: MODERATOR_ID,
+              status: LiveStreamReportStatus.DISMISSED,
+              actorRoles: [role],
+            }),
+          ).rejects.toBeInstanceOf(ForbiddenException);
+          expect(reportRepo.reviewReport).not.toHaveBeenCalled();
+        },
+      );
+
+      it('rejects an actor with no roles at all with 403, not a TypeError', async () => {
+        await expect(
+          service.reviewReport({
+            streamId: STREAM_ID,
+            reportId: REPORT_ID,
+            moderatorId: MODERATOR_ID,
+            status: LiveStreamReportStatus.DISMISSED,
+            actorRoles: undefined as unknown as PlatformRole[],
+          }),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+      });
+
+      it.each([[PlatformRole.MODERATOR], [PlatformRole.ADMIN], [PlatformRole.SUPER_ADMIN]])(
+        'allows an actor holding %s',
+        async (role) => {
+          await service.reviewReport({
+            streamId: STREAM_ID,
+            reportId: REPORT_ID,
+            moderatorId: MODERATOR_ID,
+            status: LiveStreamReportStatus.DISMISSED,
+            actorRoles: [role],
+          });
+          expect(reportRepo.reviewReport).toHaveBeenCalledWith(
+            REPORT_ID,
+            MODERATOR_ID,
+            LiveStreamReportStatus.DISMISSED,
+            null,
+          );
+        },
+      );
+    });
+
     it('records the review without acting when no action is recommended', async () => {
       await service.reviewReport({
         streamId: STREAM_ID,
         reportId: REPORT_ID,
         moderatorId: MODERATOR_ID,
+        actorRoles: MODERATOR_ROLES,
         status: LiveStreamReportStatus.DISMISSED,
       });
       expect(reportRepo.reviewReport).toHaveBeenCalledWith(
@@ -136,6 +191,7 @@ describe('LiveStreamReportService', () => {
         streamId: STREAM_ID,
         reportId: REPORT_ID,
         moderatorId: MODERATOR_ID,
+        actorRoles: MODERATOR_ROLES,
         status: LiveStreamReportStatus.ACTIONED,
         recommendedAction: 'MUTE',
         resolution: 'confirmed spam',
@@ -174,6 +230,7 @@ describe('LiveStreamReportService', () => {
           streamId: STREAM_ID,
           reportId: REPORT_ID,
           moderatorId: MODERATOR_ID,
+          actorRoles: MODERATOR_ROLES,
           status: LiveStreamReportStatus.ACTIONED,
           recommendedAction: 'BAN',
           resolution: 'confirmed harassment',
@@ -197,6 +254,7 @@ describe('LiveStreamReportService', () => {
           streamId: STREAM_ID,
           reportId: REPORT_ID,
           moderatorId: MODERATOR_ID,
+          actorRoles: MODERATOR_ROLES,
           status: LiveStreamReportStatus.ACTIONED,
           recommendedAction: 'BAN',
         });
@@ -211,6 +269,7 @@ describe('LiveStreamReportService', () => {
           streamId: STREAM_ID,
           reportId: 'missing',
           moderatorId: MODERATOR_ID,
+          actorRoles: MODERATOR_ROLES,
           status: LiveStreamReportStatus.DISMISSED,
         }),
       ).rejects.toBeInstanceOf(NotFoundException);
@@ -226,6 +285,7 @@ describe('LiveStreamReportService', () => {
           streamId: STREAM_ID,
           reportId: REPORT_ID,
           moderatorId: MODERATOR_ID,
+          actorRoles: MODERATOR_ROLES,
           status: LiveStreamReportStatus.DISMISSED,
         }),
       ).rejects.toBeInstanceOf(ConflictException);
@@ -282,6 +342,7 @@ describe('LiveStreamReportService', () => {
         streamId: STREAM_ID,
         reportId: REPORT_ID,
         moderatorId: MODERATOR_ID,
+        actorRoles: MODERATOR_ROLES,
         status: LiveStreamReportStatus.REVIEWED,
       } as any);
       expect(scopedScopeService.assertModeratorInScope).toHaveBeenCalledWith(
@@ -298,6 +359,7 @@ describe('LiveStreamReportService', () => {
           streamId: STREAM_ID,
           reportId: REPORT_ID,
           moderatorId: MODERATOR_ID,
+          actorRoles: MODERATOR_ROLES,
           status: LiveStreamReportStatus.REVIEWED,
         } as any),
       ).rejects.toBeInstanceOf(ForbiddenException);

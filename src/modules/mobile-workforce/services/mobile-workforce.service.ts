@@ -1,13 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import {
   LiveStreamStatus,
   ModerationMuteType,
   ModerationStatus,
   ModeratorWarningStatus,
+  PlatformRole,
   RoleRequestStage,
   RoleRequestStatus,
   RoleRequestType,
-  type PlatformRole,
+  type PlatformRoomType,
 } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import type { RequestMetadata } from 'src/common/interfaces/request-metadata.interface';
@@ -80,6 +88,13 @@ type NormalizedAction = 'WARN' | 'MUTE' | 'KICK' | 'BAN' | 'ESCALATE' | 'CLOSE_F
  * rather than defaulting to permanent.
  */
 const QUICK_MUTE_DURATION_MINUTES = 60;
+
+/** Maps a resolved report's room type to the platform-ban surface's own enum. */
+const REPORT_ROOM_TYPE_TO_PLATFORM: Record<ReportRoomType, PlatformRoomType> = {
+  audio: 'AUDIO_ROOM',
+  video: 'VIDEO_ROOM',
+  stream: 'LIVE_STREAM',
+};
 
 /**
  * Mobile read models for the operational workforce — Country Manager, Official
@@ -1847,11 +1862,35 @@ export class MobileWorkforceService {
   }
 
   /**
+   * Moderator authority for a report-driven Ban.
+   *
+   * This route is gated only on `mobile.workforce.view` — a permission
+   * OFFICIAL and COUNTRY_MANAGER also hold — not on `user.ban`. Authority used
+   * to be enforced incidentally, by whichever per-surface `reviewReport` ran
+   * before the ban and asserted it internally. Now that the ban runs first
+   * (deliberately — see the ordering note in `actionReport`), that incidental
+   * cover is gone and the check has to be explicit, ahead of the irreversible
+   * write. Same predicate audio/video/live-stream each enforce; grants nobody
+   * anything new.
+   */
+  private assertCanBanFromReport(actorRoles: PlatformRole[]): void {
+    const canModerate =
+      actorRoles?.includes(PlatformRole.MODERATOR) ||
+      actorRoles?.includes(PlatformRole.ADMIN) ||
+      actorRoles?.includes(PlatformRole.SUPER_ADMIN);
+    if (!canModerate) {
+      throw new ForbiddenException('You are not authorized to ban a user from a report.');
+    }
+  }
+
+  /**
    * Action a report (Warn, Mute, Kick, Ban, Escalate, Close false report).
    * Delegates to the authoritative per-room-type moderation service instead
    * of mutating the report row directly — that's what gets us real mute/
-   * kick/ban effects, investigation recording, audit logging, and the
-   * Ban→Official-approval routing for free.
+   * kick effects, investigation recording, and audit logging for free.
+   * Ban is the exception: it executes an immediate 24h platform ban through
+   * PlatformBanService rather than routing to an approval queue, and Escalate
+   * always pages Admin (hardcoded 'EMERGENCY' severity, no tiered routing).
    */
   async actionReport(
     userId: string,
@@ -1863,7 +1902,7 @@ export class MobileWorkforceService {
     success: true;
     reportId: string;
     action: NormalizedAction;
-    outcome: 'executed' | 'pending_approval' | 'dismissed' | 'escalated';
+    outcome: 'executed' | 'dismissed' | 'escalated';
   }> {
     const note = data.note?.trim();
     if (!note) {
@@ -1876,7 +1915,6 @@ export class MobileWorkforceService {
     await this.scope.assertModeratorInScope(userId, ownerId);
 
     const actor = { id: userId, roles: actorRoles };
-    const severity = deriveReportPriority(ctx.reason) === 'Highest priority' ? 'CRITICAL' : 'HIGH';
 
     if (normalized === 'CLOSE_FALSE_REPORT') {
       if (ctx.roomType === 'audio') {
@@ -1888,6 +1926,7 @@ export class MobileWorkforceService {
           reportId,
           streamId: ctx.roomId,
           moderatorId: userId,
+          actorRoles,
           status: 'DISMISSED' as any,
           resolution: note,
         });
@@ -1896,6 +1935,15 @@ export class MobileWorkforceService {
     }
 
     if (normalized === 'ESCALATE') {
+      // Escalating from a report always reaches every ADMIN/SUPER_ADMIN
+      // directly — 'EMERGENCY' is the one severity tier
+      // resolveEscalationRecipients resolves unconditionally to
+      // getUserIdsWithAnyRole(['ADMIN', 'SUPER_ADMIN']), bypassing the
+      // Official/Country-Manager territory routing the other tiers use. The
+      // report id is folded into the reason so the resulting
+      // MODERATION_CASE_ESCALATED notification (and its audit-log row)
+      // identifies which report it came from.
+      const escalationReason = `[Report #${reportId} escalation] ${note}`;
       if (ctx.roomType === 'audio') {
         await this.audioModeration!.reviewReport(actor, ctx.roomId, reportId, {
           status: 'REVIEWED' as any,
@@ -1906,8 +1954,8 @@ export class MobileWorkforceService {
           actor,
           ctx.roomId,
           ctx.targetUserId,
-          note,
-          severity as any,
+          escalationReason,
+          'EMERGENCY',
           requestMeta,
         );
       } else if (ctx.roomType === 'video') {
@@ -1926,8 +1974,8 @@ export class MobileWorkforceService {
           actor,
           ctx.roomId,
           ctx.targetUserId,
-          note,
-          severity as any,
+          escalationReason,
+          'EMERGENCY',
           requestMeta,
         );
       } else {
@@ -1935,6 +1983,7 @@ export class MobileWorkforceService {
           reportId,
           streamId: ctx.roomId,
           moderatorId: userId,
+          actorRoles,
           status: 'REVIEWED' as any,
           resolution: note,
         });
@@ -1942,16 +1991,82 @@ export class MobileWorkforceService {
           ctx.roomId,
           userId,
           ctx.targetUserId,
-          note,
-          severity as any,
+          escalationReason,
+          'EMERGENCY',
         );
       }
       return { success: true, reportId, action: normalized, outcome: 'escalated' };
     }
 
-    // WARN / MUTE / KICK / BAN — one reviewReport call each, per surface.
-    const outcome = normalized === 'BAN' ? 'pending_approval' : 'executed';
+    if (normalized === 'BAN') {
+      if (!this.platformBans) {
+        throw new NotFoundException('Platform ban service is not available.');
+      }
+      this.assertCanBanFromReport(actorRoles);
 
+      // Duplicate-ban guard. Because the ban now runs before the status
+      // update, the per-surface reviewReport's own 409 no longer stands
+      // between a re-submitted Ban and a real side effect — it would fire
+      // only after a second 24h ban had already been issued. Same check,
+      // hoisted ahead of the side effect, off context we already loaded.
+      if (ctx.status !== 'PENDING') {
+        throw new ConflictException('That report has already been reviewed.');
+      }
+
+      // Ban first, mark the report second — deliberately in this order. The
+      // two writes span separate stores (PlatformBanService: Redis + its own
+      // table; reviewReport: the report row) with no shared transaction, so
+      // either can fail after the other succeeded. Marking the report ACTIONED
+      // first would strand it on a banUser failure: every reviewReport
+      // implementation 409s a non-PENDING report, leaving a report that was
+      // never actually actioned and can never be retried. This order degrades
+      // to the far milder "nothing happened yet, try again" instead — and if
+      // the status update is what fails, the ban already stands and only the
+      // report's freshness suffers.
+      await this.platformBans.banUser({
+        moderatorId: userId,
+        targetUserId: ctx.targetUserId,
+        reason: note,
+        roomType: REPORT_ROOM_TYPE_TO_PLATFORM[ctx.roomType],
+        originRoomId: ctx.roomId,
+        reportId,
+      });
+
+      if (ctx.roomType === 'audio') {
+        await this.audioModeration!.reviewReport(actor, ctx.roomId, reportId, {
+          status: 'ACTIONED' as any,
+          resolution: note,
+        });
+      } else if (ctx.roomType === 'video') {
+        await this.videoReports!.reviewReport(
+          actor,
+          ctx.roomId,
+          reportId,
+          { status: 'ACTIONED' as any, resolutionAction: note } as any,
+          requestMeta,
+        );
+      } else {
+        await this.liveStreamReports!.reviewReport(
+          {
+            reportId,
+            streamId: ctx.roomId,
+            moderatorId: userId,
+            actorRoles,
+            status: 'ACTIONED' as any,
+            resolution: note,
+          },
+          requestMeta,
+        );
+      }
+
+      return { success: true, reportId, action: normalized, outcome: 'executed' };
+    }
+
+    // WARN / MUTE / KICK — one reviewReport call each, per surface; the
+    // target room-type service auto-executes these three immediately. BAN is
+    // handled above — it bans immediately via PlatformBanService rather than
+    // routing through here, so a report-driven ban never reaches
+    // ModerationApprovalService's approval queue.
     if (ctx.roomType === 'audio') {
       const recommendedAction = normalized === 'WARN' ? 'WARNING' : normalized;
       await this.audioModeration!.reviewReport(actor, ctx.roomId, reportId, {
@@ -1980,6 +2095,7 @@ export class MobileWorkforceService {
           reportId,
           streamId: ctx.roomId,
           moderatorId: userId,
+          actorRoles,
           status: 'ACTIONED' as any,
           resolution: note,
           recommendedAction: normalized as any,
@@ -1988,7 +2104,7 @@ export class MobileWorkforceService {
       );
     }
 
-    return { success: true, reportId, action: normalized, outcome };
+    return { success: true, reportId, action: normalized, outcome: 'executed' };
   }
 
   /**

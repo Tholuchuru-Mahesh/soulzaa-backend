@@ -1,11 +1,17 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { LiveStreamReport, LiveStreamReportReason, LiveStreamReportStatus } from '@prisma/client';
+import {
+  LiveStreamReport,
+  LiveStreamReportReason,
+  LiveStreamReportStatus,
+  PlatformRole,
+} from '@prisma/client';
 import type { RequestMetadata } from 'src/common/interfaces/request-metadata.interface';
 import { AuditLogService } from 'src/modules/authorization/services/audit-log.service';
 import { ModeratorPerformanceService } from 'src/modules/moderator-performance/services/moderator-performance.service';
@@ -37,6 +43,12 @@ export interface ReviewLiveStreamReportInput {
   streamId: string;
   reportId: string;
   moderatorId: string;
+  /**
+   * Effective platform roles of the caller. Required — reviewing a report is
+   * gated on moderator authority, mirroring Audio Room's `assertCanModerate`
+   * and Video Room's `REVIEW_REPORTS` permission check.
+   */
+  actorRoles: PlatformRole[];
   status: LiveStreamReportStatus;
   resolution?: string;
   recommendedAction?: 'WARN' | 'MUTE' | 'KICK' | 'BAN';
@@ -109,6 +121,8 @@ export class LiveStreamReportService {
       throw new ConflictException('That report has already been reviewed.');
     }
 
+    this.assertCanReviewReport(input.actorRoles);
+
     const stream = await this.liveStream.getStream(input.streamId);
     await this.scopeService.assertModeratorInScope(input.moderatorId, stream?.hostId ?? null);
 
@@ -176,6 +190,23 @@ export class LiveStreamReportService {
           recommendedAction: input.recommendedAction ?? null,
         },
       });
+    }
+  }
+
+  /**
+   * Report review requires platform moderator authority. Territorial scope
+   * (`assertModeratorInScope`) narrows *which* reports a moderator may touch;
+   * it does not establish that the caller is a moderator at all. Unlike Audio
+   * Room's `assertCanModerate`, there is no in-room-grant fallback here — the
+   * report queue is a moderator-portal surface, not an in-stream one.
+   */
+  private assertCanReviewReport(actorRoles: PlatformRole[]): void {
+    const canModerate =
+      actorRoles?.includes(PlatformRole.MODERATOR) ||
+      actorRoles?.includes(PlatformRole.ADMIN) ||
+      actorRoles?.includes(PlatformRole.SUPER_ADMIN);
+    if (!canModerate) {
+      throw new ForbiddenException('You are not authorized to review live-stream reports.');
     }
   }
 

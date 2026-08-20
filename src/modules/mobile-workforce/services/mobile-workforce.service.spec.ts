@@ -1,3 +1,4 @@
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { GeographicScopeResolver } from 'src/modules/authorization/services/geographic-scope-resolver.service';
 import { SYSTEM_MODERATOR_ID } from 'src/modules/audio-rooms/constants/moderation.constants';
@@ -92,6 +93,7 @@ describe('MobileWorkforceService scope composition', () => {
   const videoModeration = { escalateViolation: jest.fn() };
   const liveStreamReports = { reviewReport: jest.fn() };
   const liveStream = { escalateViolation: jest.fn() };
+  const platformBans = { banUser: jest.fn().mockResolvedValue({ id: 'ban-1' }) };
   const investigationRecording = {
     getCaseView: jest.fn().mockResolvedValue({ recordings: [], auditLogs: [] }),
   };
@@ -120,6 +122,7 @@ describe('MobileWorkforceService scope composition', () => {
       liveStream as any,
       investigationRecording as any,
       permissionResolver as any,
+      platformBans as any,
     );
   });
 
@@ -749,7 +752,7 @@ describe('MobileWorkforceService scope composition', () => {
       expect(result.outcome).toBe('executed');
     });
 
-    it('Ban reports pending_approval, not executed', async () => {
+    it('Ban executes immediately via PlatformBanService, not the approval queue', async () => {
       const result = await service.actionReport(
         'mod-1',
         'r-1',
@@ -758,12 +761,76 @@ describe('MobileWorkforceService scope composition', () => {
       );
 
       expect(audioModeration.reviewReport).toHaveBeenCalledWith(
-        expect.anything(),
+        { id: 'mod-1', roles: actorRoles },
         'room-1',
         'r-1',
-        { status: 'ACTIONED', resolution: 'severe', recommendedAction: 'BAN' },
+        { status: 'ACTIONED', resolution: 'severe' },
       );
-      expect(result.outcome).toBe('pending_approval');
+      expect(platformBans.banUser).toHaveBeenCalledWith({
+        moderatorId: 'mod-1',
+        targetUserId: 'u-2',
+        reason: 'severe',
+        roomType: 'AUDIO_ROOM',
+        originRoomId: 'room-1',
+        reportId: 'r-1',
+      });
+      expect(result.outcome).toBe('executed');
+    });
+
+    it('Ban issues the platform ban BEFORE marking the report actioned', async () => {
+      // Ordering invariant, not per-surface behaviour (audio stands in for all
+      // three). If the status update ran first and banUser then threw, the
+      // report would be left ACTIONED with no ban issued — and every
+      // reviewReport implementation 409s on a non-PENDING report, so the
+      // moderator could never retry. Ban-first means a banUser failure leaves
+      // the report PENDING and retryable.
+      await service.actionReport('mod-1', 'r-1', { action: 'Ban', note: 'severe' }, actorRoles);
+
+      expect(platformBans.banUser.mock.invocationCallOrder[0]).toBeLessThan(
+        audioModeration.reviewReport.mock.invocationCallOrder[0],
+      );
+    });
+
+    it.each([['OFFICIAL'], ['COUNTRY_MANAGER']])(
+      'Ban refuses a %s actor without issuing the ban',
+      async (role) => {
+        // The decision route is gated only on `mobile.workforce.view`, which
+        // OFFICIAL and COUNTRY_MANAGER both hold — it does not require
+        // `user.ban`. Moderator authority used to be enforced incidentally,
+        // by the per-surface reviewReport call that ran first; now that the
+        // ban runs first (see the ordering test above) that no longer covers
+        // it, so the BAN branch asserts authority itself. Without this, either
+        // role could trigger an immediate platform-wide ban.
+        await expect(
+          service.actionReport('mod-1', 'r-1', { action: 'Ban', note: 'severe' }, [role] as any),
+        ).rejects.toThrow(ForbiddenException);
+
+        expect(platformBans.banUser).not.toHaveBeenCalled();
+        expect(audioModeration.reviewReport).not.toHaveBeenCalled();
+      },
+    );
+
+    it('Ban refuses an actor with no roles at all with 403, not a TypeError', async () => {
+      await expect(
+        service.actionReport('mod-1', 'r-1', { action: 'Ban', note: 'severe' }, undefined as any),
+      ).rejects.toThrow(ForbiddenException);
+      expect(platformBans.banUser).not.toHaveBeenCalled();
+    });
+
+    it('Ban refuses an already-reviewed report instead of issuing a duplicate ban', async () => {
+      // The ban now runs before the status update, so reviewReport's internal
+      // 409 no longer stands between a re-POSTed "Ban" and a real side effect.
+      // Without an explicit precheck, re-submitting Ban on an already-ACTIONED
+      // report (or retrying after the ban landed but the status update failed)
+      // would issue a SECOND 24h platform ban — new row, new Redis TTL, rooms
+      // re-ended, sockets re-disconnected — and only then hit the 409.
+      prisma.roomReport.findUnique.mockResolvedValue({ ...audioCtx, status: 'ACTIONED' });
+
+      await expect(
+        service.actionReport('mod-1', 'r-1', { action: 'Ban', note: 'severe' }, actorRoles),
+      ).rejects.toThrow(ConflictException);
+
+      expect(platformBans.banUser).not.toHaveBeenCalled();
     });
 
     it('"Close false report" calls dismissReport, not reviewReport', async () => {
@@ -783,7 +850,7 @@ describe('MobileWorkforceService scope composition', () => {
       expect(result.outcome).toBe('dismissed');
     });
 
-    it('Escalate reviews the report as REVIEWED then calls escalateViolation with derived severity', async () => {
+    it('Escalate reviews the report as REVIEWED then always escalates at EMERGENCY severity, tagged with the report id', async () => {
       const result = await service.actionReport(
         'mod-1',
         'r-1',
@@ -797,13 +864,15 @@ describe('MobileWorkforceService scope composition', () => {
         'r-1',
         { status: 'REVIEWED', resolution: 'urgent' },
       );
-      // HARASSMENT is Medium priority -> HIGH severity, not CRITICAL.
+      // Always EMERGENCY — resolveEscalationRecipients resolves that tier to
+      // every ADMIN/SUPER_ADMIN unconditionally, regardless of report
+      // priority (HARASSMENT would otherwise derive to HIGH, not EMERGENCY).
       expect(audioModeration.escalateViolation).toHaveBeenCalledWith(
         { id: 'mod-1', roles: actorRoles },
         'room-1',
         'u-2',
-        'urgent',
-        'HIGH',
+        '[Report #r-1 escalation] urgent',
+        'EMERGENCY',
       );
       expect(result.outcome).toBe('escalated');
     });
@@ -829,12 +898,159 @@ describe('MobileWorkforceService scope composition', () => {
           reportId: 'r-2',
           streamId: 'stream-1',
           moderatorId: 'mod-1',
+          actorRoles,
           status: 'ACTIONED',
           resolution: 'be nice',
           recommendedAction: 'WARN',
         },
         undefined,
       );
+    });
+
+    // BAN and ESCALATE were originally only exercised on the audio surface;
+    // the video and live-stream branches of both are covered below.
+
+    const videoCtx = {
+      id: 'r-3',
+      roomId: 'vroom-1',
+      reporterId: 'u-1',
+      targetUserId: 'u-2',
+      reason: 'HARASSMENT',
+      description: null,
+      status: 'PENDING',
+      createdAt: new Date(),
+      assignedAt: null,
+    };
+
+    const streamCtx = {
+      id: 'r-4',
+      streamId: 'stream-1',
+      reporterId: 'u-1',
+      targetUserId: 'u-2',
+      reason: 'THREATS',
+      description: null,
+      status: 'PENDING',
+      createdAt: new Date(),
+    };
+
+    /** Routes resolveReportContext to the video table by emptying the others. */
+    const routeToVideo = () => {
+      prisma.roomReport.findUnique.mockResolvedValue(null);
+      prisma.videoRoomReport.findUnique.mockResolvedValue(videoCtx);
+      prisma.liveStreamReport.findUnique.mockResolvedValue(null);
+    };
+
+    /** Routes resolveReportContext to the live-stream table. */
+    const routeToStream = () => {
+      prisma.roomReport.findUnique.mockResolvedValue(null);
+      prisma.videoRoomReport.findUnique.mockResolvedValue(null);
+      prisma.liveStreamReport.findUnique.mockResolvedValue(streamCtx);
+    };
+
+    it('Ban routes to the video surface and bans with roomType VIDEO_ROOM', async () => {
+      routeToVideo();
+      videoReports.reviewReport.mockResolvedValue(undefined);
+
+      const result = await service.actionReport(
+        'mod-1',
+        'r-3',
+        { action: 'Ban', note: 'severe' },
+        actorRoles,
+      );
+
+      expect(videoReports.reviewReport).toHaveBeenCalledWith(
+        { id: 'mod-1', roles: actorRoles },
+        'vroom-1',
+        'r-3',
+        { status: 'ACTIONED', resolutionAction: 'severe' },
+        undefined,
+      );
+      expect(platformBans.banUser).toHaveBeenCalledWith({
+        moderatorId: 'mod-1',
+        targetUserId: 'u-2',
+        reason: 'severe',
+        roomType: 'VIDEO_ROOM',
+        originRoomId: 'vroom-1',
+        reportId: 'r-3',
+      });
+      expect(result.outcome).toBe('executed');
+    });
+
+    it('Ban routes to the live-stream surface and bans with roomType LIVE_STREAM', async () => {
+      routeToStream();
+      liveStreamReports.reviewReport.mockResolvedValue(undefined);
+
+      const result = await service.actionReport(
+        'mod-1',
+        'r-4',
+        { action: 'Ban', note: 'severe' },
+        actorRoles,
+      );
+
+      expect(liveStreamReports.reviewReport).toHaveBeenCalledWith(
+        {
+          reportId: 'r-4',
+          streamId: 'stream-1',
+          moderatorId: 'mod-1',
+          actorRoles,
+          status: 'ACTIONED',
+          resolution: 'severe',
+        },
+        undefined,
+      );
+      expect(platformBans.banUser).toHaveBeenCalledWith({
+        moderatorId: 'mod-1',
+        targetUserId: 'u-2',
+        reason: 'severe',
+        roomType: 'LIVE_STREAM',
+        originRoomId: 'stream-1',
+        reportId: 'r-4',
+      });
+      expect(result.outcome).toBe('executed');
+    });
+
+    it('Escalate routes to the video surface at EMERGENCY severity', async () => {
+      routeToVideo();
+      videoReports.reviewReport.mockResolvedValue(undefined);
+      videoModeration.escalateViolation.mockResolvedValue(undefined);
+
+      const result = await service.actionReport(
+        'mod-1',
+        'r-3',
+        { action: 'Escalate', note: 'urgent' },
+        actorRoles,
+      );
+
+      expect(videoModeration.escalateViolation).toHaveBeenCalledWith(
+        { id: 'mod-1', roles: actorRoles },
+        'vroom-1',
+        'u-2',
+        '[Report #r-3 escalation] urgent',
+        'EMERGENCY',
+      );
+      expect(result.outcome).toBe('escalated');
+    });
+
+    it('Escalate routes to the live-stream surface at EMERGENCY severity', async () => {
+      routeToStream();
+      liveStreamReports.reviewReport.mockResolvedValue(undefined);
+      liveStream.escalateViolation.mockResolvedValue(undefined);
+
+      const result = await service.actionReport(
+        'mod-1',
+        'r-4',
+        { action: 'Escalate', note: 'urgent' },
+        actorRoles,
+      );
+
+      expect(liveStream.escalateViolation).toHaveBeenCalledWith(
+        'stream-1',
+        'mod-1',
+        'u-2',
+        '[Report #r-4 escalation] urgent',
+        'EMERGENCY',
+      );
+      expect(result.outcome).toBe('escalated');
     });
   });
 

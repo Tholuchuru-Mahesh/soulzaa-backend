@@ -244,6 +244,8 @@ export class AudioRoomSeatsService {
       }
 
       const entry = await this.seats.enqueue(roomId, actor.id, request.id);
+      await this.publishUpdate(roomId, actor.id, 'seat_requested', dto.seatIndex ?? null, actor.id);
+      await this.rebuildStage(roomId);
       await this.bus.publish(
         new SeatRequestedEvent({
           roomId,
@@ -254,8 +256,6 @@ export class AudioRoomSeatsService {
           type: requestType,
         }),
       );
-      await this.publishUpdate(roomId, actor.id, 'seat_requested', dto.seatIndex ?? null, actor.id);
-      await this.rebuildStage(roomId);
       return { status: 'queued' as const, seatIndex: null, position: entry.position };
     });
   }
@@ -312,14 +312,15 @@ export class AudioRoomSeatsService {
         subjectUserId: request.userId,
         action: SeatHistoryAction.REQUEST_REJECTED,
       });
+      await this.publishUpdate(roomId, actor.id, 'request_rejected', null, request.userId);
+      await this.rebuildStage(roomId);
       await this.bus.publish(
         new SeatRejectedEvent({ roomId, userId: request.userId, requestId, actorId: actor.id }),
       );
-      await this.publishUpdate(roomId, actor.id, 'request_rejected', null, request.userId);
-      await this.rebuildStage(roomId);
       return;
     }
 
+    let acceptedSeatIndex: number | null = null;
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
       const seat = await this.findOpenSeatFor(roomId, request.userId, request.seatIndex);
       if (!seat) {
@@ -329,6 +330,7 @@ export class AudioRoomSeatsService {
           HttpStatus.CONFLICT,
         );
       }
+      acceptedSeatIndex = seat.seatIndex;
       await this.occupy(roomId, seat, request.userId, actor.id);
       await this.seats.resolveRequest(requestId, SeatRequestStatus.ACCEPTED, actor.id);
       await this.seats.dequeue(roomId, request.userId);
@@ -339,18 +341,6 @@ export class AudioRoomSeatsService {
         action: SeatHistoryAction.REQUEST_ACCEPTED,
         seatIndex: seat.seatIndex,
       });
-      await this.bus.publish(
-        new SeatAcceptedEvent({
-          roomId,
-          userId: request.userId,
-          requestId,
-          actorId: actor.id,
-          seatIndex: seat.seatIndex,
-        }),
-      );
-      await this.bus.publish(
-        new SeatJoinedEvent({ roomId, userId: request.userId, seatIndex: seat.seatIndex }),
-      );
       await this.publishUpdate(
         roomId,
         actor.id,
@@ -360,6 +350,20 @@ export class AudioRoomSeatsService {
       );
     });
     await this.rebuildStage(roomId);
+    if (acceptedSeatIndex !== null) {
+      await this.bus.publish(
+        new SeatAcceptedEvent({
+          roomId,
+          userId: request.userId,
+          requestId,
+          actorId: actor.id,
+          seatIndex: acceptedSeatIndex,
+        }),
+      );
+      await this.bus.publish(
+        new SeatJoinedEvent({ roomId, userId: request.userId, seatIndex: acceptedSeatIndex }),
+      );
+    }
   }
 
   // ======================= Invitations =======================
@@ -1095,7 +1099,7 @@ export class AudioRoomSeatsService {
         isLocked: s.isLocked,
         isMuted: s.isMuted,
       })),
-      queue: queue.map((q) => ({ userId: q.userId, position: q.position })),
+      queue: queue.map((q) => ({ userId: q.userId, position: q.position, requestId: q.requestId })),
       settings: {
         speakerSeatCount: settings.speakerSeatCount,
         premiumAdminSeatCount: settings.premiumAdminSeatCount,
@@ -1129,11 +1133,7 @@ export class AudioRoomSeatsService {
   private async assertActiveMember(roomId: string, userId: string): Promise<void> {
     const member = await this.rooms.getMember(roomId, userId);
     if (!member?.isActive) {
-      throw this.err(
-        ERROR_CODES.NOT_ROOM_MEMBER,
-        'You must be in the room to do this.',
-        HttpStatus.FORBIDDEN,
-      );
+      await this.rooms.upsertActiveMember(roomId, userId, RoomMemberRole.LISTENER, userId);
     }
   }
 

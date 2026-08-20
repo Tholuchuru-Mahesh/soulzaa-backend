@@ -224,6 +224,7 @@ export class LiveStreamController {
         streamId: id,
         reportId,
         moderatorId: user.id,
+        actorRoles: user.roles,
         status: dto.status,
         resolution: dto.resolution,
         recommendedAction: dto.recommendedAction,
