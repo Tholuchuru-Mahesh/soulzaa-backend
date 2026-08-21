@@ -1,0 +1,68 @@
+// ============================================================
+// Official Inventory — Digital asset vault and reward stockpile
+// allocated to Regional Officials for events and creator growth.
+// ============================================================
+
+enum OfficialInventoryCategory {
+  GIFT
+  FRAME
+  ENTRY_EFFECT
+  THEME
+  REWARD
+  BADGE
+  OTHER
+}
+
+enum InventoryRecipientType {
+  AGENCY
+  CREATOR
+  USER
+}
+
+model OfficialInventoryItem {
+  id                String                    @id @default(uuid()) @db.Uuid
+  officialId        String                    @db.Uuid
+  category          OfficialInventoryCategory @default(GIFT)
+  name              String
+  description       String?
+  thumbnailUrl      String?
+  availableQty      Int                       @default(0)
+  distributedQty    Int                       @default(0)
+  reservedQty       Int                       @default(0)
+  totalReceivedQty  Int                       @default(0)
+  source            String                    @default("Manager")
+  relatedEventId    String?                   @db.Uuid
+  relatedEventName  String?
+  lowStockThreshold Int                       @default(20)
+  metadata          Json?                     @default("{}")
+  receivedAt        DateTime                  @default(now())
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  dispatches        OfficialInventoryDispatch[]
+
+  @@index([officialId, category])
+  @@index([officialId, receivedAt])
+  @@map("official_inventory_items")
+}
+
+model OfficialInventoryDispatch {
+  id              String                 @id @default(uuid()) @db.Uuid
+  officialId      String                 @db.Uuid
+  inventoryItemId String                 @db.Uuid
+  recipientType   InventoryRecipientType @default(USER)
+  recipientId     String?                @db.Uuid
+  recipientName   String
+  recipientCode   String?
+  quantity        Int                    @default(1)
+  reason          String                 @default("Event reward")
+  remarks         String?
+  dispatchedAt    DateTime               @default(now())
+  createdAt       DateTime               @default(now())
+
+  inventoryItem   OfficialInventoryItem  @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@index([officialId, dispatchedAt])
+  @@index([inventoryItemId])
+  @@map("official_inventory_dispatches")
+}
