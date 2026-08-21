@@ -59,6 +59,8 @@ describe('MobileWorkforceService scope composition', () => {
     roomMessage: { findMany: jest.fn().mockResolvedValue([]) },
     videoRoomMessage: { findMany: jest.fn().mockResolvedValue([]) },
     roomLiveSession: { findFirst: jest.fn().mockResolvedValue(null) },
+    // roomDetails durably records the moderator visit before returning.
+    platformModerationAuditLog: { create: jest.fn().mockResolvedValue(null) },
     platformUserBan: { count: jest.fn().mockResolvedValue(0) },
     userProfile: {
       findMany: jest.fn().mockResolvedValue([]),

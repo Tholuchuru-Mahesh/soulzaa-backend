@@ -633,35 +633,17 @@ export class MobileWorkforceService {
     // "Assigned" reports = currently open (PENDING) ones, not the lifetime
     // total ever filed in-region — REVIEWED/DISMISSED/ACTIONED reports are
     // already closed and must not keep inflating this count forever.
+    // Region only. `{}` is reserved for the unrestricted (platform staff) case:
+    // widening it to "no in-scope rooms" would turn an empty territory into an
+    // unfiltered count of every report on the platform.
     const audioReportScopeFilter =
-      inScopeAudioRoomIds === null || inScopeAudioRoomIds.length === 0
-        ? {}
-        : {
-            OR: [
-              { roomId: { in: inScopeAudioRoomIds.map((r) => r.id) } },
-              { assigneeId: userId },
-              { reviewedBy: userId },
-            ],
-          };
+      inScopeAudioRoomIds === null ? {} : { roomId: { in: inScopeAudioRoomIds.map((r) => r.id) } };
     const videoReportScopeFilter =
-      inScopeVideoRoomIds === null || inScopeVideoRoomIds.length === 0
-        ? {}
-        : {
-            OR: [
-              { roomId: { in: inScopeVideoRoomIds.map((r) => r.id) } },
-              { assigneeId: userId },
-              { reviewedBy: userId },
-            ],
-          };
+      inScopeVideoRoomIds === null ? {} : { roomId: { in: inScopeVideoRoomIds.map((r) => r.id) } };
     const streamReportScopeFilter =
-      inScopeLiveStreamIds === null || inScopeLiveStreamIds.length === 0
+      inScopeLiveStreamIds === null
         ? {}
-        : {
-            OR: [
-              { streamId: { in: inScopeLiveStreamIds.map((r) => r.id) } },
-              { reviewedBy: userId },
-            ],
-          };
+        : { streamId: { in: inScopeLiveStreamIds.map((r) => r.id) } };
 
     // Day-over-day report volume (independent of status) backs the
     // dashboard's "vs yesterday" delta for the assigned-reports tile, which
@@ -1843,7 +1825,7 @@ export class MobileWorkforceService {
       this.resolveRoomLabel(ctx.roomType, ctx.roomId),
       this.resolveRegion(ownerId),
       this.countPreviousReports(ctx.targetUserId, reportId),
-      this.canViewFullEvidence(userId, actorRoles),
+      this.canViewFullEvidence(userId),
       this.resolveShiftActive(userId, actorRoles),
       this.warnings ? this.warnings.isSuspended(userId) : Promise.resolve(false),
     ]);
@@ -1961,27 +1943,18 @@ export class MobileWorkforceService {
     return audio + video + stream;
   }
 
-  private async canViewFullEvidence(userId: string, actorRoles?: PlatformRole[]): Promise<boolean> {
-    const roles = actorRoles ?? [];
-    if (
-      roles.some(
-        (r) =>
-          (r as string) === 'MODERATOR' ||
-          (r as string) === 'OFFICIAL' ||
-          (r as string) === 'ADMIN' ||
-          (r as string) === 'SUPER_ADMIN',
-      )
-    ) {
-      return true;
-    }
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { roles: true },
-    });
-    if (user && user.roles && user.roles.length > 0) {
-      return true;
-    }
-    return true;
+  /**
+   * Full evidence is a recording of a real user, so it is permission-gated, not
+   * role-gated: holding MODERATOR is what puts a report on your queue, while
+   * `investigation.recording.view` is what lets you watch the footage attached
+   * to it. Gating on the role instead hands every moderator every recording.
+   */
+  private async canViewFullEvidence(userId: string): Promise<boolean> {
+    const permissions = await this.permissionResolver!.resolveUserPermissions(userId);
+    return (
+      this.permissionResolver!.hasPermission(permissions, 'investigation.recording.view') ||
+      this.permissionResolver!.hasPermission(permissions, 'audit.view')
+    );
   }
 
   /**
@@ -2033,20 +2006,20 @@ export class MobileWorkforceService {
       }
     }
 
-    const fallbackEvidenceId = `EVD-AUTO-${targetUserId.substring(0, 8).toUpperCase()}`;
-    const fallbackStreamUrl = `/api/investigation-recordings/stream/${fallbackEvidenceId}`;
-
     if (!recording) {
+      // No InvestigationRecording row exists for this report yet. Reporting a
+      // READY 4-minute window here would put a play button in front of the
+      // moderator for footage that was never captured, and hand them an
+      // evidence id that resolves to nothing.
       return {
-        evidenceId: fallbackEvidenceId,
+        evidenceId: 'Pending',
         evidenceType: 'System evidence',
-        evidenceNote: '4-minute automatic evidence window (2m pre + 2m post)',
-        recordingUrl: canViewFullEvidence ? fallbackStreamUrl : null,
-        recordingStatus: 'READY',
-        recordingDurationSeconds: 240,
-        streamUrl: canViewFullEvidence ? fallbackStreamUrl : null,
-        // No InvestigationRecording row exists for this report yet — there is no real
-        // speaker activity to show, so this stays empty rather than a fabricated script.
+        evidenceNote:
+          'No moderation action has been taken yet — evidence is captured automatically when an action is recorded.',
+        recordingUrl: null,
+        recordingStatus: 'PENDING',
+        recordingDurationSeconds: 0,
+        streamUrl: null,
         speakerTimeline: [],
       };
     }
