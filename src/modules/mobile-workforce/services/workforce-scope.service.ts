@@ -123,9 +123,9 @@ export class WorkforceScopeService {
     for (const scope of assignments) {
       const targetId =
         scope.scopeType === 'REGION'
-          ? (scope.regionId || scope.stateId || scope.countryId)
+          ? scope.regionId || scope.stateId || scope.countryId
           : scope.scopeType === 'STATE'
-            ? (scope.stateId || scope.countryId)
+            ? scope.stateId || scope.countryId
             : scope.scopeType === 'COUNTRY'
               ? scope.countryId
               : null;

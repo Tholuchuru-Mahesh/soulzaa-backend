@@ -34,7 +34,10 @@ export class AssignUserRoleDto {
  * address instead of having to look up a UUID first.
  */
 export class AssignUserRoleByEmailDto {
-  @ApiProperty({ description: 'Registered email of the user to assign the role to', example: 'official@example.com' })
+  @ApiProperty({
+    description: 'Registered email of the user to assign the role to',
+    example: 'official@example.com',
+  })
   @IsEmail()
   @IsNotEmpty()
   email!: string;

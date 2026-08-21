@@ -98,7 +98,10 @@ export class RoleAssignmentService {
 
     if (!user) {
       // Auto-provision user account for this email if they haven't registered yet
-      const emailPrefix = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+      const emailPrefix = cleanEmail
+        .split('@')[0]
+        .replace(/[^a-zA-Z0-9_]/g, '_')
+        .toLowerCase();
       let uniqueUsername = emailPrefix;
       let counter = 1;
       while (await this.prisma.user.findFirst({ where: { username: uniqueUsername } })) {
@@ -111,7 +114,9 @@ export class RoleAssignmentService {
       }
 
       const roleUpper = dto.role.trim().toUpperCase();
-      const isStaff = ['ADMIN', 'SUPER_ADMIN', 'OFFICIAL', 'COUNTRY_MANAGER', 'MODERATOR'].includes(roleUpper);
+      const isStaff = ['ADMIN', 'SUPER_ADMIN', 'OFFICIAL', 'COUNTRY_MANAGER', 'MODERATOR'].includes(
+        roleUpper,
+      );
 
       const newUser = await this.prisma.$transaction(async (tx) => {
         const createdUser = await tx.user.create({
@@ -167,7 +172,9 @@ export class RoleAssignmentService {
     // 2. Resolve Target Role
     const trimmedRole = dto.role.trim();
     const roleNameUpper = trimmedRole.toUpperCase();
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedRole);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      trimmedRole,
+    );
     const role = await this.prisma.role.findFirst({
       where: isUuid
         ? { OR: [{ id: trimmedRole }, { name: roleNameUpper }] }
@@ -339,7 +346,9 @@ export class RoleAssignmentService {
   async removeRole(userId: string, roleIdOrName: string, actorId: string) {
     const trimmedRole = roleIdOrName.trim();
     const roleNameUpper = trimmedRole.toUpperCase();
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedRole);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      trimmedRole,
+    );
     const role = await this.prisma.role.findFirst({
       where: isUuid
         ? { OR: [{ id: trimmedRole }, { name: roleNameUpper }] }

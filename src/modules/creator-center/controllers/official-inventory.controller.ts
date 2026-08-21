@@ -28,7 +28,11 @@ export class OfficialInventoryController {
   constructor(private readonly service: OfficialInventoryService) {}
 
   @ApiOperation({ summary: 'List inventory items and metric cards (Official / Superadmin)' })
-  @ApiQuery({ name: 'category', required: false, description: 'Category filter (ALL, GIFTS, FRAMES, ENTRY_EFFECTS, THEMES, REWARDS, BADGES)' })
+  @ApiQuery({
+    name: 'category',
+    required: false,
+    description: 'Category filter (ALL, GIFTS, FRAMES, ENTRY_EFFECTS, THEMES, REWARDS, BADGES)',
+  })
   @ApiQuery({ name: 'search', required: false, description: 'Search items by name, event, source' })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'offset', required: false })
@@ -41,7 +45,9 @@ export class OfficialInventoryController {
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset?: number,
   ) {
-    const isSuperAdminOrAdmin = user?.roles?.some((r: string) => ['SUPER_ADMIN', 'ADMIN'].includes(r));
+    const isSuperAdminOrAdmin = user?.roles?.some((r: string) =>
+      ['SUPER_ADMIN', 'ADMIN'].includes(r),
+    );
     const officialId = isSuperAdminOrAdmin ? undefined : user?.id;
     return this.service.getInventory(officialId, { category, search, limit, offset });
   }
@@ -69,7 +75,9 @@ export class OfficialInventoryController {
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset?: number,
   ) {
-    const isSuperAdminOrAdmin = user?.roles?.some((r: string) => ['SUPER_ADMIN', 'ADMIN'].includes(r));
+    const isSuperAdminOrAdmin = user?.roles?.some((r: string) =>
+      ['SUPER_ADMIN', 'ADMIN'].includes(r),
+    );
     const officialId = isSuperAdminOrAdmin ? undefined : user?.id;
     return this.service.getTransactions(officialId, limit, offset);
   }
@@ -77,11 +85,10 @@ export class OfficialInventoryController {
   @ApiOperation({ summary: 'Get single inventory item details by ID' })
   @ApiResponse({ status: 200, description: 'Item details' })
   @Get(':id')
-  getItemById(
-    @CurrentUser() user: any,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    const isSuperAdminOrAdmin = user?.roles?.some((r: string) => ['SUPER_ADMIN', 'ADMIN'].includes(r));
+  getItemById(@CurrentUser() user: any, @Param('id', ParseUUIDPipe) id: string) {
+    const isSuperAdminOrAdmin = user?.roles?.some((r: string) =>
+      ['SUPER_ADMIN', 'ADMIN'].includes(r),
+    );
     const officialId = isSuperAdminOrAdmin ? undefined : user?.id;
     return this.service.getItemById(officialId, id);
   }
@@ -103,10 +110,7 @@ export class OfficialInventoryController {
   @ApiOperation({ summary: 'Distribute asset to an Agency, Creator, or User' })
   @ApiResponse({ status: 201, description: 'Asset distributed successfully' })
   @Post('distribute')
-  distribute(
-    @CurrentUser('id') officialId: string,
-    @Body() dto: DistributeInventoryDto,
-  ) {
+  distribute(@CurrentUser('id') officialId: string, @Body() dto: DistributeInventoryDto) {
     return this.service.distribute(officialId, dto);
   }
 }

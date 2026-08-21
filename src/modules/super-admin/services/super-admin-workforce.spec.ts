@@ -40,6 +40,10 @@ describe('Super Admin Phase 2C: Workforce & Personnel Management Services', () =
       count: jest.fn(),
       deleteMany: jest.fn(),
     },
+    // Assigning an Official now validates that the chosen State belongs to the
+    // chosen Country, so the hierarchy read has to be stubbed.
+    state: { findUnique: jest.fn() },
+    region: { findUnique: jest.fn() },
   };
 
   const mockRoleService = {
@@ -137,8 +141,16 @@ describe('Super Admin Phase 2C: Workforce & Personnel Management Services', () =
         roleId: 'r-off',
       });
 
+      mockPrismaService.state.findUnique.mockResolvedValue({ countryId: 'c-1' });
+
       const res = await assignmentService.assignWorkforce(
-        { userId: 'u-off', role: 'OFFICIAL', scopeType: ScopeType.STATE, stateId: 's-1' },
+        {
+          userId: 'u-off',
+          role: 'OFFICIAL',
+          scopeType: ScopeType.STATE,
+          countryId: 'c-1',
+          stateId: 's-1',
+        },
         'actor-1',
       );
 

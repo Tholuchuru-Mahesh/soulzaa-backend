@@ -23,7 +23,12 @@ import { OfficialInventoryService } from './services/official-inventory.service'
 @Module({
   imports: [AnalyticsModule, MobileWorkforceModule],
   controllers: [CreatorCenterController, ContentRequestController, OfficialInventoryController],
-  providers: [CreatorCenterService, ContentRequestService, OfficialInventoryService, ActiveAccountGuard],
+  providers: [
+    CreatorCenterService,
+    ContentRequestService,
+    OfficialInventoryService,
+    ActiveAccountGuard,
+  ],
   exports: [OfficialInventoryService],
 })
 export class CreatorCenterModule {}

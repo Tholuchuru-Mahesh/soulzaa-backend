@@ -112,7 +112,7 @@ describe('Super Admin privileged actions are rank-guarded', () => {
   describe('RoleAssignmentService', () => {
     let service: RoleAssignmentService;
     const prisma = {
-      user: { findUnique: jest.fn() },
+      user: { findUnique: jest.fn(), update: jest.fn() },
       role: { findFirst: jest.fn() },
       userRole: { findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       roleScope: { findFirst: jest.fn() },

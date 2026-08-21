@@ -8,7 +8,10 @@ export class DistributeInventoryDto {
   @IsNotEmpty()
   inventoryItemId!: string;
 
-  @ApiProperty({ enum: InventoryRecipientType, description: 'Type of recipient (AGENCY, CREATOR, USER)' })
+  @ApiProperty({
+    enum: InventoryRecipientType,
+    description: 'Type of recipient (AGENCY, CREATOR, USER)',
+  })
   @IsEnum(InventoryRecipientType)
   recipientType!: InventoryRecipientType;
 
@@ -37,7 +40,10 @@ export class DistributeInventoryDto {
   @IsNotEmpty()
   reason!: string;
 
-  @ApiPropertyOptional({ description: 'Remarks or notes', example: 'Distribution for dasara regional event winners.' })
+  @ApiPropertyOptional({
+    description: 'Remarks or notes',
+    example: 'Distribution for dasara regional event winners.',
+  })
   @IsOptional()
   @IsString()
   remarks?: string;

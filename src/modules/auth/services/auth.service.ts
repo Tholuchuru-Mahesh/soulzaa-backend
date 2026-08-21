@@ -705,10 +705,7 @@ export class AuthService implements IAuthService {
     isNewUser: boolean,
   ): Promise<AuthResult> {
     const claims = await this.claimsFor(user);
-    const { sessionId, tokens } = await this.sessions.createSession(
-      claims,
-      ctx,
-    );
+    const { sessionId, tokens } = await this.sessions.createSession(claims, ctx);
     await this.bus.publish(
       new UserLoggedInEvent({ userId: user.id, sessionId, method, deviceId: null, ip: ctx.ip }),
     );

@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { ContentRequestStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
@@ -176,7 +182,8 @@ export class ContentRequestService {
    * Update a content request's status (OPEN/IN_REVIEW → APPROVED / REJECTED / RESOLVED).
    */
   async updateStatus(id: string, actorId: string, dto: UpdateContentRequestDto) {
-    const request = await this.findById(id);
+    // Existence guard — `findById` throws when the request is missing.
+    await this.findById(id);
 
     const extra: Record<string, unknown> = {};
     if (dto.status === 'RESOLVED' || dto.status === 'APPROVED') extra['resolvedAt'] = new Date();

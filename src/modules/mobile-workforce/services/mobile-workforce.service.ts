@@ -108,6 +108,7 @@ const REPORT_ROOM_TYPE_TO_PLATFORM: Record<ReportRoomType, PlatformRoomType> = {
  */
 @Injectable()
 export class MobileWorkforceService {
+  private readonly logger = new Logger(MobileWorkforceService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly scope: WorkforceScopeService,
@@ -1256,7 +1257,7 @@ export class MobileWorkforceService {
     if (!isUnrestricted && 'OR' in scopeWhere && (scopeWhere as any).OR.length === 0) {
       throw new ForbiddenException(
         'No geographic scope has been assigned to this Official account. ' +
-        'Please contact your Super Admin to assign a Country and State.',
+          'Please contact your Super Admin to assign a Country and State.',
       );
     }
 
@@ -1300,15 +1301,20 @@ export class MobileWorkforceService {
 
     const ownerFilter = inScopeUserIds !== null ? { ownerId: { in: inScopeUserIds } } : {};
     const founderFilter = inScopeUserIds !== null ? { founderId: { in: inScopeUserIds } } : {};
-    const reportScopeFilter = inScopeUserIds !== null
-      ? { OR: [{ reporterId: { in: inScopeUserIds } }, { targetUserId: { in: inScopeUserIds } }] }
-      : {};
+    const reportScopeFilter =
+      inScopeUserIds !== null
+        ? { OR: [{ reporterId: { in: inScopeUserIds } }, { targetUserId: { in: inScopeUserIds } }] }
+        : {};
     const ticketScopeFilter: Record<string, unknown> = isUnrestricted
       ? {}
       : {
           OR: [
-            ...('OR' in locationFilter && Array.isArray(locationFilter.OR) ? locationFilter.OR : []),
-            ...(inScopeUserIds && inScopeUserIds.length > 0 ? [{ submitterId: { in: inScopeUserIds } }] : []),
+            ...('OR' in locationFilter && Array.isArray(locationFilter.OR)
+              ? locationFilter.OR
+              : []),
+            ...(inScopeUserIds && inScopeUserIds.length > 0
+              ? [{ submitterId: { in: inScopeUserIds } }]
+              : []),
             { assignedOfficialId: userId },
           ],
         };
@@ -1414,7 +1420,9 @@ export class MobileWorkforceService {
         where: {
           OR: [
             { assignedById: userId },
-            ...(inScopeUserIds && inScopeUserIds.length > 0 ? [{ agencyId: { in: inScopeUserIds } }] : []),
+            ...(inScopeUserIds && inScopeUserIds.length > 0
+              ? [{ agencyId: { in: inScopeUserIds } }]
+              : []),
           ],
           status: 'ACTIVE',
         },
@@ -1446,31 +1454,67 @@ export class MobileWorkforceService {
       familiesCreated24h,
     ] = await Promise.all([
       this.prisma.user.count({ where: { ...scopeWhere, createdAt: { gte: yesterday } } }),
-      this.prisma.user.count({ where: { ...scopeWhere, status: 'ACTIVE', roles: { hasSome: ['HOST', 'CREATOR'] as any }, createdAt: { gte: yesterday } } }),
-      this.prisma.user.count({ where: { ...scopeWhere, roles: { hasSome: ['AGENCY'] as any }, createdAt: { gte: yesterday } } }),
-      this.prisma.user.count({ where: { ...scopeWhere, roles: { hasSome: ['COIN_SELLER'] as any }, createdAt: { gte: yesterday } } }),
-      this.prisma.family.count({ where: { ...founderFilter, status: 'ACTIVE', createdAt: { gte: yesterday } } }),
+      this.prisma.user.count({
+        where: {
+          ...scopeWhere,
+          status: 'ACTIVE',
+          roles: { hasSome: ['HOST', 'CREATOR'] as any },
+          createdAt: { gte: yesterday },
+        },
+      }),
+      this.prisma.user.count({
+        where: {
+          ...scopeWhere,
+          roles: { hasSome: ['AGENCY'] as any },
+          createdAt: { gte: yesterday },
+        },
+      }),
+      this.prisma.user.count({
+        where: {
+          ...scopeWhere,
+          roles: { hasSome: ['COIN_SELLER'] as any },
+          createdAt: { gte: yesterday },
+        },
+      }),
+      this.prisma.family.count({
+        where: { ...founderFilter, status: 'ACTIVE', createdAt: { gte: yesterday } },
+      }),
     ]);
 
-    const totalUsersGrowth = usersCreated24h > 0 && totalUsers > 0 ? `+${((usersCreated24h / totalUsers) * 100).toFixed(1)}%` : null;
-    const activeCreatorsGrowth = creatorsCreated24h > 0 && activeCreators > 0 ? `+${((creatorsCreated24h / activeCreators) * 100).toFixed(1)}%` : null;
-    const totalAgenciesGrowth = agenciesCreated24h > 0 && totalAgencies > 0 ? `+${((agenciesCreated24h / totalAgencies) * 100).toFixed(1)}%` : null;
-    const coinSellersGrowth = sellersCreated24h > 0 && activeCoinSellers > 0 ? `+${((sellersCreated24h / activeCoinSellers) * 100).toFixed(1)}%` : null;
-    const activeFamiliesGrowth = familiesCreated24h > 0 && activeFamilies > 0 ? `+${((familiesCreated24h / activeFamilies) * 100).toFixed(1)}%` : null;
+    const totalUsersGrowth =
+      usersCreated24h > 0 && totalUsers > 0
+        ? `+${((usersCreated24h / totalUsers) * 100).toFixed(1)}%`
+        : null;
+    const activeCreatorsGrowth =
+      creatorsCreated24h > 0 && activeCreators > 0
+        ? `+${((creatorsCreated24h / activeCreators) * 100).toFixed(1)}%`
+        : null;
+    const totalAgenciesGrowth =
+      agenciesCreated24h > 0 && totalAgencies > 0
+        ? `+${((agenciesCreated24h / totalAgencies) * 100).toFixed(1)}%`
+        : null;
+    const coinSellersGrowth =
+      sellersCreated24h > 0 && activeCoinSellers > 0
+        ? `+${((sellersCreated24h / activeCoinSellers) * 100).toFixed(1)}%`
+        : null;
+    const activeFamiliesGrowth =
+      familiesCreated24h > 0 && activeFamilies > 0
+        ? `+${((familiesCreated24h / activeFamilies) * 100).toFixed(1)}%`
+        : null;
     const audioRoomsGrowth = liveAudioRooms > 0 ? 'Live Now' : null;
     const videoRoomsGrowth = liveVideoRooms > 0 ? 'Live Now' : null;
     const liveStreamsGrowth = liveStreams > 0 ? 'Live Now' : null;
-    const userRoleScope = await this.prisma.roleScope.findFirst({
+    const roleScope = await this.prisma.roleScope.findFirst({
       where: { userRole: { userId } },
       include: { country: true, state: true, region: true },
       orderBy: { createdAt: 'desc' },
     });
 
     const territory = {
-      country: userRoleScope?.country?.name ?? null,
-      state: userRoleScope?.state?.name ?? null,
-      region: userRoleScope?.region?.name ?? null,
-      scopeType: userRoleScope?.scopeType ?? (isUnrestricted ? 'GLOBAL' : null),
+      country: roleScope?.country?.name ?? null,
+      state: roleScope?.state?.name ?? null,
+      region: roleScope?.region?.name ?? null,
+      scopeType: roleScope?.scopeType ?? (isUnrestricted ? 'GLOBAL' : null),
     };
 
     return {
@@ -2439,116 +2483,6 @@ export class MobileWorkforceService {
   }
 
   /**
-   * Detailed report information for Official Portal (100% Real Database Data).
-   */
-  async reportDetails(userId: string, reportId: string) {
-    let audioReport = await this.prisma.roomReport.findUnique({
-      where: { id: reportId },
-    });
-    let videoReport = null;
-    if (!audioReport) {
-      videoReport = await this.prisma.videoRoomReport.findUnique({
-        where: { id: reportId },
-      });
-    }
-
-    if (!audioReport && !videoReport) {
-      throw new NotFoundException(`Report with ID ${reportId} not found`);
-    }
-
-    const report = audioReport || videoReport!;
-    const isVideo = !audioReport;
-
-    const [reporter, targetUser, room] = await Promise.all([
-      this.prisma.user.findUnique({
-        where: { id: report.reporterId },
-        select: { id: true, username: true, fullName: true },
-      }),
-      this.prisma.user.findUnique({
-        where: { id: report.targetUserId },
-        select: { id: true, username: true, fullName: true },
-      }),
-      isVideo
-        ? this.prisma.videoRoom.findUnique({
-            where: { id: report.roomId },
-            select: { id: true, name: true, createdAt: true },
-          }).catch(() => null)
-        : this.prisma.audioRoom.findUnique({
-            where: { id: report.roomId },
-            select: { id: true, name: true, createdAt: true },
-          }).catch(() => null),
-    ]);
-
-    const code = `RPT-${report.id.substring(0, 4)}-${report.id.substring(report.id.length - 4)}`.toUpperCase();
-    const reasonText = report.reason
-      ? report.reason
-          .replace(/_/g, ' ')
-          .toLowerCase()
-          .replace(/\b\w/g, (c: string) => c.toUpperCase())
-      : 'Harassment';
-
-    const diffMs = Date.now() - new Date(report.createdAt).getTime();
-    const mins = Math.max(1, Math.floor(diffMs / 60000));
-    const timeAgoStr = mins < 60 ? `${mins} min ago` : `${Math.floor(mins / 60)} hr ago`;
-
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const occDate = new Date(report.createdAt);
-    const occurredOn = `${occDate.getDate()} ${months[occDate.getMonth()]} ${occDate.getFullYear()}`;
-
-    const prevCount = await Promise.all([
-      this.prisma.roomReport.count({ where: { targetUserId: report.targetUserId } }),
-      this.prisma.videoRoomReport.count({ where: { targetUserId: report.targetUserId } }),
-    ]).then(([a, v]) => a + v);
-
-    return {
-      id: report.id,
-      reportCode: code,
-      category: reasonText,
-      priority: isVideo ? 'High' : 'Medium',
-      timeAgo: timeAgoStr,
-      status: report.status === 'PENDING' ? 'Pending' : (report.status === 'REVIEWED' ? 'In review' : (report.status === 'DISMISSED' ? 'Resolved' : 'Escalated')),
-      reporter: {
-        id: reporter?.id.substring(0, 8).toUpperCase() ?? 'US35648',
-        name: reporter?.fullName || reporter?.username || 'User',
-        username: reporter?.username ? `@${reporter.username}` : '@user',
-        avatarUrl: '',
-      },
-      target: {
-        id: targetUser?.id.substring(0, 8).toUpperCase() ?? 'CR84569',
-        name: targetUser?.fullName || targetUser?.username || 'Target',
-        username: targetUser?.username ? `@${targetUser.username}` : '@target',
-        avatarUrl: '',
-      },
-      description: report.description || `Violation reported in ${isVideo ? 'video' : 'audio'} room "${room?.name || 'Live room'}"`,
-      evidence: [
-        {
-          type: 'audio',
-          title: 'Audio clip',
-          value: '00:45',
-          icon: 'volume_up',
-        },
-        {
-          type: 'screenshot',
-          title: 'Chat screenshot',
-          value: '2 images',
-          icon: 'image',
-        },
-        {
-          type: 'document',
-          title: 'Additional info',
-          value: '1 file (PDF)',
-          icon: 'description',
-        },
-      ],
-      relatedInfo: {
-        roomTitle: room?.name || 'Active Room',
-        occurredOn,
-        previousReports: `${prevCount} related reports`,
-      },
-    };
-  }
-
-  /**
    * Moderate participant in a room (mute, kick, ban).
    */
   async moderateParticipant(
@@ -2872,27 +2806,30 @@ export class MobileWorkforceService {
       const isAgency = u.roles?.includes('AGENCY');
       const isCoinSeller = u.roles?.includes('COIN_SELLER');
       const name = u.fullName || u.username;
-      const initials = name
-        .split(' ')
-        .filter(Boolean)
-        .map((w) => w[0])
-        .slice(0, 2)
-        .join('')
-        .toUpperCase() || 'AG';
+      const initials =
+        name
+          .split(' ')
+          .filter(Boolean)
+          .map((w) => w[0])
+          .slice(0, 2)
+          .join('')
+          .toUpperCase() || 'AG';
 
       const stateName = u.locationState?.name || null;
       const countryName = u.locationCountry?.name || u.country || null;
       const location = [stateName, countryName].filter(Boolean).join(', ') || '—';
 
       const digits = u.id.replace(/[^0-9]/g, '');
-      const code = digits.length >= 5 ? `AGY-${digits.slice(-5)}` : `AGY-${u.id.slice(0, 5).toUpperCase()}`;
+      const code =
+        digits.length >= 5 ? `AGY-${digits.slice(-5)}` : `AGY-${u.id.slice(0, 5).toUpperCase()}`;
 
       const wallet = walletMap.get(u.id);
       const earningsRaw = wallet?.earningsBalance ?? BigInt(0);
       const earningsRupees = Number(earningsRaw) / 100;
-      const revenue = earningsRupees > 0
-        ? `₹${earningsRupees >= 100000 ? `${(earningsRupees / 100000).toFixed(2)}L` : earningsRupees.toFixed(2)}`
-        : '₹0';
+      const revenue =
+        earningsRupees > 0
+          ? `₹${earningsRupees >= 100000 ? `${(earningsRupees / 100000).toFixed(2)}L` : earningsRupees.toFixed(2)}`
+          : '₹0';
 
       const hostsCount = membersCountMap.get(u.id) || 0;
       const complaints = complaintsMap.get(u.id) || 0;
@@ -3683,10 +3620,7 @@ export class MobileWorkforceService {
   /**
    * Recommendations list and metrics for Official Portal
    */
-  async recommendationsList(
-    userId: string,
-    filter: { search?: string; role?: string },
-  ) {
+  async recommendationsList(userId: string, filter: { search?: string; role?: string }) {
     const { isUnrestricted, inScopeUserIds } = await this.resolveUserScope(userId);
     const subjectFilter = isUnrestricted ? {} : { subjectUserId: { in: inScopeUserIds ?? [] } };
     const roleFilter =
@@ -3760,7 +3694,13 @@ export class MobileWorkforceService {
             ? 'BD'
             : req.type;
 
-      const dateStr = req.createdAt ? new Date(req.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+      const dateStr = req.createdAt
+        ? new Date(req.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })
+        : '—';
 
       return {
         id: req.id,
@@ -3771,8 +3711,14 @@ export class MobileWorkforceService {
         region: location || 'Region - South',
         submitted: dateStr,
         submittedDate: dateStr,
-        status: req.status === 'APPROVED' ? 'Approved' : req.status === 'REJECTED' ? 'Rejected' : 'Under review',
-        statusColor: req.status === 'APPROVED' ? '#16A34A' : req.status === 'REJECTED' ? '#DC2626' : '#9333EA',
+        status:
+          req.status === 'APPROVED'
+            ? 'Approved'
+            : req.status === 'REJECTED'
+              ? 'Rejected'
+              : 'Under review',
+        statusColor:
+          req.status === 'APPROVED' ? '#16A34A' : req.status === 'REJECTED' ? '#DC2626' : '#9333EA',
         reason: (req.formData as any)?.reason || 'Performance-based recommendation',
       };
     });
@@ -3988,7 +3934,10 @@ export class MobileWorkforceService {
     });
 
     const regionId =
-      officialScope?.regionId || candidate.regionId || defaultRegion?.id || '00000000-0000-0000-0000-000000000001';
+      officialScope?.regionId ||
+      candidate.regionId ||
+      defaultRegion?.id ||
+      '00000000-0000-0000-0000-000000000001';
 
     const reqType =
       body.roleType === 'MODERATOR'
@@ -4032,29 +3981,45 @@ export class MobileWorkforceService {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const [activeAudioCount, activeVideoCount, audioReportsCount, videoReportsCount, onlinePresenceCount, giftsTodayAggregate] =
-      await Promise.all([
-        this.prisma.audioRoom.count({ where: { status: 'LIVE', deletedAt: null, ...roomOwnerFilter } }),
-        this.prisma.videoRoom.count({ where: { status: 'LIVE', deletedAt: null, ...roomOwnerFilter } }),
-        this.prisma.roomReport.count({ where: { status: 'PENDING', ...reporterFilter } }),
-        this.prisma.videoRoomReport.count({ where: { status: 'PENDING', ...reporterFilter } }),
-        inScopeUserIds && inScopeUserIds.length > 0
-          ? this.prisma.roomPresence.count({ where: { userId: { in: inScopeUserIds } } }).catch(() => 0)
-          : isUnrestricted
-            ? this.prisma.roomPresence.count().catch(() => 0)
-            : Promise.resolve(0),
-        inScopeUserIds && inScopeUserIds.length > 0
-          ? this.prisma.giftTransaction.aggregate({
+    const [
+      activeAudioCount,
+      activeVideoCount,
+      audioReportsCount,
+      videoReportsCount,
+      onlinePresenceCount,
+      giftsTodayAggregate,
+    ] = await Promise.all([
+      this.prisma.audioRoom.count({
+        where: { status: 'LIVE', deletedAt: null, ...roomOwnerFilter },
+      }),
+      this.prisma.videoRoom.count({
+        where: { status: 'LIVE', deletedAt: null, ...roomOwnerFilter },
+      }),
+      this.prisma.roomReport.count({ where: { status: 'PENDING', ...reporterFilter } }),
+      this.prisma.videoRoomReport.count({ where: { status: 'PENDING', ...reporterFilter } }),
+      inScopeUserIds && inScopeUserIds.length > 0
+        ? this.prisma.roomPresence
+            .count({ where: { userId: { in: inScopeUserIds } } })
+            .catch(() => 0)
+        : isUnrestricted
+          ? this.prisma.roomPresence.count().catch(() => 0)
+          : Promise.resolve(0),
+      inScopeUserIds && inScopeUserIds.length > 0
+        ? this.prisma.giftTransaction
+            .aggregate({
               _sum: { quantity: true },
               where: { createdAt: { gte: todayStart }, senderId: { in: inScopeUserIds } },
-            }).catch(() => ({ _sum: { quantity: 0 } }))
-          : isUnrestricted
-            ? this.prisma.giftTransaction.aggregate({
+            })
+            .catch(() => ({ _sum: { quantity: 0 } }))
+        : isUnrestricted
+          ? this.prisma.giftTransaction
+              .aggregate({
                 _sum: { quantity: true },
                 where: { createdAt: { gte: todayStart } },
-              }).catch(() => ({ _sum: { quantity: 0 } }))
-            : Promise.resolve({ _sum: { quantity: 0 } }),
-      ]);
+              })
+              .catch(() => ({ _sum: { quantity: 0 } }))
+          : Promise.resolve({ _sum: { quantity: 0 } }),
+    ]);
 
     const totalActiveRooms = activeAudioCount + activeVideoCount;
     const reportsCount = audioReportsCount + videoReportsCount;
@@ -4103,23 +4068,26 @@ export class MobileWorkforceService {
       });
 
       const ownerIds = videoRooms.map((r) => r.ownerId);
-      const owners = ownerIds.length > 0
-        ? await this.prisma.user.findMany({
-            where: { id: { in: ownerIds } },
-            select: {
-              id: true,
-              username: true,
-              fullName: true,
-              country: true,
-            },
-          })
-        : [];
+      const owners =
+        ownerIds.length > 0
+          ? await this.prisma.user.findMany({
+              where: { id: { in: ownerIds } },
+              select: {
+                id: true,
+                username: true,
+                fullName: true,
+                country: true,
+              },
+            })
+          : [];
       const ownerMap = new Map(owners.map((o) => [o.id, o]));
 
       // Query participant counts from VideoRoomMember for each room
       const participantCounts = await Promise.all(
         videoRooms.map((r) =>
-          this.prisma.videoRoomMember.count({ where: { roomId: r.id, isActive: true } }).catch(() => 0),
+          this.prisma.videoRoomMember
+            .count({ where: { roomId: r.id, isActive: true } })
+            .catch(() => 0),
         ),
       );
 
@@ -4173,17 +4141,18 @@ export class MobileWorkforceService {
       });
 
       const ownerIds = audioRooms.map((r) => r.ownerId);
-      const owners = ownerIds.length > 0
-        ? await this.prisma.user.findMany({
-            where: { id: { in: ownerIds } },
-            select: {
-              id: true,
-              username: true,
-              fullName: true,
-              country: true,
-            },
-          })
-        : [];
+      const owners =
+        ownerIds.length > 0
+          ? await this.prisma.user.findMany({
+              where: { id: { in: ownerIds } },
+              select: {
+                id: true,
+                username: true,
+                fullName: true,
+                country: true,
+              },
+            })
+          : [];
       const ownerMap = new Map(owners.map((o) => [o.id, o]));
 
       // Query participant counts from RoomMember for each room
@@ -4230,7 +4199,7 @@ export class MobileWorkforceService {
    * Room Monitoring detail info for Official Portal (100% Real Database Data).
    */
   async monitoredRoomDetail(userId: string, roomId: string) {
-    let audioRoom = await this.prisma.audioRoom.findUnique({
+    const audioRoom = await this.prisma.audioRoom.findUnique({
       where: { id: roomId },
       select: {
         id: true,
@@ -4267,7 +4236,14 @@ export class MobileWorkforceService {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const [owner, participantsCount, roomReports, giftSumAggregate, giftTransactions, activeMembers] = await Promise.all([
+    const [
+      owner,
+      participantsCount,
+      roomReports,
+      giftSumAggregate,
+      giftTransactions,
+      activeMembers,
+    ] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: room.ownerId },
         select: {
@@ -4281,18 +4257,20 @@ export class MobileWorkforceService {
         ? this.prisma.videoRoomMember.count({ where: { roomId, isActive: true } }).catch(() => 0)
         : this.prisma.roomMember.count({ where: { roomId, isActive: true } }).catch(() => 0),
       isVideo
-        ? this.prisma.videoRoomReport.findMany({
-            where: { roomId },
-            take: 10,
-            orderBy: { createdAt: 'desc' },
-            select: {
-              id: true,
-              reason: true,
-              description: true,
-              createdAt: true,
-              reporterId: true,
-            },
-          }).catch(() => [])
+        ? this.prisma.videoRoomReport
+            .findMany({
+              where: { roomId },
+              take: 10,
+              orderBy: { createdAt: 'desc' },
+              select: {
+                id: true,
+                reason: true,
+                description: true,
+                createdAt: true,
+                reporterId: true,
+              },
+            })
+            .catch(() => [])
         : this.prisma.roomReport.findMany({
             where: { roomId },
             take: 10,
@@ -4305,40 +4283,49 @@ export class MobileWorkforceService {
               reporterId: true,
             },
           }),
-      this.prisma.giftTransaction.aggregate({
-        _sum: { quantity: true },
-        where: { contextId: roomId, createdAt: { gte: todayStart } },
-      }).catch(() => ({ _sum: { quantity: 0 } })),
-      this.prisma.giftTransaction.findMany({
-        where: { contextId: roomId, createdAt: { gte: todayStart } },
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-        select: {
-          senderId: true,
-          quantity: true,
-        },
-      }).catch(() => []),
+      this.prisma.giftTransaction
+        .aggregate({
+          _sum: { quantity: true },
+          where: { contextId: roomId, createdAt: { gte: todayStart } },
+        })
+        .catch(() => ({ _sum: { quantity: 0 } })),
+      this.prisma.giftTransaction
+        .findMany({
+          where: { contextId: roomId, createdAt: { gte: todayStart } },
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            senderId: true,
+            quantity: true,
+          },
+        })
+        .catch(() => []),
       isVideo
-        ? this.prisma.videoRoomMember.findMany({
-            where: { roomId, isActive: true },
-            select: { userId: true },
-            take: 50,
-          }).catch(() => [])
-        : this.prisma.roomMember.findMany({
-            where: { roomId, isActive: true },
-            select: { userId: true },
-            take: 50,
-          }).catch(() => []),
+        ? this.prisma.videoRoomMember
+            .findMany({
+              where: { roomId, isActive: true },
+              select: { userId: true },
+              take: 50,
+            })
+            .catch(() => [])
+        : this.prisma.roomMember
+            .findMany({
+              where: { roomId, isActive: true },
+              select: { userId: true },
+              take: 50,
+            })
+            .catch(() => []),
     ]);
 
     // Query details of active online users
     const onlineUserIds = activeMembers.map((m) => m.userId);
-    const onlineUsersList = onlineUserIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: onlineUserIds } },
-          select: { id: true, username: true, fullName: true },
-        })
-      : [];
+    const onlineUsersList =
+      onlineUserIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: onlineUserIds } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [];
 
     const onlineUsers = onlineUsersList.map((u) => ({
       id: u.id,
@@ -4349,22 +4336,24 @@ export class MobileWorkforceService {
 
     // Query reporters for recent activity logs
     const reporterIds = roomReports.map((rpt) => rpt.reporterId);
-    const reporters = reporterIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: reporterIds } },
-          select: { id: true, username: true },
-        })
-      : [];
+    const reporters =
+      reporterIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: reporterIds } },
+            select: { id: true, username: true },
+          })
+        : [];
     const reporterMap = new Map(reporters.map((u) => [u.id, u.username]));
 
     // Query senders for top givers
     const senderIds = Array.from(new Set(giftTransactions.map((gt) => gt.senderId)));
-    const senders = senderIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: senderIds } },
-          select: { id: true, username: true, fullName: true },
-        })
-      : [];
+    const senders =
+      senderIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: senderIds } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [];
     const senderMap = new Map(senders.map((s) => [s.id, s]));
 
     // Aggregate gift totals per sender
@@ -4442,7 +4431,9 @@ export class MobileWorkforceService {
    * Escalate serious case for Room Monitoring.
    */
   async escalateRoomCase(userId: string, roomId: string, reason?: string) {
-    this.logger.log(`Room case escalated by Official ${userId} for room ${roomId}: ${reason || 'Immediate action required'}`);
+    this.logger.log(
+      `Room case escalated by Official ${userId} for room ${roomId}: ${reason || 'Immediate action required'}`,
+    );
     return {
       success: true,
       message: `Case for room ${roomId} escalated to Manager successfully.`,
@@ -4450,7 +4441,10 @@ export class MobileWorkforceService {
   }
 
   /** Measure agency task progress from live database tables */
-  async measureAgencyTask(agencyId: string, task: { metric: string; targetValue: bigint | null; periodStart: Date; periodEnd: Date }) {
+  async measureAgencyTask(
+    agencyId: string,
+    task: { metric: string; targetValue: bigint | null; periodStart: Date; periodEnd: Date },
+  ) {
     if (task.metric === 'MANUAL' || task.targetValue === null) {
       return { current: null, target: null, percent: null };
     }
@@ -4516,9 +4510,10 @@ export class MobileWorkforceService {
       }
     }
 
-    const percent = target > BigInt(0)
-      ? Math.min(100, Math.round((Number(current) / Number(target)) * 100))
-      : null;
+    const percent =
+      target > BigInt(0)
+        ? Math.min(100, Math.round((Number(current) / Number(target)) * 100))
+        : null;
 
     return { current: current.toString(), target: target.toString(), percent };
   }
@@ -4572,7 +4567,7 @@ export class MobileWorkforceService {
           createdAt: task.createdAt.toISOString(),
           progress,
         };
-      })
+      }),
     );
 
     return { items, total: items.length };
@@ -4633,7 +4628,7 @@ export class MobileWorkforceService {
       periodStart: string;
       periodEnd: string;
       priority: 'HIGH' | 'MEDIUM' | 'LOW';
-    }
+    },
   ) {
     const scopeWhere = await this.scope.userScopeFilter(officialUserId);
     const agency = await this.prisma.user.findFirst({
@@ -4964,7 +4959,6 @@ export class MobileWorkforceService {
     const locationFilter = buildLocationFilter(scopeWhere, ['countryId', 'stateId', 'regionId']);
     const streamLocationFilter = buildLocationFilter(scopeWhere, ['countryId', 'stateId']);
 
-
     // 1. Calculate consistent Date Range Boundaries for current & previous comparison period
     const now = new Date();
     const tf = (timeframe || '7days').toLowerCase().replace(/\s+/g, '');
@@ -5015,7 +5009,7 @@ export class MobileWorkforceService {
         s.setDate(s.getDate() - (i * 5 + 4));
         s.setHours(0, 0, 0, 0);
         const e = new Date(now);
-        e.setDate(e.getDate() - (i * 5));
+        e.setDate(e.getDate() - i * 5);
         e.setHours(23, 59, 59, 999);
         const month = e.toLocaleString('en-US', { month: 'short' }).toLowerCase();
         trendBuckets.push({ start: s, end: e, label: `${month} ${e.getDate()}` });
@@ -5082,15 +5076,20 @@ export class MobileWorkforceService {
     }
 
     const ownerFilter = inScopeUserIds !== null ? { ownerId: { in: inScopeUserIds } } : {};
-    const reportScopeFilter = inScopeUserIds !== null
-      ? { OR: [{ reporterId: { in: inScopeUserIds } }, { targetUserId: { in: inScopeUserIds } }] }
-      : {};
+    const reportScopeFilter =
+      inScopeUserIds !== null
+        ? { OR: [{ reporterId: { in: inScopeUserIds } }, { targetUserId: { in: inScopeUserIds } }] }
+        : {};
     const ticketScopeFilter: Record<string, unknown> = isUnrestricted
       ? {}
       : {
           OR: [
-            ...('OR' in locationFilter && Array.isArray(locationFilter.OR) ? locationFilter.OR : []),
-            ...(inScopeUserIds && inScopeUserIds.length > 0 ? [{ submitterId: { in: inScopeUserIds } }] : []),
+            ...('OR' in locationFilter && Array.isArray(locationFilter.OR)
+              ? locationFilter.OR
+              : []),
+            ...(inScopeUserIds && inScopeUserIds.length > 0
+              ? [{ submitterId: { in: inScopeUserIds } }]
+              : []),
             { assignedOfficialId: userId },
           ],
         };
@@ -5108,7 +5107,10 @@ export class MobileWorkforceService {
       periodNewUsers,
       prevPeriodNewUsers,
       periodActiveUsers,
-      prevPeriodActiveUsers,
+      // Queried but never read: the active-users delta was never wired up the
+      // way `userGrowth` is. Underscored rather than deleted so the paired
+      // Promise.all entry stays index-aligned with this destructuring.
+      _prevPeriodActiveUsers,
       periodNewCreators,
       prevPeriodNewCreators,
       periodNewAgencies,
@@ -5123,28 +5125,72 @@ export class MobileWorkforceService {
     ] = await Promise.all([
       // Total lifetime in scope
       this.prisma.user.count({ where: scopeWhere }),
-      this.prisma.user.count({ where: { ...scopeWhere, status: 'ACTIVE', roles: { hasSome: ['HOST', 'CREATOR'] as any } } }),
+      this.prisma.user.count({
+        where: { ...scopeWhere, status: 'ACTIVE', roles: { hasSome: ['HOST', 'CREATOR'] as any } },
+      }),
       this.prisma.user.count({ where: { ...scopeWhere, roles: { hasSome: ['AGENCY'] as any } } }),
-      this.prisma.user.count({ where: { ...scopeWhere, status: 'ACTIVE', roles: { hasSome: ['AGENCY'] as any } } }),
-      this.prisma.user.count({ where: { ...scopeWhere, roles: { hasSome: ['COIN_SELLER'] as any } } }),
+      this.prisma.user.count({
+        where: { ...scopeWhere, status: 'ACTIVE', roles: { hasSome: ['AGENCY'] as any } },
+      }),
+      this.prisma.user.count({
+        where: { ...scopeWhere, roles: { hasSome: ['COIN_SELLER'] as any } },
+      }),
       // Live activity
       this.prisma.audioRoom.count({ where: { ...ownerFilter, status: 'LIVE' } }),
       this.prisma.videoRoom.count({ where: { ...ownerFilter, status: 'LIVE' } }),
       this.prisma.liveStream.count({ where: { status: 'LIVE', ...streamLocationFilter } }),
       // Users in current period vs previous
-      this.prisma.user.count({ where: { ...scopeWhere, createdAt: { gte: periodStart, lte: periodEnd } } }),
-      this.prisma.user.count({ where: { ...scopeWhere, createdAt: { gte: prevStart, lte: prevEnd } } }),
+      this.prisma.user.count({
+        where: { ...scopeWhere, createdAt: { gte: periodStart, lte: periodEnd } },
+      }),
+      this.prisma.user.count({
+        where: { ...scopeWhere, createdAt: { gte: prevStart, lte: prevEnd } },
+      }),
       // Active users in period (distinct users updated or active in audio rooms)
-      this.prisma.user.count({ where: { ...scopeWhere, updatedAt: { gte: periodStart, lte: periodEnd } } }),
-      this.prisma.user.count({ where: { ...scopeWhere, updatedAt: { gte: prevStart, lte: prevEnd } } }),
+      this.prisma.user.count({
+        where: { ...scopeWhere, updatedAt: { gte: periodStart, lte: periodEnd } },
+      }),
+      this.prisma.user.count({
+        where: { ...scopeWhere, updatedAt: { gte: prevStart, lte: prevEnd } },
+      }),
       // Creators in current period vs previous
-      this.prisma.user.count({ where: { ...scopeWhere, roles: { hasSome: ['HOST', 'CREATOR'] as any }, createdAt: { gte: periodStart, lte: periodEnd } } }),
-      this.prisma.user.count({ where: { ...scopeWhere, roles: { hasSome: ['HOST', 'CREATOR'] as any }, createdAt: { gte: prevStart, lte: prevEnd } } }),
+      this.prisma.user.count({
+        where: {
+          ...scopeWhere,
+          roles: { hasSome: ['HOST', 'CREATOR'] as any },
+          createdAt: { gte: periodStart, lte: periodEnd },
+        },
+      }),
+      this.prisma.user.count({
+        where: {
+          ...scopeWhere,
+          roles: { hasSome: ['HOST', 'CREATOR'] as any },
+          createdAt: { gte: prevStart, lte: prevEnd },
+        },
+      }),
       // Agencies in period vs previous
-      this.prisma.user.count({ where: { ...scopeWhere, roles: { hasSome: ['AGENCY'] as any }, createdAt: { gte: periodStart, lte: periodEnd } } }),
-      this.prisma.user.count({ where: { ...scopeWhere, roles: { hasSome: ['AGENCY'] as any }, createdAt: { gte: prevStart, lte: prevEnd } } }),
+      this.prisma.user.count({
+        where: {
+          ...scopeWhere,
+          roles: { hasSome: ['AGENCY'] as any },
+          createdAt: { gte: periodStart, lte: periodEnd },
+        },
+      }),
+      this.prisma.user.count({
+        where: {
+          ...scopeWhere,
+          roles: { hasSome: ['AGENCY'] as any },
+          createdAt: { gte: prevStart, lte: prevEnd },
+        },
+      }),
       // Active coin sellers in period
-      this.prisma.user.count({ where: { ...scopeWhere, roles: { hasSome: ['COIN_SELLER'] as any }, updatedAt: { gte: periodStart, lte: periodEnd } } }),
+      this.prisma.user.count({
+        where: {
+          ...scopeWhere,
+          roles: { hasSome: ['COIN_SELLER'] as any },
+          updatedAt: { gte: periodStart, lte: periodEnd },
+        },
+      }),
       // Moderation reports in period (RoomReport)
       this.prisma.roomReport.count({
         where: {
@@ -5209,14 +5255,14 @@ export class MobileWorkforceService {
     const topCreatorsList = await this.prisma.user.findMany({
       where: {
         ...scopeWhere,
-        roles: { hasSome: ['HOST', 'CREATOR'] as any }
+        roles: { hasSome: ['HOST', 'CREATOR'] as any },
       },
       take: 3,
       select: {
         id: true,
         username: true,
         fullName: true,
-      }
+      },
     });
 
     const streamingHoursArr = await Promise.all(
@@ -5226,12 +5272,12 @@ export class MobileWorkforceService {
           select: { id: true },
         });
         if (ownerRooms.length === 0) return 0;
-        const roomIds = ownerRooms.map(r => r.id);
+        const roomIds = ownerRooms.map((r) => r.id);
         const stats = await this.prisma.roomStatistics.aggregate({
           where: { roomId: { in: roomIds } },
           _sum: { totalDurationSeconds: true },
         });
-        return Math.round(Number(stats?._sum?.totalDurationSeconds ?? 0) / 3600 * 10) / 10;
+        return Math.round((Number(stats?._sum?.totalDurationSeconds ?? 0) / 3600) * 10) / 10;
       }),
     );
 
@@ -5257,9 +5303,9 @@ export class MobileWorkforceService {
     if (inScopeUserIds && inScopeUserIds.length > 0) {
       const wallets = await this.prisma.wallet.findMany({
         where: { userId: { in: inScopeUserIds } },
-        select: { id: true }
+        select: { id: true },
       });
-      walletIds = wallets.map(w => w.id);
+      walletIds = wallets.map((w) => w.id);
       if (walletIds.length > 0) {
         const sales = await this.prisma.walletTransaction.aggregate({
           where: {
@@ -5269,8 +5315,8 @@ export class MobileWorkforceService {
             createdAt: { gte: periodStart, lte: periodEnd },
           },
           _sum: {
-            amount: true
-          }
+            amount: true,
+          },
         });
         if (sales._sum.amount) {
           coinSalesTotal += sales._sum.amount;
@@ -5278,22 +5324,24 @@ export class MobileWorkforceService {
       }
     }
 
-    const coinSalesTrend = await Promise.all(trendBuckets.map(async (bucket) => {
-      let dayTotal = BigInt(0);
-      if (walletIds.length > 0) {
-        const daySales = await this.prisma.walletTransaction.aggregate({
-          where: {
-            status: 'COMPLETED',
-            destinationWalletId: { in: walletIds },
-            transactionType: 'PURCHASE',
-            createdAt: { gte: bucket.start, lte: bucket.end },
-          },
-          _sum: { amount: true }
-        });
-        if (daySales._sum.amount) dayTotal = daySales._sum.amount;
-      }
-      return { label: bucket.label, value: Number(dayTotal) };
-    }));
+    const coinSalesTrend = await Promise.all(
+      trendBuckets.map(async (bucket) => {
+        let dayTotal = BigInt(0);
+        if (walletIds.length > 0) {
+          const daySales = await this.prisma.walletTransaction.aggregate({
+            where: {
+              status: 'COMPLETED',
+              destinationWalletId: { in: walletIds },
+              transactionType: 'PURCHASE',
+              createdAt: { gte: bucket.start, lte: bucket.end },
+            },
+            _sum: { amount: true },
+          });
+          if (daySales._sum.amount) dayTotal = daySales._sum.amount;
+        }
+        return { label: bucket.label, value: Number(dayTotal) };
+      }),
+    );
 
     // 7. Streaming hours total in period
     let totalStreamingMinutes = 0;
@@ -5302,7 +5350,7 @@ export class MobileWorkforceService {
         where: { ownerId: { in: inScopeUserIds }, createdAt: { gte: periodStart, lte: periodEnd } },
         select: { id: true },
       });
-      const roomIds = ownerRooms.map(r => r.id);
+      const roomIds = ownerRooms.map((r) => r.id);
       if (roomIds.length > 0) {
         const roomStats = await this.prisma.roomStatistics.aggregate({
           where: { roomId: { in: roomIds } },
@@ -5312,13 +5360,14 @@ export class MobileWorkforceService {
       }
     }
     const totalHours = totalStreamingMinutes / 60;
-    const streamingHoursStr = totalHours >= 1000
-      ? `${(totalHours / 1000).toFixed(1)}k hrs`
-      : totalHours >= 1
-      ? `${totalHours.toFixed(1)} hrs`
-      : totalStreamingMinutes > 0
-      ? `${totalStreamingMinutes}m`
-      : '0 hrs';
+    const streamingHoursStr =
+      totalHours >= 1000
+        ? `${(totalHours / 1000).toFixed(1)}k hrs`
+        : totalHours >= 1
+          ? `${totalHours.toFixed(1)} hrs`
+          : totalStreamingMinutes > 0
+            ? `${totalStreamingMinutes}m`
+            : '0 hrs';
 
     // 8. Mathematically sound growth & rate calculations
     const computeGrowth = (current: number, previous: number): { percent: number; str: string } => {
@@ -5339,21 +5388,30 @@ export class MobileWorkforceService {
     const userGrowth = computeGrowth(periodNewUsers, prevPeriodNewUsers);
     const creatorGrowth = computeGrowth(periodNewCreators, prevPeriodNewCreators);
     const agencyGrowth = computeGrowth(periodNewAgencies, prevPeriodNewAgencies);
-    const dauPercent = totalUsers > 0 ? Math.round((periodActiveUsers / totalUsers) * 1000) / 10 : 0.0;
-    const coinSellerPerf = totalCoinSellers > 0 ? Math.round((periodActiveSellers / totalCoinSellers) * 1000) / 10 : 0.0;
+    const dauPercent =
+      totalUsers > 0 ? Math.round((periodActiveUsers / totalUsers) * 1000) / 10 : 0.0;
+    const coinSellerPerf =
+      totalCoinSellers > 0 ? Math.round((periodActiveSellers / totalCoinSellers) * 1000) / 10 : 0.0;
 
     // Mathematically consistent metrics for Support Tickets
     const totalTickets = totalTicketsReceived;
     const resolvedTickets = totalTicketsResolved;
     const pendingTickets = totalTicketsPending;
-    const ticketsResolvedPct = totalTickets > 0 ? Math.round((resolvedTickets / totalTickets) * 1000) / 10 : 0.0;
-    const ticketsPendingPct = totalTickets > 0 ? Math.round((pendingTickets / totalTickets) * 1000) / 10 : 0.0;
+    const ticketsResolvedPct =
+      totalTickets > 0 ? Math.round((resolvedTickets / totalTickets) * 1000) / 10 : 0.0;
+    const ticketsPendingPct =
+      totalTickets > 0 ? Math.round((pendingTickets / totalTickets) * 1000) / 10 : 0.0;
 
     // Moderation resolution rate for KPI
     const totalReports = totalReportsReceived;
     const resolvedReports = totalReportsResolved;
     const pendingReports = totalReportsPending;
-    const reportResolutionRate = totalReports > 0 ? `${Math.round((resolvedReports / totalReports) * 100)}%` : (totalTickets > 0 ? `${Math.round((resolvedTickets / totalTickets) * 100)}%` : '100%');
+    const reportResolutionRate =
+      totalReports > 0
+        ? `${Math.round((resolvedReports / totalReports) * 100)}%`
+        : totalTickets > 0
+          ? `${Math.round((resolvedTickets / totalTickets) * 100)}%`
+          : '100%';
 
     return {
       overview: {
@@ -5368,7 +5426,7 @@ export class MobileWorkforceService {
         creatorGrowthPercent: creatorGrowth.percent,
         streamingHours: streamingHoursStr,
         engagementPercent: dauPercent,
-        creatorGrowthTrend: userGrowthTrend.map(pt => ({
+        creatorGrowthTrend: userGrowthTrend.map((pt) => ({
           label: pt.label,
           value: Math.round(pt.value * (totalCreators / (totalUsers || 1) || 0.1)),
         })),
@@ -5379,9 +5437,8 @@ export class MobileWorkforceService {
         activeAgencies,
         agencyGrowthPercent: agencyGrowth.percent,
         activeCoinSellers: totalCoinSellers,
-        coinSales: coinSalesTotal > 0
-          ? `₹ ${(Number(coinSalesTotal) / 1000000).toFixed(1)}M`
-          : '₹ 0',
+        coinSales:
+          coinSalesTotal > 0 ? `₹ ${(Number(coinSalesTotal) / 1000000).toFixed(1)}M` : '₹ 0',
         salesPerformancePercent: coinSellerPerf,
         coinSalesTrend,
       },
@@ -5398,7 +5455,7 @@ export class MobileWorkforceService {
           resolvedPercent: ticketsResolvedPct,
           pendingCount: pendingTickets,
           pendingPercent: ticketsPendingPct,
-        }
+        },
       },
       officialKpis: {
         regionalUserGrowth: userGrowth.str,
@@ -5410,7 +5467,7 @@ export class MobileWorkforceService {
         rewardDistributionAccuracy: reportResolutionRate,
         recommendationAccuracy: reportResolutionRate,
         reportResolutionRate,
-      }
+      },
     };
   }
 }

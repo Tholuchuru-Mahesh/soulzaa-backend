@@ -1,5 +1,11 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
-import { OfficialInventoryCategory, InventoryRecipientType } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
+import { InventoryRecipientType } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { SocketManager } from 'src/infra/socket/socket.manager';
 import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
@@ -29,7 +35,12 @@ export class OfficialInventoryService {
       // Map display categories to enum
       if (catKey === 'GIFTS' || catKey === 'GIFT') whereClause.category = 'GIFT';
       else if (catKey === 'FRAMES' || catKey === 'FRAME') whereClause.category = 'FRAME';
-      else if (catKey === 'ENTRY_EFFECTS' || catKey === 'ENTRY_EFFECT' || catKey === 'ENTRY EFFECTS') whereClause.category = 'ENTRY_EFFECT';
+      else if (
+        catKey === 'ENTRY_EFFECTS' ||
+        catKey === 'ENTRY_EFFECT' ||
+        catKey === 'ENTRY EFFECTS'
+      )
+        whereClause.category = 'ENTRY_EFFECT';
       else if (catKey === 'THEMES' || catKey === 'THEME') whereClause.category = 'THEME';
       else if (catKey === 'REWARDS' || catKey === 'REWARD') whereClause.category = 'REWARD';
       else if (catKey === 'BADGES' || catKey === 'BADGE') whereClause.category = 'BADGE';
@@ -52,7 +63,12 @@ export class OfficialInventoryService {
       }),
       this.prisma.officialInventoryItem.findMany({
         where: officialId ? { officialId } : {},
-        select: { availableQty: true, lowStockThreshold: true, receivedAt: true, totalReceivedQty: true },
+        select: {
+          availableQty: true,
+          lowStockThreshold: true,
+          receivedAt: true,
+          totalReceivedQty: true,
+        },
       }),
     ]);
 
@@ -171,7 +187,11 @@ export class OfficialInventoryService {
   /**
    * Autocomplete recipients for distribution scoped to official territory.
    */
-  async getRecipients(officialId: string | undefined, type: InventoryRecipientType, query?: string) {
+  async getRecipients(
+    officialId: string | undefined,
+    type: InventoryRecipientType,
+    query?: string,
+  ) {
     const q = query?.trim() || '';
     const scopeWhere = officialId ? await this.scope.userScopeFilter(officialId) : {};
 
@@ -316,7 +336,9 @@ export class OfficialInventoryService {
       },
     });
 
-    this.logger.log(`Granted ${dto.availableQty} units of ${dto.name} to Official ${targetOfficialId}`);
+    this.logger.log(
+      `Granted ${dto.availableQty} units of ${dto.name} to Official ${targetOfficialId}`,
+    );
 
     try {
       this.socketManager?.emitToNamespace('/notifications', 'inventory:update', {

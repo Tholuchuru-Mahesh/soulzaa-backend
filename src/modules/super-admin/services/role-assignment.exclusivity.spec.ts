@@ -24,7 +24,7 @@ describe('RoleAssignmentService — one assignable role per account', () => {
   let service: RoleAssignmentService;
 
   const mockPrisma = {
-    user: { findUnique: jest.fn() },
+    user: { findUnique: jest.fn(), update: jest.fn() },
     role: { findFirst: jest.fn() },
     userRole: { findUnique: jest.fn(), findMany: jest.fn() },
     roleScope: { findFirst: jest.fn() },

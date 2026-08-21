@@ -143,7 +143,7 @@ export class TaskQueryService {
     if (tasks.length === 0) return [];
 
     let progressMap = new Map<string, any>();
-    let claimedSet = new Set<string>();
+    const claimedSet = new Set<string>();
     if (userId) {
       const progresses = await this.prisma.taskProgress.findMany({
         where: { userId, taskId: { in: tasks.map((t) => t.id) } },
@@ -198,7 +198,8 @@ export class TaskQueryService {
         objective: task.objective,
         requiredProgress,
         currentProgress,
-        percentComplete: requiredProgress > 0 ? Math.round((currentProgress / requiredProgress) * 100) : 0,
+        percentComplete:
+          requiredProgress > 0 ? Math.round((currentProgress / requiredProgress) * 100) : 0,
         isCompleted,
         isClaimed,
         difficulty: task.difficulty,
@@ -216,7 +217,10 @@ export class TaskQueryService {
    * Self-scoped reward claim for regular users.
    * Records a TaskReward entry so getMobileFeed() marks isClaimed=true.
    */
-  async selfClaimReward(userId: string, taskId: string): Promise<{ success: boolean; message: string }> {
+  async selfClaimReward(
+    userId: string,
+    taskId: string,
+  ): Promise<{ success: boolean; message: string }> {
     const task = await this.prisma.taskDefinition.findUnique({ where: { id: taskId } });
     if (!task || task.status !== 'ACTIVE') {
       return { success: false, message: 'Task not found or not active.' };

@@ -44,7 +44,11 @@ export class MobileWorkforceController {
 
   @ApiOperation({ summary: 'Users within my scope' })
   @ApiQuery({ name: 'q', required: false, description: 'Username or email search' })
-  @ApiQuery({ name: 'role', required: false, description: 'Role filter (e.g. AGENCY, COIN_SELLER, MODERATOR)' })
+  @ApiQuery({
+    name: 'role',
+    required: false,
+    description: 'Role filter (e.g. AGENCY, COIN_SELLER, MODERATOR)',
+  })
   @ApiQuery({ name: 'limit', required: false, description: 'Page size (default 25, max 100)' })
   @ApiQuery({ name: 'offset', required: false, description: 'Page offset (default 0)' })
   @ApiResponse({ status: 200, description: 'Scoped, paginated user list' })
@@ -151,13 +155,6 @@ export class MobileWorkforceController {
     return this.service.actionReport(user.id, reportId, body, user.roles, requestMeta);
   }
 
-  @ApiOperation({ summary: 'Detailed report information for Official Portal' })
-  @ApiResponse({ status: 200, description: 'Report details, evidence, and target/reporter profiles' })
-  @Get('reports/:reportId')
-  reportDetails(@CurrentUser('id') userId: string, @Param('reportId') reportId: string) {
-    return this.service.reportDetails(userId, reportId);
-  }
-
   @ApiOperation({ summary: 'Apply moderation action to room participant' })
   @ApiResponse({ status: 200, description: 'Participant moderation action applied' })
   @Post('rooms/:roomId/participants/:targetUserId/action')
@@ -208,10 +205,7 @@ export class MobileWorkforceController {
   @ApiOperation({ summary: 'List of agencies and coin sellers for Official Portal' })
   @ApiResponse({ status: 200, description: 'Agencies and coin sellers list and metrics' })
   @Get('agencies-and-coinsellers')
-  agenciesAndCoinSellers(
-    @CurrentUser('id') userId: string,
-    @Query('search') search?: string,
-  ) {
+  agenciesAndCoinSellers(@CurrentUser('id') userId: string, @Query('search') search?: string) {
     return this.service.agenciesAndCoinSellers(userId, search);
   }
 
@@ -342,10 +336,7 @@ export class MobileWorkforceController {
 
   @ApiOperation({ summary: 'Room Monitoring detail info for Official Portal' })
   @Get('room-monitoring/rooms/:id')
-  monitoredRoomDetail(
-    @CurrentUser('id') userId: string,
-    @Param('id') id: string,
-  ) {
+  monitoredRoomDetail(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.service.monitoredRoomDetail(userId, id);
   }
 
@@ -361,19 +352,13 @@ export class MobileWorkforceController {
 
   @ApiOperation({ summary: 'List agency tasks set in official scope' })
   @Get('agency-tasks')
-  listAgencyTasks(
-    @CurrentUser('id') userId: string,
-    @Query('status') status?: string,
-  ) {
+  listAgencyTasks(@CurrentUser('id') userId: string, @Query('status') status?: string) {
     return this.service.listAgencyTasks(userId, status);
   }
 
   @ApiOperation({ summary: 'Get details of a specific agency task' })
   @Get('agency-tasks/:id')
-  getAgencyTaskDetail(
-    @CurrentUser('id') userId: string,
-    @Param('id') id: string,
-  ) {
+  getAgencyTaskDetail(@CurrentUser('id') userId: string, @Param('id') id: string) {
     return this.service.getAgencyTaskDetail(userId, id);
   }
 

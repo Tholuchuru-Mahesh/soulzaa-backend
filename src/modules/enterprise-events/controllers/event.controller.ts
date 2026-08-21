@@ -142,8 +142,6 @@ export class EnterpriseEventController {
     return this.eventService.updateStatus(id, dto.status, user?.id);
   }
 
-
-
   @Post(':id/cancel')
   @RequirePermissions('event.manage')
   @ApiOperation({ summary: 'Cancel an event' })

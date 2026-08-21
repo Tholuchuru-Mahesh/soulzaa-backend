@@ -122,7 +122,8 @@ export class EventService {
     // If tasks are attached, sync them to TaskDefinition engine
     const rawTasks = input.tasks || (input.participationRules?.tasks as EventTaskInput[]);
     if (rawTasks && rawTasks.length > 0) {
-      const taskStatus = (input.status === 'APPROVED' || input.status === 'ACTIVE') ? 'ACTIVE' : 'DRAFT';
+      const taskStatus =
+        input.status === 'APPROVED' || input.status === 'ACTIVE' ? 'ACTIVE' : 'DRAFT';
       await this.syncEventTasks(def, rawTasks, taskStatus, input.actorId);
     }
 
@@ -172,7 +173,8 @@ export class EventService {
 
     const rawTasks = input.tasks || (mergedRules?.tasks as EventTaskInput[]);
     if (rawTasks) {
-      const taskStatus = (updated.status === 'APPROVED' || updated.status === 'ACTIVE') ? 'ACTIVE' : 'DRAFT';
+      const taskStatus =
+        updated.status === 'APPROVED' || updated.status === 'ACTIVE' ? 'ACTIVE' : 'DRAFT';
       await this.syncEventTasks(updated, rawTasks, taskStatus, input.actorId);
     }
 
@@ -239,8 +241,8 @@ export class EventService {
       status === 'ACTIVE'
         ? { in: ['ACTIVE', 'APPROVED', 'SCHEDULED'] }
         : status
-        ? { in: [status] }
-        : undefined;
+          ? { in: [status] }
+          : undefined;
 
     const events = await this.prisma.eventDefinition.findMany({
       where: {
@@ -252,9 +254,10 @@ export class EventService {
 
     // For user-facing requests (status=ACTIVE), only return active tasks.
     // For admin requests (any other status or no status), return all tasks.
-    const enrichFn = status === 'ACTIVE'
-      ? (e: any) => this.enrichEventWithTasksFiltered(e)
-      : (e: any) => this.enrichEventWithTasks(e);
+    const enrichFn =
+      status === 'ACTIVE'
+        ? (e: any) => this.enrichEventWithTasksFiltered(e)
+        : (e: any) => this.enrichEventWithTasks(e);
 
     return Promise.all(events.map(enrichFn));
   }
@@ -279,7 +282,8 @@ export class EventService {
     const byId = await this.prisma.eventDefinition
       .findUnique({ where: { id: idOrCode } })
       .catch(() => null);
-    const event = byId ?? (await this.prisma.eventDefinition.findUnique({ where: { code: idOrCode } }));
+    const event =
+      byId ?? (await this.prisma.eventDefinition.findUnique({ where: { code: idOrCode } }));
     if (!event) return null;
     return this.enrichEventWithTasks(event);
   }
@@ -292,7 +296,9 @@ export class EventService {
     event: { id: string; code: string; name: string; startTime: Date; endTime: Date },
     tasks: EventTaskInput[],
     targetStatus: string,
-    actorId?: string,
+    // Accepted so the signature matches every other write on this service, and
+    // because an audit entry here would need it. Unused today.
+    _actorId?: string,
   ) {
     if (!tasks || tasks.length === 0) {
       // If tasks is empty, but tasks already existed in TaskDefinition with this event prefix, update their status
@@ -408,9 +414,7 @@ export class EventService {
   private async enrichEventWithTasksFiltered(event: any) {
     const enriched = await this.enrichEventWithTasks(event);
     // Only surface tasks that have been activated (approved/launched)
-    const activeTasks = (enriched.tasks as any[]).filter(
-      (t) => !t.status || t.status === 'ACTIVE',
-    );
+    const activeTasks = (enriched.tasks as any[]).filter((t) => !t.status || t.status === 'ACTIVE');
     return { ...enriched, tasks: activeTasks };
   }
 }

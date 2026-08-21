@@ -4,12 +4,11 @@ import './infra/observability/tracing';
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { SocketAdapter } from './infra/socket/socket.adapter';
-import { PrismaService } from './infra/prisma/prisma.service';
 
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';

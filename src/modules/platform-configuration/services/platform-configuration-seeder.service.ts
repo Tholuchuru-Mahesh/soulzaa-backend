@@ -625,9 +625,11 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultSettingSeed[] = [
     description: 'Seconds a dashboard widget result is cached before recomputation',
   },
 
-  // Enterprise events — src/modules/enterprise-events/services/event-configuration.service.ts
+  // Enterprise events — keys come from EVENT_CONFIG_KEYS in
+  // src/modules/enterprise-events/constants/event.constants.ts; they must match
+  // it exactly or the engine reads an unseeded key and falls back to its default.
   {
-    key: 'event.max_participants',
+    key: 'events.max_participants',
     category: 'EVENT',
     value: '1000',
     valueType: SettingValueType.NUMBER,
@@ -635,7 +637,7 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultSettingSeed[] = [
     description: 'Maximum participants an event may accept',
   },
   {
-    key: 'event.registration_duration',
+    key: 'events.registration_duration_hours',
     category: 'EVENT',
     value: '24',
     valueType: SettingValueType.NUMBER,
@@ -643,7 +645,7 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultSettingSeed[] = [
     description: 'Hours a newly created event stays open for registration',
   },
   {
-    key: 'event.default_visibility',
+    key: 'events.default_visibility',
     category: 'EVENT',
     value: 'PUBLIC',
     valueType: SettingValueType.STRING,
@@ -651,7 +653,7 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultSettingSeed[] = [
     description: 'Visibility assigned to an event when none is explicitly set',
   },
   {
-    key: 'event.reward_claim_window',
+    key: 'events.reward_claim_window_days',
     category: 'EVENT',
     value: '30',
     valueType: SettingValueType.NUMBER,
@@ -659,7 +661,7 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultSettingSeed[] = [
     description: 'Days an event reward remains claimable before it expires',
   },
   {
-    key: 'event.auto_archive_days',
+    key: 'events.auto_archive_days',
     category: 'EVENT',
     value: '90',
     valueType: SettingValueType.NUMBER,

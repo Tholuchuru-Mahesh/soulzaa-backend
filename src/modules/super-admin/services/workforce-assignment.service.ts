@@ -66,8 +66,8 @@ export class WorkforceAssignmentService {
     // Admin form collects Country + State + (optionally) Region for display
     // purposes, but the RoleScope row that drives all queries is STATE-level.
     let effectiveScopeType = dto.scopeType;
-    let effectiveCountryId = dto.countryId;
-    let effectiveStateId   = dto.stateId;
+    const effectiveCountryId = dto.countryId;
+    const effectiveStateId = dto.stateId;
     const effectiveRegionId = dto.regionId; // stored on User only
 
     if (roleUpper === 'OFFICIAL') {
