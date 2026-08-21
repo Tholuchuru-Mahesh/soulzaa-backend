@@ -30,27 +30,38 @@ export class FamilyConfigurationService {
 
       const maxMem = configMap.has('family.max_members')
         ? Number(configMap.get('family.max_members'))
-        : ((await this.platformConfig.get<number>('family.max_members', 100).catch(() => 100)) ?? 100);
+        : ((await this.platformConfig.get<number>('family.max_members', 100).catch(() => 100)) ??
+          100);
 
       const cost = configMap.has('family.creation_cost')
         ? Number(configMap.get('family.creation_cost'))
-        : ((await this.platformConfig.get<number>('family.creation_cost', 1000).catch(() => 1000)) ?? 1000);
+        : ((await this.platformConfig
+            .get<number>('family.creation_cost', 1000)
+            .catch(() => 1000)) ?? 1000);
 
       const role = configMap.has('family.default_role')
         ? String(configMap.get('family.default_role'))
-        : ((await this.platformConfig.get<string>('family.default_role', 'MEMBER').catch(() => 'MEMBER')) ?? 'MEMBER');
+        : ((await this.platformConfig
+            .get<string>('family.default_role', 'MEMBER')
+            .catch(() => 'MEMBER')) ?? 'MEMBER');
 
       const autoApprove = configMap.has('family.auto_approve')
-        ? (configMap.get('family.auto_approve') === true || String(configMap.get('family.auto_approve')) === 'true')
-        : ((await this.platformConfig.get<boolean>('family.auto_approve', false).catch(() => false)) ?? false);
+        ? configMap.get('family.auto_approve') === true ||
+          String(configMap.get('family.auto_approve')) === 'true'
+        : ((await this.platformConfig
+            .get<boolean>('family.auto_approve', false)
+            .catch(() => false)) ?? false);
 
       const cooldown = configMap.has('family.join_cooldown')
         ? Number(configMap.get('family.join_cooldown'))
-        : ((await this.platformConfig.get<number>('family.join_cooldown', 86400).catch(() => 86400)) ?? 86400);
+        : ((await this.platformConfig
+            .get<number>('family.join_cooldown', 86400)
+            .catch(() => 86400)) ?? 86400);
 
       const renameCost = configMap.has('family.rename_cost')
         ? Number(configMap.get('family.rename_cost'))
-        : ((await this.platformConfig.get<number>('family.rename_cost', 500).catch(() => 500)) ?? 500);
+        : ((await this.platformConfig.get<number>('family.rename_cost', 500).catch(() => 500)) ??
+          500);
 
       return {
         maxMembers: isNaN(maxMem) ? 100 : maxMem,

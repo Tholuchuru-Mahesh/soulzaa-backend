@@ -49,7 +49,11 @@ export class TaskService {
     const progressRules: Record<string, any> = { ...(input.progressRules || {}) };
     if (input.eventCode) {
       progressRules.eventCodes = Array.from(
-        new Set([...(progressRules.eventCodes || []), input.eventCode.toLowerCase(), input.eventCode]),
+        new Set([
+          ...(progressRules.eventCodes || []),
+          input.eventCode.toLowerCase(),
+          input.eventCode,
+        ]),
       );
     }
     if (input.incrementField) {
@@ -116,7 +120,11 @@ export class TaskService {
 
     if (input.eventCode) {
       progressRules.eventCodes = Array.from(
-        new Set([...(progressRules.eventCodes || []), input.eventCode.toLowerCase(), input.eventCode]),
+        new Set([
+          ...(progressRules.eventCodes || []),
+          input.eventCode.toLowerCase(),
+          input.eventCode,
+        ]),
       );
     }
     if (input.incrementField !== undefined) {
@@ -134,10 +142,14 @@ export class TaskService {
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.category !== undefined ? { category: input.category } : {}),
         ...(input.objective !== undefined ? { objective: input.objective } : {}),
-        ...(input.requiredProgress !== undefined ? { requiredProgress: input.requiredProgress } : {}),
+        ...(input.requiredProgress !== undefined
+          ? { requiredProgress: input.requiredProgress }
+          : {}),
         ...(Object.keys(progressRules).length > 0 ? { progressRules } : {}),
         ...(input.completionRules !== undefined ? { completionRules: input.completionRules } : {}),
-        ...(input.rewardDefinition !== undefined ? { rewardDefinition: input.rewardDefinition } : {}),
+        ...(input.rewardDefinition !== undefined
+          ? { rewardDefinition: input.rewardDefinition }
+          : {}),
         ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
         ...(input.priority !== undefined ? { priority: input.priority } : {}),
         ...(input.difficulty !== undefined ? { difficulty: input.difficulty } : {}),

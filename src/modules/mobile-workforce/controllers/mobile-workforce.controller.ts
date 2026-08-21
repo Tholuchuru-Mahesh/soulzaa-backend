@@ -280,7 +280,7 @@ export class MobileWorkforceController {
     return this.service.createRecommendation(userId, body);
   }
 
-  @ApiOperation({ summary: "Rooms the moderator has previously joined and taken action in" })
+  @ApiOperation({ summary: 'Rooms the moderator has previously joined and taken action in' })
   @ApiQuery({ name: 'limit', required: false, description: 'Page size (default 25, max 100)' })
   @ApiQuery({ name: 'offset', required: false, description: 'Pagination offset (default 0)' })
   @ApiResponse({ status: 200, description: 'Room history for the authenticated moderator' })

@@ -56,7 +56,11 @@ export class FamilyRoleService {
             familyId,
             userId: targetUserId,
             action: 'OWNER_TRANSFERRED',
-            details: { previousFounderId: family?.founderId, newFounderUserId: targetUserId, actorId: actorUserId },
+            details: {
+              previousFounderId: family?.founderId,
+              newFounderUserId: targetUserId,
+              actorId: actorUserId,
+            },
           },
         }),
       ]);

@@ -1080,9 +1080,7 @@ export class MobileWorkforceService {
         })
         .catch(() => 0),
       // Live moderation actions
-      this.prisma.moderationAction
-        .count({ where: { moderatorId: userId } })
-        .catch(() => 0),
+      this.prisma.moderationAction.count({ where: { moderatorId: userId } }).catch(() => 0),
       this.prisma.platformModerationAuditLog
         .count({ where: { moderatorId: userId, action: 'WARNING_SENT' } })
         .catch(() => 0),
@@ -1114,9 +1112,7 @@ export class MobileWorkforceService {
     const liveWarningsCount = liveActionsCount + liveAuditWarningsCount;
 
     // Average resolution time in minutes from actual reviewed reports
-    const allRecent = [...recentResolvedAudio, ...recentResolvedVideo].filter(
-      (r) => r.reviewedAt,
-    );
+    const allRecent = [...recentResolvedAudio, ...recentResolvedVideo].filter((r) => r.reviewedAt);
     let avgResolutionMinutes = 0;
     if (allRecent.length > 0) {
       const totalMinutes = allRecent.reduce((sum, r) => {
@@ -1130,8 +1126,7 @@ export class MobileWorkforceService {
 
     // Dynamic performance score based on real resolution & task completion
     const totalHandled = liveResolvedCount + liveReviewedCount;
-    const resolutionRate =
-      totalHandled > 0 ? (liveResolvedCount / totalHandled) * 100 : 100;
+    const resolutionRate = totalHandled > 0 ? (liveResolvedCount / totalHandled) * 100 : 100;
     const taskRate = taskCompletionToday > 0 ? taskCompletionToday : 100;
     const livePerformanceScore = Math.min(
       100,
@@ -1520,8 +1515,8 @@ export class MobileWorkforceService {
       const pRoomType = isStream
         ? ('LIVE_STREAM' as const)
         : isVideo
-            ? ('VIDEO_ROOM' as const)
-            : ('AUDIO_ROOM' as const);
+          ? ('VIDEO_ROOM' as const)
+          : ('AUDIO_ROOM' as const);
       void this.prisma.platformModerationAuditLog
         .create({
           data: {
@@ -2074,7 +2069,7 @@ export class MobileWorkforceService {
       evidenceId: recording.evidenceId,
       evidenceType: 'System evidence',
       evidenceNote: '4-minute automatic evidence window (2m pre + 2m post)',
-      recordingUrl: canViewFullEvidence ? (recording.recordingUrl || streamUrl) : null,
+      recordingUrl: canViewFullEvidence ? recording.recordingUrl || streamUrl : null,
       recordingStatus: status,
       recordingDurationSeconds: recording.durationSeconds ?? 240,
       streamUrl,
@@ -3926,7 +3921,8 @@ export class MobileWorkforceService {
           isActive: !vr?.endedAt,
           lastActionAt: meta.latestAt.toISOString(),
           lastActionRelative: this._relativeTime(meta.latestAt),
-          joinedAt: (vr?.createdAt as Date | undefined)?.toISOString() ?? meta.latestAt.toISOString(),
+          joinedAt:
+            (vr?.createdAt as Date | undefined)?.toISOString() ?? meta.latestAt.toISOString(),
         };
       }
       const ar = audioMap.get(roomId);

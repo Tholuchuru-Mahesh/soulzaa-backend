@@ -221,7 +221,10 @@ export class TaskRewardExecutionListener implements OnModuleInit {
     if (typeof rewardDefinition.badgeId === 'string' && rewardDefinition.badgeId.trim()) {
       targetCosmeticIds.push(rewardDefinition.badgeId.trim());
     }
-    if (typeof rewardDefinition.entranceEffectId === 'string' && rewardDefinition.entranceEffectId.trim()) {
+    if (
+      typeof rewardDefinition.entranceEffectId === 'string' &&
+      rewardDefinition.entranceEffectId.trim()
+    ) {
       targetCosmeticIds.push(rewardDefinition.entranceEffectId.trim());
     }
     if (Array.isArray(rewardDefinition.cosmeticIds)) {

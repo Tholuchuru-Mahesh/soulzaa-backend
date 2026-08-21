@@ -73,13 +73,21 @@ export class AudioRoomGateway extends BaseGateway {
   @SubscribeMessage('room:speaker_activity')
   handleSpeakerActivity(
     @ConnectedSocket() client: Socket,
-    @MessageBody() payload: { roomId: string; isSpeaking: boolean; seatNumber?: number; name?: string; avatarUrl?: string },
+    @MessageBody()
+    payload: {
+      roomId: string;
+      isSpeaking: boolean;
+      seatNumber?: number;
+      name?: string;
+      avatarUrl?: string;
+    },
   ) {
     const user = client.data.user as AuthenticatedUser | undefined;
     if (!payload?.roomId) return;
     const userId = user?.id || client.id;
     const rawUsername = user?.username;
-    const userName = payload.name || (typeof rawUsername === 'string' ? rawUsername : undefined) || 'Speaker';
+    const userName =
+      payload.name || (typeof rawUsername === 'string' ? rawUsername : undefined) || 'Speaker';
     if (this.bufferService) {
       this.bufferService.recordSpeakerActivity(
         payload.roomId,

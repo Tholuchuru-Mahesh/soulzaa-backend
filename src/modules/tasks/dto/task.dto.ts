@@ -60,7 +60,8 @@ export class CreateTaskDto {
   requiredProgress?: number;
 
   @ApiPropertyOptional({
-    description: 'Triggering domain event code (e.g. user.logged_in, audio_room.joined, room.duration_updated, wallet.credited, gift.sent, gift.received)',
+    description:
+      'Triggering domain event code (e.g. user.logged_in, audio_room.joined, room.duration_updated, wallet.credited, gift.sent, gift.received)',
     example: 'audio_room.joined',
   })
   @IsOptional()
@@ -68,7 +69,8 @@ export class CreateTaskDto {
   eventCode?: string;
 
   @ApiPropertyOptional({
-    description: 'Field in event payload to accumulate progress from (e.g. durationMinutes, amount, totalCoinValue). Defaults to 1 per event if omitted.',
+    description:
+      'Field in event payload to accumulate progress from (e.g. durationMinutes, amount, totalCoinValue). Defaults to 1 per event if omitted.',
     example: 'durationMinutes',
   })
   @IsOptional()
@@ -77,7 +79,11 @@ export class CreateTaskDto {
 
   @ApiPropertyOptional({
     description: 'JSON progress evaluation rule',
-    example: { eventCodes: ['audio_room.joined'], incrementField: 'durationMinutes', operator: 'ANY' },
+    example: {
+      eventCodes: ['audio_room.joined'],
+      incrementField: 'durationMinutes',
+      operator: 'ANY',
+    },
   })
   @IsOptional()
   @IsObject()
@@ -175,7 +181,8 @@ export class UpdateTaskDto {
   requiredProgress?: number;
 
   @ApiPropertyOptional({
-    description: 'Triggering domain event code (e.g. user.logged_in, audio_room.joined, room.duration_updated, wallet.credited, gift.sent, gift.received)',
+    description:
+      'Triggering domain event code (e.g. user.logged_in, audio_room.joined, room.duration_updated, wallet.credited, gift.sent, gift.received)',
   })
   @IsOptional()
   @IsString()

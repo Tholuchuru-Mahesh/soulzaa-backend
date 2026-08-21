@@ -51,9 +51,7 @@ export class FamilyHistoryService {
           })
         : [];
 
-    const userMap = new Map(
-      users.map((u) => [u.id, u.fullName || u.username || 'Member']),
-    );
+    const userMap = new Map(users.map((u) => [u.id, u.fullName || u.username || 'Member']));
 
     const items = rawItems.map((item) => {
       const d: any = item.details || {};
@@ -74,21 +72,27 @@ export class FamilyHistoryService {
           description = `${primaryName} left the family`;
           break;
         case 'ACCEPT_REQUEST': {
-          const acceptedName = d.acceptedUserId ? userMap.get(d.acceptedUserId) || 'Member' : primaryName;
+          const acceptedName = d.acceptedUserId
+            ? userMap.get(d.acceptedUserId) || 'Member'
+            : primaryName;
           description = actorName
             ? `${acceptedName} joined the family (Approved by ${actorName})`
             : `${acceptedName} joined the family`;
           break;
         }
         case 'REJECT_REQUEST': {
-          const rejectedName = d.rejectedUserId ? userMap.get(d.rejectedUserId) || 'Applicant' : 'Applicant';
+          const rejectedName = d.rejectedUserId
+            ? userMap.get(d.rejectedUserId) || 'Applicant'
+            : 'Applicant';
           description = actorName
             ? `Join request from ${rejectedName} was rejected by ${actorName}`
             : `Join request from ${rejectedName} was rejected`;
           break;
         }
         case 'MEMBER_KICKED': {
-          const kickedName = d.kickedUserId ? userMap.get(d.kickedUserId) || primaryName : primaryName;
+          const kickedName = d.kickedUserId
+            ? userMap.get(d.kickedUserId) || primaryName
+            : primaryName;
           const reasonStr = d.reason ? ` (Reason: "${d.reason}")` : '';
           description = actorName
             ? `${kickedName} was removed from the family by ${actorName}${reasonStr}`
@@ -103,7 +107,9 @@ export class FamilyHistoryService {
           break;
         }
         case 'OWNER_TRANSFERRED': {
-          const newLeader = d.newFounderUserId ? userMap.get(d.newFounderUserId) || primaryName : primaryName;
+          const newLeader = d.newFounderUserId
+            ? userMap.get(d.newFounderUserId) || primaryName
+            : primaryName;
           description = `Leadership transferred to ${newLeader}`;
           break;
         }

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ConfirmUploadDto } from './dto/confirm-upload.dto';
@@ -50,7 +50,7 @@ export class StorageController {
       }
       const signedUrl = await this.uploads.getPublicOrPresignedUrl(cleanKey);
       return res.redirect(signedUrl);
-    } catch (_) {
+    } catch {
       return res.status(404).json({ success: false, message: 'File not found' });
     }
   }

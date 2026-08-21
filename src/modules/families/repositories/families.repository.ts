@@ -115,11 +115,7 @@ export class FamiliesRepository {
     });
   }
 
-  async addMember(
-    familyId: string,
-    userId: string,
-    role: any = 'MEMBER',
-  ): Promise<FamilyMember> {
+  async addMember(familyId: string, userId: string, role: any = 'MEMBER'): Promise<FamilyMember> {
     return this.prisma.$transaction(async (tx) => {
       const member = await tx.familyMember.create({
         data: {
@@ -176,7 +172,12 @@ export class FamiliesRepository {
     });
   }
 
-  createBan(familyId: string, userId: string, bannedById: string, reason?: string): Promise<FamilyBan> {
+  createBan(
+    familyId: string,
+    userId: string,
+    bannedById: string,
+    reason?: string,
+  ): Promise<FamilyBan> {
     return this.prisma.familyBan.upsert({
       where: { familyId_userId: { familyId, userId } },
       create: { familyId, userId, bannedById, reason },
@@ -185,9 +186,7 @@ export class FamiliesRepository {
   }
 
   deleteBan(familyId: string, userId: string): Promise<number> {
-    return this.prisma.familyBan
-      .deleteMany({ where: { familyId, userId } })
-      .then((r) => r.count);
+    return this.prisma.familyBan.deleteMany({ where: { familyId, userId } }).then((r) => r.count);
   }
 
   // ---- Join-request helpers ----
@@ -303,18 +302,20 @@ export class FamiliesRepository {
     ]);
 
     const userIds = members.map((m) => m.userId);
-    const users = userIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: userIds } },
-          select: { id: true, username: true, fullName: true },
-        })
-      : [];
-    const profiles = userIds.length > 0
-      ? await this.prisma.userProfile.findMany({
-          where: { userId: { in: userIds } },
-          select: { userId: true, avatarKey: true },
-        })
-      : [];
+    const users =
+      userIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [];
+    const profiles =
+      userIds.length > 0
+        ? await this.prisma.userProfile.findMany({
+            where: { userId: { in: userIds } },
+            select: { userId: true, avatarKey: true },
+          })
+        : [];
     const userMap = new Map(users.map((u) => [u.id, u]));
     const profileMap = new Map(profiles.map((p) => [p.userId, p]));
 
@@ -439,14 +440,14 @@ export class FamiliesRepository {
     details: Record<string, any>,
     nameMap: Map<string, string>,
   ): string {
-    const actor = actorUserId ? (nameMap.get(actorUserId) || 'A member') : 'A member';
+    const actor = actorUserId ? nameMap.get(actorUserId) || 'A member' : 'A member';
     const targetUserId =
       details.kickedUserId ||
       details.acceptedUserId ||
       details.rejectedUserId ||
       details.targetUserId ||
       details.newLeaderId;
-    const target = targetUserId ? (nameMap.get(targetUserId) || 'A member') : 'A member';
+    const target = targetUserId ? nameMap.get(targetUserId) || 'A member' : 'A member';
 
     switch (action.toUpperCase()) {
       case 'CREATE':

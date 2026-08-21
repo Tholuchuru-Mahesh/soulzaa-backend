@@ -37,10 +37,7 @@ describe('TaskRewardExecutionListener', () => {
 
   it('subscribes to reward.dispatched onModuleInit', () => {
     listener.onModuleInit();
-    expect(mockEventBus.subscribe).toHaveBeenCalledWith(
-      'reward.dispatched',
-      expect.any(Function),
-    );
+    expect(mockEventBus.subscribe).toHaveBeenCalledWith('reward.dispatched', expect.any(Function));
   });
 
   it('credits free coins, EXP, and cosmetics when reward is dispatched', async () => {

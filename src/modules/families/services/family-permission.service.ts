@@ -45,7 +45,9 @@ export class FamilyPermissionService {
         where: { userId, suspendedAt: null },
         include: { role: true },
       });
-      return userRoles.some((ur) => ['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'OFFICIAL'].includes(ur.role.name));
+      return userRoles.some((ur) =>
+        ['SUPER_ADMIN', 'ADMIN', 'MODERATOR', 'OFFICIAL'].includes(ur.role.name),
+      );
     } catch {
       return false;
     }

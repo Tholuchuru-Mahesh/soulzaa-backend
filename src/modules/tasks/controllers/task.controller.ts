@@ -150,11 +150,7 @@ export class TaskController {
   @Patch(':id')
   @RequirePermissions('task.manage')
   @ApiOperation({ summary: 'Update task definition parameters, event triggers, or rewards' })
-  async updateTask(
-    @Param('id') id: string,
-    @Body() dto: UpdateTaskDto,
-    @CurrentUser() user: any,
-  ) {
+  async updateTask(@Param('id') id: string, @Body() dto: UpdateTaskDto, @CurrentUser() user: any) {
     return this.taskService.updateTask(id, { ...dto, actorId: user?.id });
   }
 

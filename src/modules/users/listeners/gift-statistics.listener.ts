@@ -26,9 +26,7 @@ export class GiftStatisticsListener implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.bus.subscribe<GiftSentEvent>(GIFT_EVENTS.SENT, (e) =>
-      void this.onGiftSent(e),
-    );
+    this.bus.subscribe<GiftSentEvent>(GIFT_EVENTS.SENT, (e) => void this.onGiftSent(e));
   }
 
   private async onGiftSent(event: GiftSentEvent): Promise<void> {

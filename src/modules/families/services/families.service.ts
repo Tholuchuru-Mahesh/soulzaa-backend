@@ -1,12 +1,21 @@
 import { HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { Family, FamilyJoinRequest, FamilyMember, WalletCurrency, WalletTxnReason } from '@prisma/client';
+import {
+  Family,
+  FamilyJoinRequest,
+  FamilyMember,
+  WalletCurrency,
+  WalletTxnReason,
+} from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { SocketManager } from 'src/infra/socket/socket.manager';
-import { WALLET_SERVICE, type IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
+import {
+  WALLET_SERVICE,
+  type IWalletService,
+} from 'src/modules/wallet/interfaces/wallet.service.interface';
 import {
   CreateFamilyDto,
   ManageRequestDto,
@@ -69,7 +78,9 @@ export class FamiliesService implements IFamiliesService {
         familyId,
         message,
       });
-    } catch (_) {}
+    } catch {
+      // Best-effort broadcast: a dropped socket event must not fail the write.
+    }
   }
 
   // ---- IFamiliesService (cross-module interface) ----
@@ -111,7 +122,9 @@ export class FamiliesService implements IFamiliesService {
         exp: Number(newExp),
         level: newLevel,
       });
-    } catch (_) {}
+    } catch {
+      // Best-effort broadcast: a dropped socket event must not fail the write.
+    }
   }
 
   async incrementMemberContribution(userId: string, points: number): Promise<void> {
@@ -129,13 +142,20 @@ export class FamiliesService implements IFamiliesService {
     });
 
     try {
-      this.sockets?.emitToNamespaceRoom('/chat', `family_${member.familyId}`, 'family:member_contribution', {
-        familyId: member.familyId,
-        userId,
-        contributionPoints: Number(updated.coinContribution ?? updated.expContribution ?? 0),
-        pointsAdded: points,
-      });
-    } catch (_) {}
+      this.sockets?.emitToNamespaceRoom(
+        '/chat',
+        `family_${member.familyId}`,
+        'family:member_contribution',
+        {
+          familyId: member.familyId,
+          userId,
+          contributionPoints: Number(updated.coinContribution ?? updated.expContribution ?? 0),
+          pointsAdded: points,
+        },
+      );
+    } catch {
+      // Best-effort broadcast: a dropped socket event must not fail the write.
+    }
   }
 
   private serializeFamily(f: any): any {
@@ -200,7 +220,7 @@ export class FamiliesService implements IFamiliesService {
           referenceType: 'FAMILY_CREATION',
           metadata: { description: `Creation of Family "${dto.name}"` },
         });
-      } catch (err: any) {
+      } catch {
         throw new BusinessException(
           ERROR_CODES.INSUFFICIENT_BALANCE,
           `Insufficient coins to create a family. Required: ${config.creationCost} coins.`,
@@ -255,7 +275,15 @@ export class FamiliesService implements IFamiliesService {
     const member = await this.repo.findMemberByUserId(userId);
     const isFounder = family.founderId === userId || (family as any).leaderId === userId;
     const roleUpper = member?.role?.toUpperCase() || '';
-    const isAllowedRole = ['FOUNDER', 'CO_FOUNDER', 'LEADER', 'CO_LEADER', 'OWNER', 'ADMIN', 'ELDER'].includes(roleUpper);
+    const isAllowedRole = [
+      'FOUNDER',
+      'CO_FOUNDER',
+      'LEADER',
+      'CO_LEADER',
+      'OWNER',
+      'ADMIN',
+      'ELDER',
+    ].includes(roleUpper);
 
     if (!isFounder && (!member || member.familyId !== familyId)) {
       throw new BusinessException(
@@ -287,7 +315,7 @@ export class FamiliesService implements IFamiliesService {
             referenceType: 'FAMILY_RENAME',
             metadata: { description: `Rename Family to "${dto.name}"` },
           });
-        } catch (err: any) {
+        } catch {
           throw new BusinessException(
             ERROR_CODES.INSUFFICIENT_BALANCE,
             `Insufficient coins to rename family. Required: ${config.renameCost} coins.`,
@@ -312,7 +340,9 @@ export class FamiliesService implements IFamiliesService {
         familyId,
         family: serialized,
       });
-    } catch (_) {}
+    } catch {
+      // Best-effort broadcast: a dropped socket event must not fail the write.
+    }
 
     return serialized;
   }
@@ -354,7 +384,10 @@ export class FamiliesService implements IFamiliesService {
     }
 
     const family = await this.get(familyId);
-    const isAutoAccept = family.privacy === 'PUBLIC' || (family as any).autoAccept === true || config.autoApprove === true;
+    const isAutoAccept =
+      family.privacy === 'PUBLIC' ||
+      (family as any).autoAccept === true ||
+      config.autoApprove === true;
     const defaultRole = config.defaultRole || 'MEMBER';
 
     if (isAutoAccept) {
@@ -547,7 +580,9 @@ export class FamiliesService implements IFamiliesService {
           familyId,
           memberCount: count,
         });
-      } catch (_) {}
+      } catch {
+        // Best-effort broadcast: a dropped socket event must not fail the write.
+      }
 
       await this.bus.publish(
         new FamilyMemberJoinedEvent({
@@ -597,7 +632,9 @@ export class FamiliesService implements IFamiliesService {
         familyId,
         memberCount: count,
       });
-    } catch (_) {}
+    } catch {
+      // Best-effort broadcast: a dropped socket event must not fail the write.
+    }
 
     await this.bus.publish(
       new FamilyMemberLeftEvent({
@@ -676,7 +713,9 @@ export class FamiliesService implements IFamiliesService {
         familyId,
         memberCount: count,
       });
-    } catch (_) {}
+    } catch {
+      // Best-effort broadcast: a dropped socket event must not fail the write.
+    }
 
     await this.bus.publish(
       new FamilyMemberLeftEvent({
@@ -689,7 +728,8 @@ export class FamiliesService implements IFamiliesService {
   }
 
   async promote(actorId: string, familyId: string, dto: PromoteMemberDto): Promise<FamilyMember> {
-    const family = await this.get(familyId);
+    // Existence guard — `get` throws when the family is missing.
+    await this.get(familyId);
     const actor = await this.repo.findMemberByUserId(actorId);
     if (!actor || actor.familyId !== familyId) {
       throw new BusinessException(
@@ -771,7 +811,9 @@ export class FamiliesService implements IFamiliesService {
         userId: dto.userId,
         role: targetRole,
       });
-    } catch (_) {}
+    } catch {
+      // Best-effort broadcast: a dropped socket event must not fail the write.
+    }
 
     return updated;
   }
@@ -781,7 +823,8 @@ export class FamiliesService implements IFamiliesService {
     familyId: string,
     dto: TransferLeadershipDto,
   ): Promise<Family> {
-    const family = await this.get(familyId);
+    // Existence guard — `get` throws when the family is missing.
+    await this.get(familyId);
     const actorMember = await this.repo.findMemberByUserId(actorId);
 
     const isLeader =
@@ -836,7 +879,9 @@ export class FamiliesService implements IFamiliesService {
         familyId,
         leaderId: dto.userId,
       });
-    } catch (_) {}
+    } catch {
+      // Best-effort broadcast: a dropped socket event must not fail the write.
+    }
 
     return this.serializeFamily(updatedFamily);
   }
@@ -858,7 +903,9 @@ export class FamiliesService implements IFamiliesService {
       this.sockets?.emitToNamespaceRoom('/chat', `family_${familyId}`, 'family:disbanded', {
         familyId,
       });
-    } catch (_) {}
+    } catch {
+      // Best-effort broadcast: a dropped socket event must not fail the write.
+    }
 
     await this.bus.publish(
       new FamilyDeletedEvent({
@@ -873,7 +920,12 @@ export class FamiliesService implements IFamiliesService {
     const limitNum = Number(limit) || 20;
     const skip = (pageNum - 1) * limitNum;
     const [rows, total] = await this.repo.listFamilies(skip, limitNum, search);
-    return buildPaginated(rows.map((r) => this.serializeFamily(r)), total, pageNum, limitNum);
+    return buildPaginated(
+      rows.map((r) => this.serializeFamily(r)),
+      total,
+      pageNum,
+      limitNum,
+    );
   }
 
   async listMembers(familyId: string, page = 1, limit = 20): Promise<Paginated<FamilyMember>> {
@@ -913,7 +965,12 @@ export class FamiliesService implements IFamiliesService {
     };
   }
 
-  async listMessages(userId: string, familyId: string, page = 1, limit = 50): Promise<Paginated<any>> {
+  async listMessages(
+    userId: string,
+    familyId: string,
+    page = 1,
+    limit = 50,
+  ): Promise<Paginated<any>> {
     const member = await this.repo.findMemberByUserId(userId);
     if (!member || member.familyId !== familyId) {
       throw new BusinessException(
@@ -979,7 +1036,9 @@ export class FamiliesService implements IFamiliesService {
         familyId,
         message,
       });
-    } catch (_) {}
+    } catch {
+      // Best-effort broadcast: a dropped socket event must not fail the write.
+    }
 
     return message;
   }

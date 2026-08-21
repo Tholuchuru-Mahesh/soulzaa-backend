@@ -182,7 +182,9 @@ export class FamilyService {
 
       const isAdmin = await this.permissionService.isSystemAdmin(currentFounderId);
       if (!isAdmin && family.founderId !== currentFounderId) {
-        throw new ForbiddenException('Only the current family founder or Super Admin can transfer ownership');
+        throw new ForbiddenException(
+          'Only the current family founder or Super Admin can transfer ownership',
+        );
       }
 
       const currentFounderMember = await this.prisma.familyMember.findFirst({
@@ -240,7 +242,9 @@ export class FamilyService {
     if (!isAdmin) {
       const member = await this.permissionService.getMember(familyId, founderId);
       if (member.role !== 'FOUNDER') {
-        throw new ForbiddenException('Only the founder or Super Admin can delete or disband the family');
+        throw new ForbiddenException(
+          'Only the founder or Super Admin can delete or disband the family',
+        );
       }
     }
 

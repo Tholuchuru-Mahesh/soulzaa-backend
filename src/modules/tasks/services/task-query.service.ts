@@ -52,7 +52,9 @@ export class TaskQueryService {
     });
 
     const now = new Date();
-    const todayStartUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const todayStartUtc = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
 
     return tasks.map((task) => {
       const periodKey = this.buildPeriodKey(task.resetPolicy);

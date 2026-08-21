@@ -56,9 +56,7 @@ export class FamilyQueryService {
             select: { id: true, username: true, fullName: true },
           })
         : [];
-    const founderMap = new Map(
-      founders.map((u) => [u.id, u.fullName || u.username || 'Founder']),
-    );
+    const founderMap = new Map(founders.map((u) => [u.id, u.fullName || u.username || 'Founder']));
 
     return {
       total,
@@ -95,9 +93,7 @@ export class FamilyQueryService {
             select: { id: true, username: true, fullName: true },
           })
         : [];
-    const founderMap = new Map(
-      founders.map((u) => [u.id, u.fullName || u.username || 'Founder']),
-    );
+    const founderMap = new Map(founders.map((u) => [u.id, u.fullName || u.username || 'Founder']));
 
     return top.map((f) => ({
       ...f,

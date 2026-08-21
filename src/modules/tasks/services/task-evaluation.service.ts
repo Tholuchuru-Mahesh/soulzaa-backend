@@ -118,7 +118,14 @@ export class TaskEvaluationService {
    * Generic event matcher based on configured event codes and rule constraints.
    */
   private isListeningToEvent(
-    def: { id: string; code: string; name: string; category: string; objective: string; progressRules: any },
+    def: {
+      id: string;
+      code: string;
+      name: string;
+      category: string;
+      objective: string;
+      progressRules: any;
+    },
     eventCode: string,
     metadata: Record<string, any>,
   ): boolean {
@@ -128,7 +135,9 @@ export class TaskEvaluationService {
     if (rules) {
       const configuredEvents: string[] = [];
       if (Array.isArray(rules['eventCodes'])) {
-        configuredEvents.push(...rules['eventCodes'].map((e: any) => String(e).toLowerCase().trim()));
+        configuredEvents.push(
+          ...rules['eventCodes'].map((e: any) => String(e).toLowerCase().trim()),
+        );
       }
       if (rules['eventCode']) {
         configuredEvents.push(String(rules['eventCode']).toLowerCase().trim());

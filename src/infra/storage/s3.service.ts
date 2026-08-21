@@ -186,7 +186,7 @@ export class S3Service {
       const buffer = Buffer.from(bytes);
       const contentType = res.ContentType || 'image/jpeg';
       return { buffer, contentType };
-    } catch (err) {
+    } catch {
       return null;
     }
   }

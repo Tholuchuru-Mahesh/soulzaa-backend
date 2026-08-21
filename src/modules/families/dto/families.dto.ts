@@ -83,7 +83,10 @@ export class PromoteMemberDto {
   @IsNotEmpty()
   userId!: string;
 
-  @ApiProperty({ description: 'New role for the member', enum: ['CO_FOUNDER', 'CO_LEADER', 'ELDER', 'MEMBER'] })
+  @ApiProperty({
+    description: 'New role for the member',
+    enum: ['CO_FOUNDER', 'CO_LEADER', 'ELDER', 'MEMBER'],
+  })
   @IsEnum(['CO_FOUNDER', 'CO_LEADER', 'ELDER', 'MEMBER', 'FOUNDER', 'LEADER'])
   role!: any;
 }
@@ -109,7 +112,10 @@ export class SendFamilyMessageDto {
   @MaxLength(2000)
   content?: string;
 
-  @ApiPropertyOptional({ description: 'Type of media attachment', enum: ['IMAGE', 'VIDEO', 'DOCUMENT', 'AUDIO'] })
+  @ApiPropertyOptional({
+    description: 'Type of media attachment',
+    enum: ['IMAGE', 'VIDEO', 'DOCUMENT', 'AUDIO'],
+  })
   @IsString()
   @IsOptional()
   mediaType?: string;
@@ -148,4 +154,3 @@ export class SearchFamiliesQueryDto {
   @IsOptional()
   limit?: number;
 }
-

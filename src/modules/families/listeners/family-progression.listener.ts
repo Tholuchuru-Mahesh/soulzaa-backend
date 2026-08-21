@@ -40,11 +40,7 @@ export class FamilyProgressionListener implements OnModuleInit {
       await this.familiesService.incrementMemberContribution(payload.senderId, expDelta);
 
       // 3. Record aggregated statistics
-      await this.statisticsService.updateStatistics(
-        familyId,
-        BigInt(expDelta),
-        BigInt(expDelta),
-      );
+      await this.statisticsService.updateStatistics(familyId, BigInt(expDelta), BigInt(expDelta));
     } catch (err: any) {
       this.logger.error(
         `Failed to process family progression for gift ${payload.transactionId}: ${err?.message || err}`,

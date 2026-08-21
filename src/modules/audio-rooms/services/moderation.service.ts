@@ -72,8 +72,16 @@ import {
   recordReportResolutionIfConfigured,
 } from 'src/modules/moderation-approval/utils/report-review-outcome.util';
 
-/** Report reasons that page a moderator immediately rather than waiting in the normal report queue. */
-const HIGH_PRIORITY_REPORT_REASONS: ReportReason[] = [
+/**
+ * Report reasons that page a moderator immediately rather than waiting in the
+ * normal report queue.
+ *
+ * Declared but NOT yet wired here: the video-room and live-stream report
+ * services both call `notifyHighPriorityReport` for these reasons, while the
+ * audio-room path only ever notifies on assignment. Underscore-prefixed to say
+ * "intentionally unused" rather than deleting the intent.
+ */
+const _HIGH_PRIORITY_REPORT_REASONS: ReportReason[] = [
   ReportReason.THREATS,
   ReportReason.SEXUAL_CONTENT,
 ];

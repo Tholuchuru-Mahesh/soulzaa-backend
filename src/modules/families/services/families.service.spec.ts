@@ -77,7 +77,9 @@ describe('FamiliesService', () => {
       findBan: jest.fn().mockResolvedValue(null),
       createBan: jest.fn().mockResolvedValue({ id: 'ban-1' }),
       deleteBan: jest.fn().mockResolvedValue(undefined),
-      getUserSummary: jest.fn().mockResolvedValue({ username: 'user_1', fullName: 'User One', avatarKey: null }),
+      getUserSummary: jest
+        .fn()
+        .mockResolvedValue({ username: 'user_1', fullName: 'User One', avatarKey: null }),
     };
     const mockConfigService = {
       getFamilyConfig: jest.fn().mockResolvedValue({

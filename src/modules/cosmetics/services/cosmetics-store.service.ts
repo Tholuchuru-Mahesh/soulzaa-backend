@@ -140,19 +140,21 @@ export class CosmeticsStoreService {
   > {
     if (!type || type === 'FRAME') {
       for (const frame of DEFAULT_ANIMATED_FRAMES) {
-        await this.prisma.cosmetic.upsert({
-          where: { id: frame.id },
-          create: frame,
-          update: {
-            name: frame.name,
-            mediaUrl: frame.mediaUrl,
-            thumbnailUrl: frame.thumbnailUrl,
-            price: frame.price,
-            enabled: frame.enabled,
-            sortOrder: frame.sortOrder,
-            rarity: frame.rarity,
-          },
-        }).catch(() => null);
+        await this.prisma.cosmetic
+          .upsert({
+            where: { id: frame.id },
+            create: frame,
+            update: {
+              name: frame.name,
+              mediaUrl: frame.mediaUrl,
+              thumbnailUrl: frame.thumbnailUrl,
+              price: frame.price,
+              enabled: frame.enabled,
+              sortOrder: frame.sortOrder,
+              rarity: frame.rarity,
+            },
+          })
+          .catch(() => null);
       }
     }
 

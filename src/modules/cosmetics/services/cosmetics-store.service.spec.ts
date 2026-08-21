@@ -26,6 +26,7 @@ describe('CosmeticsStoreService', () => {
   let bus: jest.Mocked<IEventBus>;
   let queue: { enqueue: jest.Mock };
   let media: { resolve: jest.Mock };
+  let prisma: any;
   let service: CosmeticsStoreService;
 
   beforeEach(() => {
@@ -54,6 +55,10 @@ describe('CosmeticsStoreService', () => {
         .fn()
         .mockImplementation((key: string | null | undefined) => Promise.resolve(key ?? null)),
     };
+    // listStore seeds the default animated frames through prisma before reading
+    // the catalogue; the upsert is best-effort in the service, so a stub that
+    // resolves is all the store behaviour under test needs.
+    prisma = { cosmetic: { upsert: jest.fn().mockResolvedValue(null) } };
     service = new CosmeticsStoreService(
       repo as unknown as CosmeticsRepository,
       cosmetics as unknown as CosmeticsService,
@@ -61,6 +66,7 @@ describe('CosmeticsStoreService', () => {
       bus,
       queue as unknown as QueueService,
       media as any,
+      prisma as any,
     );
   });
 
