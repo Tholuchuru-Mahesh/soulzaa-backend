@@ -50,7 +50,7 @@ export class SupportTicketQueryService {
 
         if (mapped.length > 0) {
           locationFilter = {
-            OR: [...mapped, { countryId: null }, { stateId: null }],
+            OR: mapped,
           };
         }
       }
@@ -187,7 +187,7 @@ export class SupportTicketQueryService {
 
         if (mapped.length > 0) {
           locationFilter = {
-            OR: [...mapped, { countryId: null }, { stateId: null }],
+            OR: mapped,
           };
         }
       }

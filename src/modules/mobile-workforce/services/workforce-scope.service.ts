@@ -87,8 +87,8 @@ export class WorkforceScopeService {
     };
 
     for (const scope of assignments) {
-      if (scope.scopeType === 'COUNTRY' && scope.countryId) {
-        push({ countryId: scope.countryId });
+      if (scope.scopeType === 'REGION' && scope.regionId) {
+        push({ regionId: scope.regionId });
       } else if (scope.scopeType === 'STATE' && scope.stateId) {
         push({ stateId: scope.stateId });
         if (this.countryBridgeEnabled && scope.countryId) {
@@ -100,6 +100,8 @@ export class WorkforceScopeService {
         } else if (scope.countryId) {
           push({ countryId: scope.countryId });
         }
+      } else if (scope.scopeType === 'COUNTRY' && scope.countryId) {
+        push({ countryId: scope.countryId });
       }
     }
 
@@ -120,11 +122,13 @@ export class WorkforceScopeService {
 
     for (const scope of assignments) {
       const targetId =
-        scope.scopeType === 'COUNTRY'
-          ? scope.countryId
+        scope.scopeType === 'REGION'
+          ? (scope.regionId || scope.stateId || scope.countryId)
           : scope.scopeType === 'STATE'
-            ? scope.stateId
-            : null;
+            ? (scope.stateId || scope.countryId)
+            : scope.scopeType === 'COUNTRY'
+              ? scope.countryId
+              : null;
       if (targetId) predicates.push({ scopeType: scope.scopeType, targetId });
     }
 

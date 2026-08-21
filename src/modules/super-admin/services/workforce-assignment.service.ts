@@ -30,12 +30,95 @@ export class WorkforceAssignmentService {
   ) {}
 
   /**
-   * Assigns operational personnel role and geographic scope
+   * Resolves full Country/State IDs from a Region ID.
+   * Used when the Super Admin selects a Region during OFFICIAL assignment so
+   * that the User record always carries country + state columns even though
+   * the authoritative RoleScope is STATE-level.
+   */
+  private async resolveRegionHierarchy(
+    regionId: string,
+  ): Promise<{ stateId: string | null; countryId: string | null }> {
+    const region = await this.prisma.region.findUnique({
+      where: { id: regionId },
+      select: { stateId: true, state: { select: { countryId: true } } },
+    });
+    return {
+      stateId: region?.stateId ?? null,
+      countryId: region?.state?.countryId ?? null,
+    };
+  }
+
+  /**
+   * Assigns operational personnel role and geographic scope.
+   *
+   * OFFICIAL rule: scopeType is always forced to STATE regardless of what the
+   * DTO says. Country + State are required; Region is accepted as UI context
+   * (stored on the User record) but does NOT further restrict data access.
    */
   async assignWorkforce(dto: AssignWorkforceDto, actorId: string) {
     const roleUpper = dto.role.trim().toUpperCase();
     if (!WORKFORCE_ROLES.includes(roleUpper as any)) {
       throw new BadRequestException(`Role '${dto.role}' is not a valid operational workforce role`);
+    }
+
+    // ── OFFICIAL enforcement: scopeType must always be STATE ────────────────
+    // The Official's data access boundary is their assigned State. The Super
+    // Admin form collects Country + State + (optionally) Region for display
+    // purposes, but the RoleScope row that drives all queries is STATE-level.
+    let effectiveScopeType = dto.scopeType;
+    let effectiveCountryId = dto.countryId;
+    let effectiveStateId   = dto.stateId;
+    const effectiveRegionId = dto.regionId; // stored on User only
+
+    if (roleUpper === 'OFFICIAL') {
+      // Force STATE scope regardless of what the frontend sent.
+      effectiveScopeType = 'STATE';
+
+      if (!effectiveStateId) {
+        throw new BadRequestException(
+          `Assigning an Official requires a State. Please select Country → State.`,
+        );
+      }
+      if (!effectiveCountryId) {
+        throw new BadRequestException(
+          `Assigning an Official requires a Country. Please select Country → State.`,
+        );
+      }
+
+      // If a Region was provided, validate it belongs to the selected State.
+      if (effectiveRegionId) {
+        const region = await this.prisma.region.findUnique({
+          where: { id: effectiveRegionId },
+          select: { stateId: true, state: { select: { countryId: true } } },
+        });
+        if (!region) {
+          throw new BadRequestException(`Region with ID '${effectiveRegionId}' not found.`);
+        }
+        if (region.stateId !== effectiveStateId) {
+          throw new BadRequestException(
+            `The selected Region does not belong to the selected State. Please recheck the hierarchy.`,
+          );
+        }
+        if (effectiveCountryId && region.state?.countryId !== effectiveCountryId) {
+          throw new BadRequestException(
+            `The selected Region's State does not belong to the selected Country.`,
+          );
+        }
+      }
+
+      // Hierarchy validation: ensure state belongs to the given country.
+      const state = await this.prisma.state.findUnique({
+        where: { id: effectiveStateId },
+        select: { countryId: true },
+      });
+      if (!state) {
+        throw new BadRequestException(`State with ID '${effectiveStateId}' not found.`);
+      }
+      if (state.countryId !== effectiveCountryId) {
+        throw new BadRequestException(
+          `The selected State does not belong to the selected Country. Please recheck the hierarchy.`,
+        );
+      }
     }
 
     // 1. Verify User Exists and is Active
@@ -55,9 +138,9 @@ export class WorkforceAssignmentService {
       throw new NotFoundException(`Role '${roleUpper}' not found`);
     }
 
-    // 3. Validate Scope Entity
-    if (dto.scopeType === ScopeType.COUNTRY && dto.countryId) {
-      const country = await this.countryService.getCountryById(dto.countryId);
+    // 3. Validate Scope Entity (uses effective* values after OFFICIAL enforcement above)
+    if (effectiveScopeType === ScopeType.COUNTRY && effectiveCountryId) {
+      const country = await this.countryService.getCountryById(effectiveCountryId);
       if (!country.isActive) {
         throw new BadRequestException(
           `Cannot assign workforce to inactive country '${country.name}'`,
@@ -68,7 +151,7 @@ export class WorkforceAssignmentService {
         const existingCM = await this.prisma.roleScope.findFirst({
           where: {
             scopeType: ScopeType.COUNTRY,
-            countryId: dto.countryId,
+            countryId: effectiveCountryId,
           },
           include: { userRole: true },
         });
@@ -78,17 +161,10 @@ export class WorkforceAssignmentService {
           );
         }
       }
-    } else if (dto.scopeType === ScopeType.STATE && dto.stateId) {
-      const state = await this.stateService.getStateById(dto.stateId);
+    } else if (effectiveScopeType === ScopeType.STATE && effectiveStateId) {
+      const state = await this.stateService.getStateById(effectiveStateId);
       if (!state.isActive) {
         throw new BadRequestException(`Cannot assign workforce to inactive state '${state.name}'`);
-      }
-    } else if (dto.scopeType === ScopeType.REGION && dto.regionId) {
-      const region = await this.regionService.getRegionById(dto.regionId);
-      if (!region.isActive) {
-        throw new BadRequestException(
-          `Cannot assign workforce to inactive region '${region.name}'`,
-        );
       }
     }
 
@@ -99,22 +175,39 @@ export class WorkforceAssignmentService {
     );
 
     // 5. Assign RoleScope
+    // For OFFICIAL the scope is STATE-level — countryId/stateId are set,
+    // regionId is intentionally omitted from the RoleScope row so the
+    // WorkforceScopeService matches on stateId (sees all regions in the state).
     await this.roleService.assignRoleScope({
       userRoleId: userRole.id,
-      scopeType: dto.scopeType,
-      countryId: dto.countryId,
-      stateId: dto.stateId,
-      regionId: dto.regionId,
+      scopeType: effectiveScopeType,
+      countryId: effectiveCountryId,
+      stateId: effectiveStateId,
+      // Only pass regionId for non-OFFICIAL scopes; OFFICIAL uses STATE scope.
+      regionId: roleUpper === 'OFFICIAL' ? undefined : effectiveRegionId,
     });
 
-    // 6. Invalidate Auth Cache
+    // 6. Synchronize user record's location columns
+    // For OFFICIAL we always store country + state + region (if provided)
+    // on the User row for UI display purposes, even though the RoleScope
+    // only uses countryId + stateId for authorization.
+    await this.prisma.user.update({
+      where: { id: dto.userId },
+      data: {
+        countryId: effectiveCountryId ?? null,
+        stateId: effectiveStateId ?? null,
+        regionId: effectiveRegionId ?? null,
+      },
+    });
+
+    // 7. Invalidate Auth Cache
     await this.authCacheService.invalidateUser(dto.userId);
 
     return {
       message: `Workforce personnel '${user.username}' assigned as '${role.name}' successfully`,
       userId: user.id,
       roleName: role.name,
-      scopeType: dto.scopeType,
+      scopeType: effectiveScopeType,
     };
   }
 

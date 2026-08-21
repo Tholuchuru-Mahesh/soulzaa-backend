@@ -2,15 +2,17 @@
 // instrument libraries before they are imported below (no-op unless OTEL_ENABLED).
 import './infra/observability/tracing';
 import 'reflect-metadata';
-import { ValidationPipe } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { Logger as PinoLogger } from 'nestjs-pino';
+
+import { ValidationPipe, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { SocketAdapter } from './infra/socket/socket.adapter';
+import { PrismaService } from './infra/prisma/prisma.service';
+
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Logger as PinoLogger } from 'nestjs-pino';
 
 async function bootstrap(): Promise<void> {
   (BigInt.prototype as any).toJSON = function () {

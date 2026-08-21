@@ -131,6 +131,16 @@ export class AuthController {
     );
   }
 
+  @Public()
+  @Post('login/official-portal')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Official Portal login — validates credentials and asserts the OFFICIAL role',
+  })
+  loginOfficialPortal(@Body() dto: LoginDto, @RequestMeta() meta: RequestMetadata) {
+    return this.auth.loginOfficialPortal(dto, this.context(meta, dto.device));
+  }
+
   // ---- Session ----
 
   @Public()

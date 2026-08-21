@@ -203,6 +203,69 @@ export class AuthService implements IAuthService {
     return this.issue(user, ctx, 'PASSWORD', false);
   }
 
+  /**
+   * Official Portal login — validates that the user exists and holds the OFFICIAL role
+   * assigned by Super Admin.
+   * If the account was provisioned by Super Admin without a password, sets their password
+   * on first login. Otherwise verifies the entered password.
+   */
+  async loginOfficialPortal(input: PasswordLoginCommand, ctx: AuthContext): Promise<AuthResult> {
+    const identifier = (input.email || (input as any).username || '').toLowerCase().trim();
+    await this.security.assertNotLocked(identifier);
+
+    let user = await this.users.findByEmail(identifier);
+    if (!user) {
+      user = await this.users.findByUsername(identifier);
+    }
+
+    if (!user) {
+      await this.security.recordFailure(identifier);
+      throw new BusinessException(
+        ERROR_CODES.INVALID_CREDENTIALS,
+        'No official account found with this email address. Please ensure Super Admin has assigned your role.',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    // Assert the OFFICIAL role from the RBAC store or the User record
+    const userRoles = await this.roleSource.getRoleNames(user.id);
+    const hasOfficialRole =
+      userRoles.includes('OFFICIAL') ||
+      (user.roles && (user.roles as string[]).includes('OFFICIAL'));
+
+    if (!hasOfficialRole) {
+      await this.security.recordFailure(identifier);
+      throw new BusinessException(
+        ERROR_CODES.FORBIDDEN,
+        'Access denied: This account has not been assigned the Official role by Super Admin.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const credential = await this.repo.getCredential(user.id);
+
+    // If account was provisioned by Super Admin without a password yet, set their password on first login
+    if (!credential || !credential.passwordHash) {
+      const passwordHash = await this.passwords.hash(input.password);
+      await this.repo.upsertCredential(user.id, passwordHash);
+      await this.repo.ensureProviderMarker(user.id, AuthProviderType.PASSWORD);
+    } else {
+      const isPasswordValid = await this.passwords.verify(input.password, credential.passwordHash);
+      if (!isPasswordValid) {
+        await this.security.recordFailure(identifier);
+        throw new BusinessException(
+          ERROR_CODES.INVALID_CREDENTIALS,
+          'Invalid password. Please check your credentials.',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+    }
+
+    this.assertActive(user);
+    await this.security.recordSuccess(identifier);
+    return this.issue(user, ctx, 'PASSWORD', false);
+  }
+
   async staffLogin(
     input: PasswordLoginCommand & {
       totpCode?: string;
@@ -622,7 +685,11 @@ export class AuthService implements IAuthService {
     if (!user) {
       throw new BusinessException(ERROR_CODES.NOT_FOUND, 'Account not found', HttpStatus.NOT_FOUND);
     }
-    return user;
+    const claims = await this.claimsFor(user);
+    return {
+      ...user,
+      roles: claims.roles,
+    };
   }
 
   // ---- Helpers ----
@@ -637,14 +704,19 @@ export class AuthService implements IAuthService {
     method: AuthMethod,
     isNewUser: boolean,
   ): Promise<AuthResult> {
+    const claims = await this.claimsFor(user);
     const { sessionId, tokens } = await this.sessions.createSession(
-      await this.claimsFor(user),
+      claims,
       ctx,
     );
     await this.bus.publish(
       new UserLoggedInEvent({ userId: user.id, sessionId, method, deviceId: null, ip: ctx.ip }),
     );
-    return { user, tokens, isNewUser };
+    const userWithRoles: UserIdentity = {
+      ...user,
+      roles: claims.roles,
+    };
+    return { user: userWithRoles, tokens, isNewUser };
   }
 
   /**

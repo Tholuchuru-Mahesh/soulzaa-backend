@@ -24,8 +24,8 @@ export class DashboardOperationsService {
       this.prisma.user.count(),
       this.prisma.user.count({ where: { status: 'ACTIVE' } }),
       this.prisma.user.count({ where: { createdAt: { gte: dayAgo } } }),
-      this.prisma.audioRoom.count({ where: { status: 'LIVE' } }),
-      this.prisma.videoRoom.count({ where: { status: 'LIVE' } }),
+      this.prisma.audioRoom.count({ where: { status: 'LIVE', deletedAt: null } }),
+      this.prisma.videoRoom.count({ where: { status: 'LIVE', deletedAt: null } }),
       this.prisma.family.count(),
     ]);
 

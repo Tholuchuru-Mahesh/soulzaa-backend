@@ -44,6 +44,7 @@ export class MobileWorkforceController {
 
   @ApiOperation({ summary: 'Users within my scope' })
   @ApiQuery({ name: 'q', required: false, description: 'Username or email search' })
+  @ApiQuery({ name: 'role', required: false, description: 'Role filter (e.g. AGENCY, COIN_SELLER, MODERATOR)' })
   @ApiQuery({ name: 'limit', required: false, description: 'Page size (default 25, max 100)' })
   @ApiQuery({ name: 'offset', required: false, description: 'Page offset (default 0)' })
   @ApiResponse({ status: 200, description: 'Scoped, paginated user list' })
@@ -51,10 +52,11 @@ export class MobileWorkforceController {
   users(
     @CurrentUser('id') userId: string,
     @Query('q') q?: string,
+    @Query('role') role?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    return this.service.users(userId, q, Number(limit) || 25, Number(offset) || 0);
+    return this.service.users(userId, q, Number(limit) || 25, Number(offset) || 0, role);
   }
 
   @ApiOperation({ summary: 'Moderation reports within my scope (pending and resolved)' })
@@ -102,6 +104,18 @@ export class MobileWorkforceController {
     return this.service.dashboard(userId);
   }
 
+  @ApiOperation({ summary: 'Regional analytics and performance insights' })
+  @ApiResponse({ status: 200, description: 'Scoped analytics metrics and trends' })
+  @Get('analytics')
+  analytics(
+    @CurrentUser('id') userId: string,
+    @Query('timeframe') timeframe?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.analytics(userId, timeframe, from, to);
+  }
+
   @ApiOperation({ summary: 'Live room details, chat messages, active reports, and participants' })
   @ApiResponse({ status: 200, description: 'Live monitoring details for specific room' })
   @Get('rooms/:roomId/details')
@@ -135,6 +149,13 @@ export class MobileWorkforceController {
     @RequestMeta() requestMeta: RequestMetadata,
   ) {
     return this.service.actionReport(user.id, reportId, body, user.roles, requestMeta);
+  }
+
+  @ApiOperation({ summary: 'Detailed report information for Official Portal' })
+  @ApiResponse({ status: 200, description: 'Report details, evidence, and target/reporter profiles' })
+  @Get('reports/:reportId')
+  reportDetails(@CurrentUser('id') userId: string, @Param('reportId') reportId: string) {
+    return this.service.reportDetails(userId, reportId);
   }
 
   @ApiOperation({ summary: 'Apply moderation action to room participant' })
@@ -182,6 +203,16 @@ export class MobileWorkforceController {
   @Post('tasks/:taskId/complete')
   completeTask(@CurrentUser('id') userId: string, @Param('taskId') taskId: string) {
     return this.service.completeTask(userId, taskId);
+  }
+
+  @ApiOperation({ summary: 'List of agencies and coin sellers for Official Portal' })
+  @ApiResponse({ status: 200, description: 'Agencies and coin sellers list and metrics' })
+  @Get('agencies-and-coinsellers')
+  agenciesAndCoinSellers(
+    @CurrentUser('id') userId: string,
+    @Query('search') search?: string,
+  ) {
+    return this.service.agenciesAndCoinSellers(userId, search);
   }
 
   @ApiOperation({ summary: 'Detailed Agency information for Official Portal' })
@@ -291,5 +322,77 @@ export class MobileWorkforceController {
     @Query('offset') offset?: string,
   ) {
     return this.service.myRoomHistory(userId, Number(limit) || 25, Number(offset) || 0);
+  }
+
+  @ApiOperation({ summary: 'Room Monitoring metrics for Official Portal' })
+  @Get('room-monitoring/metrics')
+  roomMonitoringMetrics(@CurrentUser('id') userId: string) {
+    return this.service.roomMonitoringMetrics(userId);
+  }
+
+  @ApiOperation({ summary: 'Room Monitoring room list for Official Portal' })
+  @Get('room-monitoring/rooms')
+  monitoredRooms(
+    @CurrentUser('id') userId: string,
+    @Query('category') category?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.service.monitoredRooms(userId, category, q);
+  }
+
+  @ApiOperation({ summary: 'Room Monitoring detail info for Official Portal' })
+  @Get('room-monitoring/rooms/:id')
+  monitoredRoomDetail(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.service.monitoredRoomDetail(userId, id);
+  }
+
+  @ApiOperation({ summary: 'Escalate serious room monitoring case' })
+  @Post('room-monitoring/rooms/:id/escalate')
+  escalateRoomCase(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+    @Body() body?: { reason?: string },
+  ) {
+    return this.service.escalateRoomCase(userId, id, body?.reason);
+  }
+
+  @ApiOperation({ summary: 'List agency tasks set in official scope' })
+  @Get('agency-tasks')
+  listAgencyTasks(
+    @CurrentUser('id') userId: string,
+    @Query('status') status?: string,
+  ) {
+    return this.service.listAgencyTasks(userId, status);
+  }
+
+  @ApiOperation({ summary: 'Get details of a specific agency task' })
+  @Get('agency-tasks/:id')
+  getAgencyTaskDetail(
+    @CurrentUser('id') userId: string,
+    @Param('id') id: string,
+  ) {
+    return this.service.getAgencyTaskDetail(userId, id);
+  }
+
+  @ApiOperation({ summary: 'Create and assign task to agency/coin-seller' })
+  @Post('agency-tasks')
+  createAgencyTask(
+    @CurrentUser('id') userId: string,
+    @Body()
+    body: {
+      agencyId: string;
+      title: string;
+      description?: string;
+      metric: string;
+      targetValue?: number;
+      periodStart: string;
+      periodEnd: string;
+      priority: 'HIGH' | 'MEDIUM' | 'LOW';
+    },
+  ) {
+    return this.service.createAgencyTask(userId, body);
   }
 }

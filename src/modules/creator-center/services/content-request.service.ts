@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ContentRequestStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/workforce-scope.service';
+import { SocketManager } from 'src/infra/socket/socket.manager';
 import { CreateContentRequestDto, UpdateContentRequestDto } from '../dto/content-request.dto';
 
 /**
@@ -18,6 +19,7 @@ export class ContentRequestService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly scope: WorkforceScopeService,
+    @Optional() private readonly socketManager?: SocketManager,
   ) {}
 
   /**
@@ -27,27 +29,48 @@ export class ContentRequestService {
    */
   async create(officialId: string, dto: CreateContentRequestDto) {
     // Snapshot official's location
-    const official = await this.prisma.user.findUnique({
-      where: { id: officialId },
-      select: { countryId: true, stateId: true, regionId: true },
-    });
+    const [official, roleScope] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: officialId },
+        select: { countryId: true, stateId: true, regionId: true },
+      }),
+      this.prisma.roleScope.findFirst({
+        where: { userRole: { userId: officialId } },
+      }),
+    ]);
+
     if (!official) throw new BadRequestException('Official user not found');
+
+    const countryId = roleScope?.countryId ?? official.countryId;
+    const stateId = roleScope?.stateId ?? official.stateId;
+    const regionId = roleScope?.regionId ?? official.regionId;
 
     const request = await this.prisma.contentRequest.create({
       data: {
         officialId,
-        category: dto.category,
+        category: dto.category ?? 'OTHER',
         title: dto.title,
         description: dto.description,
         subjectId: dto.subjectId,
         referenceId: dto.referenceId,
-        countryId: official.countryId,
-        stateId: official.stateId,
-        regionId: official.regionId,
+        metadata: dto.metadata ?? {},
+        countryId,
+        stateId,
+        regionId,
+        status: 'OPEN',
       },
     });
 
     this.logger.log(`Content request ${request.id} created by Official ${officialId}`);
+    try {
+      this.socketManager?.emitToNamespace('/notifications', 'content_requests:update', {
+        action: 'create',
+        request,
+      });
+    } catch {
+      // socket non-blocking
+    }
+
     return request;
   }
 
@@ -69,15 +92,19 @@ export class ContentRequestService {
     // Build a location filter from the scope predicate
     const locationFilter = isUnrestricted ? {} : this.buildLocationFilter(scopeWhere);
 
-    const where = {
+    const baseWhere = {
       ...locationFilter,
+    };
+
+    const where = {
+      ...baseWhere,
       ...(opts.status ? { status: opts.status } : {}),
     };
 
-    const limit = Math.min(opts.limit ?? 25, 100);
+    const limit = Math.min(opts.limit ?? 50, 100);
     const offset = opts.offset ?? 0;
 
-    const [total, items] = await Promise.all([
+    const [total, items, pendingCount, approvedCount, rejectedCount] = await Promise.all([
       this.prisma.contentRequest.count({ where }),
       this.prisma.contentRequest.findMany({
         where,
@@ -85,9 +112,27 @@ export class ContentRequestService {
         take: limit,
         skip: offset,
       }),
+      this.prisma.contentRequest.count({
+        where: { ...baseWhere, status: { in: ['OPEN', 'IN_REVIEW'] } },
+      }),
+      this.prisma.contentRequest.count({
+        where: { ...baseWhere, status: 'APPROVED' },
+      }),
+      this.prisma.contentRequest.count({
+        where: { ...baseWhere, status: 'REJECTED' },
+      }),
     ]);
 
-    return { total, items };
+    return {
+      total,
+      items,
+      metrics: {
+        all: total,
+        pending: pendingCount,
+        approved: approvedCount,
+        rejected: rejectedCount,
+      },
+    };
   }
 
   /** Find a single content request by ID. */
@@ -99,20 +144,43 @@ export class ContentRequestService {
     return request;
   }
 
+  /** Update request details (Official or Admin). */
+  async update(id: string, actorId: string, dto: UpdateContentRequestDto) {
+    await this.findById(id);
+
+    const updated = await this.prisma.contentRequest.update({
+      where: { id },
+      data: {
+        ...(dto.title ? { title: dto.title } : {}),
+        ...(dto.description !== undefined ? { description: dto.description } : {}),
+        ...(dto.category ? { category: dto.category } : {}),
+        ...(dto.metadata ? { metadata: dto.metadata } : {}),
+        ...(dto.status ? { status: dto.status } : {}),
+      },
+    });
+
+    this.logger.log(`Content request ${id} updated by ${actorId}`);
+    try {
+      this.socketManager?.emitToNamespace('/notifications', 'content_requests:update', {
+        action: 'update',
+        request: updated,
+      });
+    } catch {
+      // socket non-blocking
+    }
+
+    return updated;
+  }
+
   /**
-   * Update a content request's status (IN_REVIEW → RESOLVED / REJECTED).
+   * Update a content request's status (OPEN/IN_REVIEW → APPROVED / REJECTED / RESOLVED).
    */
   async updateStatus(id: string, actorId: string, dto: UpdateContentRequestDto) {
     const request = await this.findById(id);
 
-    const terminal: ContentRequestStatus[] = ['RESOLVED', 'REJECTED'];
-    if (terminal.includes(request.status)) {
-      throw new BadRequestException(`Request is already ${request.status}`);
-    }
-
     const extra: Record<string, unknown> = {};
-    if (dto.status === 'RESOLVED') extra['resolvedAt'] = new Date();
-    if (dto.status === 'RESOLVED' || dto.status === 'REJECTED') {
+    if (dto.status === 'RESOLVED' || dto.status === 'APPROVED') extra['resolvedAt'] = new Date();
+    if (dto.status === 'RESOLVED' || dto.status === 'REJECTED' || dto.status === 'APPROVED') {
       extra['closedById'] = actorId;
     }
 
@@ -122,6 +190,15 @@ export class ContentRequestService {
     });
 
     this.logger.log(`Content request ${id} status → ${dto.status} by ${actorId}`);
+    try {
+      this.socketManager?.emitToNamespace('/notifications', 'content_requests:update', {
+        action: 'status_update',
+        request: updated,
+      });
+    } catch {
+      // socket non-blocking
+    }
+
     return updated;
   }
 

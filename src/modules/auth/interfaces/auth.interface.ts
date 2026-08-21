@@ -33,6 +33,12 @@ export interface IAuthService {
   loginWithPassword(input: PasswordLoginCommand, ctx: AuthContext): Promise<AuthResult>;
   loginWithFirebaseMobile(idToken: string, ctx: AuthContext): Promise<AuthResult>;
   loginWithSocial(input: SocialLoginCommand, ctx: AuthContext): Promise<AuthResult>;
+  /**
+   * Official Portal login: validates credentials AND asserts the user holds the
+   * OFFICIAL role. Returns the same AuthResult as standard login so the Flutter
+   * client can store tokens and navigate to the dashboard.
+   */
+  loginOfficialPortal(input: PasswordLoginCommand, ctx: AuthContext): Promise<AuthResult>;
   refresh(
     userId: string,
     sessionId: string,

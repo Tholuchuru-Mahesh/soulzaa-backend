@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { LockAccountDto, SuspendAccountDto } from '../dto/account-status.dto';
 import {
+  AssignUserRoleByEmailDto,
   AssignUserRoleDto,
   PromoteDemoteUserDto,
   UpdateUserRoleDto,
@@ -40,6 +41,10 @@ export class UserManagementService {
   // ---------------------------------------------------------
   // Role Assignment Operations
   // ---------------------------------------------------------
+  async assignRoleByEmail(dto: AssignUserRoleByEmailDto, actorId: string) {
+    return this.roleAssignmentService.assignRoleByEmail(dto, actorId);
+  }
+
   async assignRole(userId: string, dto: AssignUserRoleDto, actorId: string) {
     return this.roleAssignmentService.assignRole(userId, dto, actorId);
   }

@@ -1,15 +1,26 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
+import { SocketManager } from 'src/infra/socket/socket.manager';
 
 @Injectable()
 export class EventEventService {
   private readonly logger = new Logger(EventEventService.name);
 
-  constructor(@Inject(EVENT_BUS) private readonly eventBus: IEventBus) {}
+  constructor(
+    @Inject(EVENT_BUS) private readonly eventBus: IEventBus,
+    @Optional() private readonly socketManager?: SocketManager,
+  ) {}
 
   private async publish(name: string, payload: Record<string, any>) {
     try {
       await this.eventBus.publish({ name, payload, timestamp: new Date() } as any);
+      if (this.socketManager) {
+        this.socketManager.emitToNamespace('/notifications', 'events:update', {
+          event: name,
+          payload,
+          timestamp: new Date().toISOString(),
+        });
+      }
     } catch (err) {
       this.logger.error(`Failed to publish event ${name}: ${(err as Error).message}`);
     }

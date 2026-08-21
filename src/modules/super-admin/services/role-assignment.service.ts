@@ -15,6 +15,7 @@ import { CountryService } from 'src/modules/organization/services/country.servic
 import { RegionService } from 'src/modules/organization/services/region.service';
 import { StateService } from 'src/modules/organization/services/state.service';
 import {
+  AssignUserRoleByEmailDto,
   AssignUserRoleDto,
   PromoteDemoteUserDto,
   UpdateUserRoleDto,
@@ -82,6 +83,78 @@ export class RoleAssignmentService {
   }
 
   /**
+   * Assigns a role to the user identified by their registered e-mail address.
+   * Looks up the user first. If no user exists with this email yet, auto-provisions
+   * a user account so Super Admin can assign the role to the email first.
+   * Then delegates to the standard `assignRole` so all existing validation rules
+   * (rank gates, scope checks, etc.) remain in effect.
+   */
+  async assignRoleByEmail(dto: AssignUserRoleByEmailDto, actorId: string) {
+    const cleanEmail = dto.email.trim().toLowerCase();
+    let user = await this.prisma.user.findFirst({
+      where: { email: { equals: cleanEmail, mode: 'insensitive' } },
+      select: { id: true },
+    });
+
+    if (!user) {
+      // Auto-provision user account for this email if they haven't registered yet
+      const emailPrefix = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase();
+      let uniqueUsername = emailPrefix;
+      let counter = 1;
+      while (await this.prisma.user.findFirst({ where: { username: uniqueUsername } })) {
+        uniqueUsername = `${emailPrefix}_${Math.floor(1000 + Math.random() * 9000)}`;
+        counter++;
+        if (counter > 10) {
+          uniqueUsername = `${emailPrefix}_${Date.now()}`;
+          break;
+        }
+      }
+
+      const roleUpper = dto.role.trim().toUpperCase();
+      const isStaff = ['ADMIN', 'SUPER_ADMIN', 'OFFICIAL', 'COUNTRY_MANAGER', 'MODERATOR'].includes(roleUpper);
+
+      const newUser = await this.prisma.$transaction(async (tx) => {
+        const createdUser = await tx.user.create({
+          data: {
+            username: uniqueUsername,
+            email: cleanEmail,
+            fullName: emailPrefix,
+            status: 'ACTIVE',
+            isGuest: false,
+            createdBy: actorId,
+            isHiddenAccount: isStaff,
+            roles: ['USER'],
+          },
+        });
+
+        await tx.userProfile.create({
+          data: {
+            userId: createdUser.id,
+          },
+        });
+        await tx.userStatistics.create({ data: { userId: createdUser.id } });
+        await tx.userVerification.create({ data: { userId: createdUser.id } });
+
+        return createdUser;
+      });
+
+      user = { id: newUser.id };
+    }
+
+    return this.assignRole(
+      user.id,
+      {
+        role: dto.role,
+        scopeType: dto.scopeType,
+        countryId: dto.countryId,
+        stateId: dto.stateId,
+        regionId: dto.regionId,
+      },
+      actorId,
+    );
+  }
+
+  /**
    * Assigns a role to a user with strict validation rules.
    */
   async assignRole(userId: string, dto: AssignUserRoleDto, actorId: string) {
@@ -92,11 +165,13 @@ export class RoleAssignmentService {
     }
 
     // 2. Resolve Target Role
-    const roleNameUpper = dto.role.trim().toUpperCase();
+    const trimmedRole = dto.role.trim();
+    const roleNameUpper = trimmedRole.toUpperCase();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedRole);
     const role = await this.prisma.role.findFirst({
-      where: {
-        OR: [{ id: dto.role }, { name: roleNameUpper }],
-      },
+      where: isUuid
+        ? { OR: [{ id: trimmedRole }, { name: roleNameUpper }] }
+        : { name: roleNameUpper },
     });
     if (!role) {
       throw new NotFoundException(`Role '${dto.role}' not found`);
@@ -182,6 +257,19 @@ export class RoleAssignmentService {
       });
     }
 
+    // 7b. Synchronize User.roles column so UserIdentity projections reflect the role
+    const currentRoles = user.roles || [];
+    if (!currentRoles.includes(role.name as any)) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          roles: {
+            set: [...currentRoles, role.name as any],
+          },
+        },
+      });
+    }
+
     // 8. Invalidate Redis Authorization Cache
     await this.authCacheService.invalidateUser(userId);
 
@@ -249,11 +337,13 @@ export class RoleAssignmentService {
    * Removes a role assignment and its associated scopes from a user.
    */
   async removeRole(userId: string, roleIdOrName: string, actorId: string) {
-    const roleNameUpper = roleIdOrName.trim().toUpperCase();
+    const trimmedRole = roleIdOrName.trim();
+    const roleNameUpper = trimmedRole.toUpperCase();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedRole);
     const role = await this.prisma.role.findFirst({
-      where: {
-        OR: [{ id: roleIdOrName }, { name: roleNameUpper }],
-      },
+      where: isUuid
+        ? { OR: [{ id: trimmedRole }, { name: roleNameUpper }] }
+        : { name: roleNameUpper },
     });
     if (!role) {
       throw new NotFoundException(`Role '${roleIdOrName}' not found`);
@@ -278,6 +368,20 @@ export class RoleAssignmentService {
 
     // Remove role and cascade scopes via RoleService
     await this.roleService.removeRoleFromUser(userId, role.id);
+
+    // Sync User.roles column
+    const existingUser = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (existingUser) {
+      const updatedRoles = (existingUser.roles || []).filter((r) => r !== (role.name as any));
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          roles: {
+            set: updatedRoles,
+          },
+        },
+      });
+    }
 
     // Invalidate Redis Authorization Cache
     await this.authCacheService.invalidateUser(userId);

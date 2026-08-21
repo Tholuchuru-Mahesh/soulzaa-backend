@@ -126,6 +126,130 @@ export class TaskQueryService {
   }
 
   /**
+   * Mobile-facing: returns ALL active tasks (event missions + daily tasks)
+   * as a flat array with user progress overlaid. Used by GET /tasks/mobile/feed.
+   */
+  async getMobileFeed(userId?: string): Promise<any[]> {
+    const now = new Date();
+
+    const tasks = await this.prisma.taskDefinition.findMany({
+      where: {
+        status: 'ACTIVE',
+        OR: [{ endTime: null }, { endTime: { gte: now } }],
+      },
+      orderBy: [{ priority: 'desc' }, { name: 'asc' }],
+    });
+
+    if (tasks.length === 0) return [];
+
+    let progressMap = new Map<string, any>();
+    let claimedSet = new Set<string>();
+    if (userId) {
+      const progresses = await this.prisma.taskProgress.findMany({
+        where: { userId, taskId: { in: tasks.map((t) => t.id) } },
+      });
+      progressMap = new Map(progresses.map((p) => [p.taskId, p]));
+
+      const rewards = await this.prisma.taskReward.findMany({
+        where: { userId, taskId: { in: tasks.map((t) => t.id) }, claimed: true },
+      });
+      rewards.forEach((r) => {
+        if (r.taskId) claimedSet.add(r.taskId);
+      });
+    }
+
+    const eventTaskCodes = [
+      ...new Set(
+        tasks
+          .filter((t) => t.category === 'EVENT_MISSION')
+          .map((t) => t.code.split('_TASK_')[0])
+          .filter(Boolean),
+      ),
+    ];
+
+    const eventNameMap = new Map<string, string>();
+    if (eventTaskCodes.length > 0) {
+      const events = await this.prisma.eventDefinition.findMany({
+        where: { code: { in: eventTaskCodes }, status: { in: ['ACTIVE', 'APPROVED'] } },
+        select: { code: true, name: true },
+      });
+      events.forEach((e) => eventNameMap.set(e.code, e.name));
+    }
+
+    return tasks.map((task) => {
+      const progress = progressMap.get(task.id);
+      const isClaimed = claimedSet.has(task.id);
+      const currentProgress = progress?.currentProgress ?? 0;
+      const requiredProgress = progress?.requiredProgress ?? task.requiredProgress;
+      const isCompleted = progress?.isCompleted ?? false;
+
+      let eventName: string | null = null;
+      if (task.category === 'EVENT_MISSION') {
+        const eventCode = task.code.split('_TASK_')[0];
+        eventName = eventNameMap.get(eventCode) ?? null;
+      }
+
+      return {
+        id: task.id,
+        code: task.code,
+        name: task.name,
+        description: task.description,
+        category: task.category,
+        objective: task.objective,
+        requiredProgress,
+        currentProgress,
+        percentComplete: requiredProgress > 0 ? Math.round((currentProgress / requiredProgress) * 100) : 0,
+        isCompleted,
+        isClaimed,
+        difficulty: task.difficulty,
+        priority: task.priority,
+        rewardDefinition: task.rewardDefinition,
+        startTime: task.startTime,
+        endTime: task.endTime,
+        eventName,
+        status: task.status,
+      };
+    });
+  }
+
+  /**
+   * Self-scoped reward claim for regular users.
+   * Records a TaskReward entry so getMobileFeed() marks isClaimed=true.
+   */
+  async selfClaimReward(userId: string, taskId: string): Promise<{ success: boolean; message: string }> {
+    const task = await this.prisma.taskDefinition.findUnique({ where: { id: taskId } });
+    if (!task || task.status !== 'ACTIVE') {
+      return { success: false, message: 'Task not found or not active.' };
+    }
+
+    const progress = await this.prisma.taskProgress.findFirst({ where: { userId, taskId } });
+    const currentProgress = progress?.currentProgress ?? 0;
+    if (currentProgress < task.requiredProgress) {
+      return { success: false, message: 'Task not yet completed.' };
+    }
+
+    const existing = await this.prisma.taskReward.findFirst({
+      where: { userId, taskId, claimed: true },
+    });
+    if (existing) {
+      return { success: false, message: 'Reward already claimed.' };
+    }
+
+    await this.prisma.taskReward.create({
+      data: {
+        userId,
+        taskId,
+        missionId: null,
+        rewardDefinition: (task.rewardDefinition as any) ?? {},
+        claimed: true,
+        claimedAt: new Date(),
+      },
+    });
+
+    return { success: true, message: 'Reward claimed successfully.' };
+  }
+
+  /**
    * Retrieves task execution history for a user.
    */
   async getUserTaskHistory(userId: string, limit = 50, offset = 0) {
@@ -155,8 +279,6 @@ export class TaskQueryService {
 
   /**
    * Task 25 — Moderator assignment summary.
-   * Returns combined Assigned/Completed/Pending/Overdue counts and overdue percentage.
-   * Overdue = assignments past their dueAt without COMPLETED status.
    */
   async moderatorAssignmentSummary(moderatorId: string): Promise<{
     assigned: number;
@@ -170,7 +292,6 @@ export class TaskQueryService {
     const [assigned, completed, overdue] = await Promise.all([
       this.prisma.moderator_task_assignments.count({ where: { moderatorId } }),
       this.prisma.moderator_task_assignments.count({ where: { moderatorId, status: 'COMPLETED' } }),
-      // Overdue: dueAt in the past AND status not COMPLETED
       this.prisma.moderator_task_assignments.count({
         where: {
           moderatorId,

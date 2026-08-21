@@ -10,6 +10,8 @@ import {
   IsString,
   IsUUID,
   Min,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
 import { EVENT_CATEGORIES, EVENT_STATUSES, EVENT_VISIBILITIES } from '../constants/event.constants';
 
@@ -119,6 +121,79 @@ export class CreateEventDto {
   @Type(() => Number)
   @IsInt()
   priority?: number;
+
+  @ApiPropertyOptional({ enum: EVENT_STATUSES, default: 'SCHEDULED' })
+  @IsOptional()
+  @IsEnum(EVENT_STATUSES)
+  status?: string;
+
+  @ApiPropertyOptional({
+    description: 'Event task definitions with rewards and conditions',
+    type: 'array',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EventTaskDefinitionDto)
+  tasks?: EventTaskDefinitionDto[];
+}
+
+export class EventTaskDefinitionDto {
+  @ApiPropertyOptional({ description: 'Unique code for the task (auto-generated if omitted)' })
+  @IsOptional()
+  @IsString()
+  code?: string;
+
+  @ApiProperty({ description: 'Task name/title', example: 'Join Live Stream' })
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @ApiPropertyOptional({ description: 'Task description' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiProperty({ description: 'Task objective/trigger code', example: 'STREAM_WATCH' })
+  @IsString()
+  @IsNotEmpty()
+  objective!: string;
+
+  @ApiPropertyOptional({ description: 'Required progress count to complete task', default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  requiredProgress?: number;
+
+  @ApiPropertyOptional({ description: 'Difficulty level', default: 'EASY' })
+  @IsOptional()
+  @IsString()
+  difficulty?: string;
+
+  @ApiPropertyOptional({ description: 'Task priority', default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  priority?: number;
+
+  @ApiPropertyOptional({
+    description: 'Reward definition (e.g. coins, diamonds, exp, badge)',
+    example: { coins: 100, exp: 50 },
+  })
+  @IsOptional()
+  @IsObject()
+  rewardDefinition?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: 'Progress rules JSON' })
+  @IsOptional()
+  @IsObject()
+  progressRules?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: 'Completion rules JSON' })
+  @IsOptional()
+  @IsObject()
+  completionRules?: Record<string, any>;
 }
 
 export class UpdateEventDto {
@@ -214,6 +289,16 @@ export class UpdateEventDto {
   @Type(() => Number)
   @IsInt()
   priority?: number;
+
+  @ApiPropertyOptional({
+    description: 'Event task definitions with rewards and conditions',
+    type: 'array',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EventTaskDefinitionDto)
+  tasks?: EventTaskDefinitionDto[];
 }
 
 export class UpdateEventStatusDto {

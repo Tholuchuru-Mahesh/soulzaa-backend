@@ -28,6 +28,7 @@ import { RbacRolesGuard } from 'src/modules/authorization/guards/rbac-roles.guar
 import { AuditLogInterceptor } from 'src/modules/authorization/interceptors/audit-log.interceptor';
 import { LockAccountDto, SuspendAccountDto } from '../dto/account-status.dto';
 import {
+  AssignUserRoleByEmailDto,
   AssignUserRoleDto,
   PromoteDemoteUserDto,
   UpdateUserRoleDto,
@@ -128,6 +129,19 @@ export class SuperAdminUserController {
   // ---------------------------------------------------------
   // Role Management APIs
   // ---------------------------------------------------------
+
+  @ApiOperation({ summary: 'Assign a platform role to a user by their registered email address' })
+  @ApiResponse({ status: 200, description: 'Role assigned successfully' })
+  @RequirePermissions('user.role.assign')
+  @AuditLogAction('USER_ROLE_ASSIGNED_BY_EMAIL', 'user_role')
+  @Post('assign-role-by-email')
+  @HttpCode(HttpStatus.OK)
+  async assignRoleByEmail(
+    @Body() dto: AssignUserRoleByEmailDto,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.userManagementService.assignRoleByEmail(dto, actorId);
+  }
 
   @ApiOperation({ summary: 'Assign a platform role and optional geographic scope to a user' })
   @ApiResponse({ status: 200, description: 'Role assigned successfully' })

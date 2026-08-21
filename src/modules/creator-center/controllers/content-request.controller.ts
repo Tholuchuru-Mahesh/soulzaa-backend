@@ -52,7 +52,7 @@ export class ContentRequestController {
     @CurrentUser('id') officialId: string,
     @Query('status', new ParseEnumPipe(ContentRequestStatus, { optional: true }))
     status?: ContentRequestStatus,
-    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit?: number,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit?: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset?: number,
   ) {
     return this.service.list(officialId, { status, limit, offset });
@@ -66,7 +66,18 @@ export class ContentRequestController {
     return this.service.findById(id);
   }
 
-  @ApiOperation({ summary: 'Update content request status (Official)' })
+  @ApiOperation({ summary: 'Update content request (Official/Admin)' })
+  @ApiResponse({ status: 200, description: 'Updated' })
+  @Patch(':id')
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') actorId: string,
+    @Body() dto: UpdateContentRequestDto,
+  ) {
+    return this.service.update(id, actorId, dto);
+  }
+
+  @ApiOperation({ summary: 'Update content request status (Official/Admin)' })
   @ApiResponse({ status: 200, description: 'Status updated' })
   @Patch(':id/status')
   updateStatus(

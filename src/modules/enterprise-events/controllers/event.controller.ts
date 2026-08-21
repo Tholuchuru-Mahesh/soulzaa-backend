@@ -58,7 +58,7 @@ export class EnterpriseEventController {
   // ─── Event Definitions ──────────────────────────────────────────────
 
   @Post()
-  @RequirePermissions('event.manage')
+  @RequirePermissions('event.create')
   @ApiOperation({ summary: 'Create a new event definition' })
   @ApiResponse({ status: 201, description: 'Event definition created' })
   async createEvent(@Body() dto: CreateEventDto, @CurrentUser() user: any) {
@@ -72,9 +72,18 @@ export class EnterpriseEventController {
     });
   }
 
+  @Get('admin/all')
+  @RequirePermissions('event.manage')
+  @ApiOperation({ summary: 'Admin: List ALL event definitions regardless of status' })
+  @ApiQuery({ name: 'category', required: false })
+  @ApiQuery({ name: 'status', required: false })
+  async getAllEventsAdmin(@Query('category') category?: string, @Query('status') status?: string) {
+    return this.eventService.getAllEventDefinitions(category, status);
+  }
+
   @Get()
   @RequirePermissions('event.view')
-  @ApiOperation({ summary: 'List active event definitions' })
+  @ApiOperation({ summary: 'List active/approved event definitions (user-facing)' })
   @ApiQuery({ name: 'category', required: false })
   @ApiQuery({ name: 'status', required: false })
   async getEvents(@Query('category') category?: string, @Query('status') status?: string) {
@@ -105,7 +114,7 @@ export class EnterpriseEventController {
   }
 
   @Patch(':id')
-  @RequirePermissions('event.manage')
+  @RequirePermissions('event.create')
   @ApiOperation({ summary: 'Update an event definition' })
   async updateEvent(
     @Param('id') id: string,
@@ -123,7 +132,7 @@ export class EnterpriseEventController {
   }
 
   @Patch(':id/status')
-  @RequirePermissions('event.manage')
+  @RequirePermissions('event.create')
   @ApiOperation({ summary: 'Update event lifecycle status' })
   async updateStatus(
     @Param('id') id: string,
@@ -132,6 +141,8 @@ export class EnterpriseEventController {
   ) {
     return this.eventService.updateStatus(id, dto.status, user?.id);
   }
+
+
 
   @Post(':id/cancel')
   @RequirePermissions('event.manage')

@@ -11,6 +11,7 @@
 enum ContentRequestStatus {
   OPEN
   IN_REVIEW
+  APPROVED
   RESOLVED
   REJECTED
 }
@@ -20,6 +21,11 @@ enum ContentRequestCategory {
   LIVE_STREAM
   PROFILE
   POST
+  BANNER
+  POSTER
+  ENTRY_EFFECT
+  FESTIVAL_GIFT
+  CONTENT
   OTHER
 }
 
@@ -34,6 +40,7 @@ model ContentRequest {
   status      ContentRequestStatus    @default(OPEN)
   resolvedAt  DateTime?
   closedById  String?                 @db.Uuid
+  metadata    Json?                   // rich request fields (quantity, requireDate, relatedEvent, region, attachments, additionalNotes)
 
   // Geographic scope snapshot at creation
   countryId String? @db.Uuid

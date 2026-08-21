@@ -33,36 +33,45 @@ export class EventsOfficialService {
    * updated later.
    */
   async create(officialId: string, dto: CreateEventDto) {
-    const official = await this.prisma.user.findUnique({
-      where: { id: officialId },
-      select: { countryId: true, stateId: true, regionId: true },
-    });
+    const [official, roleScope] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: officialId },
+        select: { countryId: true, stateId: true, regionId: true },
+      }),
+      this.prisma.roleScope.findFirst({
+        where: { userRole: { userId: officialId } },
+      }),
+    ]);
+
     if (!official) throw new BadRequestException('Official user not found');
+
+    const countryId = roleScope?.countryId ?? official.countryId;
+    const stateId = roleScope?.stateId ?? official.stateId;
+    const regionId = roleScope?.regionId ?? official.regionId;
 
     // Delegate to the admin service for validation + cache reload
     const event = await this.admin.create(officialId, dto);
 
-    // Patch the scope columns — admin.create returns after the INSERT, so we
-    // do a targeted update rather than duplicating validation logic.
-    if (official.countryId || official.stateId || official.regionId) {
+    // Patch the scope columns so the event is strictly bound to this Official's territory
+    if (countryId || stateId || regionId) {
       await this.prisma.platformEvent.update({
         where: { id: event.id },
         data: {
-          countryId: official.countryId,
-          stateId: official.stateId,
-          regionId: official.regionId,
+          countryId,
+          stateId,
+          regionId,
         },
       });
       this.logger.log(
-        `Regional event ${event.id} scoped to country=${official.countryId ?? '—'} by Official ${officialId}`,
+        `Regional event ${event.id} scoped to country=${countryId ?? '—'}, state=${stateId ?? '—'}, region=${regionId ?? '—'} by Official ${officialId}`,
       );
     }
 
     return {
       ...event,
-      countryId: official.countryId,
-      stateId: official.stateId,
-      regionId: official.regionId,
+      countryId,
+      stateId,
+      regionId,
     };
   }
 

@@ -141,8 +141,8 @@ export class OpsDashboardService {
   async getExecutiveDashboard() {
     const [userCount, liveVideoRooms, liveAudioRooms, txCount] = await Promise.all([
       this.prisma.user.count().catch(() => 0),
-      this.prisma.videoRoom.count({ where: { status: 'LIVE' } }).catch(() => 0),
-      this.prisma.audioRoom.count({ where: { status: 'LIVE' as any } }).catch(() => 0),
+      this.prisma.videoRoom.count({ where: { status: 'LIVE', deletedAt: null } }).catch(() => 0),
+      this.prisma.audioRoom.count({ where: { status: 'LIVE' as any, deletedAt: null } }).catch(() => 0),
       this.prisma.walletTransaction.count().catch(() => 0),
     ]);
 

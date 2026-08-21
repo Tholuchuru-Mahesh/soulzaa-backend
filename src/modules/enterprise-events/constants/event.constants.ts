@@ -17,6 +17,12 @@ export const EVENT_CATEGORIES = [
   'AGENCY_CAMPAIGN',
   'MODERATOR_CAMPAIGN',
   'PLATFORM_CHALLENGE',
+  'MEETUP',
+  'WORKSHOP',
+  'APPRECIATION',
+  'CEREMONY',
+  'TALENT_SHOW',
+  'COMMUNITY',
   'CUSTOM',
 ] as const;
 export type EventCategory = (typeof EVENT_CATEGORIES)[number];
@@ -25,6 +31,7 @@ export const EVENT_STATUSES = [
   'DRAFT',
   // Agency has submitted; awaiting Official/Admin review.
   'PENDING_APPROVAL',
+  'UNDER_REVIEW',
   'APPROVED',
   'REJECTED',
   'SCHEDULED',
@@ -67,9 +74,17 @@ export const EVENT_AUDIT_ACTIONS = [
 export type EventAuditAction = (typeof EVENT_AUDIT_ACTIONS)[number];
 
 export const EVENT_CONFIG_KEYS = {
-  MAX_PARTICIPANTS: 'event.max_participants',
-  REGISTRATION_DURATION: 'event.registration_duration',
-  DEFAULT_VISIBILITY: 'event.default_visibility',
-  REWARD_CLAIM_WINDOW: 'event.reward_claim_window',
-  AUTO_ARCHIVE_DAYS: 'event.auto_archive_days',
+  MAX_PARTICIPANTS: 'events.max_participants',
+  REGISTRATION_DURATION: 'events.registration_duration_hours',
+  DEFAULT_VISIBILITY: 'events.default_visibility',
+  REWARD_CLAIM_WINDOW: 'events.reward_claim_window_days',
+  AUTO_ARCHIVE_DAYS: 'events.auto_archive_days',
 } as const;
+
+export const DEFAULT_EVENT_CONFIGS = {
+  [EVENT_CONFIG_KEYS.MAX_PARTICIPANTS]: 1000,
+  [EVENT_CONFIG_KEYS.REGISTRATION_DURATION]: 24,
+  [EVENT_CONFIG_KEYS.DEFAULT_VISIBILITY]: 'PUBLIC',
+  [EVENT_CONFIG_KEYS.REWARD_CLAIM_WINDOW]: 30,
+  [EVENT_CONFIG_KEYS.AUTO_ARCHIVE_DAYS]: 90,
+};

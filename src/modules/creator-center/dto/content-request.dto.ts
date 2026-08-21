@@ -3,9 +3,10 @@ import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'cla
 import { ContentRequestCategory, ContentRequestStatus } from '@prisma/client';
 
 export class CreateContentRequestDto {
-  @ApiProperty({ enum: ContentRequestCategory })
+  @ApiPropertyOptional({ enum: ContentRequestCategory, default: 'OTHER' })
+  @IsOptional()
   @IsEnum(ContentRequestCategory)
-  category!: ContentRequestCategory;
+  category?: ContentRequestCategory;
 
   @ApiProperty({ description: 'Brief title for the content request' })
   @IsString()
@@ -30,10 +31,36 @@ export class CreateContentRequestDto {
   @IsOptional()
   @IsString()
   referenceId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  metadata?: Record<string, any>;
 }
 
 export class UpdateContentRequestDto {
-  @ApiProperty({ enum: ContentRequestStatus })
+  @ApiPropertyOptional({ enum: ContentRequestStatus })
+  @IsOptional()
   @IsEnum(ContentRequestStatus)
-  status!: ContentRequestStatus;
+  status?: ContentRequestStatus;
+
+  @ApiPropertyOptional({ enum: ContentRequestCategory })
+  @IsOptional()
+  @IsEnum(ContentRequestCategory)
+  category?: ContentRequestCategory;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  metadata?: Record<string, any>;
 }
