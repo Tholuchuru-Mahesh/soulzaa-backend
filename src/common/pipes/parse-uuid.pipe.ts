@@ -6,6 +6,6 @@ import { ParseUUIDPipe } from '@nestjs/common';
  */
 export class ParseUuidPipe extends ParseUUIDPipe {
   constructor() {
-    super({ version: '4' });
+    super();
   }
 }

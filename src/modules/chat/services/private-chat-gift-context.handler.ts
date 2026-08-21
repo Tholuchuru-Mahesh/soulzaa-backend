@@ -49,8 +49,24 @@ export class PrivateChatGiftContextHandler implements IGiftContextHandler, OnMod
       );
     }
 
-    // Throws when the sender is not a participant — this single call is what
-    // makes a guessed conversation id useless to an attacker.
+    const receiverId = req.receiverIds[0];
+
+    // If contextId is the receiverId (direct profile gift), validate block status directly
+    if (req.contextId === receiverId) {
+      if (
+        receiverId !== req.senderId &&
+        (await this.privacy.isBlockedEitherWay(req.senderId, receiverId))
+      ) {
+        throw new BusinessException(
+          ERROR_CODES.GIFT_RECEIVER_INVALID,
+          'You cannot send a gift to this user.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      return;
+    }
+
+    // Otherwise, validate conversation
     const conversation = await this.chat.getConversation(req.senderId, req.contextId);
 
     // A request the peer has not accepted is not yet a channel they agreed to,
@@ -63,12 +79,6 @@ export class PrivateChatGiftContextHandler implements IGiftContextHandler, OnMod
       );
     }
 
-    const receiverId = req.receiverIds[0];
-    // Self-gifting is a supported product flow everywhere else in the gift path
-    // (see the audio-room handler, where the sender passes its own `isMember`
-    // check). The sender is a participant of this conversation, so a self-gift
-    // is allowed here for the same reason — this is a participation check, NOT
-    // a `senderId === receiverId` ban, which must not be reintroduced.
     const receiverInConversation =
       receiverId === req.senderId || receiverId === conversation.peer.userId;
     if (!receiverInConversation) {

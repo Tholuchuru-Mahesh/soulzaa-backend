@@ -93,4 +93,11 @@ describe('PrivateChatGiftContextHandler', () => {
       errorCode: ERROR_CODES.GIFT_CONTEXT_INVALID,
     });
   });
+
+  it('allows direct profile gift when contextId is receiverId without checking conversation', async () => {
+    await expect(
+      handler.validate({ ...REQ, contextId: RECEIVER } as never),
+    ).resolves.toBeUndefined();
+    expect(chat.getConversation).not.toHaveBeenCalled();
+  });
 });

@@ -300,7 +300,7 @@ export class CosmeticsService implements ICosmeticsService {
   }
 
   async equipCosmetic(userId: string, cosmeticId: string): Promise<void> {
-    const userCos = await this.prisma.userCosmetic.findUnique({
+    let userCos = await this.prisma.userCosmetic.findUnique({
       where: {
         userId_cosmeticId: {
           userId,
@@ -311,6 +311,24 @@ export class CosmeticsService implements ICosmeticsService {
         cosmetic: true,
       },
     });
+
+    if (!userCos) {
+      const cosmetic = await this.repo.getById(cosmeticId);
+      if (cosmetic && (cosmetic.price <= 0 || !cosmetic.isPremium)) {
+        await this.grantCosmeticToUser({ userId, cosmeticId });
+        userCos = await this.prisma.userCosmetic.findUnique({
+          where: {
+            userId_cosmeticId: {
+              userId,
+              cosmeticId,
+            },
+          },
+          include: {
+            cosmetic: true,
+          },
+        });
+      }
+    }
 
     if (!userCos) {
       throw new BusinessException(

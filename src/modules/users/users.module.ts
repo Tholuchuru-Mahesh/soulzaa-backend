@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { UsersController } from './controllers/users.controller';
+import { GiftStatisticsListener } from './listeners/gift-statistics.listener';
 import { OfficialBadgeSyncListener } from './listeners/official-badge-sync.listener';
 import { PROFILE_SERVICE } from './interfaces/profile.interface';
 import { USERS_SERVICE } from './interfaces/users.service.interface';
@@ -34,6 +35,7 @@ import { UsersService } from './services/users.service';
     ProfileService,
     OfficialBadgeService,
     OfficialBadgeSyncListener,
+    GiftStatisticsListener,
     MediaUrlResolver,
     PostgresUserSearchProvider,
     { provide: USERS_SERVICE, useExisting: UsersService },
