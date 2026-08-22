@@ -54,6 +54,21 @@ export class RankingsService implements IRankingsService {
     } else {
       entries = await this.repo.getRangeFromRedis(key, start, stop);
       total = await this.repo.getCountFromRedis(key);
+
+      // Fallback from PostgreSQL if Redis has no records yet
+      if (entries.length === 0) {
+        const sinceDate = this.getSinceDate(period);
+        const [dbEntries, dbTotal] = await this.repo.getGiftersFromDb(sinceDate, start, limit);
+        entries = dbEntries;
+        total = dbTotal;
+
+        // Seed to Redis in background for future fast lookups
+        if (entries.length > 0) {
+          for (const e of entries) {
+            this.repo.incrementScore(key, e.member, e.score).catch(() => {});
+          }
+        }
+      }
     }
 
     if (entries.length === 0) {
@@ -110,6 +125,20 @@ export class RankingsService implements IRankingsService {
     } else {
       entries = await this.repo.getRangeFromRedis(key, start, stop);
       total = await this.repo.getCountFromRedis(key);
+
+      // Fallback from PostgreSQL if Redis has no records yet
+      if (entries.length === 0) {
+        const sinceDate = this.getSinceDate(period);
+        const [dbEntries, dbTotal] = await this.repo.getReceiversFromDb(sinceDate, start, limit);
+        entries = dbEntries;
+        total = dbTotal;
+
+        if (entries.length > 0) {
+          for (const e of entries) {
+            this.repo.incrementScore(key, e.member, e.score).catch(() => {});
+          }
+        }
+      }
     }
 
     if (entries.length === 0) {
@@ -166,6 +195,19 @@ export class RankingsService implements IRankingsService {
     } else {
       entries = await this.repo.getRangeFromRedis(key, start, stop);
       total = await this.repo.getCountFromRedis(key);
+
+      // Fallback from PostgreSQL if Redis has no records yet
+      if (entries.length === 0) {
+        const [dbEntries, dbTotal] = await this.repo.getFamiliesFromDb(start, limit);
+        entries = dbEntries;
+        total = dbTotal;
+
+        if (entries.length > 0) {
+          for (const e of entries) {
+            this.repo.incrementScore(key, e.member, e.score).catch(() => {});
+          }
+        }
+      }
     }
 
     if (entries.length === 0) {
@@ -217,6 +259,20 @@ export class RankingsService implements IRankingsService {
     } else {
       entries = await this.repo.getRangeFromRedis(key, start, stop);
       total = await this.repo.getCountFromRedis(key);
+
+      // Fallback from PostgreSQL if Redis has no records yet
+      if (entries.length === 0) {
+        const sinceDate = this.getSinceDate(period);
+        const [dbEntries, dbTotal] = await this.repo.getStreamersFromDb(sinceDate, start, limit);
+        entries = dbEntries;
+        total = dbTotal;
+
+        if (entries.length > 0) {
+          for (const e of entries) {
+            this.repo.incrementScore(key, e.member, e.score).catch(() => {});
+          }
+        }
+      }
     }
 
     if (entries.length === 0) {
@@ -318,7 +374,6 @@ export class RankingsService implements IRankingsService {
   async takeMidnightSnapshots(): Promise<void> {
     this.logger.log('Taking midnight snapshots of rankings...');
 
-    // Yesterday's date key computation
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
 
@@ -375,6 +430,20 @@ export class RankingsService implements IRankingsService {
 
   // ---- Internal helper methods ----
 
+  private getSinceDate(period: RankingPeriod): Date | null {
+    const now = new Date();
+    if (period === RankingPeriod.DAILY) {
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    } else if (period === RankingPeriod.WEEKLY) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 7);
+      return d;
+    } else if (period === RankingPeriod.MONTHLY) {
+      return new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    return null;
+  }
+
   private resolveRankingKey(
     type: 'gifters' | 'receivers' | 'families' | 'streamers',
     period: RankingPeriod,
@@ -422,28 +491,6 @@ export class RankingsService implements IRankingsService {
     await Promise.all(keys.map((k) => this.repo.incrementScore(k, member, delta)));
   }
 
-  /**
-   * Legacy key derivation, preserved exactly.
-   *
-   * `'local'` is passed deliberately: all three legacy keys — daily, weekly and
-   * monthly — derive from the host's local calendar date. `dateKeyFor` defaults
-   * to `'utc'`, so omitting `'local'` here would silently move the day boundary
-   * under ladders already accumulating scores and split one day's data across
-   * two Redis keys on the deploy. VR-13's own ladders are UTC throughout; this
-   * seam is not the place to correct history.
-   */
-  /**
-   * Drops platform-staff accounts from a leaderboard page.
-   *
-   * Applied to the entry list *before* formatting so `index` renumbers the
-   * ranks and removal leaves no gap. Rankings hydrate straight from the users
-   * table rather than through the card resolver, so this is their own filter.
-   *
-   * A safety net rather than the primary defence: a staff account should never
-   * be scored in the first place. That also means `total` may over-count by the
-   * number dropped — acceptable for a case that should not arise, and far
-   * better than rendering the account.
-   */
   private dropHiddenAccounts<T extends { member: string }>(
     entries: T[],
     details: Array<{ id: string; isHiddenAccount?: boolean }>,

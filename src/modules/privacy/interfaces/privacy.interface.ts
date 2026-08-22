@@ -38,6 +38,9 @@ export interface BlockedUserView {
   userId: string;
   reason: string | null;
   createdAt: Date;
+  username?: string;
+  fullName?: string | null;
+  avatarKey?: string | null;
 }
 
 export interface IPrivacyService {

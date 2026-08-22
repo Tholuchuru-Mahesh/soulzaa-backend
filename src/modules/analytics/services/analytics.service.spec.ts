@@ -47,7 +47,15 @@ describe('AnalyticsService', () => {
       getAverageVisitorDuration: jest.fn().mockResolvedValue(60),
     };
 
-    service = new AnalyticsService(repo as unknown as AnalyticsRepository);
+    const prisma = {
+      giftTransaction: { aggregate: jest.fn().mockResolvedValue({ _sum: { totalCoinValue: 0n }, _count: 0 }), count: jest.fn().mockResolvedValue(0) },
+      roomVisitor: { aggregate: jest.fn().mockResolvedValue({ _count: 0 }), count: jest.fn().mockResolvedValue(0) },
+      speakerSession: { aggregate: jest.fn().mockResolvedValue({ _sum: { speakingSeconds: 0 } }) },
+      audioRoom: { findUnique: jest.fn().mockResolvedValue(null) },
+      videoRoom: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+
+    service = new AnalyticsService(repo as unknown as AnalyticsRepository, prisma as any);
   });
 
   describe('getRoomActivity', () => {

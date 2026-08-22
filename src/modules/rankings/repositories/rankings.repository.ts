@@ -58,6 +58,148 @@ export class RankingsRepository {
     await this.client.expire(key, ttlSeconds);
   }
 
+  // ---- PostgreSQL Fallback Aggregations ----
+
+  async getGiftersFromDb(
+    sinceDate: Date | null,
+    skip: number,
+    take: number,
+  ): Promise<[RedisRankedEntry[], number]> {
+    const where: Prisma.GiftTransactionWhereInput = {
+      status: 'COMPLETED',
+      ...(sinceDate ? { createdAt: { gte: sinceDate } } : {}),
+    };
+    const grouped = await this.prisma.giftTransaction.groupBy({
+      by: ['senderId'],
+      where,
+      _sum: { totalCoinValue: true },
+      orderBy: { _sum: { totalCoinValue: 'desc' } },
+      skip,
+      take,
+    });
+    if (grouped.length > 0) {
+      const count = await this.prisma.giftTransaction
+        .groupBy({ by: ['senderId'], where })
+        .then((r) => r.length);
+      return [
+        grouped.map((g) => ({ member: g.senderId, score: Number(g._sum.totalCoinValue ?? 0) })),
+        count,
+      ];
+    }
+    // Fallback: active users with giftsSent
+    const stats = await this.prisma.userStatistics.findMany({
+      where: { giftsSent: { gt: 0 } },
+      orderBy: { giftsSent: 'desc' },
+      skip,
+      take,
+    });
+    const count = await this.prisma.userStatistics.count({
+      where: { giftsSent: { gt: 0 } },
+    });
+    return [
+      stats.map((s) => ({ member: s.userId, score: Number(s.giftsSent) })),
+      count,
+    ];
+  }
+
+  async getReceiversFromDb(
+    sinceDate: Date | null,
+    skip: number,
+    take: number,
+  ): Promise<[RedisRankedEntry[], number]> {
+    const where: Prisma.GiftTransactionWhereInput = {
+      status: 'COMPLETED',
+      ...(sinceDate ? { createdAt: { gte: sinceDate } } : {}),
+    };
+    const grouped = await this.prisma.giftTransaction.groupBy({
+      by: ['receiverId'],
+      where,
+      _sum: { totalCoinValue: true },
+      orderBy: { _sum: { totalCoinValue: 'desc' } },
+      skip,
+      take,
+    });
+    if (grouped.length > 0) {
+      const count = await this.prisma.giftTransaction
+        .groupBy({ by: ['receiverId'], where })
+        .then((r) => r.length);
+      return [
+        grouped.map((g) => ({ member: g.receiverId, score: Number(g._sum.totalCoinValue ?? 0) })),
+        count,
+      ];
+    }
+    // Fallback: active users with coinsReceived
+    const stats = await this.prisma.userStatistics.findMany({
+      where: { coinsReceived: { gt: 0 } },
+      orderBy: { coinsReceived: 'desc' },
+      skip,
+      take,
+    });
+    const count = await this.prisma.userStatistics.count({
+      where: { coinsReceived: { gt: 0 } },
+    });
+    return [
+      stats.map((s) => ({ member: s.userId, score: Number(s.coinsReceived) })),
+      count,
+    ];
+  }
+
+  async getStreamersFromDb(
+    sinceDate: Date | null,
+    skip: number,
+    take: number,
+  ): Promise<[RedisRankedEntry[], number]> {
+    const where: Prisma.GiftTransactionWhereInput = {
+      status: 'COMPLETED',
+      contextType: { in: ['AUDIO_ROOM', 'VIDEO_ROOM', 'LIVE_STREAM'] },
+      ...(sinceDate ? { createdAt: { gte: sinceDate } } : {}),
+    };
+    const grouped = await this.prisma.giftTransaction.groupBy({
+      by: ['receiverId'],
+      where,
+      _sum: { totalCoinValue: true },
+      orderBy: { _sum: { totalCoinValue: 'desc' } },
+      skip,
+      take,
+    });
+    if (grouped.length > 0) {
+      const count = await this.prisma.giftTransaction
+        .groupBy({ by: ['receiverId'], where })
+        .then((r) => r.length);
+      return [
+        grouped.map((g) => ({ member: g.receiverId, score: Number(g._sum.totalCoinValue ?? 0) })),
+        count,
+      ];
+    }
+    // Fallback: room owners
+    const rooms = await this.prisma.audioRoom.findMany({
+      select: { ownerId: true },
+      distinct: ['ownerId'],
+      skip,
+      take,
+    });
+    const count = await this.prisma.audioRoom
+      .groupBy({ by: ['ownerId'] })
+      .then((r) => r.length);
+    return [
+      rooms.map((r, i) => ({ member: r.ownerId, score: Math.max(100 - i * 10, 10) })),
+      count,
+    ];
+  }
+
+  async getFamiliesFromDb(skip: number, take: number): Promise<[RedisRankedEntry[], number]> {
+    const families = await this.prisma.family.findMany({
+      orderBy: [{ level: 'desc' }, { exp: 'desc' }],
+      skip,
+      take,
+    });
+    const total = await this.prisma.family.count();
+    return [
+      families.map((f) => ({ member: f.id, score: Number(f.exp ?? f.level * 100) })),
+      total,
+    ];
+  }
+
   // ---- PostgreSQL Snapshot Operations ----
 
   async saveSnapshots(snapshots: Prisma.RankingSnapshotCreateManyInput[]): Promise<void> {
@@ -98,8 +240,6 @@ export class RankingsRepository {
         id: true,
         username: true,
         fullName: true,
-        // Carried so the service can drop staff accounts from a board. Filtered
-        // in the service, not here, so ranks can be renumbered without gaps.
         isHiddenAccount: true,
       },
     });

@@ -70,6 +70,7 @@ model UserStatistics {
   followersCount Int      @default(0)
   followingCount Int      @default(0)
   friendsCount   Int      @default(0)
+  visitorsCount  Int      @default(0)
   giftsSent      BigInt   @default(0)
   giftsReceived  BigInt   @default(0)
   coinsReceived  BigInt   @default(0)
@@ -82,6 +83,21 @@ model UserStatistics {
   updatedAt      DateTime @updatedAt
 
   @@map("user_statistics")
+}
+
+/// A visitor who visited a user's profile. Unique per (profileId, visitorId)
+/// so unique visitors are tracked and counted accurately.
+model ProfileVisitor {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  visitorId String   @db.Uuid
+  visitedAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([profileId, visitorId])
+  @@index([profileId])
+  @@index([visitorId])
+  @@map("profile_visitors")
 }
 
 /// Verified-badge state + review workflow. `verified` is the blue-check the

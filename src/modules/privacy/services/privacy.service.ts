@@ -143,7 +143,27 @@ export class PrivacyService implements IPrivacyService {
 
   async listBlocked(blockerId: string): Promise<BlockedUserView[]> {
     const rows = await this.repo.listBlocked(blockerId);
-    return rows.map((r) => ({ userId: r.blockedId, reason: r.reason, createdAt: r.createdAt }));
+    if (rows.length === 0) return [];
+
+    const blockedIds = rows.map((r) => r.blockedId);
+    const [details, profiles] = await Promise.all([
+      this.repo.getUsersDetails(blockedIds),
+      this.repo.getUserProfiles(blockedIds),
+    ]);
+
+    return rows.map((r) => {
+      const detail = details.find((d) => d.id === r.blockedId);
+      const profile = profiles.find((p) => p.userId === r.blockedId);
+
+      return {
+        userId: r.blockedId,
+        reason: r.reason,
+        createdAt: r.createdAt,
+        username: detail?.username ?? 'Unknown',
+        fullName: detail?.fullName ?? null,
+        avatarKey: profile?.avatarKey ?? null,
+      };
+    });
   }
 
   async isBlocked(blockerId: string, blockedId: string): Promise<boolean> {

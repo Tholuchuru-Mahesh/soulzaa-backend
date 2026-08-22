@@ -44,6 +44,7 @@ const emptyStats = {
   followersCount: 0,
   followingCount: 0,
   friendsCount: 0,
+  visitorsCount: 0,
   giftsSent: 0n,
   giftsReceived: 0n,
   coinsReceived: 0n,
@@ -148,6 +149,20 @@ describe('ProfileService', () => {
       friendship: {
         findUnique: jest.fn().mockResolvedValue(null),
       },
+      profileVisitor: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      userStatistics: {
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+      $transaction: jest.fn(async (cb: any) => {
+        if (typeof cb === 'function') {
+          return cb(prisma);
+        }
+        return Promise.all(cb);
+      }),
     } as unknown as PrismaService;
     // `resolveEquippedFrameUrl` reaches through the repository's own prisma
     // handle (`this.users['prisma']`), not the service's — mock it there.
@@ -217,6 +232,7 @@ describe('ProfileService', () => {
           followersCount: 0,
           followingCount: 0,
           friendsCount: 0,
+          visitorsCount: 0,
           giftsSent: 0,
           giftsReceived: 0,
           coinsReceived: 0,
@@ -553,6 +569,47 @@ describe('ProfileService', () => {
 
       expect((await svc.resolvePublicIdentities([])).size).toBe(0);
       expect(users.findByIds).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordProfileVisit', () => {
+    it('creates profile visitor record and increments statistics on first visit', async () => {
+      (prisma as any).profileVisitor.findUnique.mockResolvedValue(null);
+      await service.recordProfileVisit('user-b', 'user-a');
+
+      expect((prisma as any).profileVisitor.create).toHaveBeenCalledWith({
+        data: {
+          profileId: 'user-b',
+          visitorId: 'user-a',
+        },
+      });
+      expect((prisma as any).userStatistics.upsert).toHaveBeenCalledWith({
+        where: { userId: 'user-b' },
+        create: { userId: 'user-b', visitorsCount: 1 },
+        update: { visitorsCount: { increment: 1 } },
+      });
+      expect(cache.del).toHaveBeenCalledWith(expect.stringContaining('user-b'));
+    });
+
+    it('updates visitedAt timestamp on repeat visit without incrementing count', async () => {
+      (prisma as any).profileVisitor.findUnique.mockResolvedValue({
+        id: 'pv-1',
+        profileId: 'user-b',
+        visitorId: 'user-a',
+      });
+      await service.recordProfileVisit('user-b', 'user-a');
+
+      expect((prisma as any).profileVisitor.update).toHaveBeenCalledWith({
+        where: { id: 'pv-1' },
+        data: { visitedAt: expect.any(Date) },
+      });
+      expect((prisma as any).profileVisitor.create).not.toHaveBeenCalled();
+      expect((prisma as any).userStatistics.upsert).not.toHaveBeenCalled();
+    });
+
+    it('ignores visit when visitor is the profile owner', async () => {
+      await service.recordProfileVisit('user-a', 'user-a');
+      expect((prisma as any).profileVisitor.findUnique).not.toHaveBeenCalled();
     });
   });
 });

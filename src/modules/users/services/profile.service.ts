@@ -191,6 +191,9 @@ export class ProfileService implements IProfileService {
     if (!view) return null;
 
     if (viewerId && viewerId !== user.id) {
+      // Track profile visit asynchronously without delaying view resolution
+      this.recordProfileVisit(user.id, viewerId).catch(() => {});
+
       try {
         const [uA, uB] = viewerId < user.id ? [viewerId, user.id] : [user.id, viewerId];
         const [following, follower, friendship] = await Promise.all([
@@ -935,6 +938,7 @@ export class ProfileService implements IProfileService {
       followersCount: s.followersCount,
       followingCount: s.followingCount,
       friendsCount: s.friendsCount,
+      visitorsCount: (s as any).visitorsCount ?? 0,
       giftsSent: Number(s.giftsSent),
       giftsReceived: Number(s.giftsReceived),
       coinsReceived: Number(s.coinsReceived),
@@ -945,6 +949,51 @@ export class ProfileService implements IProfileService {
       level: s.level,
       vipLevel: s.vipLevel,
     };
+  }
+
+  /**
+   * Records a visit to a user's profile by another user.
+   * If this is a new visitor, creates the record and atomically increments visitorsCount.
+   * If they previously visited, refreshes the visitedAt timestamp.
+   */
+  async recordProfileVisit(profileId: string, visitorId: string): Promise<void> {
+    if (!profileId || !visitorId || profileId === visitorId) return;
+    try {
+      if (!(this.prisma as any).profileVisitor) return;
+
+      const existing = await (this.prisma as any).profileVisitor.findUnique({
+        where: {
+          profileId_visitorId: {
+            profileId,
+            visitorId,
+          },
+        },
+      });
+
+      if (!existing) {
+        await this.prisma.$transaction(async (tx) => {
+          await (tx as any).profileVisitor.create({
+            data: {
+              profileId,
+              visitorId,
+            },
+          });
+          await (tx as any).userStatistics.upsert({
+            where: { userId: profileId },
+            create: { userId: profileId, visitorsCount: 1 },
+            update: { visitorsCount: { increment: 1 } },
+          });
+        });
+        await this.invalidate(profileId);
+      } else {
+        await (this.prisma as any).profileVisitor.update({
+          where: { id: existing.id },
+          data: { visitedAt: new Date() },
+        });
+      }
+    } catch {
+      // Tolerant fallback so visitor tracking errors never fail the profile read
+    }
   }
 
   private toVerificationView(v: UserVerification): VerificationView {

@@ -15,6 +15,7 @@ export type StatisticField =
   | 'followersCount'
   | 'followingCount'
   | 'friendsCount'
+  | 'visitorsCount'
   | 'giftsSent'
   | 'giftsReceived'
   | 'coinsReceived'
@@ -27,6 +28,7 @@ export interface StatisticsView {
   followersCount: number;
   followingCount: number;
   friendsCount: number;
+  visitorsCount: number;
   giftsSent: number;
   giftsReceived: number;
   coinsReceived: number;

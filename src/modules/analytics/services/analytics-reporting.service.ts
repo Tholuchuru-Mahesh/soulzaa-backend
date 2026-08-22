@@ -76,9 +76,33 @@ export class AnalyticsReportingService {
       creatorCoins += r.creatorCoins;
     }
 
+    if (giftCoins === 0n) {
+      const dbGifts = await this.prisma.giftTransaction.aggregate({
+        where: { contextId: roomId, status: GiftTxnStatus.COMPLETED },
+        _sum: { totalCoinValue: true, creatorEarnings: true },
+      });
+      giftCoins = dbGifts._sum.totalCoinValue ?? 0n;
+      creatorCoins = dbGifts._sum.creatorEarnings ?? 0n;
+    }
+
+    let activityView = activity ? this.roomActivityView(activity) : null;
+    if (!activityView) {
+      activityView = {
+        roomId,
+        peakParticipants: Math.max(live.peakParticipants, 1),
+        totalJoined: Math.max(live.joins, live.uniqueVisitors),
+        totalGifts: live.giftCount,
+        totalGiftCoins: (giftCoins + BigInt(live.giftCoins)).toString(),
+        totalSpeakingMinutes: Math.round(live.speakingSeconds / 60),
+        durationSeconds: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
+
     return {
       roomId,
-      activity: activity ? this.roomActivityView(activity) : null,
+      activity: activityView,
       today: {
         dateKey,
         joins: live.joins,
@@ -113,6 +137,8 @@ export class AnalyticsReportingService {
       treasurePkSums,
       rangeGifts,
       rangeLedger,
+      audioRooms,
+      videoRooms,
     ] = await Promise.all([
       this.counters.readCreator(userId, todayKey),
       this.repo.listCreatorDailyStats(userId, dateKeyDaysAgo(days)),
@@ -154,6 +180,14 @@ export class AnalyticsReportingService {
           createdAt: true,
           amount: true,
         },
+      }),
+      this.prisma.audioRoom.findMany({
+        where: { ownerId: userId, deletedAt: null },
+        select: { id: true, createdAt: true },
+      }),
+      this.prisma.videoRoom.findMany({
+        where: { ownerId: userId, deletedAt: null },
+        select: { id: true, createdAt: true },
       }),
     ]);
 
@@ -198,6 +232,22 @@ export class AnalyticsReportingService {
       dbEarningsByDate.set(key, existing);
     }
 
+    // Aggregate DB rooms hosted by dateKey and total
+    const dbRoomsByDate = new Map<string, number>();
+    for (const r of audioRooms) {
+      const key = dateKeyOf(r.createdAt);
+      dbRoomsByDate.set(key, (dbRoomsByDate.get(key) ?? 0) + 1);
+    }
+    for (const r of videoRooms) {
+      const key = dateKeyOf(r.createdAt);
+      dbRoomsByDate.set(key, (dbRoomsByDate.get(key) ?? 0) + 1);
+    }
+    const totalDbRooms = audioRooms.length + videoRooms.length;
+    const totalRoomsHosted = Math.max(
+      totalDbRooms,
+      (lifetimeStats.roomsHosted ?? 0) + live.roomsHosted,
+    );
+
     // Build complete dailySeries map for the requested days (ordered oldest -> newest)
     const map = new Map(seriesRows.map((s) => [s.dateKey, s]));
     const formattedSeries: CreatorDailyStatView[] = [];
@@ -206,6 +256,7 @@ export class AnalyticsReportingService {
       const key = dateKeyDaysAgo(i);
       const existing = map.get(key);
       const dbTxn = dbEarningsByDate.get(key);
+      const dbRooms = dbRoomsByDate.get(key) ?? 0;
 
       if (key === todayKey) {
         const liveEarn = live.creatorEarnings;
@@ -227,13 +278,18 @@ export class AnalyticsReportingService {
           dbTxn?.creatorEarnings ?? 0,
           existing ? Number(existing.creatorEarnings) : 0,
         );
+        const roomsRec = Math.max(
+          live.roomsHosted,
+          dbRooms,
+          existing?.roomsHosted ?? 0,
+        );
 
         formattedSeries.push({
           dateKey: key,
           giftsReceivedCount: giftsCount,
           giftCoinsReceived: coinsRec.toString(),
           creatorEarnings: earningsRec.toString(),
-          roomsHosted: (existing?.roomsHosted ?? 0) + live.roomsHosted,
+          roomsHosted: roomsRec,
           speakingSeconds: (
             (existing ? Number(existing.speakingSeconds) : 0) + live.speakingSeconds
           ).toString(),
@@ -246,23 +302,24 @@ export class AnalyticsReportingService {
           dbTxn?.giftCoinsReceived ?? 0,
         );
         const earningsRec = Math.max(Number(existing.creatorEarnings), dbTxn?.creatorEarnings ?? 0);
+        const roomsRec = Math.max(existing.roomsHosted, dbRooms);
 
         formattedSeries.push({
           dateKey: key,
           giftsReceivedCount: giftsCount,
           giftCoinsReceived: coinsRec.toString(),
           creatorEarnings: earningsRec.toString(),
-          roomsHosted: existing.roomsHosted,
+          roomsHosted: roomsRec,
           speakingSeconds: existing.speakingSeconds.toString(),
           engagementScore: existing.engagementScore,
         });
-      } else if (dbTxn) {
+      } else if (dbTxn || dbRooms > 0) {
         formattedSeries.push({
           dateKey: key,
-          giftsReceivedCount: dbTxn.giftsCount,
-          giftCoinsReceived: dbTxn.giftCoinsReceived.toString(),
-          creatorEarnings: dbTxn.creatorEarnings.toString(),
-          roomsHosted: 0,
+          giftsReceivedCount: dbTxn?.giftsCount ?? 0,
+          giftCoinsReceived: (dbTxn?.giftCoinsReceived ?? 0).toString(),
+          creatorEarnings: (dbTxn?.creatorEarnings ?? 0).toString(),
+          roomsHosted: dbRooms,
           speakingSeconds: '0',
           engagementScore: 0,
         });
@@ -281,6 +338,9 @@ export class AnalyticsReportingService {
 
     const todayItem = formattedSeries.find((s) => s.dateKey === todayKey);
     const todayEarnings = todayItem ? Number(todayItem.creatorEarnings) : live.creatorEarnings;
+    const todayRooms = todayItem
+      ? todayItem.roomsHosted
+      : Math.max(live.roomsHosted, dbRoomsByDate.get(todayKey) ?? 0);
 
     return {
       userId,
@@ -289,7 +349,7 @@ export class AnalyticsReportingService {
         giftsReceivedCount: todayItem ? todayItem.giftsReceivedCount : live.giftsReceivedCount,
         giftCoinsReceived: todayItem ? Number(todayItem.giftCoinsReceived) : live.giftCoinsReceived,
         creatorEarnings: todayEarnings,
-        roomsHosted: todayItem ? todayItem.roomsHosted : live.roomsHosted,
+        roomsHosted: todayRooms,
         speakingSeconds: todayItem ? Number(todayItem.speakingSeconds) : live.speakingSeconds,
         engagementScore: this.rollup.creatorEngagement(live),
       },
@@ -298,7 +358,7 @@ export class AnalyticsReportingService {
         giftCoinsReceived: (giftLifetime._sum.totalCoinValue ?? 0n).toString(),
         // Wallet Earnings = Creator Earnings Lifetime (authoritative exact lifetime total)
         creatorEarnings: lifetimeEarningsTotal.toString(),
-        roomsHosted: (lifetimeStats.roomsHosted ?? 0) + live.roomsHosted,
+        roomsHosted: totalRoomsHosted,
         speakingSeconds: (
           (lifetimeStats.speakingSeconds ?? 0n) + BigInt(live.speakingSeconds)
         ).toString(),
@@ -315,6 +375,22 @@ export class AnalyticsReportingService {
   /** Owner + room managers + platform admins may read a room's analytics. */
   async assertRoomManager(actor: AnalyticsActor, roomId: string): Promise<void> {
     if (actor.roles.some((r) => (ANALYTICS_ADMIN_ROLES as readonly string[]).includes(r))) return;
+
+    const [audioRoom, videoRoom] = await Promise.all([
+      this.prisma.audioRoom.findUnique({
+        where: { id: roomId },
+        select: { ownerId: true },
+      }),
+      this.prisma.videoRoom.findUnique({
+        where: { id: roomId },
+        select: { ownerId: true },
+      }),
+    ]);
+
+    if (audioRoom?.ownerId === actor.id || videoRoom?.ownerId === actor.id) {
+      return;
+    }
+
     const role = await this.rooms.getEffectiveRole(roomId, actor.id);
     if (role && ANALYTICS_ROOM_MANAGER_ROLES.includes(role as RoomMemberRole)) return;
     throw new BusinessException(

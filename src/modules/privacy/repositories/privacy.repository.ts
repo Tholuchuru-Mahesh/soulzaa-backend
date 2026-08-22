@@ -4,8 +4,7 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 
 /**
  * Prisma access for the privacy module: privacy_settings, blocked_users and
- * user_preferences. Owned by the privacy module — no other module touches
- * these tables directly. Default rows are lazily created on first read.
+ * user_preferences tables.
  */
 @Injectable()
 export class PrivacyRepository {
@@ -13,12 +12,11 @@ export class PrivacyRepository {
 
   // ---- privacy_settings ----
 
-  getSettings(userId: string): Promise<PrivacySettings | null> {
+  findSettings(userId: string): Promise<PrivacySettings | null> {
     return this.prisma.privacySettings.findUnique({ where: { userId } });
   }
 
-  /** Get the settings row, creating defaults on first access. */
-  ensureSettings(userId: string): Promise<PrivacySettings> {
+  async ensureSettings(userId: string): Promise<PrivacySettings> {
     return this.prisma.privacySettings.upsert({
       where: { userId },
       create: { userId },
@@ -32,14 +30,18 @@ export class PrivacyRepository {
   ): Promise<PrivacySettings> {
     return this.prisma.privacySettings.upsert({
       where: { userId },
-      create: { ...(data as Prisma.PrivacySettingsCreateInput), userId },
+      create: { userId, ...(data as any) },
       update: data,
     });
   }
 
   // ---- user_preferences ----
 
-  ensurePreferences(userId: string): Promise<UserPreferences> {
+  findPreferences(userId: string): Promise<UserPreferences | null> {
+    return this.prisma.userPreferences.findUnique({ where: { userId } });
+  }
+
+  async ensurePreferences(userId: string): Promise<UserPreferences> {
     return this.prisma.userPreferences.upsert({
       where: { userId },
       create: { userId },
@@ -53,7 +55,7 @@ export class PrivacyRepository {
   ): Promise<UserPreferences> {
     return this.prisma.userPreferences.upsert({
       where: { userId },
-      create: { ...(data as Prisma.UserPreferencesCreateInput), userId },
+      create: { userId, ...(data as any) },
       update: data,
     });
   }
@@ -80,6 +82,22 @@ export class PrivacyRepository {
     return this.prisma.blockedUser.findMany({
       where: { blockerId },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getUsersDetails(userIds: string[]) {
+    if (userIds.length === 0) return [];
+    return this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, username: true, fullName: true },
+    });
+  }
+
+  async getUserProfiles(userIds: string[]) {
+    if (userIds.length === 0) return [];
+    return this.prisma.userProfile.findMany({
+      where: { userId: { in: userIds } },
+      select: { userId: true, avatarKey: true },
     });
   }
 

@@ -35,6 +35,8 @@ describe('PrivacyService', () => {
       | 'deleteBlock'
       | 'blockExists'
       | 'listBlocked'
+      | 'getUsersDetails'
+      | 'getUserProfiles'
       | 'blockRelationshipIds'
     >
   >;
@@ -53,6 +55,8 @@ describe('PrivacyService', () => {
       deleteBlock: jest.fn().mockResolvedValue({ count: 1 }),
       blockExists: jest.fn().mockResolvedValue(null),
       listBlocked: jest.fn().mockResolvedValue([]),
+      getUsersDetails: jest.fn().mockResolvedValue([]),
+      getUserProfiles: jest.fn().mockResolvedValue([]),
       blockRelationshipIds: jest.fn().mockResolvedValue([]),
     };
     cache = {
