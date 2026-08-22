@@ -1790,6 +1790,11 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'role_request.view',
     'role_request.review',
     'role_request.decide',
+    // An Official escalating a support ticket hands the case to the Admin
+    // portal, so an Admin must be able to reach the same queue the Official
+    // reviews it in — otherwise escalation drops the ticket into a queue
+    // nobody can open.
+    'support_ticket.review',
     'user.role.remove',
     'user.role.update',
     'user.status.activate',

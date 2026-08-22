@@ -43,6 +43,7 @@ import { WorkforceScopeService } from 'src/modules/mobile-workforce/services/wor
 import { ModeratorShiftService } from 'src/modules/moderator-shift/services/moderator-shift.service';
 import { ModeratorWarningService } from 'src/modules/moderator-warning/services/moderator-warning.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
 import type { JoinContext } from './services/video-room-member.service';
 import { VideoRoomMemberService } from './services/video-room-member.service';
 import { VideoRoomModerationQueryService } from './services/video-room-moderation-query.service';
@@ -500,6 +501,9 @@ describe('VR-16 moderation engine — DI graph (video-rooms.module.ts provider w
         // 4th constructor arg — a DI-graph stub is enough since this suite
         // only asserts the graph resolves, not ban behavior itself.
         { provide: PlatformBanService, useValue: {} },
+        // The controller gained a Broad Ban dependency; these cases exercise
+        // the room-moderation routes, not broad bans.
+        { provide: BroadBanService, useValue: {} },
       ],
     }).compile();
   });

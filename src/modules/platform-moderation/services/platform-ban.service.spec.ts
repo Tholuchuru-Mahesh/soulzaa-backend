@@ -275,7 +275,9 @@ describe('PlatformBanService', () => {
     });
 
     it('returns the reason and expiry when a ban is active', async () => {
-      redis.get.mockResolvedValue(JSON.stringify({ reason: 'harassment', expiresAt: '2026-08-19T00:00:00.000Z' }));
+      redis.get.mockResolvedValue(
+        JSON.stringify({ reason: 'harassment', expiresAt: '2026-08-19T00:00:00.000Z' }),
+      );
       expect(await service.getActiveBan('target-1')).toEqual({
         reason: 'harassment',
         expiresAt: '2026-08-19T00:00:00.000Z',

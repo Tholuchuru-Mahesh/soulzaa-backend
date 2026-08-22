@@ -1,6 +1,18 @@
 // src/modules/platform-moderation/services/broad-ban.service.ts
-import { BadRequestException, ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
-import { BroadBan, PlatformRoomType, RoomStatus, VideoRoomStatus, LiveStreamStatus } from '@prisma/client';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import {
+  BroadBan,
+  PlatformRoomType,
+  RoomStatus,
+  VideoRoomStatus,
+  LiveStreamStatus,
+} from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { MODERATION_SENDER_NAME } from 'src/common/constants/moderation-sender.constant';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
@@ -102,9 +114,7 @@ export class BroadBanService {
     const raw = await this.redis.get(broadBanCreationRedisKey(ownerId));
     if (!raw) return;
     const { reason, expiresAt } = JSON.parse(raw) as { reason: string; expiresAt: string };
-    throw new ForbiddenException(
-      `You cannot create a new Broad until ${expiresAt} for: ${reason}`,
-    );
+    throw new ForbiddenException(`You cannot create a new Broad until ${expiresAt} for: ${reason}`);
   }
 
   async liftBroadBan(adminId: string, banId: string): Promise<BroadBan> {
@@ -145,7 +155,11 @@ export class BroadBanService {
     const ttlSeconds = Math.max(1, Math.floor((newExpiresAt.getTime() - Date.now()) / 1000));
     await this.redis.set(
       broadBanCreationRedisKey(ban.ownerId),
-      JSON.stringify({ reason: ban.reason, expiresAt: newExpiresAt.toISOString(), roomId: ban.roomId }),
+      JSON.stringify({
+        reason: ban.reason,
+        expiresAt: newExpiresAt.toISOString(),
+        roomId: ban.roomId,
+      }),
       'EX',
       ttlSeconds,
     );
@@ -232,14 +246,18 @@ export class BroadBanService {
           data: { status: RoomStatus.OFFLINE, endedAt: new Date() },
         });
         this.sockets.emitToNamespaceRoom('/audio-room', roomId, 'broad-ban.room-banned', payload);
-        await this.bus.publish(new RoomEndedEvent({ roomId, actorId: ownerId, ownerId, durationSeconds }));
+        await this.bus.publish(
+          new RoomEndedEvent({ roomId, actorId: ownerId, ownerId, durationSeconds }),
+        );
       } else if (roomType === 'VIDEO_ROOM') {
         await this.prisma.videoRoom.update({
           where: { id: roomId },
           data: { status: VideoRoomStatus.OFFLINE, endedAt: new Date() },
         });
         this.sockets.emitToNamespaceRoom('/video-room', roomId, 'broad-ban.room-banned', payload);
-        await this.bus.publish(new RoomClosedEvent({ roomId, actorId: ownerId, ownerId, durationSeconds }));
+        await this.bus.publish(
+          new RoomClosedEvent({ roomId, actorId: ownerId, ownerId, durationSeconds }),
+        );
       } else {
         await this.prisma.liveStream.update({
           where: { id: roomId },

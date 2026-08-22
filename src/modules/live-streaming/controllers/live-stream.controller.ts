@@ -104,7 +104,10 @@ export class LiveStreamController {
   @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('live.stream.moderate')
-  @ApiOperation({ summary: 'Ban this Broad (live stream): end it now, evict everyone, block the owner from creating a new one for 24 hours' })
+  @ApiOperation({
+    summary:
+      'Ban this Broad (live stream): end it now, evict everyone, block the owner from creating a new one for 24 hours',
+  })
   async broadBan(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) streamId: string,

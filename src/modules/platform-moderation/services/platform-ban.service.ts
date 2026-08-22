@@ -288,7 +288,11 @@ export class PlatformBanService {
     return lifted;
   }
 
-  async extendBan(adminId: string, banId: string, additionalHours: number): Promise<PlatformUserBan> {
+  async extendBan(
+    adminId: string,
+    banId: string,
+    additionalHours: number,
+  ): Promise<PlatformUserBan> {
     const ban = await this.repo.findById(banId);
     if (!ban) {
       throw new BadRequestException('Ban not found.');

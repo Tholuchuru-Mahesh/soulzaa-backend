@@ -96,7 +96,10 @@ export class ModerationController {
   @Post(':id/moderation/broad-ban')
   @UseGuards(ShiftActiveGuard, SuspendedGuard)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Ban this Broad (room): end it now, evict everyone, block the owner from creating a new one for 24 hours' })
+  @ApiOperation({
+    summary:
+      'Ban this Broad (room): end it now, evict everyone, block the owner from creating a new one for 24 hours',
+  })
   async broadBan(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) roomId: string,

@@ -33,7 +33,9 @@ describe('BroadBanService', () => {
         expiresAt: new Date('2026-08-19T00:00:00.000Z'),
       }),
       lift: jest.fn().mockResolvedValue({ id: 'bb-1', status: 'LIFTED' }),
-      extend: jest.fn().mockResolvedValue({ id: 'bb-1', expiresAt: new Date('2026-08-20T00:00:00.000Z') }),
+      extend: jest
+        .fn()
+        .mockResolvedValue({ id: 'bb-1', expiresAt: new Date('2026-08-20T00:00:00.000Z') }),
       list: jest.fn().mockResolvedValue([[], 0]),
     };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -45,7 +47,10 @@ describe('BroadBanService', () => {
     sockets = { emitToNamespaceRoom: jest.fn(), emitToUserEverywhere: jest.fn() };
     prisma = {
       audioRoom: {
-        findUnique: jest.fn().mockResolvedValue({ ownerId: 'owner-1', createdAt: new Date('2026-08-18T22:00:00.000Z') }),
+        findUnique: jest.fn().mockResolvedValue({
+          ownerId: 'owner-1',
+          createdAt: new Date('2026-08-18T22:00:00.000Z'),
+        }),
         update: jest.fn().mockResolvedValue({}),
       },
       videoRoom: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
@@ -65,7 +70,12 @@ describe('BroadBanService', () => {
   describe('banBroad', () => {
     it('rejects an empty reason', async () => {
       await expect(
-        service.banBroad({ moderatorId: 'mod-1', roomId: 'room-1', roomType: 'AUDIO_ROOM', reason: '   ' }),
+        service.banBroad({
+          moderatorId: 'mod-1',
+          roomId: 'room-1',
+          roomType: 'AUDIO_ROOM',
+          reason: '   ',
+        }),
       ).rejects.toThrow('reason');
       expect(repo.create).not.toHaveBeenCalled();
     });
@@ -73,7 +83,12 @@ describe('BroadBanService', () => {
     it('rejects a room that no longer exists', async () => {
       prisma.audioRoom.findUnique.mockResolvedValue(null);
       await expect(
-        service.banBroad({ moderatorId: 'mod-1', roomId: 'room-1', roomType: 'AUDIO_ROOM', reason: 'abuse' }),
+        service.banBroad({
+          moderatorId: 'mod-1',
+          roomId: 'room-1',
+          roomType: 'AUDIO_ROOM',
+          reason: 'abuse',
+        }),
       ).rejects.toThrow('not found');
     });
 
@@ -114,7 +129,9 @@ describe('BroadBanService', () => {
         'broad-ban.room-banned',
         expect.objectContaining({ sender: 'Soulzaa Official', reason: 'abuse' }),
       );
-      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'audio_room.ended' }));
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'audio_room.ended' }),
+      );
     });
   });
 
@@ -125,7 +142,13 @@ describe('BroadBanService', () => {
     });
 
     it('throws when the owner has an active creation ban', async () => {
-      redis.get.mockResolvedValue(JSON.stringify({ reason: 'abuse', expiresAt: '2026-08-19T00:00:00.000Z', roomId: 'room-1' }));
+      redis.get.mockResolvedValue(
+        JSON.stringify({
+          reason: 'abuse',
+          expiresAt: '2026-08-19T00:00:00.000Z',
+          roomId: 'room-1',
+        }),
+      );
       await expect(service.assertNotBroadBanned('owner-1')).rejects.toThrow(ForbiddenException);
     });
   });

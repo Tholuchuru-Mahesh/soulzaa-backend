@@ -12,7 +12,9 @@ describe('PlatformModerationAdminController', () => {
     bans = {
       list: jest.fn().mockResolvedValue([[{ id: 'ban-1' }], 1]),
       unbanUser: jest.fn().mockResolvedValue({ id: 'ban-1', status: 'LIFTED' }),
-      extendBan: jest.fn().mockResolvedValue({ id: 'ban-1', expiresAt: new Date('2026-08-20T00:00:00.000Z') }),
+      extendBan: jest
+        .fn()
+        .mockResolvedValue({ id: 'ban-1', expiresAt: new Date('2026-08-20T00:00:00.000Z') }),
     };
     audit = { list: jest.fn().mockResolvedValue([[], 0]) };
     broadBans = {
@@ -40,11 +42,9 @@ describe('PlatformModerationAdminController', () => {
 
   describe('extendBan', () => {
     it('delegates to PlatformBanService.extendBan with the admin id, ban id, and additional hours', async () => {
-      const result = await controller.extendBan(
-        { id: 'admin-1' } as never,
-        'ban-1',
-        { additionalHours: 24 },
-      );
+      const result = await controller.extendBan({ id: 'admin-1' } as never, 'ban-1', {
+        additionalHours: 24,
+      });
       expect(bans.extendBan).toHaveBeenCalledWith('admin-1', 'ban-1', 24);
       expect(result.id).toBe('ban-1');
     });

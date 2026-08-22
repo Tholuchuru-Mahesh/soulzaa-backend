@@ -18,7 +18,9 @@ export class BanBroadDto {
   @MaxLength(2000)
   description?: string;
 
-  @ApiPropertyOptional({ description: 'URL returned by POST /storage/confirm for the BROAD_BAN_EVIDENCE category.' })
+  @ApiPropertyOptional({
+    description: 'URL returned by POST /storage/confirm for the BROAD_BAN_EVIDENCE category.',
+  })
   @IsOptional()
   @IsUrl()
   proofUrl?: string;

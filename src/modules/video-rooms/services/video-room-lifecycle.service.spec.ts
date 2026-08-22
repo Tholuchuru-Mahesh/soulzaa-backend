@@ -163,7 +163,9 @@ describe('VideoRoomLifecycleService', () => {
     });
 
     it('rejects room creation when the actor has an active Broad-ban creation restriction', async () => {
-      broadBans.assertNotBroadBanned.mockRejectedValue(new ForbiddenException('creation restricted'));
+      broadBans.assertNotBroadBanned.mockRejectedValue(
+        new ForbiddenException('creation restricted'),
+      );
       await expect(service.create(actor, { name: 'My Room' } as any)).rejects.toThrow(
         'creation restricted',
       );
@@ -242,7 +244,9 @@ describe('VideoRoomLifecycleService', () => {
     });
 
     it('activate rejects reactivating a room the owner has an active Broad-ban creation restriction on', async () => {
-      broadBans.assertNotBroadBanned.mockRejectedValue(new ForbiddenException('creation restricted'));
+      broadBans.assertNotBroadBanned.mockRejectedValue(
+        new ForbiddenException('creation restricted'),
+      );
       await expect(service.activate(actor, 'r1')).rejects.toThrow('creation restricted');
       expect(repo.updateRoom).not.toHaveBeenCalled();
     });

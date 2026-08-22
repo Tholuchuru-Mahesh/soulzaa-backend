@@ -55,7 +55,10 @@ describe('PlatformBanRepository', () => {
   });
 
   it('extends an existing ban to a new expiry', async () => {
-    prisma.platformUserBan.update.mockResolvedValue({ id: 'ban-1', expiresAt: new Date('2026-08-20T00:00:00.000Z') });
+    prisma.platformUserBan.update.mockResolvedValue({
+      id: 'ban-1',
+      expiresAt: new Date('2026-08-20T00:00:00.000Z'),
+    });
     const result = await repo.extend('ban-1', new Date('2026-08-20T00:00:00.000Z'));
     expect(prisma.platformUserBan.update).toHaveBeenCalledWith({
       where: { id: 'ban-1' },

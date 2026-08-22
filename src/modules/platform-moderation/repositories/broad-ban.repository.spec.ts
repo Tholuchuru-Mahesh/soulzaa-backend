@@ -53,7 +53,10 @@ describe('BroadBanRepository', () => {
   });
 
   it('extends a broad ban to a new expiry', async () => {
-    prisma.broadBan.update.mockResolvedValue({ id: 'bb-1', expiresAt: new Date('2026-08-20T00:00:00.000Z') });
+    prisma.broadBan.update.mockResolvedValue({
+      id: 'bb-1',
+      expiresAt: new Date('2026-08-20T00:00:00.000Z'),
+    });
     const result = await repo.extend('bb-1', new Date('2026-08-20T00:00:00.000Z'));
     expect(prisma.broadBan.update).toHaveBeenCalledWith({
       where: { id: 'bb-1' },

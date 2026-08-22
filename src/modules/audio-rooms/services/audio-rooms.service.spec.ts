@@ -217,7 +217,9 @@ describe('AudioRoomsService', () => {
     });
 
     it('rejects room creation when the actor has an active Broad-ban creation restriction', async () => {
-      broadBans.assertNotBroadBanned.mockRejectedValue(new ForbiddenException('creation restricted'));
+      broadBans.assertNotBroadBanned.mockRejectedValue(
+        new ForbiddenException('creation restricted'),
+      );
       await expect(service.create(OWNER, { name: 'My Room' })).rejects.toThrow(
         'creation restricted',
       );
@@ -613,7 +615,9 @@ describe('AudioRoomsService', () => {
 
     it('rejects restarting a room the owner has an active Broad-ban creation restriction on', async () => {
       repo.findRoomRow.mockResolvedValue(endedRoom());
-      broadBans.assertNotBroadBanned.mockRejectedValue(new ForbiddenException('creation restricted'));
+      broadBans.assertNotBroadBanned.mockRejectedValue(
+        new ForbiddenException('creation restricted'),
+      );
 
       await expect(service.start(OWNER, 'room-1')).rejects.toThrow('creation restricted');
       expect(repo.updateRoom).not.toHaveBeenCalled();
