@@ -39,6 +39,8 @@ import { VideoRoomModerationService } from '../services/video-room-moderation.se
 import { VideoRoomReportService } from '../services/video-room-report.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 import { BanUserGloballyDto } from 'src/modules/platform-moderation/dto/ban-user-globally.dto';
+import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
+import { BanBroadDto } from 'src/modules/platform-moderation/dto/ban-broad.dto';
 
 /**
  * VR-16 moderation REST surface (base `video-rooms/:id/...`), mirroring every
@@ -68,6 +70,7 @@ export class VideoRoomsModerationController {
     private readonly reports: VideoRoomReportService,
     private readonly query: VideoRoomModerationQueryService,
     private readonly platformBans: PlatformBanService,
+    private readonly broadBans: BroadBanService,
   ) {}
 
   private actor(user: AuthenticatedUser): RoomActor {
@@ -101,6 +104,27 @@ export class VideoRoomsModerationController {
     // swallowed — see the audio-room controller's identical courtesy step.
     void this.moderation.forceDisconnect(actor, roomId, userId, dto.reason).catch(() => {});
     return result;
+  }
+
+  @Post(':id/moderation/broad-ban')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ban this Broad (video room): end it now, evict everyone, block the owner from creating a new one for 24 hours' })
+  async broadBan(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Body() dto: BanBroadDto,
+  ) {
+    const actor = this.actor(user);
+    await this.moderation.assertCanModerate(actor, roomId);
+    return this.broadBans.banBroad({
+      moderatorId: user.id,
+      roomId,
+      roomType: 'VIDEO_ROOM',
+      reason: dto.reason,
+      description: dto.description,
+      proofUrl: dto.proofUrl,
+    });
   }
 
   // ======================= Kick =======================

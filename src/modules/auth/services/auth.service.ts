@@ -58,6 +58,7 @@ import {
   NOTIFICATION_SERVICE,
   type INotificationService,
 } from 'src/modules/notification/interfaces/notification.interface';
+import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 
 /**
  * Roles that make an account "staff" — must log in via `staffLogin` only,
@@ -106,6 +107,7 @@ export class AuthService implements IAuthService {
     @Optional() private readonly deviceBinding?: ModeratorDeviceBindingService,
     @Optional() private readonly staffIpAllowlist?: StaffIpAllowlistService,
     @Optional() @Inject(NOTIFICATION_SERVICE) private readonly notifications?: INotificationService,
+    @Optional() private readonly platformBans?: PlatformBanService,
   ) {
     this.resetTtlSeconds = Number(config.get('security', { infer: true })!.passwordResetTtlSeconds);
   }
@@ -199,6 +201,7 @@ export class AuthService implements IAuthService {
     }
 
     this.assertActive(user);
+    await this.assertNotBanned(user);
     await this.security.recordSuccess(identifier);
     return this.issue(user, ctx, 'PASSWORD', false);
   }
@@ -311,6 +314,7 @@ export class AuthService implements IAuthService {
     }
 
     this.assertActive(user);
+    await this.assertNotBanned(user);
 
     // 1. Staff Role Assertion (Task 9)
     const userRoles = await this.roleSource.getRoleNames(user.id);
@@ -463,6 +467,7 @@ export class AuthService implements IAuthService {
       );
     }
     this.assertActive(user);
+    await this.assertNotBanned(user);
 
     // A successful Firebase OTP login implicitly verifies the number.
     if (!user.mobileVerifiedAt) {
@@ -490,6 +495,7 @@ export class AuthService implements IAuthService {
         );
       }
       this.assertActive(user);
+      await this.assertNotBanned(user);
       return this.issue(user, ctx, providerType, false);
     }
 
@@ -498,6 +504,7 @@ export class AuthService implements IAuthService {
       const byEmail = await this.users.findByEmail(identity.email);
       if (byEmail) {
         this.assertActive(byEmail);
+        await this.assertNotBanned(byEmail);
         await this.repo.upsertProvider({
           userId: byEmail.id,
           provider: providerType,
@@ -554,6 +561,20 @@ export class AuthService implements IAuthService {
       );
     }
     this.assertActive(user);
+    // Deliberately NOT `assertNotBanned` here (unlike the login methods
+    // above). Token refresh happens silently in the background of an
+    // already-active session — any authenticated request can trigger one the
+    // instant the access token expires. `PlatformBanService.banUser` already
+    // ends an active session gracefully: it emits `platform-ban.account-banned`
+    // over the user's own socket, which the client shows as a "Soulzaa
+    // Official" notice before it logs itself out. Blocking refresh here raced
+    // that flow — the very next background request's refresh would 403,
+    // Dio's refresh-failure handling treats that identically to "the refresh
+    // token was revoked," and force-clears the session and disconnects every
+    // socket immediately, often before the graceful notice's socket event had
+    // even arrived. New logins stay blocked (every method above this one
+    // still calls `assertNotBanned`); only silently extending a session
+    // that's already about to be torn down by the graceful path does not.
     return this.sessions.refresh(
       userId,
       sessionId,
@@ -736,6 +757,18 @@ export class AuthService implements IAuthService {
       throw new BusinessException(
         ERROR_CODES.ACCOUNT_INACTIVE,
         'Account is not active',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+  }
+
+  private async assertNotBanned(user: UserIdentity): Promise<void> {
+    if (!this.platformBans) return;
+    const ban = await this.platformBans.getActiveBan(user.id);
+    if (ban) {
+      throw new BusinessException(
+        ERROR_CODES.ACCOUNT_BANNED,
+        `Your account is banned until ${ban.expiresAt} for: ${ban.reason}`,
         HttpStatus.FORBIDDEN,
       );
     }

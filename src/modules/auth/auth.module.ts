@@ -29,10 +29,11 @@ import { SocialVerifierRegistry } from './services/social/social-verifier.regist
 import { StaffAuthController } from './controllers/staff-auth.controller';
 import { AdminIdentityModule } from 'src/modules/admin-identity/admin-identity.module';
 import { DeviceModule } from 'src/modules/device/device.module';
+import { PlatformModerationModule } from 'src/modules/platform-moderation/platform-moderation.module';
 
 @Global()
 @Module({
-  imports: [AdminIdentityModule, DeviceModule],
+  imports: [AdminIdentityModule, DeviceModule, PlatformModerationModule],
   controllers: [AuthController, StaffAuthController],
   providers: [
     AuthRepository,

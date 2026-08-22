@@ -37,6 +37,8 @@ import { ShiftActiveGuard } from 'src/modules/moderator-shift/guards/shift-activ
 import { SuspendedGuard } from 'src/modules/moderator-warning/guards/suspended.guard';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 import { BanUserGloballyDto } from 'src/modules/platform-moderation/dto/ban-user-globally.dto';
+import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
+import { BanBroadDto } from 'src/modules/platform-moderation/dto/ban-broad.dto';
 
 /**
  * AR-3 moderation REST surface (base `rooms/:id/moderation/...`). JWT-guarded
@@ -52,6 +54,7 @@ export class ModerationController {
   constructor(
     private readonly moderation: ModerationService,
     private readonly platformBans: PlatformBanService,
+    private readonly broadBans: BroadBanService,
     private readonly permissions: RoomPermissionService,
   ) {}
 
@@ -88,6 +91,27 @@ export class ModerationController {
     // this is a courtesy on top of the ban, not a load-bearing step of it.
     void this.moderation.forceDisconnect(actor, roomId, userId, dto.reason).catch(() => {});
     return result;
+  }
+
+  @Post(':id/moderation/broad-ban')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ban this Broad (room): end it now, evict everyone, block the owner from creating a new one for 24 hours' })
+  async broadBan(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Body() dto: BanBroadDto,
+  ) {
+    const actor = this.actor(user);
+    await this.permissions.assertCanModerate(roomId, actor);
+    return this.broadBans.banBroad({
+      moderatorId: user.id,
+      roomId,
+      roomType: 'AUDIO_ROOM',
+      reason: dto.reason,
+      description: dto.description,
+      proofUrl: dto.proofUrl,
+    });
   }
 
   @Post(':id/moderation/kick/:userId')

@@ -53,6 +53,13 @@ export class PlatformBanRepository {
     });
   }
 
+  extend(id: string, expiresAt: Date): Promise<PlatformUserBan> {
+    return this.prisma.platformUserBan.update({
+      where: { id },
+      data: { expiresAt },
+    });
+  }
+
   async list(
     filter: ListPlatformBansFilter,
     skip: number,

@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RoomMemberRole, RoomVisibility } from '@prisma/client';
 import { IEventBus } from 'src/common/events';
@@ -57,6 +58,7 @@ describe('AudioRoomsService', () => {
   let profiles: Partial<IProfileService>;
   let platformAudit: Record<string, jest.Mock>;
   let platformBans: Record<string, jest.Mock>;
+  let broadBans: Record<string, jest.Mock>;
   let service: AudioRoomsService;
 
   beforeEach(() => {
@@ -158,6 +160,7 @@ describe('AudioRoomsService', () => {
 
     platformAudit = { record: jest.fn().mockResolvedValue(undefined) };
     platformBans = { assertNotGloballyBanned: jest.fn().mockResolvedValue(undefined) };
+    broadBans = { assertNotBroadBanned: jest.fn().mockResolvedValue(undefined) };
 
     service = new AudioRoomsService(
       repo as unknown as AudioRoomsRepository,
@@ -177,6 +180,7 @@ describe('AudioRoomsService', () => {
       undefined,
       platformAudit as never,
       platformBans as never,
+      broadBans as never,
     );
   });
 
@@ -209,6 +213,13 @@ describe('AudioRoomsService', () => {
       expect(passwords.hash).toHaveBeenCalledWith('secret');
       expect(repo.createRoomTx).toHaveBeenCalledWith(
         expect.objectContaining({ passwordHash: 'hashed' }),
+      );
+    });
+
+    it('rejects room creation when the actor has an active Broad-ban creation restriction', async () => {
+      broadBans.assertNotBroadBanned.mockRejectedValue(new ForbiddenException('creation restricted'));
+      await expect(service.create(OWNER, { name: 'My Room' })).rejects.toThrow(
+        'creation restricted',
       );
     });
   });
@@ -598,6 +609,14 @@ describe('AudioRoomsService', () => {
       await service.start(OWNER, 'room-1');
 
       expect(seatsService.onRoomOpened).toHaveBeenCalledWith('room-1', OWNER.id, true);
+    });
+
+    it('rejects restarting a room the owner has an active Broad-ban creation restriction on', async () => {
+      repo.findRoomRow.mockResolvedValue(endedRoom());
+      broadBans.assertNotBroadBanned.mockRejectedValue(new ForbiddenException('creation restricted'));
+
+      await expect(service.start(OWNER, 'room-1')).rejects.toThrow('creation restricted');
+      expect(repo.updateRoom).not.toHaveBeenCalled();
     });
 
     it('does not signal a restart when the room is already live', async () => {

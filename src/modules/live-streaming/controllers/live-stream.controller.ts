@@ -23,6 +23,8 @@ import { ShiftActiveGuard } from 'src/modules/moderator-shift/guards/shift-activ
 import { SuspendedGuard } from 'src/modules/moderator-warning/guards/suspended.guard';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 import { BanUserGloballyDto } from 'src/modules/platform-moderation/dto/ban-user-globally.dto';
+import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
+import { BanBroadDto } from 'src/modules/platform-moderation/dto/ban-broad.dto';
 import { LiveStreamReportService } from '../services/live-stream-report.service';
 import { LiveStreamService } from '../services/live-stream.service';
 
@@ -62,6 +64,7 @@ export class LiveStreamController {
     private readonly service: LiveStreamService,
     private readonly reports: LiveStreamReportService,
     private readonly platformBans: PlatformBanService,
+    private readonly broadBans: BroadBanService,
   ) {}
 
   @Post(':id/moderation/platform-ban/:userId')
@@ -95,6 +98,26 @@ export class LiveStreamController {
       })
       .catch(() => {});
     return result;
+  }
+
+  @Post(':id/broad-ban')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('live.stream.moderate')
+  @ApiOperation({ summary: 'Ban this Broad (live stream): end it now, evict everyone, block the owner from creating a new one for 24 hours' })
+  async broadBan(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) streamId: string,
+    @Body() dto: BanBroadDto,
+  ) {
+    return this.broadBans.banBroad({
+      moderatorId: user.id,
+      roomId: streamId,
+      roomType: 'LIVE_STREAM',
+      reason: dto.reason,
+      description: dto.description,
+      proofUrl: dto.proofUrl,
+    });
   }
 
   @Post()

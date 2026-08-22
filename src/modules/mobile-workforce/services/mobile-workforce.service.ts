@@ -36,6 +36,7 @@ import { LiveStreamService } from 'src/modules/live-streaming/services/live-stre
 import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
 import { PermissionResolver } from 'src/modules/authorization/services/permission-resolver.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { MODERATION_SENDER_NAME } from 'src/common/constants/moderation-sender.constant';
 import { SYSTEM_MODERATOR_ID } from 'src/modules/audio-rooms/constants/moderation.constants';
 import { deriveReportPriority, deriveRuleViolated } from './report-classification.util';
 import { SocketManager } from 'src/infra/socket/socket.manager';
@@ -2627,7 +2628,7 @@ export class MobileWorkforceService {
     return {
       success: true,
       roomId,
-      sender: 'System',
+      sender: MODERATION_SENDER_NAME,
       senderRole: 'SYSTEM',
       isSystem: true,
       message: reason,

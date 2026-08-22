@@ -124,6 +124,31 @@ describe('PlatformBanService', () => {
       }
     });
 
+    it('notifies the target with the Soulzaa Official ban message before the delayed disconnect', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-08-18T00:00:00.000Z'));
+      try {
+        await service.banUser({
+          moderatorId: 'mod-1',
+          targetUserId: 'target-1',
+          reason: 'harassment',
+          roomType: 'AUDIO_ROOM',
+          originRoomId: 'room-1',
+        });
+
+        expect(sockets.emitToUserEverywhere).toHaveBeenCalledWith(
+          'target-1',
+          'platform-ban.account-banned',
+          expect.objectContaining({
+            sender: 'Soulzaa Official',
+            reason: 'harassment',
+            expiresAt: '2026-08-19T00:00:00.000Z',
+          }),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('threads an optional reportId through to the ban row when provided', async () => {
       await service.banUser({
         moderatorId: 'mod-1',
@@ -243,6 +268,21 @@ describe('PlatformBanService', () => {
     });
   });
 
+  describe('getActiveBan', () => {
+    it('returns null when there is no active ban', async () => {
+      redis.get.mockResolvedValue(null);
+      expect(await service.getActiveBan('target-1')).toBeNull();
+    });
+
+    it('returns the reason and expiry when a ban is active', async () => {
+      redis.get.mockResolvedValue(JSON.stringify({ reason: 'harassment', expiresAt: '2026-08-19T00:00:00.000Z' }));
+      expect(await service.getActiveBan('target-1')).toEqual({
+        reason: 'harassment',
+        expiresAt: '2026-08-19T00:00:00.000Z',
+      });
+    });
+  });
+
   describe('unbanUser', () => {
     it('deletes the Redis key, flips the DB row to LIFTED, publishes domain event, and emits socket events', async () => {
       repo.findById.mockResolvedValueOnce({
@@ -284,6 +324,55 @@ describe('PlatformBanService', () => {
       const result = await service.unbanUser('admin-1', 'ban-1');
       expect(repo.lift).not.toHaveBeenCalled();
       expect(result.status).toBe('LIFTED');
+    });
+  });
+
+  describe('extendBan', () => {
+    it('rejects a ban that is not ACTIVE', async () => {
+      repo.findById.mockResolvedValue({ id: 'ban-1', status: 'LIFTED', targetUserId: 'target-1' });
+      await expect(service.extendBan('admin-1', 'ban-1', 24)).rejects.toThrow('not active');
+    });
+
+    it('pushes expiresAt forward by additionalHours from the CURRENT expiry, re-primes the Redis TTL, and notifies the target', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-08-18T00:00:00.000Z'));
+      try {
+        repo.findById.mockResolvedValue({
+          id: 'ban-1',
+          status: 'ACTIVE',
+          targetUserId: 'target-1',
+          reason: 'harassment',
+          expiresAt: new Date('2026-08-19T00:00:00.000Z'),
+        });
+        repo.extend = jest.fn().mockResolvedValue({
+          id: 'ban-1',
+          status: 'ACTIVE',
+          targetUserId: 'target-1',
+          reason: 'harassment',
+          expiresAt: new Date('2026-08-20T00:00:00.000Z'),
+        });
+
+        const result = await service.extendBan('admin-1', 'ban-1', 24);
+
+        expect(repo.extend).toHaveBeenCalledWith('ban-1', new Date('2026-08-20T00:00:00.000Z'));
+        expect(redis.set).toHaveBeenCalledWith(
+          'platform-ban:user:target-1',
+          expect.any(String),
+          'EX',
+          expect.any(Number),
+        );
+        expect(sockets.emitToUserEverywhere).toHaveBeenCalledWith(
+          'target-1',
+          'platform-ban.account-banned',
+          expect.objectContaining({
+            sender: 'Soulzaa Official',
+            reason: 'harassment',
+            expiresAt: '2026-08-20T00:00:00.000Z',
+          }),
+        );
+        expect(result.expiresAt).toEqual(new Date('2026-08-20T00:00:00.000Z'));
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });

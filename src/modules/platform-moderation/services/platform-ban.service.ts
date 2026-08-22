@@ -13,6 +13,7 @@ import {
   VideoRoomStatus,
   LiveStreamStatus,
 } from '@prisma/client';
+import { MODERATION_SENDER_NAME } from 'src/common/constants/moderation-sender.constant';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
@@ -77,6 +78,12 @@ export class PlatformBanService {
       'EX',
       BAN_DURATION_SECONDS,
     );
+
+    this.sockets.emitToUserEverywhere(input.targetUserId, 'platform-ban.account-banned', {
+      sender: MODERATION_SENDER_NAME,
+      reason,
+      expiresAt: expiresAt.toISOString(),
+    });
 
     // Awaited, not fire-and-forget: it fully self-catches (see below) so this
     // can never fail the ban, but the caller's HTTP response — and the
@@ -210,6 +217,12 @@ export class PlatformBanService {
     );
   }
 
+  async getActiveBan(userId: string): Promise<{ reason: string; expiresAt: string } | null> {
+    const raw = await this.redis.get(banRedisKey(userId));
+    if (!raw) return null;
+    return JSON.parse(raw) as { reason: string; expiresAt: string };
+  }
+
   async unbanUser(adminId: string, banId: string): Promise<PlatformUserBan> {
     const ban = await this.repo.findById(banId);
     if (!ban) {
@@ -273,6 +286,44 @@ export class PlatformBanService {
     }
 
     return lifted;
+  }
+
+  async extendBan(adminId: string, banId: string, additionalHours: number): Promise<PlatformUserBan> {
+    const ban = await this.repo.findById(banId);
+    if (!ban) {
+      throw new BadRequestException('Ban not found.');
+    }
+    if (ban.status !== 'ACTIVE') {
+      throw new BadRequestException('This ban is not active.');
+    }
+
+    const newExpiresAt = new Date(ban.expiresAt.getTime() + additionalHours * 3600 * 1000);
+    const extended = await this.repo.extend(banId, newExpiresAt);
+
+    const ttlSeconds = Math.max(1, Math.floor((newExpiresAt.getTime() - Date.now()) / 1000));
+    await this.redis.set(
+      banRedisKey(ban.targetUserId),
+      JSON.stringify({ reason: ban.reason, expiresAt: newExpiresAt.toISOString() }),
+      'EX',
+      ttlSeconds,
+    );
+
+    this.sockets.emitToUserEverywhere(ban.targetUserId, 'platform-ban.account-banned', {
+      sender: MODERATION_SENDER_NAME,
+      reason: ban.reason,
+      expiresAt: newExpiresAt.toISOString(),
+    });
+
+    void this.audit.record({
+      moderatorId: adminId,
+      action: 'BAN_ISSUED',
+      roomType: ban.roomType,
+      roomId: ban.originRoomId,
+      targetUserId: ban.targetUserId,
+      reason: `Extended by ${additionalHours}h`,
+    });
+
+    return extended;
   }
 
   list(filter: ListPlatformBansFilter, skip: number, limit: number) {

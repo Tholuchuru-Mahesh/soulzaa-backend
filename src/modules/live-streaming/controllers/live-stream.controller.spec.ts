@@ -15,6 +15,7 @@ describe('LiveStreamController', () => {
   let service: any;
   let reports: any;
   let platformBans: any;
+  let broadBans: any;
   let subject: LiveStreamController;
 
   beforeEach(() => {
@@ -23,7 +24,8 @@ describe('LiveStreamController', () => {
     };
     reports = {};
     platformBans = { banUser: jest.fn().mockResolvedValue({ id: 'ban-1' }) };
-    subject = new LiveStreamController(service, reports, platformBans);
+    broadBans = { banBroad: jest.fn().mockResolvedValue({ id: 'bb-1' }) };
+    subject = new LiveStreamController(service, reports, platformBans, broadBans);
   });
 
   describe('banGlobally — platform-wide 24h ban', () => {
@@ -68,6 +70,27 @@ describe('LiveStreamController', () => {
         expect.objectContaining({ scope: undefined }),
         META,
       );
+    });
+  });
+
+  describe('broadBan', () => {
+    it('delegates to BroadBanService.banBroad with the stream id, moderator id, and DTO fields', async () => {
+      const dto = {
+        reason: 'abuse',
+        description: 'repeated abuse',
+        proofUrl: 'https://x/proof.png',
+      } as never;
+      const result = await subject.broadBan(user, STREAM, dto);
+
+      expect(broadBans.banBroad).toHaveBeenCalledWith({
+        moderatorId: 'u1',
+        roomId: STREAM,
+        roomType: 'LIVE_STREAM',
+        reason: 'abuse',
+        description: 'repeated abuse',
+        proofUrl: 'https://x/proof.png',
+      });
+      expect(result).toEqual({ id: 'bb-1' });
     });
   });
 });

@@ -70,3 +70,34 @@ model PlatformModerationAuditLog {
   @@index([targetUserId, createdAt])
   @@map("platform_moderation_audit_logs")
 }
+
+enum BroadBanStatus {
+  ACTIVE
+  LIFTED
+  EXPIRED
+}
+
+/// A ban targeting one specific room ("Broad") and its owner — fully
+/// independent of PlatformUserBan (which bans a user account-wide). Ends
+/// that one room now and blocks only the owner's future room CREATION for
+/// 24h; the owner can still log in and join other rooms normally. Never
+/// references PlatformUserBan and is never written to by PlatformBanService.
+model BroadBan {
+  id          String         @id @default(uuid()) @db.Uuid
+  roomId      String         @db.Uuid
+  roomType    PlatformRoomType
+  ownerId     String         @db.Uuid
+  moderatorId String         @db.Uuid
+  reason      String
+  description String?
+  proofUrl    String?
+  status      BroadBanStatus @default(ACTIVE)
+  bannedAt    DateTime       @default(now())
+  expiresAt   DateTime
+  liftedAt    DateTime?
+  liftedBy    String?        @db.Uuid
+
+  @@index([ownerId, status])
+  @@index([status, expiresAt])
+  @@map("broad_bans")
+}

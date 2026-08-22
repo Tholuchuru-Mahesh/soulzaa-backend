@@ -29,6 +29,8 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
   let scopeService: any;
   let notifications: any;
   let reportRepo: any;
+  let platformBans: any;
+  let broadBans: any;
   let subject: LiveStreamService;
 
   beforeEach(() => {
@@ -79,7 +81,8 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
     notifications = { create: jest.fn().mockResolvedValue({}) };
     reportRepo = { listPendingReports: jest.fn().mockResolvedValue([]) };
     const platformAudit = { record: jest.fn().mockResolvedValue(undefined) };
-    const platformBans = { assertNotGloballyBanned: jest.fn().mockResolvedValue(undefined) };
+    platformBans = { assertNotGloballyBanned: jest.fn().mockResolvedValue(undefined) };
+    broadBans = { assertNotBroadBanned: jest.fn().mockResolvedValue(undefined) };
 
     subject = new LiveStreamService(
       prisma,
@@ -94,6 +97,7 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
       reportRepo,
       platformAudit as never,
       platformBans as never,
+      broadBans as never,
     );
   });
 
@@ -105,6 +109,17 @@ describe('LiveStreamService — non-host viewer moderation enforcement', () => {
     targetUserId: VIEWER_ID,
     action: 'MUTE',
     ...overrides,
+  });
+
+  describe('createStream', () => {
+    it('rejects stream creation for a host with an active Broad-ban creation restriction', async () => {
+      broadBans.assertNotBroadBanned.mockRejectedValue(
+        new ForbiddenException('creation restricted'),
+      );
+      await expect(subject.createStream({ hostId: HOST_ID })).rejects.toThrow(
+        'creation restricted',
+      );
+    });
   });
 
   describe('MUTE on a non-host viewer', () => {

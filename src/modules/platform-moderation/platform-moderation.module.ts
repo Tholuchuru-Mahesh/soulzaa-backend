@@ -5,8 +5,10 @@ import { RedisModule } from 'src/infra/redis/redis.module';
 import { SocketModule } from 'src/infra/socket/socket.module';
 import { PlatformModerationAdminController } from './controllers/platform-moderation-admin.controller';
 import { PlatformBanRepository } from './repositories/platform-ban.repository';
+import { BroadBanRepository } from './repositories/broad-ban.repository';
 import { PlatformBanReconciliationScheduler } from './services/platform-ban-reconciliation.scheduler';
 import { PlatformBanService } from './services/platform-ban.service';
+import { BroadBanService } from './services/broad-ban.service';
 import { PlatformModerationAuditService } from './services/platform-moderation-audit.service';
 
 @Module({
@@ -15,9 +17,11 @@ import { PlatformModerationAuditService } from './services/platform-moderation-a
   providers: [
     PlatformBanRepository,
     PlatformBanService,
+    BroadBanRepository,
+    BroadBanService,
     PlatformModerationAuditService,
     PlatformBanReconciliationScheduler,
   ],
-  exports: [PlatformBanService, PlatformModerationAuditService],
+  exports: [PlatformBanService, PlatformModerationAuditService, BroadBanService],
 })
 export class PlatformModerationModule {}

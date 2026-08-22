@@ -31,6 +31,7 @@ import { VideoRoomEventService } from './video-room-event.service';
 import { VideoRoomPasswordService } from './video-room-password.service';
 import { VideoRoomPermissionService } from './video-room-permission.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
 
 /** The extended access policies that are persisted in metadata (not base visibility). */
 const METADATA_ACCESS_POLICIES: ReadonlySet<VideoRoomAccessPolicy> = new Set([
@@ -71,6 +72,7 @@ export class VideoRoomLifecycleService {
     config: ConfigService,
     private readonly metrics: VideoRoomsMetrics,
     @Optional() private readonly platformBans?: PlatformBanService,
+    @Optional() private readonly broadBans?: BroadBanService,
   ) {
     this.config = loadVideoRoomConfig(config);
   }
@@ -83,6 +85,9 @@ export class VideoRoomLifecycleService {
     );
     if (!isModeratorActor && this.platformBans) {
       await this.platformBans.assertNotGloballyBanned(actor.id);
+    }
+    if (!isModeratorActor && this.broadBans) {
+      await this.broadBans.assertNotBroadBanned(actor.id);
     }
     return this.locks.withLock(videoRoomCreateLockKey(actor.id), async () => {
       // Allow host to create new rooms freely without 1-room cap constraint
@@ -290,6 +295,9 @@ export class VideoRoomLifecycleService {
     );
     if (!isModeratorActor && this.platformBans) {
       await this.platformBans.assertNotGloballyBanned(actor.id);
+    }
+    if (!isModeratorActor && this.broadBans) {
+      await this.broadBans.assertNotBroadBanned(actor.id);
     }
     const room = await this.getRoomOrThrow(roomId);
     await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_ROOM);

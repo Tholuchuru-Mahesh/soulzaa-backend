@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import {
   VideoRoomLogAction,
   VideoRoomStatus,
@@ -48,6 +49,8 @@ describe('VideoRoomLifecycleService', () => {
   let passwords: any;
   let locks: any;
   let metrics: any;
+  let platformBans: any;
+  let broadBans: any;
   let service: VideoRoomLifecycleService;
 
   beforeEach(() => {
@@ -83,6 +86,8 @@ describe('VideoRoomLifecycleService', () => {
     passwords = { hash: jest.fn().mockResolvedValue('HASH') };
     locks = { withLock: jest.fn((_key: string, fn: () => unknown) => fn()) };
     metrics = { incCreated: jest.fn(), incDeleted: jest.fn(), incLocked: jest.fn() };
+    platformBans = { assertNotGloballyBanned: jest.fn().mockResolvedValue(undefined) };
+    broadBans = { assertNotBroadBanned: jest.fn().mockResolvedValue(undefined) };
     const config = {
       get: jest.fn().mockReturnValue({
         maxRoomsPerOwner: 1,
@@ -101,6 +106,8 @@ describe('VideoRoomLifecycleService', () => {
       locks,
       config as any,
       metrics,
+      platformBans,
+      broadBans,
     );
   });
 
@@ -153,6 +160,13 @@ describe('VideoRoomLifecycleService', () => {
     it('clamps maxParticipants to the configured hard cap', async () => {
       await service.create(actor, { name: 'x', maxParticipants: 9999 } as any);
       expect(repo.createRoomTx.mock.calls[0][0].maxParticipants).toBe(20);
+    });
+
+    it('rejects room creation when the actor has an active Broad-ban creation restriction', async () => {
+      broadBans.assertNotBroadBanned.mockRejectedValue(new ForbiddenException('creation restricted'));
+      await expect(service.create(actor, { name: 'My Room' } as any)).rejects.toThrow(
+        'creation restricted',
+      );
     });
   });
 
@@ -225,6 +239,12 @@ describe('VideoRoomLifecycleService', () => {
       await expect(service.activate(actor, 'r1')).rejects.toMatchObject({
         errorCode: ERROR_CODES.VIDEO_ROOM_INVALID_STATE,
       });
+    });
+
+    it('activate rejects reactivating a room the owner has an active Broad-ban creation restriction on', async () => {
+      broadBans.assertNotBroadBanned.mockRejectedValue(new ForbiddenException('creation restricted'));
+      await expect(service.activate(actor, 'r1')).rejects.toThrow('creation restricted');
+      expect(repo.updateRoom).not.toHaveBeenCalled();
     });
 
     it('close requires CLOSE_ROOM, ends the room, clears trending + cache, emits closed', async () => {

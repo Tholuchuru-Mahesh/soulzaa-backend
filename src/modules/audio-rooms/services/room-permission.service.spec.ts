@@ -130,11 +130,11 @@ describe('RoomPermissionService', () => {
       ).resolves.toBeUndefined();
     });
 
-    it('a platform moderator cannot moderate the owner but can moderate a listener', async () => {
+    it('a platform moderator outranks participants including the owner', async () => {
       seats.getRole.mockResolvedValue({ role: RoomMemberRole.OWNER });
       await expect(
         service.assertOutranks('r', { id: 'm', roles: ['MODERATOR'] }, 'owner'),
-      ).rejects.toBeDefined();
+      ).resolves.toBeUndefined();
       seats.getRole.mockResolvedValue(null);
       seats.getSeatByOccupant.mockResolvedValue(null);
       await expect(

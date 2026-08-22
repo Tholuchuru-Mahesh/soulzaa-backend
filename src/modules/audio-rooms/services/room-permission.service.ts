@@ -137,21 +137,10 @@ export class RoomPermissionService {
    * effective role. Throws INSUFFICIENT_AUTHORITY / CANNOT_MODERATE_OWNER.
    */
   async assertOutranks(roomId: string, actor: RoomActor, targetUserId: string): Promise<void> {
-    if (this.isPlatformAdmin(actor.roles)) return;
+    if (this.isPlatformAdmin(actor.roles) || this.isPlatformModerator(actor.roles)) return;
 
     const targetRank = await this.authorityRank(roomId, targetUserId);
     const targetIsOwner = targetRank === 4;
-
-    if (this.isPlatformModerator(actor.roles)) {
-      if (targetIsOwner) {
-        throw new BusinessException(
-          ERROR_CODES.CANNOT_MODERATE_OWNER,
-          'Only a platform admin can moderate a room owner.',
-          HttpStatus.FORBIDDEN,
-        );
-      }
-      return;
-    }
 
     const actorRank = await this.authorityRank(roomId, actor.id);
     if (targetIsOwner) {

@@ -23,6 +23,10 @@ export const STORAGE_CATEGORIES = {
   // evidence a reviewer is meant to judge, and thumbnails of an ID would leak
   // the document through a derivative key with a laxer lifetime.
   KYC_DOCUMENT: 'kyc-documents',
+  // Proof attached to a moderator's Broad Ban action. Never processed by the
+  // media worker, for the same reason KYC scans aren't: re-encoding would
+  // alter evidence a reviewer is meant to judge as-is.
+  BROAD_BAN_EVIDENCE: 'broad-ban-evidence',
 } as const;
 
 export type MediaCategory = (typeof STORAGE_CATEGORIES)[keyof typeof STORAGE_CATEGORIES];
@@ -128,6 +132,12 @@ export const STORAGE_POLICIES: Record<MediaCategory, StoragePolicy> = {
     isImage: false,
     allowedMime: ['image/jpeg', 'image/png', 'application/pdf'],
     maxSizeBytes: 5 * MB,
+  },
+  [STORAGE_CATEGORIES.BROAD_BAN_EVIDENCE]: {
+    prefix: STORAGE_CATEGORIES.BROAD_BAN_EVIDENCE,
+    isImage: false,
+    allowedMime: ['image/jpeg', 'image/png', 'application/pdf'],
+    maxSizeBytes: 10 * MB,
   },
 };
 

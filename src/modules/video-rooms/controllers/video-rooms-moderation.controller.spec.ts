@@ -20,6 +20,7 @@ describe('VideoRoomsModerationController', () => {
   let reports: any;
   let query: any;
   let platformBans: any;
+  let broadBans: any;
   let subject: VideoRoomsModerationController;
 
   beforeEach(() => {
@@ -47,7 +48,14 @@ describe('VideoRoomsModerationController', () => {
       warnings: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 }),
     };
     platformBans = { banUser: jest.fn().mockResolvedValue({ id: 'ban-1' }) };
-    subject = new VideoRoomsModerationController(moderation, reports, query, platformBans as never);
+    broadBans = { banBroad: jest.fn().mockResolvedValue({ id: 'bb-1' }) };
+    subject = new VideoRoomsModerationController(
+      moderation,
+      reports,
+      query,
+      platformBans as never,
+      broadBans as never,
+    );
   });
 
   describe('delegation — the controller decides nothing itself', () => {
@@ -240,6 +248,36 @@ describe('VideoRoomsModerationController', () => {
 
       await expect(subject.banGlobally(user, ROOM, 't1', dto)).rejects.toThrow('forbidden');
       expect(platformBans.banUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('broadBan', () => {
+    it('delegates to BroadBanService.banBroad with the room id, moderator id, and DTO fields', async () => {
+      const dto = {
+        reason: 'abuse',
+        description: 'repeated abuse',
+        proofUrl: 'https://x/proof.png',
+      } as never;
+      const result = await subject.broadBan(user, ROOM, dto);
+
+      expect(moderation.assertCanModerate).toHaveBeenCalledWith(expectedActor, ROOM);
+      expect(broadBans.banBroad).toHaveBeenCalledWith({
+        moderatorId: 'u1',
+        roomId: ROOM,
+        roomType: 'VIDEO_ROOM',
+        reason: 'abuse',
+        description: 'repeated abuse',
+        proofUrl: 'https://x/proof.png',
+      });
+      expect(result).toEqual({ id: 'bb-1' });
+    });
+
+    it('a non-moderator is rejected before the broad ban is ever issued', async () => {
+      moderation.assertCanModerate.mockRejectedValueOnce(new Error('forbidden'));
+      const dto = { reason: 'abuse' } as never;
+
+      await expect(subject.broadBan(user, ROOM, dto)).rejects.toThrow('forbidden');
+      expect(broadBans.banBroad).not.toHaveBeenCalled();
     });
   });
 

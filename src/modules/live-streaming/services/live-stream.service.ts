@@ -39,6 +39,7 @@ import {
 } from '../constants/live-stream-moderation.constants';
 import { PlatformModerationAuditService } from 'src/modules/platform-moderation/services/platform-moderation-audit.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
 
 export interface CreateLiveStreamInput {
   hostId: string;
@@ -76,6 +77,7 @@ export class LiveStreamService {
     @Optional() private readonly reportRepo?: LiveStreamReportRepository,
     @Optional() private readonly platformAudit?: PlatformModerationAuditService,
     @Optional() private readonly platformBans?: PlatformBanService,
+    @Optional() private readonly broadBans?: BroadBanService,
   ) {}
 
   async createStream(input: CreateLiveStreamInput) {
@@ -84,6 +86,9 @@ export class LiveStreamService {
     );
     if (!isModeratorActor && this.platformBans) {
       await this.platformBans.assertNotGloballyBanned(input.hostId);
+    }
+    if (!isModeratorActor && this.broadBans) {
+      await this.broadBans.assertNotBroadBanned(input.hostId);
     }
     // Get host location details if available to populate scope fields
     const host = await this.prisma.user.findUnique({

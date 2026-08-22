@@ -72,6 +72,7 @@ describe('AuthService', () => {
   >;
   let firebase: jest.Mocked<Pick<FirebaseService, 'verifyIdToken'>>;
   let roleSource: jest.Mocked<IRoleSource>;
+  let platformBans: { getActiveBan: jest.Mock };
   let service: AuthService;
 
   beforeEach(() => {
@@ -125,6 +126,7 @@ describe('AuthService', () => {
       getUserIdsWithAnyRole: jest.fn().mockResolvedValue([]),
     };
     const config = { get: () => ({ passwordResetTtlSeconds: 900 }) } as unknown as ConfigService;
+    platformBans = { getActiveBan: jest.fn().mockResolvedValue(null) };
 
     service = new AuthService(
       users,
@@ -138,6 +140,11 @@ describe('AuthService', () => {
       firebase as unknown as FirebaseService,
       config,
       roleSource,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      platformBans as never,
     );
   });
 
@@ -240,6 +247,20 @@ describe('AuthService', () => {
         service.loginWithPassword({ email: 'aditya@example.com', password: 'wrong' }, {}),
       ).rejects.toMatchObject({ errorCode: 'INVALID_CREDENTIALS' });
       expect(security.recordFailure).toHaveBeenCalled();
+    });
+
+    it('rejects login for a user with an active platform ban', async () => {
+      users.findByEmail.mockResolvedValue(makeIdentity());
+      repo.getCredential.mockResolvedValue({ passwordHash: 'HASH' } as never);
+      passwords.verify.mockResolvedValue(true);
+      platformBans.getActiveBan.mockResolvedValue({
+        reason: 'harassment',
+        expiresAt: '2026-08-19T00:00:00.000Z',
+      });
+
+      await expect(
+        service.loginWithPassword({ email: 'aditya@example.com', password: 'Str0ng@Pass' }, {}),
+      ).rejects.toMatchObject({ errorCode: 'ACCOUNT_BANNED' });
     });
 
     it('honours a temporary lock', async () => {

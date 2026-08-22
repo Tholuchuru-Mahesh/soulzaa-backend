@@ -96,6 +96,7 @@ import { ModeratorPerformanceService } from 'src/modules/moderator-performance/s
 import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
 import { PlatformModerationAuditService } from 'src/modules/platform-moderation/services/platform-moderation-audit.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
 
 /** Succession order when an owner is removed — highest wins (OWNER never chosen). */
 const OWNER_SUCCESSION_PRIORITY: Record<RoomMemberRole, number> = {
@@ -134,6 +135,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     @Optional() private readonly investigationRecording?: InvestigationRecordingService,
     @Optional() private readonly platformAudit?: PlatformModerationAuditService,
     @Optional() private readonly platformBans?: PlatformBanService,
+    @Optional() private readonly broadBans?: BroadBanService,
   ) {
     // Config namespaces surface raw process.env strings at runtime, so coerce.
     const cfg = this.config.get('audioRoom') as {
@@ -158,6 +160,9 @@ export class AudioRoomsService implements IAudioRoomsService {
     );
     if (!isModeratorActor && this.platformBans) {
       await this.platformBans.assertNotGloballyBanned(actor.id);
+    }
+    if (!isModeratorActor && this.broadBans) {
+      await this.broadBans.assertNotBroadBanned(actor.id);
     }
     return this.locks.withLock(`audio-room:create:{${actor.id}}`, async () => {
       // Rooms are permanent and one-per-owner, so "create" on an owner who
@@ -425,6 +430,9 @@ export class AudioRoomsService implements IAudioRoomsService {
     );
     if (!isModeratorActor && this.platformBans) {
       await this.platformBans.assertNotGloballyBanned(actor.id);
+    }
+    if (!isModeratorActor && this.broadBans) {
+      await this.broadBans.assertNotBroadBanned(actor.id);
     }
     const room = await this.getManageableRoom(roomId, actor);
     return this.goLive(room, actor);
