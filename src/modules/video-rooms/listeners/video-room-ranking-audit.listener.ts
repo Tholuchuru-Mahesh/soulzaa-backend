@@ -6,14 +6,6 @@ import { VIDEO_ROOM_SYSTEM_ACTOR_ID } from '../constants/video-room.constants';
 import { VIDEO_ROOM_RANKING_EVENTS } from '../events/video-room-ranking.events';
 import { VideoRoomEventsRepository } from '../repositories/video-room-events.repository';
 
-/** Bus event name → the `VideoRoomEvent.eventType` written for it. */
-const AUDITED: Record<string, string> = {
-  [VIDEO_ROOM_RANKING_EVENTS.RANKING_UPDATED]: 'ranking.updated',
-  [VIDEO_ROOM_RANKING_EVENTS.LEADERBOARD_UPDATED]: 'ranking.leaderboard_changed',
-  [VIDEO_ROOM_RANKING_EVENTS.AGGREGATED]: 'ranking.aggregated',
-  [VIDEO_ROOM_RANKING_EVENTS.SNAPSHOT_CREATED]: 'ranking.snapshot_created',
-};
-
 /**
  * Writes the ranking audit trail into the existing append-only VideoRoomEvent
  * store — no new log table, mirroring VideoRoomTreasureAuditListener.
@@ -36,7 +28,17 @@ export class VideoRoomRankingAuditListener implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    for (const [busName, eventType] of Object.entries(AUDITED)) {
+    // Build the map lazily here (not at module scope) to avoid a circular-
+    // dependency crash where VIDEO_ROOM_RANKING_EVENTS is undefined at the
+    // time Node.js first evaluates this file's top-level statements.
+    const audited: Record<string, string> = {
+      [VIDEO_ROOM_RANKING_EVENTS.RANKING_UPDATED]: 'ranking.updated',
+      [VIDEO_ROOM_RANKING_EVENTS.LEADERBOARD_UPDATED]: 'ranking.leaderboard_changed',
+      [VIDEO_ROOM_RANKING_EVENTS.AGGREGATED]: 'ranking.aggregated',
+      [VIDEO_ROOM_RANKING_EVENTS.SNAPSHOT_CREATED]: 'ranking.snapshot_created',
+    };
+
+    for (const [busName, eventType] of Object.entries(audited)) {
       this.bus.subscribe<DomainEvent<Record<string, unknown>>>(busName, (e) =>
         this.append(eventType, e.payload, e.eventId),
       );
