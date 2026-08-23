@@ -278,11 +278,7 @@ export class AnalyticsReportingService {
           dbTxn?.creatorEarnings ?? 0,
           existing ? Number(existing.creatorEarnings) : 0,
         );
-        const roomsRec = Math.max(
-          live.roomsHosted,
-          dbRooms,
-          existing?.roomsHosted ?? 0,
-        );
+        const roomsRec = Math.max(live.roomsHosted, dbRooms, existing?.roomsHosted ?? 0);
 
         formattedSeries.push({
           dateKey: key,

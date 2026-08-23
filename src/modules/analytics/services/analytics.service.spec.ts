@@ -48,8 +48,14 @@ describe('AnalyticsService', () => {
     };
 
     const prisma = {
-      giftTransaction: { aggregate: jest.fn().mockResolvedValue({ _sum: { totalCoinValue: 0n }, _count: 0 }), count: jest.fn().mockResolvedValue(0) },
-      roomVisitor: { aggregate: jest.fn().mockResolvedValue({ _count: 0 }), count: jest.fn().mockResolvedValue(0) },
+      giftTransaction: {
+        aggregate: jest.fn().mockResolvedValue({ _sum: { totalCoinValue: 0n }, _count: 0 }),
+        count: jest.fn().mockResolvedValue(0),
+      },
+      roomVisitor: {
+        aggregate: jest.fn().mockResolvedValue({ _count: 0 }),
+        count: jest.fn().mockResolvedValue(0),
+      },
       speakerSession: { aggregate: jest.fn().mockResolvedValue({ _sum: { speakingSeconds: 0 } }) },
       audioRoom: { findUnique: jest.fn().mockResolvedValue(null) },
       videoRoom: { findUnique: jest.fn().mockResolvedValue(null) },

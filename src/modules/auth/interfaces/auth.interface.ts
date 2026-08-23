@@ -58,15 +58,26 @@ export interface IAuthService {
 
 // ---- Command shapes (query/command separation; DTOs map onto these) ----
 
+/**
+ * Sign-up asks for an email and a password only. Everything else is optional
+ * because the profile-completion gate collects it after the first login — see
+ * `UserIdentity.isProfileComplete` in the client. A caller that already has the
+ * full details (the older multi-step form) may still supply them.
+ */
 export interface RegisterCommand {
-  fullName: string;
-  username: string;
-  mobile: string;
+  /**
+   * Required by the public sign-up DTO. Optional here because internal callers
+   * (admin/moderator provisioning) create accounts from a username + mobile and
+   * may have no address to give.
+   */
   email?: string;
   password: string;
+  fullName?: string;
+  username?: string;
+  mobile?: string;
   gender?: 'MALE' | 'FEMALE' | 'OTHER';
-  dateOfBirth: string; // ISO date
-  country: string;
+  dateOfBirth?: string; // ISO date
+  country?: string;
   state?: string;
   city?: string;
   preferredLanguage?: string;

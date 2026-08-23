@@ -13,6 +13,7 @@ import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { PLATFORM_ROLES, type PlatformRole } from 'src/common/constants';
 import { ROLE_SOURCE, type IRoleSource } from 'src/common/interfaces/role-source.interface';
 import { PasswordService } from 'src/infra/auth/password.service';
+import { generateUsernameFromEmail } from './username-generator';
 import {
   USERS_SERVICE,
   type IUsersService,
@@ -115,14 +116,25 @@ export class AuthService implements IAuthService {
   // ---- Registration ----
 
   async register(input: RegisterCommand, ctx: AuthContext): Promise<AuthResult> {
+    // `username` is NOT NULL and unique but sign-up no longer asks for one, so
+    // mint it from the address when the caller did not supply it.
+    const username =
+      input.username ??
+      (await generateUsernameFromEmail(
+        // No address to derive from (an internal caller that gave neither) still
+        // yields a valid, unique name rather than failing the insert.
+        input.email ?? '',
+        async (candidate) => (await this.users.findByUsername(candidate)) !== null,
+      ));
+
     const user = await this.users.createIdentity({
-      username: input.username,
+      username,
       email: input.email ?? null,
-      mobile: input.mobile,
-      fullName: input.fullName,
+      mobile: input.mobile ?? null,
+      fullName: input.fullName ?? null,
       gender: input.gender ?? null,
-      dateOfBirth: new Date(input.dateOfBirth),
-      country: input.country,
+      dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : null,
+      country: input.country ?? null,
       state: input.state ?? null,
       city: input.city ?? null,
       preferredLanguage: input.preferredLanguage ?? null,
@@ -132,14 +144,16 @@ export class AuthService implements IAuthService {
     const passwordHash = await this.passwords.hash(input.password);
     await this.repo.upsertCredential(user.id, passwordHash);
     await this.repo.ensureProviderMarker(user.id, AuthProviderType.PASSWORD);
-    await this.repo.ensureProviderMarker(user.id, AuthProviderType.MOBILE_OTP);
 
-    // Kick off mobile verification; the client completes it via /auth/verify-mobile.
-    await this.otp.generate({
-      destination: input.mobile,
-      purpose: OtpPurpose.MOBILE_VERIFY,
-      userId: user.id,
-    });
+    if (input.mobile) {
+      await this.repo.ensureProviderMarker(user.id, AuthProviderType.MOBILE_OTP);
+      // Kick off mobile verification; the client completes it via /auth/verify-mobile.
+      await this.otp.generate({
+        destination: input.mobile,
+        purpose: OtpPurpose.MOBILE_VERIFY,
+        userId: user.id,
+      });
+    }
 
     await this.bus.publish(
       new UserRegisteredEvent({

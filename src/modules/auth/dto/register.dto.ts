@@ -16,48 +16,63 @@ import { DeviceInfoDto } from './device-info.dto';
 import { IsMinimumAge } from './validators/is-minimum-age.validator';
 import { IsStrongPassword } from './validators/is-strong-password.validator';
 
-/** New-account registration (mobile is required; OTP verifies it post-register). */
+/**
+ * New-account registration.
+ *
+ * Only an email and a password are required: the client's sign-up screen asks
+ * for nothing else, and name, gender, date of birth and country are collected
+ * by the profile-completion gate on first login. `username` is minted from the
+ * address when omitted.
+ *
+ * The 18+ check still applies to any `dateOfBirth` supplied here; when it is
+ * omitted the age gate is enforced at profile completion, which the client
+ * cannot get past.
+ */
 export class RegisterDto {
-  @ApiProperty({ example: 'Aditya Reddy' })
+  @ApiProperty({ example: 'aditya@example.com' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: 'Str0ng@Pass', description: 'Min 8, upper, lower, number, special' })
+  @IsStrongPassword()
+  password!: string;
+
+  @ApiPropertyOptional({ example: 'Aditya Reddy' })
+  @IsOptional()
   @IsString()
   @Length(1, 100)
-  fullName!: string;
+  fullName?: string;
 
-  @ApiProperty({ example: 'aditya_r', minLength: 4, maxLength: 20 })
+  @ApiPropertyOptional({ example: 'aditya_r', minLength: 4, maxLength: 20 })
+  @IsOptional()
   @IsString()
   @Length(4, 20)
   @Matches(/^[a-zA-Z0-9_]+$/, {
     message: 'Username may contain only letters, numbers and underscores',
   })
-  username!: string;
+  username?: string;
 
-  @ApiProperty({ example: '+919876543210' })
-  @IsMobilePhone()
-  mobile!: string;
-
-  @ApiPropertyOptional({ example: 'aditya@example.com' })
+  @ApiPropertyOptional({ example: '+919876543210' })
   @IsOptional()
-  @IsEmail()
-  email?: string;
-
-  @ApiProperty({ example: 'Str0ng@Pass', description: 'Min 8, upper, lower, number, special' })
-  @IsStrongPassword()
-  password!: string;
+  @IsMobilePhone()
+  mobile?: string;
 
   @ApiPropertyOptional({ enum: Gender })
   @IsOptional()
   @IsEnum(Gender)
   gender?: Gender;
 
-  @ApiProperty({ example: '2000-05-14', description: 'ISO date; must be 18+' })
+  @ApiPropertyOptional({ example: '2000-05-14', description: 'ISO date; must be 18+' })
+  @IsOptional()
   @IsISO8601()
   @IsMinimumAge(18)
-  dateOfBirth!: string;
+  dateOfBirth?: string;
 
-  @ApiProperty({ example: 'IN' })
+  @ApiPropertyOptional({ example: 'IN' })
+  @IsOptional()
   @IsString()
   @Length(2, 64)
-  country!: string;
+  country?: string;
 
   @ApiPropertyOptional({ example: 'Karnataka' })
   @IsOptional()

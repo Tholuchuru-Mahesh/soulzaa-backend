@@ -96,10 +96,7 @@ export class RankingsRepository {
     const count = await this.prisma.userStatistics.count({
       where: { giftsSent: { gt: 0 } },
     });
-    return [
-      stats.map((s) => ({ member: s.userId, score: Number(s.giftsSent) })),
-      count,
-    ];
+    return [stats.map((s) => ({ member: s.userId, score: Number(s.giftsSent) })), count];
   }
 
   async getReceiversFromDb(
@@ -138,10 +135,7 @@ export class RankingsRepository {
     const count = await this.prisma.userStatistics.count({
       where: { coinsReceived: { gt: 0 } },
     });
-    return [
-      stats.map((s) => ({ member: s.userId, score: Number(s.coinsReceived) })),
-      count,
-    ];
+    return [stats.map((s) => ({ member: s.userId, score: Number(s.coinsReceived) })), count];
   }
 
   async getStreamersFromDb(
@@ -178,13 +172,8 @@ export class RankingsRepository {
       skip,
       take,
     });
-    const count = await this.prisma.audioRoom
-      .groupBy({ by: ['ownerId'] })
-      .then((r) => r.length);
-    return [
-      rooms.map((r, i) => ({ member: r.ownerId, score: Math.max(100 - i * 10, 10) })),
-      count,
-    ];
+    const count = await this.prisma.audioRoom.groupBy({ by: ['ownerId'] }).then((r) => r.length);
+    return [rooms.map((r, i) => ({ member: r.ownerId, score: Math.max(100 - i * 10, 10) })), count];
   }
 
   async getFamiliesFromDb(skip: number, take: number): Promise<[RedisRankedEntry[], number]> {
@@ -194,10 +183,7 @@ export class RankingsRepository {
       take,
     });
     const total = await this.prisma.family.count();
-    return [
-      families.map((f) => ({ member: f.id, score: Number(f.exp ?? f.level * 100) })),
-      total,
-    ];
+    return [families.map((f) => ({ member: f.id, score: Number(f.exp ?? f.level * 100) })), total];
   }
 
   // ---- PostgreSQL Snapshot Operations ----

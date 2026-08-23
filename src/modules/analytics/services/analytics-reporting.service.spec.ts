@@ -109,12 +109,16 @@ describe('AnalyticsReportingService', () => {
       audioRoom: {
         findMany: jest.fn().mockResolvedValue([{ id: 'room-1', createdAt: new Date() }]),
         findUnique: jest.fn().mockResolvedValue({ ownerId: 'owner-id' }),
-        aggregate: jest.fn().mockResolvedValue({ _sum: { totalCoinValue: 0n, creatorEarnings: 0n } }),
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _sum: { totalCoinValue: 0n, creatorEarnings: 0n } }),
       },
       videoRoom: {
         findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn().mockResolvedValue(null),
-        aggregate: jest.fn().mockResolvedValue({ _sum: { totalCoinValue: 0n, creatorEarnings: 0n } }),
+        aggregate: jest
+          .fn()
+          .mockResolvedValue({ _sum: { totalCoinValue: 0n, creatorEarnings: 0n } }),
       },
     };
     service = new AnalyticsReportingService(
