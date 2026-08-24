@@ -184,15 +184,13 @@ export class TaskController {
   }
 
   @Get('mobile/feed')
-  @RequirePermissions('task.view')
   @ApiOperation({ summary: 'Mobile: all active tasks + event missions with user progress overlay' })
   @ApiQuery({ name: 'userId', required: false })
-  async getMobileFeed(@Query('userId') userId?: string) {
-    return this.queryService.getMobileFeed(userId);
+  async getMobileFeed(@Query('userId') userId?: string, @CurrentUser('id') authUserId?: string) {
+    return this.queryService.getMobileFeed(userId || authUserId);
   }
 
   @Post('me/rewards/claim')
-  @RequirePermissions('task.view')
   @ApiOperation({ summary: 'Self-scoped reward claim for regular users' })
   async selfClaim(@Body('taskId') taskId: string, @CurrentUser() user: any) {
     return this.queryService.selfClaimReward(user?.id, taskId);
