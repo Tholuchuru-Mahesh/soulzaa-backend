@@ -10,7 +10,10 @@ describe('RoomPermissionService', () => {
   let service: RoomPermissionService;
 
   beforeEach(() => {
-    rooms = { getMember: jest.fn().mockResolvedValue({ isActive: true }) };
+    rooms = {
+      getMember: jest.fn().mockResolvedValue({ isActive: true, role: RoomMemberRole.AUDIENCE }),
+      getOwnerId: jest.fn().mockResolvedValue('owner-1'),
+    };
     seats = {
       getRole: jest.fn().mockResolvedValue(null),
       getSeatByOccupant: jest.fn().mockResolvedValue(null),

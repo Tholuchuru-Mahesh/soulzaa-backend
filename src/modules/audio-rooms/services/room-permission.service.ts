@@ -43,6 +43,11 @@ export class RoomPermissionService {
     const member = await this.rooms.getMember(roomId, userId);
     if (!member?.isActive) return null;
 
+    const ownerId = await this.rooms.getOwnerId(roomId);
+    if (ownerId === userId || member.role === RoomMemberRole.OWNER) {
+      return RoomMemberRole.OWNER;
+    }
+
     const grant = await this.seats.getRole(roomId, userId);
     if (grant) return grant.role;
 
@@ -139,8 +144,20 @@ export class RoomPermissionService {
   async assertOutranks(roomId: string, actor: RoomActor, targetUserId: string): Promise<void> {
     if (this.isPlatformAdmin(actor.roles) || this.isPlatformModerator(actor.roles)) return;
 
+    const ownerId = await this.rooms.getOwnerId(roomId);
+    if (actor.id === ownerId) {
+      if (targetUserId === ownerId) {
+        throw new BusinessException(
+          ERROR_CODES.CANNOT_MODERATE_OWNER,
+          'The room owner cannot be moderated.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      return;
+    }
+
     const targetRank = await this.authorityRank(roomId, targetUserId);
-    const targetIsOwner = targetRank === 4;
+    const targetIsOwner = targetRank === 4 || targetUserId === ownerId;
 
     const actorRank = await this.authorityRank(roomId, actor.id);
     if (targetIsOwner) {

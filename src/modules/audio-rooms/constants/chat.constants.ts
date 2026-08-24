@@ -38,7 +38,11 @@ export function chatPinLockKey(roomId: string): string {
 }
 
 /** Emoji reactions accepted by `chat.react` (floating burst). */
-export const CHAT_REACTION_EMOJIS = ['❤️', '😂', '👍', '👏', '🔥', '😮', '😢', '🎉', '💯', '🙏'];
+export const CHAT_REACTION_EMOJIS = [
+  '❤️', '😂', '👍', '👏', '🔥', '😮', '😢', '🎉', '💯', '🙏',
+  '🥳', '🤩', '💖', '🚀', '👑', '✨', '🎤', '💃', '🕺', '🌹',
+  '💎', '😎', '😍', '🍻', '🌟', '💥', '🍿', '🎈', '🏆', '🎵',
+];
 
 /** A single grapheme/emoji token cap for the `EMOJI` message type. */
 export const CHAT_EMOJI_MESSAGE_MAX_LENGTH = 16;

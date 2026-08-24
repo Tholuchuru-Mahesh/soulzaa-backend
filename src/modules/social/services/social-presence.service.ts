@@ -29,11 +29,15 @@ export class SocialPresenceService {
 
     return Promise.all(
       userIds.map(async (id): Promise<PresenceView> => {
-        const [online, canOnline, canLastSeen] = await Promise.all([
+        const [online, canOnline, canLastSeenTarget, canLastSeenViewer] = await Promise.all([
           this.presence.isOnline(id),
           this.privacy.check(viewerId, id, PrivacyAction.VIEW_ONLINE),
           this.privacy.check(viewerId, id, PrivacyAction.VIEW_LAST_SEEN),
+          viewerId && viewerId !== id
+            ? this.privacy.check(id, viewerId, PrivacyAction.VIEW_LAST_SEEN)
+            : Promise.resolve(true),
         ]);
+        const canLastSeen = canLastSeenTarget && canLastSeenViewer;
         const row = byId.get(id);
         const status = row?.status ?? (online ? PresenceStatus.ONLINE : PresenceStatus.OFFLINE);
         return {

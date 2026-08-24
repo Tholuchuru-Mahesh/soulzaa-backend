@@ -9,6 +9,7 @@ import {
   RoomBan,
   RoomKick,
   RoomMute,
+  SeatHistoryAction,
 } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
@@ -28,6 +29,7 @@ import type { ReviewReportDto } from '../dto/moderation.dto';
 import type { AppealDto } from '../dto/moderation.dto';
 import type { ResolveAppealDto } from '../dto/moderation.dto';
 import { RoomLeftEvent } from '../events/audio-room.events';
+import { SeatLeftEvent } from '../events/audio-room-seat.events';
 import { ChatMessageSentEvent, type ChatMessagePayload } from '../events/audio-room-chat.events';
 import {
   AppealResolvedEvent,
@@ -1425,8 +1427,21 @@ export class ModerationService implements IModerationService {
     await this.voice.forceLeave(roomId, userId);
     const count = await this.presence.roomMemberCount(roomId);
     await this.rooms.bumpStatsOnLeave(roomId, count);
-    // Vacate their seat + sync voice role via the AR-1/AR-2 leave reactions.
-    await this.bus.publish(new RoomLeftEvent({ roomId, userId, participantCount: count }));
+    const seat = await this.seats.getSeatByOccupant(roomId, userId);
+    if (seat) {
+      await this.seats.setOccupant(roomId, seat.seatIndex, null, actorId);
+      if (seat.isMuted) {
+        await this.seats.setSeatMuted(roomId, seat.seatIndex, false, actorId);
+      }
+      await this.seats.appendSeatHistory({
+        roomId,
+        actorId,
+        subjectUserId: userId,
+        action: SeatHistoryAction.SEAT_LEFT,
+        seatIndex: seat.seatIndex,
+      });
+      await this.seats.invalidateStage(roomId);
+    }
   }
 
   private async liftBanInternal(

@@ -86,7 +86,15 @@ describe('ModerationService', () => {
       getOwnerId: jest.fn().mockResolvedValue('owner-1'),
       findRoomRow: jest.fn().mockResolvedValue({ id: 'r' }),
     };
-    seats = { listElevatedMemberIds: jest.fn().mockResolvedValue(['owner-1']) };
+    seats = {
+      listElevatedMemberIds: jest.fn().mockResolvedValue(['owner-1']),
+      getSeatByOccupant: jest.fn().mockResolvedValue(null),
+      setOccupant: jest.fn().mockResolvedValue(undefined),
+      setSeatMuted: jest.fn().mockResolvedValue(undefined),
+      invalidateStage: jest.fn().mockResolvedValue(undefined),
+      appendSeatHistory: jest.fn().mockResolvedValue(undefined),
+      onMemberLeave: jest.fn().mockResolvedValue(undefined),
+    };
     presence = {
       leaveRoom: jest.fn().mockResolvedValue(undefined),
       roomMemberCount: jest.fn().mockResolvedValue(3),

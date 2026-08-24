@@ -161,7 +161,12 @@ export class WorkforceScopeService {
    */
   async assertModeratorInScope(moderatorId: string, ownerId: string | null): Promise<void> {
     if (!ownerId) return; // No owner known — permit (safety valve)
+    if (moderatorId === ownerId) return; // Resource owner moderating their own resource
     if (await this.isUnrestricted(moderatorId)) return;
+
+    const roleNames = await this.roles.getRoleNames(moderatorId);
+    const isStaff = roleNames.some((r) => ['MODERATOR', 'OFFICIAL', 'COUNTRY_MANAGER'].includes(r));
+    if (!isStaff) return; // Regular in-room admin / host without platform workforce role
 
     const filter = await this.userScopeFilter(moderatorId);
     if (!('OR' in filter)) return; // unrestricted

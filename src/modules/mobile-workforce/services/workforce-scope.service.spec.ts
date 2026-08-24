@@ -212,6 +212,18 @@ describe('WorkforceScopeService.assertModeratorInScope', () => {
     await expect(service.assertModeratorInScope('admin-1', 'owner-1')).resolves.toBeUndefined();
   });
 
+  it('permits a resource owner moderating their own resource', async () => {
+    roles.getRoleNames.mockResolvedValue(['USER']);
+    scopes.getUserScopes.mockResolvedValue([]);
+    await expect(service.assertModeratorInScope('owner-1', 'owner-1')).resolves.toBeUndefined();
+  });
+
+  it('permits a regular user or in-room admin without platform workforce roles', async () => {
+    roles.getRoleNames.mockResolvedValue(['USER']);
+    scopes.getUserScopes.mockResolvedValue([]);
+    await expect(service.assertModeratorInScope('user-1', 'owner-1')).resolves.toBeUndefined();
+  });
+
   it('permits when the target owner cannot be resolved (safety valve, same as an unresolved target)', async () => {
     scopes.getUserScopes.mockResolvedValue([
       { scopeType: 'STATE', stateId: 's-1', countryId: 'c-1' },
