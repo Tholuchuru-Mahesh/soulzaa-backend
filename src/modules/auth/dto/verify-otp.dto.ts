@@ -11,9 +11,10 @@ export class VerifyOtpDto {
   @MaxLength(256)
   destination!: string;
 
-  @ApiProperty({ enum: OtpPurpose })
+  @ApiPropertyOptional({ enum: OtpPurpose })
+  @IsOptional()
   @IsEnum(OtpPurpose)
-  purpose!: OtpPurpose;
+  purpose?: OtpPurpose;
 
   @ApiProperty({ example: '123456' })
   @IsString()

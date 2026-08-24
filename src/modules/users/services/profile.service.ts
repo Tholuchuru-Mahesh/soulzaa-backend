@@ -39,6 +39,7 @@ import {
 import type {
   IProfileService,
   ProfileView,
+  ProfileVisitorItem,
   PublicIdentity,
   StatisticField,
   StatisticsView,
@@ -679,6 +680,20 @@ export class ProfileService implements IProfileService {
     const frameData = await this.resolveEquippedFrame(user.id);
     // Store the media KEY (not URL) so the URL can be re-resolved cheaply per request.
     const frameMediaKey = frameData.url; // resolveEquippedFrame already returns a URL; store as-is for now.
+    let visitorsCount = (stats as any).visitorsCount ?? 0;
+    try {
+      if ((this.prisma as any).profileVisitor) {
+        visitorsCount = await (this.prisma as any).profileVisitor.count({
+          where: { profileId: user.id },
+        });
+      }
+    } catch {
+      // fallback to stats.visitorsCount
+    }
+
+    const statsView = this.toStatisticsView(stats);
+    statsView.visitorsCount = visitorsCount;
+
     return {
       id: user.id,
       username: user.username,
@@ -694,7 +709,7 @@ export class ProfileService implements IProfileService {
       state: profile.state,
       city: profile.city,
       preferredLanguage: user.preferredLanguage,
-      statistics: this.toStatisticsView(stats),
+      statistics: statsView,
       verification: this.toVerificationView(verification),
       isHiddenAccount: user.isHiddenAccount,
       createdAt: user.createdAt.toISOString(),
@@ -706,7 +721,7 @@ export class ProfileService implements IProfileService {
   ): Promise<{ url: string | null; expiresAt: Date | null }> {
     try {
       const cosmeticId = '00000000-0000-0000-0000-000000000001';
-      const prisma = this.prisma;
+      const prisma = (this.users as any)?.prisma || this.prisma;
 
       const now = new Date();
       // 1. Check and clean up any expired cosmetics for this user
@@ -1007,10 +1022,13 @@ export class ProfileService implements IProfileService {
               visitorId,
             },
           });
+          const uniqueCount = await (tx as any).profileVisitor.count({
+            where: { profileId },
+          });
           await (tx as any).userStatistics.upsert({
             where: { userId: profileId },
-            create: { userId: profileId, visitorsCount: 1 },
-            update: { visitorsCount: { increment: 1 } },
+            create: { userId: profileId, visitorsCount: uniqueCount },
+            update: { visitorsCount: uniqueCount },
           });
         });
         await this.invalidate(profileId);
@@ -1022,6 +1040,115 @@ export class ProfileService implements IProfileService {
       }
     } catch {
       // Tolerant fallback so visitor tracking errors never fail the profile read
+    }
+  }
+
+  /**
+   * Retrieves the paginated list of visitors who recently viewed a profile.
+   */
+  async getVisitors(
+    profileId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<Paginated<ProfileVisitorItem>> {
+    const skip = Math.max(0, (page - 1) * limit);
+    const take = Math.max(1, Math.min(100, limit));
+
+    try {
+      const [total, rows] = await Promise.all([
+        (this.prisma as any).profileVisitor.count({
+          where: { profileId },
+        }),
+        (this.prisma as any).profileVisitor.findMany({
+          where: { profileId },
+          orderBy: { visitedAt: 'desc' },
+          skip,
+          take,
+        }),
+      ]);
+
+      const visitorIds = rows.map((r: any) => r.visitorId);
+      if (visitorIds.length === 0) {
+        return {
+          items: [],
+          total,
+          page,
+          limit: take,
+          totalPages: Math.ceil(total / take) || 1,
+        };
+      }
+
+      const [users, profiles, stats, verifications, follows] = await Promise.all([
+        this.prisma.user.findMany({
+          where: { id: { in: visitorIds } },
+          select: { id: true, username: true, fullName: true, country: true },
+        }),
+        this.prisma.userProfile.findMany({
+          where: { userId: { in: visitorIds } },
+          select: { userId: true, avatarKey: true },
+        }),
+        this.prisma.userStatistics.findMany({
+          where: { userId: { in: visitorIds } },
+          select: { userId: true, level: true, vipLevel: true },
+        }),
+        this.prisma.userVerification.findMany({
+          where: { userId: { in: visitorIds } },
+          select: { userId: true, verified: true },
+        }),
+        this.prisma.follow.findMany({
+          where: { followerId: profileId, followingId: { in: visitorIds } },
+          select: { followingId: true },
+        }),
+      ]);
+
+      const userMap = new Map(users.map((u) => [u.id, u]));
+      const profileMap = new Map(profiles.map((p) => [p.userId, p]));
+      const statsMap = new Map(stats.map((s) => [s.userId, s]));
+      const verifMap = new Map(verifications.map((v) => [v.userId, v]));
+      const followSet = new Set(follows.map((f) => f.followingId));
+
+      const items: ProfileVisitorItem[] = await Promise.all(
+        rows.map(async (r: any) => {
+          const u = userMap.get(r.visitorId);
+          const p = profileMap.get(r.visitorId);
+          const s = statsMap.get(r.visitorId);
+          const v = verifMap.get(r.visitorId);
+          const avatarUrl = p?.avatarKey ? await this.media.resolve(p.avatarKey) : null;
+          const frameUrl = await this.resolveEquippedFrameUrl(r.visitorId);
+
+          return {
+            id: r.id,
+            visitorId: r.visitorId,
+            visitedAt: r.visitedAt,
+            username: u?.username ?? 'user',
+            fullName: u?.fullName ?? null,
+            avatarUrl,
+            equippedFrameUrl: frameUrl,
+            level: s?.level ?? 1,
+            vipLevel: s?.vipLevel ?? 0,
+            verified: v?.verified ?? false,
+            country: u?.country ?? null,
+            isFollowing: followSet.has(r.visitorId),
+          };
+        }),
+      );
+
+      return {
+        items,
+        total,
+        page,
+        limit: take,
+        totalPages: Math.ceil(total / take) || 1,
+      };
+    } catch (err) {
+      console.error('[ProfileService.getVisitors] error:', err);
+      return {
+        items: [],
+        total: 0,
+        page,
+        limit: take,
+        totalPages: 1,
+      };
     }
   }
 

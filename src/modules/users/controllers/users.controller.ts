@@ -58,6 +58,17 @@ export class UsersController {
   }
 
   @ApiBearerAuth()
+  @Get('me/visitors')
+  @ApiOperation({ summary: 'Get list of users who recently visited my profile' })
+  getMyVisitors(
+    @CurrentUser('id') userId: string,
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ) {
+    return this.profile.getVisitors(userId, Number(page) || 1, Number(limit) || 20);
+  }
+
+  @ApiBearerAuth()
   @Patch('me')
   @ApiOperation({ summary: 'Update my profile' })
   update(@CurrentUser('id') userId: string, @Body() dto: UpdateProfileDto) {

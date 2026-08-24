@@ -59,7 +59,7 @@ export const envSchema = z.object({
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().positive().default(12),
 
   // ---- OTP (mobile + email one-time codes) ----
-  OTP_LENGTH: z.coerce.number().int().min(4).max(10).default(6),
+  OTP_LENGTH: z.coerce.number().int().min(6).max(10).default(6),
   // Code lifetime — PRD "60 Second Timer".
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(60),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),

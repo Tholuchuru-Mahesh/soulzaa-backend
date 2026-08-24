@@ -153,6 +153,7 @@ describe('ProfileService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({}),
         update: jest.fn().mockResolvedValue({}),
+        count: jest.fn().mockResolvedValue(0),
       },
       userStatistics: {
         upsert: jest.fn().mockResolvedValue({}),
@@ -573,8 +574,9 @@ describe('ProfileService', () => {
   });
 
   describe('recordProfileVisit', () => {
-    it('creates profile visitor record and increments statistics on first visit', async () => {
+    it('creates profile visitor record and sets statistics unique count on first visit', async () => {
       (prisma as any).profileVisitor.findUnique.mockResolvedValue(null);
+      (prisma as any).profileVisitor.count.mockResolvedValue(1);
       await service.recordProfileVisit('user-b', 'user-a');
 
       expect((prisma as any).profileVisitor.create).toHaveBeenCalledWith({
@@ -586,7 +588,7 @@ describe('ProfileService', () => {
       expect((prisma as any).userStatistics.upsert).toHaveBeenCalledWith({
         where: { userId: 'user-b' },
         create: { userId: 'user-b', visitorsCount: 1 },
-        update: { visitorsCount: { increment: 1 } },
+        update: { visitorsCount: 1 },
       });
       expect(cache.del).toHaveBeenCalledWith(expect.stringContaining('user-b'));
     });

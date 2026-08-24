@@ -74,6 +74,21 @@ export interface ProfileView {
   createdAt: Date;
 }
 
+export interface ProfileVisitorItem {
+  id: string;
+  visitorId: string;
+  visitedAt: Date;
+  username: string;
+  fullName: string | null;
+  avatarUrl: string | null;
+  equippedFrameUrl?: string | null;
+  level: number;
+  vipLevel: number;
+  verified: boolean;
+  country: string | null;
+  isFollowing?: boolean;
+}
+
 /** Lightweight card returned by search / listings. */
 export interface UserCard {
   id: string;
