@@ -127,30 +127,35 @@ export class ProfileService implements IProfileService {
   // ---- Reads ----
 
   async getProfileView(userId: string): Promise<ProfileView | null> {
-    const cached = await this.cache.get<CachedProfile>(this.cacheKey(userId));
-    if (cached) return this.resolveView(cached);
+    try {
+      const cached = await this.cache.get<CachedProfile>(this.cacheKey(userId));
+      if (cached) return this.resolveView(cached);
 
-    const user = await this.users.findById(userId);
-    if (!user) return null;
+      const user = await this.users.findById(userId);
+      if (!user) return null;
 
-    let [profile, stats, verification] = await Promise.all([
-      this.profiles.getProfile(userId),
-      this.profiles.getStatistics(userId),
-      this.profiles.getVerification(userId),
-    ]);
-    // Lazy-init for accounts created before the profile aggregate existed.
-    if (!profile || !stats || !verification) {
-      await this.profiles.ensureDefaults(userId);
-      [profile, stats, verification] = await Promise.all([
+      let [profile, stats, verification] = await Promise.all([
         this.profiles.getProfile(userId),
         this.profiles.getStatistics(userId),
         this.profiles.getVerification(userId),
       ]);
-    }
+      // Lazy-init for accounts created before the profile aggregate existed.
+      if (!profile || !stats || !verification) {
+        await this.profiles.ensureDefaults(userId);
+        [profile, stats, verification] = await Promise.all([
+          this.profiles.getProfile(userId),
+          this.profiles.getStatistics(userId),
+          this.profiles.getVerification(userId),
+        ]);
+      }
 
-    const snapshot = await this.buildSnapshot(user, profile!, stats!, verification!);
-    await this.cache.set(this.cacheKey(userId), snapshot, this.cacheTtl);
-    return this.resolveView(snapshot);
+      const snapshot = await this.buildSnapshot(user, profile!, stats!, verification!);
+      await this.cache.set(this.cacheKey(userId), snapshot, this.cacheTtl);
+      return this.resolveView(snapshot);
+    } catch (err) {
+      console.error('[ProfileService.getProfileView] error for userId:', userId, err);
+      throw err;
+    }
   }
 
   async getProfileByUsername(username: string, viewerId?: string): Promise<ProfileView | null> {
@@ -701,7 +706,7 @@ export class ProfileService implements IProfileService {
   ): Promise<{ url: string | null; expiresAt: Date | null }> {
     try {
       const cosmeticId = '00000000-0000-0000-0000-000000000001';
-      const prisma = this.users['prisma'];
+      const prisma = this.prisma;
 
       const now = new Date();
       // 1. Check and clean up any expired cosmetics for this user
@@ -900,36 +905,59 @@ export class ProfileService implements IProfileService {
     const ttlSeconds = equippedFrameExpiresAt
       ? Math.max(0, Math.floor((equippedFrameExpiresAt.getTime() - Date.now()) / 1000))
       : null;
+
+    const defaultStats: StatisticsView = {
+      followersCount: 0,
+      followingCount: 0,
+      friendsCount: 0,
+      visitorsCount: 0,
+      giftsSent: 0,
+      giftsReceived: 0,
+      coinsReceived: 0,
+      audioHours: 0,
+      videoHours: 0,
+      liveHours: 0,
+      exp: 0,
+      level: 1,
+      vipLevel: 0,
+    };
+    const baseStats = snap.statistics ? { ...defaultStats, ...snap.statistics } : defaultStats;
+    const baseVerification: VerificationView = snap.verification ?? {
+      verified: false,
+      status: 'NONE' as any,
+      type: null,
+    };
+
     return {
       id: snap.id,
       username: snap.username,
-      fullName: snap.fullName,
-      bio: snap.bio,
+      fullName: snap.fullName ?? null,
+      bio: snap.bio ?? null,
       avatarUrl,
       coverUrl,
       equippedFrameUrl,
       equippedFrameExpiresAt,
       equippedFrameTtlSeconds: ttlSeconds,
-      gender: snap.gender,
+      gender: snap.gender ?? null,
       birthday: snap.birthday ? new Date(snap.birthday) : null,
-      country: snap.country,
-      state: snap.state,
-      city: snap.city,
-      preferredLanguage: snap.preferredLanguage,
+      country: snap.country ?? null,
+      state: snap.state ?? null,
+      city: snap.city ?? null,
+      preferredLanguage: snap.preferredLanguage ?? null,
       // Task 35: Suppress cosmetic indicators (VIP, level, verification badges) for hidden staff accounts
       statistics: isHidden
         ? {
-            ...snap.statistics,
+            ...baseStats,
             level: 1,
             vipLevel: 0,
             exp: 0,
           }
-        : snap.statistics,
+        : baseStats,
       verification: isHidden
-        ? { verified: false, status: 'UNVERIFIED' as any, type: null }
-        : snap.verification,
+        ? { verified: false, status: 'NONE' as any, type: null }
+        : baseVerification,
       isHiddenAccount: isHidden,
-      createdAt: new Date(snap.createdAt),
+      createdAt: snap.createdAt ? new Date(snap.createdAt) : new Date(),
     };
   }
 
