@@ -60,6 +60,17 @@ export class GamesController {
     return this.games.getMyActiveMatch(this.actor(user));
   }
 
+  @Post('record-play')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Record game play activity for tasks, missions, and stats' })
+  recordPlay(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { gameCode?: string; resultData?: Record<string, unknown> },
+  ) {
+    return this.games.recordGamePlay(this.actor(user), body.gameCode ?? 'CARROM', body.resultData);
+  }
+
   @Post('lobbies')
   @HttpCode(HttpStatus.CREATED)
   @NotGuest()

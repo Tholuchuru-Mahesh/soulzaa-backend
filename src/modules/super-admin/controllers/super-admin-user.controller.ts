@@ -76,6 +76,40 @@ export class SuperAdminUserController {
     return this.userManagementService.getPendingVerifications();
   }
 
+  @ApiOperation({ summary: 'Super Admin: get creator KPI stats (Total, Audio, Video, Gaming, Verified)' })
+  @ApiResponse({ status: 200, description: 'Creator KPI statistics' })
+  @RequirePermissions('user.list.view')
+  @Get('creators/stats')
+  async getCreatorStats() {
+    return this.userManagementService.getCreatorStats();
+  }
+
+  @ApiOperation({ summary: 'Super Admin: search & filter creators with full metadata' })
+  @ApiResponse({ status: 200, description: 'Paginated list of creators' })
+  @RequirePermissions('user.list.view')
+  @Get('creators')
+  async searchCreators(@Query() query: any) {
+    return this.userManagementService.searchCreators(query);
+  }
+
+  @ApiOperation({ summary: 'Super Admin: update creator category/type' })
+  @ApiResponse({ status: 200, description: 'Creator category updated' })
+  @RequirePermissions('user.role.assign')
+  @AuditLogAction('CREATOR_CATEGORY_UPDATED', 'user_account')
+  @Patch(':id/category')
+  async updateCreatorCategory(@Param('id') userId: string, @Body('category') category: string) {
+    return this.userManagementService.updateCreatorCategory(userId, category);
+  }
+
+  @ApiOperation({ summary: 'Super Admin: assign creator to agency' })
+  @ApiResponse({ status: 200, description: 'Creator agency assigned' })
+  @RequirePermissions('user.role.assign')
+  @AuditLogAction('CREATOR_AGENCY_ASSIGNED', 'user_account')
+  @Post(':id/agency')
+  async assignCreatorAgency(@Param('id') userId: string, @Body('agencyId') agencyId: string) {
+    return this.userManagementService.assignCreatorAgency(userId, agencyId);
+  }
+
   @ApiOperation({ summary: 'Super Admin: list members linked to a specific agency' })
   @ApiResponse({ status: 200, description: 'List of agency members' })
   @RequirePermissions('user.list.view')

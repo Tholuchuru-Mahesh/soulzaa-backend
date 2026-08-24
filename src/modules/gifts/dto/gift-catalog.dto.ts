@@ -153,6 +153,26 @@ export class CreateGiftDto {
 }
 
 export class UpdateGiftDto {
+  @ApiPropertyOptional({ description: 'Internal gift name' })
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @ApiPropertyOptional({ enum: GiftCategory, description: 'Gift Category' })
+  @IsEnum(GiftCategory)
+  @IsOptional()
+  category?: GiftCategory;
+
+  @ApiPropertyOptional({ enum: GiftType, description: 'Gift Presentation Type' })
+  @IsEnum(GiftType)
+  @IsOptional()
+  type?: GiftType;
+
+  @ApiPropertyOptional({ description: 'Gift description' })
+  @IsString()
+  @IsOptional()
+  description?: string;
+
   @ApiPropertyOptional({ description: 'User-facing display name' })
   @IsString()
   @IsOptional()

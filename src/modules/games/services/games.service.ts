@@ -216,6 +216,26 @@ export class GamesService {
 
   // ======================= Catalog =======================
 
+  async recordGamePlay(actor: GameActor, gameCode: string, _resultData?: Record<string, unknown>) {
+    const rawCode = (gameCode || 'CARROM').toUpperCase();
+    const code = (rawCode in GameCode ? (rawCode as GameCode) : GameCode.CARROM);
+    await this.bus.publish(
+      new GameSettledEvent({
+        sessionId: `play-${actor.id}-${Date.now()}`,
+        gameCode: code,
+        roomId: null,
+        currency: GameCurrency.FREE,
+        potAmount: 0,
+        payoutTotal: 0,
+        rakeAmount: 0,
+        winners: [actor.id],
+        payouts: [{ userId: actor.id, amount: 0 }],
+        participants: [actor.id],
+      }),
+    );
+    return { ok: true, gameCode: code };
+  }
+
   async listCatalog(includeDisabled = false): Promise<unknown[]> {
     const defs = await this.repo.listDefinitions(!includeDisabled);
     return defs.map((d) => this.definitionView(d));

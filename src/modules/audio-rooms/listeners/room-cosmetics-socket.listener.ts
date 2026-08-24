@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { BackpackItemType } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { SocketManager } from 'src/infra/socket/socket.manager';
 import {
   BACKPACK_SERVICE,
@@ -36,6 +37,7 @@ export class RoomCosmeticsSocketListener implements OnModuleInit {
     private readonly sockets: SocketManager,
     @Inject(BACKPACK_SERVICE) private readonly backpack: IBackpackService,
     private readonly presence: PresenceService,
+    private readonly prisma: PrismaService,
   ) {}
 
   onModuleInit(): void {
@@ -77,11 +79,22 @@ export class RoomCosmeticsSocketListener implements OnModuleInit {
     try {
       const equipped = await this.backpack.getEquipped(userId, BackpackItemType.ENTRANCE_EFFECT);
       if (!equipped) return;
+
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { username: true, fullName: true },
+      });
+      const username = user?.fullName || user?.username || 'Guest';
+
+      this.logger.log(`Broadcasting entrance effect in room ${roomId} for user ${username} (${userId}): ${equipped.name}`);
       this.room(roomId, ROOM_SOCKET_EVENTS.ROOM_ENTRANCE_EFFECT, {
         roomId,
         userId,
-        cosmeticId: equipped.cosmeticId,
-        name: equipped.name,
+        username,
+        name: username,
+        itemName: equipped.name,
+        cosmeticId: equipped.cosmeticId || equipped.itemId,
+        mediaUrl: equipped.mediaUrl ?? null,
       });
     } catch (err) {
       this.logger.warn(`Entrance effect broadcast failed: ${(err as Error).message}`);

@@ -9,6 +9,7 @@ import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import type { IUsersService } from 'src/modules/users/interfaces/users.service.interface';
 import type { IProfileService } from 'src/modules/users/interfaces/profile.interface';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
+import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repository';
 import { LiveSessionRepository } from '../repositories/live-session.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
 import { AudioRoomSeatsService } from './audio-room-seats.service';
@@ -50,6 +51,7 @@ describe('AudioRoomsService', () => {
   let passwords: Record<string, jest.Mock>;
   let permissions: Record<string, jest.Mock>;
   let seatsService: Record<string, jest.Mock>;
+  let seatsRepo: Record<string, jest.Mock>;
   let moderation: Record<string, jest.Mock>;
   let liveSessions: Record<string, jest.Mock>;
   let media: Record<string, jest.Mock>;
@@ -130,6 +132,11 @@ describe('AudioRoomsService', () => {
       addBanCache: jest.fn().mockResolvedValue(undefined),
       listPendingReports: jest.fn().mockResolvedValue([]),
     };
+    seatsRepo = {
+      getRole: jest.fn().mockResolvedValue(null),
+      upsertRole: jest.fn().mockResolvedValue(undefined),
+      deleteRole: jest.fn().mockResolvedValue(undefined),
+    };
     liveSessions = {
       openSession: jest.fn().mockResolvedValue({ id: 'session-1' }),
       getOpenSession: jest.fn().mockResolvedValue(null),
@@ -173,6 +180,7 @@ describe('AudioRoomsService', () => {
       moderation as unknown as ModerationRepository,
       liveSessions as unknown as LiveSessionRepository,
       media as unknown as MediaUrlResolver,
+      seatsRepo as unknown as AudioRoomSeatsRepository,
       bus,
       users as unknown as IUsersService,
       profiles as unknown as IProfileService,
@@ -247,6 +255,18 @@ describe('AudioRoomsService', () => {
       expect(presence.joinRoom).toHaveBeenCalledWith('room-1', OTHER.id);
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'audio_room.joined' }),
+      );
+    });
+
+    it('restores elevated ADMIN role on rejoin if the user was promoted to admin', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow());
+      seatsRepo.getRole.mockResolvedValue({ role: RoomMemberRole.ADMIN });
+      await service.join(OTHER, 'room-1', {});
+      expect(repo.upsertActiveMember).toHaveBeenCalledWith(
+        'room-1',
+        OTHER.id,
+        RoomMemberRole.ADMIN,
+        OTHER.id,
       );
     });
 
@@ -428,6 +448,7 @@ describe('AudioRoomsService', () => {
           moderation as unknown as ModerationRepository,
           liveSessions as unknown as LiveSessionRepository,
           media as unknown as MediaUrlResolver,
+          seatsRepo as unknown as AudioRoomSeatsRepository,
           bus,
           users as unknown as IUsersService,
           profiles as unknown as IProfileService,

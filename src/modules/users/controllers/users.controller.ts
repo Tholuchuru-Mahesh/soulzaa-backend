@@ -124,7 +124,7 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Submit an account-verification request' })
   submitVerification(@CurrentUser('id') userId: string, @Body() dto: VerificationRequestDto) {
-    return this.profile.submitVerification(userId, dto.type, dto.documentKey);
+    return this.profile.submitVerification(userId, dto.type, dto.documentKey, dto.category);
   }
 
   // ---- Search / username ----

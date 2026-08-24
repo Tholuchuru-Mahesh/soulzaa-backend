@@ -4,6 +4,7 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BackpackItemEquippedEvent } from 'src/modules/backpack/events/backpack.events';
 import { UserProfileUpdatedEvent } from 'src/modules/users/events/user.events';
+import { RoomAppearanceUpdatedEvent } from 'src/modules/audio-rooms/events/audio-room-appearance.events';
 
 @Injectable()
 export class FrameExpirationScheduler {
@@ -35,6 +36,41 @@ export class FrameExpirationScheduler {
         await this.prisma.userCosmetic.delete({
           where: { id: item.id },
         });
+
+        if (item.cosmetic?.type === 'THEME') {
+          const activeRooms = await this.prisma.roomAppearance.findMany({
+            where: {
+              themeCosmeticId: item.cosmeticId,
+              updatedBy: item.userId,
+            },
+          });
+
+          for (const room of activeRooms) {
+            const updated = await this.prisma.roomAppearance.update({
+              where: { roomId: room.roomId },
+              data: {
+                themeCosmeticId: null,
+                themeName: null,
+                updatedBy: null,
+              },
+            });
+
+            await this.bus.publish(
+              new RoomAppearanceUpdatedEvent({
+                roomId: room.roomId,
+                themeCosmeticId: null,
+                themeName: null,
+                decorationCosmeticIds: updated.decorationCosmeticIds,
+                decorationNames: updated.decorationNames,
+                updatedBy: '00000000-0000-0000-0000-000000000000',
+              }),
+            );
+
+            this.logger.log(
+              `Room ${room.roomId} appearance theme expired and removed (was ${item.cosmeticId}).`,
+            );
+          }
+        }
 
         if (item.cosmetic?.type === 'FRAME' && item.equipped) {
           const defaultCosmeticId = '00000000-0000-0000-0000-000000000001';
@@ -125,6 +161,47 @@ export class FrameExpirationScheduler {
               );
               this.logger.debug(`Reverted frame for user ${item.userId} to default pink frame.`);
             }
+          }
+        }
+      }
+
+      // Check expired themes in backpackItem table
+      const expiredBackpackThemes = await this.prisma.backpackItem.findMany({
+        where: {
+          type: 'THEME',
+          expiresAt: { lt: now },
+        },
+      });
+
+      for (const bpItem of expiredBackpackThemes) {
+        if (bpItem.refId) {
+          const activeRooms = await this.prisma.roomAppearance.findMany({
+            where: {
+              themeCosmeticId: bpItem.refId,
+              updatedBy: bpItem.userId,
+            },
+          });
+
+          for (const room of activeRooms) {
+            const updated = await this.prisma.roomAppearance.update({
+              where: { roomId: room.roomId },
+              data: {
+                themeCosmeticId: null,
+                themeName: null,
+                updatedBy: null,
+              },
+            });
+
+            await this.bus.publish(
+              new RoomAppearanceUpdatedEvent({
+                roomId: room.roomId,
+                themeCosmeticId: null,
+                themeName: null,
+                decorationCosmeticIds: updated.decorationCosmeticIds,
+                decorationNames: updated.decorationNames,
+                updatedBy: '00000000-0000-0000-0000-000000000000',
+              }),
+            );
           }
         }
       }

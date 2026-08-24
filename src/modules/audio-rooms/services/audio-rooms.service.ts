@@ -52,6 +52,7 @@ import type {
 
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { AudioRoomsRepository, type UpdateRoomData } from '../repositories/audio-rooms.repository';
+import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repository';
 import { LiveSessionRepository } from '../repositories/live-session.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
 import type { RoomPermission } from '../constants/room-permissions';
@@ -128,6 +129,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     private readonly moderation: ModerationRepository,
     private readonly liveSessions: LiveSessionRepository,
     private readonly media: MediaUrlResolver,
+    private readonly seatsRepo: AudioRoomSeatsRepository,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
     @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
@@ -597,7 +599,11 @@ export class AudioRoomsService implements IAudioRoomsService {
         }
       }
       await this.presence.joinRoom(roomId, actor.id);
-      const role = room.ownerId === actor.id ? RoomMemberRole.OWNER : RoomMemberRole.LISTENER;
+      const existingGrant = await this.seatsRepo.getRole(roomId, actor.id);
+      const role =
+        room.ownerId === actor.id
+          ? RoomMemberRole.OWNER
+          : (existingGrant?.role ?? RoomMemberRole.LISTENER);
       await this.repo.upsertActiveMember(roomId, actor.id, role, actor.id);
       await this.repo.upsertPresence(roomId, actor.id);
 
@@ -688,6 +694,8 @@ export class AudioRoomsService implements IAudioRoomsService {
       // Demote the previous owner to ADMIN, promote the new owner.
       await this.repo.setMemberRole(roomId, room.ownerId, RoomMemberRole.ADMIN, actor.id);
       await this.repo.setMemberRole(roomId, dto.newOwnerId, RoomMemberRole.OWNER, actor.id);
+      await this.seatsRepo.upsertRole(roomId, room.ownerId, RoomMemberRole.ADMIN, actor.id);
+      await this.seatsRepo.upsertRole(roomId, dto.newOwnerId, RoomMemberRole.OWNER, actor.id);
       return this.repo.setOwner(roomId, dto.newOwnerId, actor.id);
     });
 
@@ -734,6 +742,8 @@ export class AudioRoomsService implements IAudioRoomsService {
     await this.locks.withLock(`audio-room:transfer:{${roomId}}`, async () => {
       await this.repo.setMemberRole(roomId, room.ownerId, RoomMemberRole.LISTENER, actor.id);
       await this.repo.setMemberRole(roomId, successor.userId, RoomMemberRole.OWNER, actor.id);
+      await this.seatsRepo.upsertRole(roomId, successor.userId, RoomMemberRole.OWNER, actor.id);
+      await this.seatsRepo.deleteRole(roomId, room.ownerId);
       await this.repo.setOwner(roomId, successor.userId, actor.id);
     });
 

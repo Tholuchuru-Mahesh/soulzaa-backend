@@ -103,11 +103,23 @@ export class ProfileRepository {
     userId: string,
     type: VerificationType,
     documentKey: string | null,
+    category?: string | null,
   ): Promise<UserVerification> {
+    let resolvedCategory = category || null;
+    if (!resolvedCategory && documentKey) {
+      try {
+        const parsed = JSON.parse(documentKey);
+        if (parsed?.category) resolvedCategory = String(parsed.category);
+      } catch {
+        // raw key
+      }
+    }
+
     return this.prisma.userVerification.update({
       where: { userId },
       data: {
         type,
+        category: resolvedCategory,
         documentKey,
         status: VerificationStatus.PENDING,
         verified: false,

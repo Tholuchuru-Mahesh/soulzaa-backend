@@ -77,7 +77,53 @@ export class BackpackRepository {
   /** The user's currently-equipped item of a type (one-per-type), or null. */
   async findEquippedByType(userId: string, type: BackpackItemType): Promise<BackpackItem | null> {
     await this.ensureDefaultPinkFrame(userId);
-    return this.prisma.backpackItem.findFirst({ where: { userId, type, equipped: true } });
+    const bpItem = await this.prisma.backpackItem.findFirst({
+      where: {
+        userId,
+        type,
+        equipped: true,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+    });
+    if (bpItem) return bpItem;
+
+    const userCos = await this.prisma.userCosmetic.findFirst({
+      where: {
+        userId,
+        equipped: true,
+        cosmetic: { type: type as any },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      include: { cosmetic: true },
+    });
+
+    if (userCos && userCos.cosmetic) {
+      return {
+        id: userCos.id,
+        userId: userCos.userId,
+        type: userCos.cosmetic.type as any,
+        refId: userCos.cosmeticId,
+        name: userCos.cosmetic.name,
+        source: 'PURCHASE' as any,
+        quantity: 1,
+        transferable: false,
+        equipped: true,
+        grantKey: `user-cosmetic:${userCos.id}`,
+        metadata: {
+          cosmeticId: userCos.cosmeticId,
+          mediaUrl: userCos.cosmetic.mediaUrl,
+          thumbnailUrl: userCos.cosmetic.thumbnailUrl,
+        } as any,
+        expiresAt: userCos.expiresAt,
+        acquiredAt: userCos.acquiredAt,
+      } as BackpackItem;
+    }
+
+    return null;
+  }
+
+  async findCosmeticById(id: string) {
+    return this.prisma.cosmetic.findUnique({ where: { id } });
   }
 
   /** True when the user owns any (unexpired) item referencing this cosmetic id. */
@@ -92,7 +138,16 @@ export class BackpackRepository {
         OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
     });
-    return count > 0;
+    if (count > 0) return true;
+
+    const userCosCount = await this.prisma.userCosmetic.count({
+      where: {
+        userId,
+        cosmeticId: refId,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+    });
+    return userCosCount > 0;
   }
 
   create(

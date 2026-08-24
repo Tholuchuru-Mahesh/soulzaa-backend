@@ -17,6 +17,7 @@ import { TaskValidationService } from './services/task-validation.service';
 import { TaskProgressionListener } from './listeners/task-progression.listener';
 import { TaskRewardExecutionListener } from './listeners/task-reward-execution.listener';
 import { ModeratorTaskAssignmentService } from './services/moderator-task-assignment.service';
+import { RewardFulfillmentEngine } from './services/reward-engine/reward-fulfillment.engine';
 
 @Global()
 @Module({
@@ -24,6 +25,7 @@ import { ModeratorTaskAssignmentService } from './services/moderator-task-assign
   controllers: [TaskController],
   providers: [
     // Phase 17: Enterprise Tasks & Missions Engine Services
+    RewardFulfillmentEngine,
     TaskProgressionListener,
     TaskRewardExecutionListener,
     TaskConfigurationService,
@@ -41,6 +43,7 @@ import { ModeratorTaskAssignmentService } from './services/moderator-task-assign
     ModeratorTaskAssignmentService,
   ],
   exports: [
+    RewardFulfillmentEngine,
     TaskConfigurationService,
     TaskValidationService,
     TaskAuditService,

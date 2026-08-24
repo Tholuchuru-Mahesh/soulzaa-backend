@@ -87,10 +87,16 @@ export class BackpackService implements IBackpackService {
   async getEquipped(
     userId: string,
     type: BackpackItemType,
-  ): Promise<{ itemId: string; cosmeticId: string | null; name: string } | null> {
+  ): Promise<{ itemId: string; cosmeticId: string | null; name: string; mediaUrl?: string | null } | null> {
     const item = await this.repo.findEquippedByType(userId, type);
     if (!item) return null;
-    return { itemId: item.id, cosmeticId: item.refId, name: item.name };
+    const metadata = (item.metadata as Record<string, any>) || {};
+    let mediaUrl = metadata.mediaUrl || metadata.animationUrl || null;
+    if (!mediaUrl && item.refId) {
+      const cosmetic = await this.repo.findCosmeticById(item.refId);
+      if (cosmetic) mediaUrl = cosmetic.mediaUrl;
+    }
+    return { itemId: item.id, cosmeticId: item.refId, name: item.name, mediaUrl };
   }
 
   ownsCosmetic(userId: string, cosmeticId: string): Promise<boolean> {

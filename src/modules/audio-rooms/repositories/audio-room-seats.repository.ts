@@ -411,18 +411,7 @@ export class AudioRoomSeatsRepository {
    * an offender wipe a ban by getting the room restarted.
    */
   async clearSessionStateTx(roomId: string): Promise<void> {
-    const paidSeats = await this.prisma.premiumAdminSeat.findMany({
-      where: { roomId, status: PremiumSeatStatus.ACTIVE, expiresAt: { gt: new Date() } },
-      select: { userId: true },
-    });
-    const paidUserIds = paidSeats.map((s) => s.userId);
     const now = new Date();
-    // Rows this reset must not touch: the OWNER grant, plus anyone whose grant is
-    // paid for. Spelled out rather than leaning on `notIn: []` meaning "exclude
-    // nobody" — the empty case is the common one and deserves to be unambiguous.
-    const nonOwner = { roomId, role: { not: RoomMemberRole.OWNER } };
-    const resettable =
-      paidUserIds.length > 0 ? { ...nonOwner, userId: { notIn: paidUserIds } } : nonOwner;
 
     await this.prisma.$transaction([
       // Stage: free every seat and drop the admin lock/mute flags with it, so the
@@ -440,30 +429,10 @@ export class AudioRoomSeatsRepository {
         where: { roomId, status: SeatInvitationStatus.PENDING },
         data: { status: SeatInvitationStatus.EXPIRED, resolvedAt: now },
       }),
-      // Authoritative grants.
-      this.prisma.roomRole.deleteMany({ where: resettable }),
-      // Denormalised mirror — `removeOwner` ranks successors by this column, so a
-      // stale ADMIN here would hand the room to last session's moderator.
-      this.prisma.roomMember.updateMany({
-        where: resettable,
-        data: { role: RoomMemberRole.LISTENER },
-      }),
       this.prisma.roomSettings.updateMany({
         where: { roomId },
         data: { isRoomMuted: false },
       }),
-      ...(paidUserIds.length > 0
-        ? [
-            this.prisma.roomRole.updateMany({
-              where: { ...nonOwner, userId: { in: paidUserIds } },
-              data: { role: RoomMemberRole.PREMIUM_ADMIN },
-            }),
-            this.prisma.roomMember.updateMany({
-              where: { ...nonOwner, userId: { in: paidUserIds } },
-              data: { role: RoomMemberRole.PREMIUM_ADMIN },
-            }),
-          ]
-        : []),
     ]);
   }
 

@@ -1002,6 +1002,17 @@ export class FamiliesService implements IFamiliesService {
     const avatarUrl = userSummary.avatarKey || null;
     const content = dto.content || '';
 
+    let cleanMediaUrl = dto.mediaUrl || null;
+    if (cleanMediaUrl) {
+      if (cleanMediaUrl.includes('?')) {
+        cleanMediaUrl = cleanMediaUrl.split('?')[0];
+      }
+      const match = cleanMediaUrl.match(/(chat-images\/[^\s]+|chat-videos\/[^\s]+|chat-files\/[^\s]+|chat-voice\/[^\s]+|profile-images\/[^\s]+)/);
+      if (match) {
+        cleanMediaUrl = match[1];
+      }
+    }
+
     const record = await this.repo.createMessage(
       familyId,
       userId,
@@ -1010,7 +1021,7 @@ export class FamiliesService implements IFamiliesService {
       member.role,
       avatarUrl,
       dto.mediaType,
-      dto.mediaUrl,
+      cleanMediaUrl,
       dto.mediaName,
       dto.mediaSize,
     );
@@ -1023,7 +1034,7 @@ export class FamiliesService implements IFamiliesService {
       senderRole: member.role,
       content,
       mediaType: dto.mediaType || null,
-      mediaUrl: dto.mediaUrl || null,
+      mediaUrl: cleanMediaUrl,
       mediaName: dto.mediaName || null,
       mediaSize: dto.mediaSize || null,
       avatarUrl,

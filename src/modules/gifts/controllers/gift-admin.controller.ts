@@ -45,7 +45,7 @@ export class GiftAdminController {
   @ApiOperation({ summary: 'Update a catalog gift' })
   update(
     @CurrentUser('id') adminId: string,
-    @Param('giftId', ParseUuidPipe) giftId: string,
+    @Param('giftId') giftId: string,
     @Body() dto: UpdateGiftDto,
   ) {
     return this.catalog.updateGift(giftId, dto, adminId);

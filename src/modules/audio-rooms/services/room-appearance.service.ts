@@ -154,6 +154,25 @@ export class RoomAppearanceService {
 
   async getAppearance(roomId: string): Promise<unknown> {
     const row = await this.repo.get(roomId);
+    if (!row) return this.toView(roomId, null);
+
+    if (
+      row.themeCosmeticId &&
+      !row.themeCosmeticId.startsWith('preset_') &&
+      !THEME_PRESETS.has(row.themeCosmeticId)
+    ) {
+      const updatedBy = row.updatedBy;
+      const isOwned = updatedBy
+        ? await this.backpack.ownsCosmetic(updatedBy, row.themeCosmeticId)
+        : false;
+      if (!isOwned) {
+        const fallbackActor = updatedBy ?? '00000000-0000-0000-0000-000000000000';
+        const cleared = await this.repo.setTheme(roomId, null, null, fallbackActor);
+        await this.publish(roomId, cleared, fallbackActor);
+        return this.toView(roomId, cleared);
+      }
+    }
+
     return this.toView(roomId, row);
   }
 

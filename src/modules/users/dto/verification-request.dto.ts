@@ -8,10 +8,16 @@ export class VerificationRequestDto {
   @IsEnum(VerificationType)
   type!: VerificationType;
 
-  @ApiPropertyOptional({ description: 'S3 key of an uploaded supporting document' })
+  @ApiPropertyOptional({ description: 'Creator Category/Type: Gamer, Singer, Magician, Comedian, Audio, Video, Influencer, Artist' })
   @IsOptional()
   @IsString()
-  @MaxLength(1024)
+  @MaxLength(100)
+  category?: string;
+
+  @ApiPropertyOptional({ description: 'S3 key of an uploaded supporting document or JSON payload' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
   documentKey?: string;
 }
 

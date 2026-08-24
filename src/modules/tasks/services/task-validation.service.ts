@@ -16,26 +16,26 @@ export class TaskValidationService {
     if (!user) throw new NotFoundException(`User ${userId} not found`);
   }
 
-  async validateTaskExists(taskId: string) {
+  async validateTaskExists(taskId: string, requireActive = false) {
     const def = await this.prisma.taskDefinition.findUnique({ where: { id: taskId } });
     if (!def) throw new NotFoundException(`Task definition ${taskId} not found`);
-    if (def.status !== 'ACTIVE')
+    if (requireActive && def.status !== 'ACTIVE')
       throw new BadRequestException(`Task ${taskId} is not active (Status: ${def.status})`);
     return def;
   }
 
-  async validateTaskByCode(code: string) {
+  async validateTaskByCode(code: string, requireActive = false) {
     const def = await this.prisma.taskDefinition.findUnique({ where: { code } });
     if (!def) throw new NotFoundException(`Task with code '${code}' not found`);
-    if (def.status !== 'ACTIVE')
+    if (requireActive && def.status !== 'ACTIVE')
       throw new BadRequestException(`Task '${code}' is not active (Status: ${def.status})`);
     return def;
   }
 
-  async validateMissionExists(missionId: string) {
+  async validateMissionExists(missionId: string, requireActive = false) {
     const def = await this.prisma.missionDefinition.findUnique({ where: { id: missionId } });
     if (!def) throw new NotFoundException(`Mission definition ${missionId} not found`);
-    if (def.status !== 'ACTIVE')
+    if (requireActive && def.status !== 'ACTIVE')
       throw new BadRequestException(`Mission ${missionId} is not active (Status: ${def.status})`);
     return def;
   }

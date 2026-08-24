@@ -12,7 +12,14 @@ const DEFAULT_TASKS = [
     eventCode: 'user.logged_in',
     resetPolicy: 'DAILY',
     difficulty: 'EASY',
-    rewardDefinition: { freeCoins: 100, exp: 50 },
+    rewardDefinition: {
+      freeCoins: 100,
+      exp: 50,
+      items: [
+        { type: 'COINS', amount: 100 },
+        { type: 'EXP', amount: 50 },
+      ],
+    },
   },
   {
     code: 'JOIN_ROOMS_DAILY',
@@ -23,7 +30,14 @@ const DEFAULT_TASKS = [
     eventCode: 'audio_room.joined',
     resetPolicy: 'DAILY',
     difficulty: 'EASY',
-    rewardDefinition: { freeCoins: 200, exp: 100 },
+    rewardDefinition: {
+      freeCoins: 200,
+      exp: 100,
+      items: [
+        { type: 'COINS', amount: 200 },
+        { type: 'EXP', amount: 100 },
+      ],
+    },
   },
   {
     code: 'ROOM_STAY_20MIN',
@@ -35,7 +49,17 @@ const DEFAULT_TASKS = [
     incrementField: 'durationMinutes',
     resetPolicy: 'DAILY',
     difficulty: 'MEDIUM',
-    rewardDefinition: { freeCoins: 500, exp: 250, frameId: 'frame-bronze' },
+    rewardDefinition: {
+      freeCoins: 500,
+      exp: 250,
+      frameId: 'frame-bronze',
+      frameDurationDays: 7,
+      items: [
+        { type: 'COINS', amount: 500 },
+        { type: 'EXP', amount: 250 },
+        { type: 'FRAME', cosmeticId: 'frame-bronze', durationDays: 7 },
+      ],
+    },
   },
   {
     code: 'RECHARGE_COINS_DAILY',
@@ -47,7 +71,18 @@ const DEFAULT_TASKS = [
     incrementField: 'amount',
     resetPolicy: 'DAILY',
     difficulty: 'MEDIUM',
-    rewardDefinition: { freeCoins: 1000, exp: 500, goldCoins: 50 },
+    rewardDefinition: {
+      freeCoins: 1000,
+      exp: 500,
+      goldCoins: 50,
+      vipDays: 1,
+      items: [
+        { type: 'COINS', amount: 1000 },
+        { type: 'GOLD', amount: 50 },
+        { type: 'EXP', amount: 500 },
+        { type: 'VIP', vipDays: 1 },
+      ],
+    },
   },
   {
     code: 'SEND_GIFTS_DAILY',
@@ -58,7 +93,17 @@ const DEFAULT_TASKS = [
     eventCode: 'gift.sent',
     resetPolicy: 'DAILY',
     difficulty: 'MEDIUM',
-    rewardDefinition: { freeCoins: 300, exp: 150, themeId: 'theme-neon' },
+    rewardDefinition: {
+      freeCoins: 300,
+      exp: 150,
+      themeId: 'theme-neon',
+      themeDurationDays: 30,
+      items: [
+        { type: 'COINS', amount: 300 },
+        { type: 'EXP', amount: 150 },
+        { type: 'THEME', cosmeticId: 'theme-neon', durationDays: 30 },
+      ],
+    },
   },
   {
     code: 'RECEIVE_GIFTS_DAILY',
@@ -69,7 +114,16 @@ const DEFAULT_TASKS = [
     eventCode: 'gift.received',
     resetPolicy: 'DAILY',
     difficulty: 'MEDIUM',
-    rewardDefinition: { freeCoins: 400, exp: 200, badgeId: 'badge-star-host' },
+    rewardDefinition: {
+      freeCoins: 400,
+      exp: 200,
+      badgeId: 'badge-star-host',
+      items: [
+        { type: 'COINS', amount: 400 },
+        { type: 'EXP', amount: 200 },
+        { type: 'BADGE', cosmeticId: 'badge-star-host' },
+      ],
+    },
   },
   {
     code: 'ADD_FRIENDS_WEEKLY',
@@ -80,7 +134,17 @@ const DEFAULT_TASKS = [
     eventCode: 'social.friend.accepted',
     resetPolicy: 'WEEKLY',
     difficulty: 'EASY',
-    rewardDefinition: { freeCoins: 1000, exp: 500, bubbleId: 'bubble-stars' },
+    rewardDefinition: {
+      freeCoins: 1000,
+      exp: 500,
+      bubbleId: 'bubble-stars',
+      bubbleDurationDays: 7,
+      items: [
+        { type: 'COINS', amount: 1000 },
+        { type: 'EXP', amount: 500 },
+        { type: 'BUBBLE', cosmeticId: 'bubble-stars', durationDays: 7 },
+      ],
+    },
   },
   {
     code: 'FOLLOW_CREATORS_WEEKLY',
@@ -91,18 +155,36 @@ const DEFAULT_TASKS = [
     eventCode: 'social.followed',
     resetPolicy: 'WEEKLY',
     difficulty: 'EASY',
-    rewardDefinition: { freeCoins: 600, exp: 300 },
+    rewardDefinition: {
+      freeCoins: 600,
+      exp: 300,
+      items: [
+        { type: 'COINS', amount: 600 },
+        { type: 'EXP', amount: 300 },
+      ],
+    },
   },
   {
     code: 'PLAY_GAMES_DAILY',
     name: 'Play 2 Mini-Games',
     category: 'DAILY_TASK',
-    objective: 'Participate in 2 games (Lucky Fruit, Casino, etc.)',
+    objective: 'Participate in 2 games (Carrom, Ludo, etc.)',
     requiredProgress: 2,
     eventCode: 'game.settled',
     resetPolicy: 'DAILY',
     difficulty: 'EASY',
-    rewardDefinition: { freeCoins: 500, exp: 250 },
+    progressRules: {
+      eventCodes: ['game.settled', 'game.started', 'game.lobby_joined'],
+      operator: 'ANY',
+    },
+    rewardDefinition: {
+      gameCoins: 500,
+      exp: 250,
+      items: [
+        { type: 'GAME_COINS', amount: 500 },
+        { type: 'EXP', amount: 250 },
+      ],
+    },
   },
   {
     code: 'FAMILY_QUEST_WEEKLY',
@@ -113,7 +195,17 @@ const DEFAULT_TASKS = [
     eventCode: 'family.member_joined',
     resetPolicy: 'WEEKLY',
     difficulty: 'HARD',
-    rewardDefinition: { freeCoins: 1500, exp: 800, entranceEffectId: 'ride-sports-car' },
+    rewardDefinition: {
+      freeCoins: 1500,
+      exp: 800,
+      entranceEffectId: 'ride-sports-car',
+      entranceDurationDays: 14,
+      items: [
+        { type: 'COINS', amount: 1500 },
+        { type: 'EXP', amount: 800 },
+        { type: 'ENTRANCE_EFFECT', cosmeticId: 'ride-sports-car', durationDays: 14 },
+      ],
+    },
   },
 ];
 

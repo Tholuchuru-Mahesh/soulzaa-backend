@@ -44,6 +44,9 @@ export const PROGRESSION_EVENT_NAMES: readonly string[] = [
   'video_room.joined',
   // Games
   'game.settled',
+  'game.started',
+  'game.lobby_joined',
+  'game.move',
   // Economy / Recharge
   'wallet.credited',
   'wallet.debited',
@@ -60,17 +63,38 @@ export const PROGRESSION_EVENT_NAMES: readonly string[] = [
 ] as const;
 
 /**
- * The user a progression signal belongs to.
- *
- * Payload shapes differ across domains, so this probes the conventional fields in
- * priority order. Supports senders, receivers, actors, owners, members, and followers.
- * Returns null when a payload carries no subject (room-scoped events such as
- * `audio_room.ended`), which callers treat as "nothing to progress".
+ * Resolves all user IDs a progression signal belongs to (e.g. all game participants,
+ * winners, payout recipients, or individual actors).
  */
-export function resolveProgressionSubject(payload: unknown): string | null {
-  if (!payload || typeof payload !== 'object') return null;
+export function resolveProgressionSubjects(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return [];
   const record = payload as Record<string, unknown>;
+  const subjects = new Set<string>();
 
+  // 1. Array of participants / members / winners / refunded users
+  const arrayFields = ['participants', 'winners', 'members', 'refundedUserIds'];
+  for (const field of arrayFields) {
+    const list = record[field];
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        if (typeof item === 'string' && item.length > 0) subjects.add(item);
+        else if (item && typeof item === 'object' && typeof (item as any).userId === 'string') {
+          subjects.add((item as any).userId);
+        }
+      }
+    }
+  }
+
+  // 2. Payouts array
+  if (Array.isArray(record['payouts'])) {
+    for (const p of record['payouts']) {
+      if (p && typeof p === 'object' && typeof (p as any).userId === 'string' && (p as any).userId.length > 0) {
+        subjects.add((p as any).userId);
+      }
+    }
+  }
+
+  // 3. Direct singular subject fields
   const direct = [
     'userId',
     'senderId',
@@ -87,14 +111,23 @@ export function resolveProgressionSubject(payload: unknown): string | null {
   ];
   for (const field of direct) {
     const value = record[field];
-    if (typeof value === 'string' && value.length > 0) return value;
+    if (typeof value === 'string' && value.length > 0) subjects.add(value);
   }
 
+  // 4. Nested user object
   const nested = record['user'];
   if (nested && typeof nested === 'object') {
     const id = (nested as Record<string, unknown>)['id'];
-    if (typeof id === 'string' && id.length > 0) return id;
+    if (typeof id === 'string' && id.length > 0) subjects.add(id);
   }
 
-  return null;
+  return Array.from(subjects);
+}
+
+/**
+ * The primary user a progression signal belongs to.
+ */
+export function resolveProgressionSubject(payload: unknown): string | null {
+  const subjects = resolveProgressionSubjects(payload);
+  return subjects.length > 0 ? subjects[0] : null;
 }

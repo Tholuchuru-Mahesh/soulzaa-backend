@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import {
   PROGRESSION_EVENT_NAMES,
-  resolveProgressionSubject,
+  resolveProgressionSubjects,
 } from 'src/common/events/progression-events';
 import { TaskEvaluationService } from '../services/task-evaluation.service';
 
@@ -31,17 +31,21 @@ export class TaskProgressionListener implements OnModuleInit {
   }
 
   private async handle(eventCode: string, payload: unknown): Promise<void> {
-    const userId = resolveProgressionSubject(payload);
-    if (!userId) return;
+    const userIds = resolveProgressionSubjects(payload);
+    if (!userIds || userIds.length === 0) return;
 
-    try {
-      await this.evaluation.evaluateEvent({
-        userId,
-        eventCode,
-        metadata: (payload ?? {}) as Record<string, unknown>,
-      });
-    } catch (err) {
-      this.logger.error(`Task evaluation failed for '${eventCode}': ${(err as Error).message}`);
+    for (const userId of userIds) {
+      try {
+        await this.evaluation.evaluateEvent({
+          userId,
+          eventCode,
+          metadata: (payload ?? {}) as Record<string, unknown>,
+        });
+      } catch (err) {
+        this.logger.error(
+          `Task evaluation failed for '${eventCode}' (user: ${userId}): ${(err as Error).message}`,
+        );
+      }
     }
   }
 }

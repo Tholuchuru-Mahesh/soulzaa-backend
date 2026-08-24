@@ -496,8 +496,9 @@ export class ProfileService implements IProfileService {
     userId: string,
     type: VerificationType,
     documentKey?: string,
+    category?: string,
   ): Promise<VerificationView> {
-    const row = await this.profiles.submitVerification(userId, type, documentKey ?? null);
+    const row = await this.profiles.submitVerification(userId, type, documentKey ?? null, category ?? null);
     await this.invalidate(userId);
     await this.bus.publish(new UserVerificationRequestedEvent({ userId, type }));
     return this.toVerificationView(row);

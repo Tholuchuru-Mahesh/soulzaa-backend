@@ -1,13 +1,17 @@
 import { BackpackItemSource, WalletCurrency, WalletTxnReason } from '@prisma/client';
 import { ExpSource } from 'src/common/enums/exp-source.enum';
+import { RewardFulfillmentEngine } from '../services/reward-engine/reward-fulfillment.engine';
 import { TaskRewardExecutionListener } from './task-reward-execution.listener';
 
-describe('TaskRewardExecutionListener', () => {
+describe('TaskRewardExecutionListener & RewardFulfillmentEngine', () => {
   let listener: TaskRewardExecutionListener;
+  let rewardEngine: RewardFulfillmentEngine;
   let mockEventBus: any;
   let mockWalletService: any;
   let mockExpService: any;
   let mockCosmeticsService: any;
+  let mockPrismaService: any;
+  let mockSocketManager: any;
 
   beforeEach(() => {
     mockEventBus = {
@@ -17,22 +21,42 @@ describe('TaskRewardExecutionListener', () => {
 
     mockWalletService = {
       credit: jest.fn().mockResolvedValue({ id: 'txn-1' }),
+      getBalance: jest.fn().mockResolvedValue({ gold: 0, diamond: 0, game: 100 }),
     };
 
     mockExpService = {
-      award: jest.fn().mockResolvedValue({ id: 'exp-1', newLevel: 5 }),
+      award: jest.fn().mockResolvedValue({ id: 'exp-1', level: 5 }),
     };
 
     mockCosmeticsService = {
-      grantToUser: jest.fn().mockResolvedValue({ id: 'item-1' }),
+      grantToUser: jest.fn().mockResolvedValue({ cosmeticId: 'frame-vip-gold', backpackItemId: 'item-1', duplicate: false }),
     };
 
-    listener = new TaskRewardExecutionListener(
+    mockPrismaService = {
+      userStatistics: {
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+      vipMembership: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+    };
+
+    mockSocketManager = {
+      emitToUserEverywhere: jest.fn(),
+    };
+
+    rewardEngine = new RewardFulfillmentEngine(
       mockEventBus,
       mockWalletService,
       mockExpService,
       mockCosmeticsService,
+      mockPrismaService,
+      undefined,
+      mockSocketManager,
     );
+
+    listener = new TaskRewardExecutionListener(mockEventBus, rewardEngine);
   });
 
   it('subscribes to reward.dispatched onModuleInit', () => {
@@ -133,6 +157,51 @@ describe('TaskRewardExecutionListener', () => {
       expect.objectContaining({
         userId: 'user-200',
         cosmeticId: 'badge-champion',
+      }),
+    );
+  });
+
+  it('handles modern structured items array with TTL durations and VIP subscriptions', async () => {
+    let handler: (event: any) => Promise<void> = () => Promise.resolve();
+    mockEventBus.subscribe.mockImplementation((name: string, fn: any) => {
+      if (name === 'reward.dispatched') handler = fn;
+    });
+
+    listener.onModuleInit();
+
+    const payload = {
+      userId: 'user-300',
+      taskId: 'task-900',
+      rewardDefinition: {
+        items: [
+          { type: 'COINS', amount: 500 },
+          { type: 'FRAME', cosmeticId: 'frame-neon', durationDays: 7 },
+          { type: 'VIP', vipDays: 3 },
+        ],
+      },
+    };
+
+    await handler({ payload });
+
+    expect(mockWalletService.credit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-300',
+        currency: WalletCurrency.GAME,
+        amount: 500,
+      }),
+    );
+
+    expect(mockCosmeticsService.grantToUser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'user-300',
+        cosmeticId: 'frame-neon',
+        durationDays: 7,
+      }),
+    );
+
+    expect(mockPrismaService.vipMembership.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'user-300' },
       }),
     );
   });

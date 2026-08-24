@@ -65,6 +65,19 @@ export class TaskProgressService {
       };
     }
 
+    // For daily attendance / login events, only count once per daily periodKey
+    if (eventCode === 'user.logged_in' && progressBefore >= 1) {
+      return {
+        progressBefore,
+        progressAfter: progressBefore,
+        requiredProgress,
+        percentComplete: existing?.percentComplete ?? 100,
+        justCompleted: false,
+        isCompleted: existing?.isCompleted ?? false,
+        completionCount: existing?.completionCount ?? 0,
+      };
+    }
+
     const progressAfter = Math.min(requiredProgress, progressBefore + incrementBy);
     const percentComplete =
       requiredProgress > 0

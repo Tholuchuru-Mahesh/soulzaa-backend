@@ -107,6 +107,7 @@ model UserVerification {
   verified        Boolean            @default(false)
   status          VerificationStatus @default(NONE)
   type            VerificationType?
+  category        String?
   documentKey     String?
   rejectionReason String?
   submittedAt     DateTime?
@@ -115,6 +116,8 @@ model UserVerification {
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
 
+  @@index([status])
+  @@index([category])
   @@map("user_verification")
 }
 

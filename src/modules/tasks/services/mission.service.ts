@@ -49,8 +49,8 @@ export class MissionService {
   async getMissions(category?: string, status?: string) {
     return this.prisma.missionDefinition.findMany({
       where: {
-        ...(category ? { category } : {}),
-        ...(status ? { status } : { status: 'ACTIVE' }),
+        ...(category && category !== 'ALL' ? { category } : {}),
+        ...(status && status !== 'ALL' ? { status } : {}),
       },
       include: { tasks: true },
       orderBy: { name: 'asc' },

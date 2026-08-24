@@ -30,6 +30,9 @@ const MIME_EXT: Record<string, string> = {
   'audio/wav': 'wav',
   'audio/webm': 'weba',
   'application/pdf': 'pdf',
+  'application/json': 'json',
+  'application/x-svga': 'svga',
+  'application/octet-stream': 'bin',
 };
 
 /**

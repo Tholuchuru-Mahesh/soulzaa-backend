@@ -658,6 +658,7 @@ export class UserQueryService {
         let platform = '';
         let handle = '';
         let selfieUrl = '';
+        let category = v.category || '';
 
         if (v.documentKey) {
           try {
@@ -665,6 +666,7 @@ export class UserQueryService {
             if (data && typeof data === 'object') {
               platform = data.platform || '';
               handle = data.handle || '';
+              if (data.category && !category) category = data.category;
               if (data.selfieKey) {
                 selfieUrl = (await this.media.resolve(data.selfieKey)) || '';
               }
@@ -682,6 +684,7 @@ export class UserQueryService {
           selfieUrl,
           platform,
           handle,
+          category: category || 'Creator',
           submittedAt: v.submittedAt,
           status: v.status,
         };
@@ -689,6 +692,397 @@ export class UserQueryService {
     );
 
     return result;
+  }
+
+  /**
+   * KPI Statistics for Creator Management Screen
+   */
+  async getCreatorStats() {
+    const [
+      totalCount,
+      audioCount,
+      videoCount,
+      gamingCount,
+      verifiedCount,
+    ] = await Promise.all([
+      // Total creators: all users who submitted creator verification or are verified
+      this.prisma.userVerification.count({
+        where: {
+          OR: [
+            { status: { in: ['PENDING', 'APPROVED', 'REJECTED'] } },
+            { type: 'CREATOR' },
+            { verified: true },
+          ],
+        },
+      }),
+      // Audio creators: Category matching AUDIO or SINGER
+      this.prisma.userVerification.count({
+        where: {
+          AND: [
+            {
+              OR: [
+                { status: { in: ['PENDING', 'APPROVED', 'REJECTED'] } },
+                { type: 'CREATOR' },
+                { verified: true },
+              ],
+            },
+            {
+              OR: [
+                { category: { in: ['AUDIO', 'Audio', 'SINGER', 'Singer', 'singer', 'audio'] } },
+              ],
+            },
+          ],
+        },
+      }),
+      // Video creators: Category matching VIDEO, STREAMER
+      this.prisma.userVerification.count({
+        where: {
+          AND: [
+            {
+              OR: [
+                { status: { in: ['PENDING', 'APPROVED', 'REJECTED'] } },
+                { type: 'CREATOR' },
+                { verified: true },
+              ],
+            },
+            {
+              category: { in: ['VIDEO', 'Video', 'STREAMER', 'Streamer', 'video', 'streamer'] },
+            },
+          ],
+        },
+      }),
+      // Gaming creators: Category matching GAMER, GAMING, MAGICIAN, COMEDIAN
+      this.prisma.userVerification.count({
+        where: {
+          AND: [
+            {
+              OR: [
+                { status: { in: ['PENDING', 'APPROVED', 'REJECTED'] } },
+                { type: 'CREATOR' },
+                { verified: true },
+              ],
+            },
+            {
+              category: {
+                in: [
+                  'GAMER',
+                  'Gamer',
+                  'gamer',
+                  'GAMING',
+                  'Gaming',
+                  'gaming',
+                  'MAGICIAN',
+                  'Magician',
+                  'magician',
+                  'COMEDIAN',
+                  'Comedian',
+                  'comedian',
+                ],
+              },
+            },
+          ],
+        },
+      }),
+      // Verified creators: verified boolean true or status APPROVED
+      this.prisma.userVerification.count({
+        where: {
+          OR: [
+            { verified: true },
+            { status: 'APPROVED' },
+          ],
+        },
+      }),
+    ]);
+
+    return {
+      total: totalCount,
+      audio: audioCount,
+      video: videoCount,
+      gaming: gamingCount,
+      verified: verifiedCount,
+    };
+  }
+
+  /**
+   * Search and filter creators with full live data for Creator List table
+   */
+  async searchCreators(filter: {
+    query?: string;
+    tab?: string;
+    countryId?: string;
+    status?: string;
+    category?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const page = Math.max(1, Number(filter.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(filter.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    // 1. Find all users who applied for creator verification or hold creator roles
+    const [appliedVerifications, creatorRoles] = await Promise.all([
+      this.prisma.userVerification.findMany({
+        where: {
+          OR: [
+            { status: { in: ['PENDING', 'APPROVED', 'REJECTED'] } },
+            { type: 'CREATOR' },
+            { verified: true },
+          ],
+        },
+        select: { userId: true },
+      }),
+      this.prisma.userRole.findMany({
+        where: {
+          role: {
+            name: { in: ['CREATOR', 'HOST', 'OFFICIAL_HOST', 'AGENCY_HOST'] },
+          },
+        },
+        select: { userId: true },
+      }),
+    ]);
+
+    const creatorUserIdsSet = new Set<string>();
+    for (const v of appliedVerifications) creatorUserIdsSet.add(v.userId);
+    for (const r of creatorRoles) creatorUserIdsSet.add(r.userId);
+
+    const creatorUserIds = Array.from(creatorUserIdsSet);
+
+    if (creatorUserIds.length === 0) {
+      return {
+        items: [],
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+      };
+    }
+
+    const where: any = {
+      id: { in: creatorUserIds },
+      isHiddenAccount: false,
+    };
+
+    if (filter.query && filter.query.trim()) {
+      const q = filter.query.trim();
+      where.OR = [
+        { username: { contains: q, mode: 'insensitive' } },
+        { fullName: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+      ];
+      if (q.length === 36 && q.includes('-')) {
+        where.OR.push({ id: q });
+      }
+    }
+
+    if (filter.countryId && filter.countryId !== 'ALL') {
+      where.countryId = filter.countryId;
+    }
+
+    if (filter.status && filter.status !== 'ALL') {
+      where.status = filter.status.toUpperCase();
+    }
+
+    const [total, users] = await Promise.all([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          locationCountry: true,
+        },
+      }),
+    ]);
+
+    const userIds = users.map((u) => u.id);
+
+    const [
+      verifications,
+      statistics,
+      profiles,
+      agencyRelationships,
+    ] = await Promise.all([
+      this.prisma.userVerification.findMany({
+        where: { userId: { in: userIds } },
+      }),
+      this.prisma.userStatistics.findMany({
+        where: { userId: { in: userIds } },
+      }),
+      this.prisma.userProfile.findMany({
+        where: { userId: { in: userIds } },
+      }),
+      this.prisma.agencyRelationship.findMany({
+        where: { hostId: { in: userIds }, status: 'ACTIVE' },
+      }),
+    ]);
+
+    const agencyIds = agencyRelationships.map((ar) => ar.agencyId);
+    const agencyUsers = agencyIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: agencyIds } },
+          select: { id: true, fullName: true, username: true },
+        })
+      : [];
+
+    const verificationMap = new Map(verifications.map((v) => [v.userId, v]));
+    const statisticsMap = new Map(statistics.map((s) => [s.userId, s]));
+    const profileMap = new Map(profiles.map((p) => [p.userId, p]));
+    const agencyMap = new Map(agencyRelationships.map((ar) => [ar.hostId, ar.agencyId]));
+    const agencyUserMap = new Map(agencyUsers.map((au) => [au.id, au.fullName || au.username]));
+
+    const items = await Promise.all(
+      users.map(async (user) => {
+        const ver = verificationMap.get(user.id);
+        const stat = statisticsMap.get(user.id);
+        const prof = profileMap.get(user.id);
+        const agId = agencyMap.get(user.id);
+        const agName = agId ? agencyUserMap.get(agId) || 'Independent' : 'Independent';
+
+        let category = ver?.category || 'Creator';
+        let platform = '';
+        let handle = '';
+        let selfieUrl = '';
+
+        if (ver?.documentKey) {
+          try {
+            const data = JSON.parse(ver.documentKey);
+            if (data && typeof data === 'object') {
+              if (data.category && category === 'Creator') category = data.category;
+              platform = data.platform || '';
+              handle = data.handle || '';
+              if (data.selfieKey) {
+                selfieUrl = (await this.media.resolve(data.selfieKey)) || '';
+              }
+            }
+          } catch {
+            // raw key
+          }
+        }
+
+        let verificationStatus: 'Verified' | 'Pending' | 'Rejected' | 'Unverified' = 'Unverified';
+        if (ver?.verified || ver?.status === 'APPROVED') {
+          verificationStatus = 'Verified';
+        } else if (ver?.status === 'PENDING') {
+          verificationStatus = 'Pending';
+        } else if (ver?.status === 'REJECTED') {
+          verificationStatus = 'Rejected';
+        }
+
+        const avatarUrl = prof?.avatarKey ? await this.media.resolve(prof.avatarKey) : null;
+        const coinsEarned = stat?.coinsReceived ? Number(stat.coinsReceived) : 0;
+        const followers = stat?.followersCount ?? 0;
+
+        return {
+          id: user.id,
+          username: user.username,
+          fullName: user.fullName || user.username,
+          avatarUrl,
+          category: category.charAt(0).toUpperCase() + category.slice(1).toLowerCase(),
+          agency: agName,
+          agencyId: agId || null,
+          followers,
+          verification: verificationStatus,
+          revenue: coinsEarned,
+          status: user.status === 'ACTIVE' ? 'Active' : 'Inactive',
+          createdAt: user.createdAt,
+          country: user.locationCountry?.name || user.country || 'Global',
+          platform,
+          handle,
+          selfieUrl,
+          rejectionReason: ver?.rejectionReason || null,
+        };
+      }),
+    );
+
+    // Tab-level filtering if specified
+    let filteredItems = items;
+    if (filter.tab && filter.tab !== 'ALL') {
+      const tabUpper = filter.tab.toUpperCase();
+      if (tabUpper === 'VERIFIED') {
+        filteredItems = filteredItems.filter((i) => i.verification === 'Verified');
+      } else if (tabUpper === 'AUDIO') {
+        filteredItems = filteredItems.filter((i) => i.category.toLowerCase().includes('audio') || i.category.toLowerCase().includes('singer'));
+      } else if (tabUpper === 'VIDEO') {
+        filteredItems = filteredItems.filter((i) => i.category.toLowerCase().includes('video') || i.category.toLowerCase().includes('streamer'));
+      } else if (tabUpper === 'GAMING') {
+        filteredItems = filteredItems.filter((i) =>
+          i.category.toLowerCase().includes('gamer') ||
+          i.category.toLowerCase().includes('gaming') ||
+          i.category.toLowerCase().includes('magician') ||
+          i.category.toLowerCase().includes('comedian'),
+        );
+      } else if (tabUpper === 'INFLUENCERS') {
+        filteredItems = filteredItems.filter((i) =>
+          i.category.toLowerCase().includes('influencer') ||
+          i.category.toLowerCase().includes('artist'),
+        );
+      }
+    }
+
+    return {
+      items: filteredItems,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  /**
+   * Update creator category
+   */
+  async updateCreatorCategory(userId: string, category: string) {
+    const cleanCategory = category.trim();
+    return this.prisma.userVerification.upsert({
+      where: { userId },
+      create: {
+        userId,
+        category: cleanCategory,
+        type: 'CREATOR',
+        status: 'NONE',
+        verified: false,
+      },
+      update: {
+        category: cleanCategory,
+      },
+    });
+  }
+
+  /**
+   * Assign or update creator agency relationship
+   */
+  async assignCreatorAgency(userId: string, agencyId: string) {
+    // 1. Deactivate existing active relationships for host
+    await this.prisma.agencyRelationship.updateMany({
+      where: { hostId: userId, status: 'ACTIVE' },
+      data: { status: 'INACTIVE', effectiveUntil: new Date() },
+    });
+
+    if (!agencyId || agencyId === 'INDEPENDENT') {
+      return { success: true, message: 'Creator set to independent.' };
+    }
+
+    // 2. Upsert new active relationship
+    return this.prisma.agencyRelationship.upsert({
+      where: {
+        agencyId_hostId: {
+          agencyId,
+          hostId: userId,
+        },
+      },
+      create: {
+        agencyId,
+        hostId: userId,
+        status: 'ACTIVE',
+        effectiveFrom: new Date(),
+      },
+      update: {
+        status: 'ACTIVE',
+        effectiveFrom: new Date(),
+        effectiveUntil: null,
+      },
+    });
   }
 
   /**

@@ -68,6 +68,15 @@ export class CosmeticDto {
   @Type(() => Number)
   @IsInt()
   sortOrder?: number;
+
+  @ApiPropertyOptional({ description: 'TTL or duration in days (0 or null = permanent).' })
+  @IsOptional()
+  @Type(() => Number)
+  durationDays?: number;
+
+  @ApiPropertyOptional({ description: 'Additional metadata such as TTL configuration.' })
+  @IsOptional()
+  metadata?: Record<string, any>;
 }
 
 /** Admin: partial update of a cosmetic. */
@@ -128,6 +137,15 @@ export class UpdateCosmeticDto {
   @Type(() => Number)
   @IsInt()
   sortOrder?: number;
+
+  @ApiPropertyOptional({ description: 'TTL or duration in days (0 or null = permanent).' })
+  @IsOptional()
+  @Type(() => Number)
+  durationDays?: number;
+
+  @ApiPropertyOptional({ description: 'Additional metadata such as TTL configuration.' })
+  @IsOptional()
+  metadata?: Record<string, any>;
 }
 
 /** Catalog listing filter. */

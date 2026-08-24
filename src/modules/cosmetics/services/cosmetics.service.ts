@@ -109,6 +109,19 @@ export class CosmeticsService implements ICosmeticsService {
       },
     });
     if (existing) {
+      if (input.expiresAt !== undefined) {
+        let newExpiresAt = input.expiresAt;
+        if (existing.expiresAt && input.expiresAt) {
+          const now = new Date();
+          const base = existing.expiresAt > now ? existing.expiresAt : now;
+          const additionalMs = input.expiresAt.getTime() - now.getTime();
+          newExpiresAt = new Date(base.getTime() + (additionalMs > 0 ? additionalMs : 0));
+        }
+        await this.prisma.userCosmetic.update({
+          where: { id: existing.id },
+          data: { expiresAt: newExpiresAt },
+        });
+      }
       return { id: existing.id, duplicate: true };
     }
 
@@ -128,9 +141,33 @@ export class CosmeticsService implements ICosmeticsService {
     cosmeticId: string;
     source: import('@prisma/client').BackpackItemSource;
     grantKey: string;
+    durationDays?: number;
+    expiresAt?: Date | null;
   }): Promise<CosmeticGrantResult | null> {
-    const cosmetic = await this.repo.getById(input.cosmeticId);
+    let cosmetic = await this.repo.getById(input.cosmeticId);
+    if (!cosmetic) {
+      const byName = await this.prisma.cosmetic.findFirst({
+        where: {
+          OR: [
+            { name: { equals: input.cosmeticId, mode: 'insensitive' } },
+            { id: input.cosmeticId.length === 36 ? input.cosmeticId : undefined },
+          ],
+        },
+      });
+      if (byName) cosmetic = byName;
+    }
     if (!cosmetic || !cosmetic.enabled) return null;
+
+    let computedExpiresAt: Date | null = input.expiresAt ?? null;
+    const durDays =
+      input.durationDays ??
+      (cosmetic.metadata as any)?.durationDays ??
+      (cosmetic.metadata as any)?.ttlDays ??
+      undefined;
+
+    if (!computedExpiresAt && durDays && durDays > 0) {
+      computedExpiresAt = new Date(Date.now() + durDays * 24 * 60 * 60 * 1000);
+    }
 
     if (
       cosmetic.type === 'FRAME' ||
@@ -140,6 +177,7 @@ export class CosmeticsService implements ICosmeticsService {
       const res = await this.grantCosmeticToUser({
         userId: input.userId,
         cosmeticId: cosmetic.id,
+        expiresAt: computedExpiresAt,
       });
       return { cosmeticId: cosmetic.id, backpackItemId: res.id, duplicate: res.duplicate };
     }
@@ -152,6 +190,7 @@ export class CosmeticsService implements ICosmeticsService {
       refId: cosmetic.id,
       transferable: cosmetic.transferable,
       grantKey: input.grantKey,
+      expiresAt: computedExpiresAt ?? undefined,
       metadata: { cosmeticId: cosmetic.id, rarity: cosmetic.rarity, mediaUrl: cosmetic.mediaUrl },
     });
     return { cosmeticId: cosmetic.id, backpackItemId: res.itemId, duplicate: res.duplicate };
@@ -190,6 +229,13 @@ export class CosmeticsService implements ICosmeticsService {
       finalThumbnailUrl = processed.thumbnailUrl ?? finalThumbnailUrl;
     }
 
+    const finalMetadata =
+      dto.metadata !== undefined
+        ? dto.metadata
+        : dto.durationDays !== undefined
+          ? { durationDays: dto.durationDays }
+          : undefined;
+
     const created = await this.repo.create(
       {
         type: dto.type,
@@ -202,6 +248,7 @@ export class CosmeticsService implements ICosmeticsService {
         transferable: dto.transferable ?? false,
         enabled: dto.enabled ?? true,
         sortOrder: dto.sortOrder ?? 0,
+        ...(finalMetadata !== undefined ? { metadata: finalMetadata as Prisma.InputJsonValue } : {}),
       },
       actorId,
     );
@@ -232,6 +279,13 @@ export class CosmeticsService implements ICosmeticsService {
       finalThumbnailUrl = processed.thumbnailUrl ?? finalThumbnailUrl;
     }
 
+    const updatedMetadata =
+      dto.metadata !== undefined
+        ? dto.metadata
+        : dto.durationDays !== undefined
+          ? { ...(existing.metadata as Record<string, any> || {}), durationDays: dto.durationDays }
+          : undefined;
+
     const data: Prisma.CosmeticUpdateInput = {
       ...(dto.type !== undefined ? { type: dto.type } : {}),
       ...(dto.name !== undefined ? { name: dto.name } : {}),
@@ -243,6 +297,7 @@ export class CosmeticsService implements ICosmeticsService {
       ...(dto.transferable !== undefined ? { transferable: dto.transferable } : {}),
       ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
       ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+      ...(updatedMetadata !== undefined ? { metadata: updatedMetadata as Prisma.InputJsonValue } : {}),
     };
     const updated = await this.repo.update(id, data, actorId);
     return {

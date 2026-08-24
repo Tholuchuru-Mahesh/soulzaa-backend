@@ -36,6 +36,7 @@ export interface EquippedItemView {
   itemId: string;
   cosmeticId: string | null;
   name: string;
+  mediaUrl?: string | null;
 }
 
 export interface IBackpackService {

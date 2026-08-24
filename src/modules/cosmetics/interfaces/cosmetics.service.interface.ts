@@ -36,7 +36,8 @@ export interface ICosmeticsService {
   }): Promise<string>;
 
   /**
-   * Deposit a cosmetic into a user's backpack (idempotent on `grantKey`).
+   * Deposit a cosmetic into a user's backpack/inventory (idempotent on `grantKey`).
+   * Supports optional TTL expiration (durationDays / expiresAt).
    * Returns null if the cosmetic is missing or disabled.
    */
   grantToUser(input: {
@@ -44,5 +45,7 @@ export interface ICosmeticsService {
     cosmeticId: string;
     source: BackpackItemSource;
     grantKey: string;
+    durationDays?: number;
+    expiresAt?: Date | null;
   }): Promise<CosmeticGrantResult | null>;
 }

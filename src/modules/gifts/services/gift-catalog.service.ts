@@ -87,10 +87,9 @@ export class GiftCatalogService {
    * Get single gift by ID or code
    */
   async getGiftById(id: string) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
     const gift = await this.prisma.gift.findFirst({
-      where: {
-        OR: [{ id }, { code: id }],
-      },
+      where: isUuid ? { OR: [{ id }, { code: id }] } : { code: id },
     });
 
     if (!gift) {
@@ -167,6 +166,10 @@ export class GiftCatalogService {
     const updated = await this.prisma.gift.update({
       where: { id: gift.id },
       data: {
+        name: dto.name,
+        category: dto.category,
+        type: dto.type,
+        description: dto.description,
         displayName: dto.displayName,
         coinValue: dto.coinValue,
         thumbnailUrl: dto.thumbnailUrl,

@@ -527,6 +527,17 @@ export class FamiliesRepository {
     const items = records.map((r) => {
       const details = (r.details as Record<string, any>) || {};
       if (r.action === 'CHAT_MESSAGE') {
+        let cleanMedia = details.mediaUrl || null;
+        if (cleanMedia && typeof cleanMedia === 'string') {
+          if (cleanMedia.includes('?')) {
+            cleanMedia = cleanMedia.split('?')[0];
+          }
+          const match = cleanMedia.match(/(chat-images\/[^\s]+|chat-videos\/[^\s]+|chat-files\/[^\s]+|chat-voice\/[^\s]+|profile-images\/[^\s]+)/);
+          if (match) {
+            cleanMedia = match[1];
+          }
+        }
+
         return {
           id: r.id,
           familyId: r.familyId,
@@ -535,7 +546,7 @@ export class FamiliesRepository {
           senderRole: details.senderRole || 'MEMBER',
           content: details.content || '',
           mediaType: details.mediaType || null,
-          mediaUrl: details.mediaUrl || null,
+          mediaUrl: cleanMedia,
           mediaName: details.mediaName || null,
           mediaSize: details.mediaSize || null,
           avatarUrl: details.avatarUrl || null,

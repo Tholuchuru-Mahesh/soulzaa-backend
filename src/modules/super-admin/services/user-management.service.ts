@@ -95,6 +95,22 @@ export class UserManagementService {
     return this.queryService.getPendingVerifications();
   }
 
+  async getCreatorStats() {
+    return this.queryService.getCreatorStats();
+  }
+
+  async searchCreators(filter: any) {
+    return this.queryService.searchCreators(filter);
+  }
+
+  async updateCreatorCategory(userId: string, category: string) {
+    return this.queryService.updateCreatorCategory(userId, category);
+  }
+
+  async assignCreatorAgency(userId: string, agencyId: string) {
+    return this.queryService.assignCreatorAgency(userId, agencyId);
+  }
+
   async revokeCreator(userId: string, actorId: string) {
     return this.roleAssignmentService.revokeCreator(userId, actorId);
   }

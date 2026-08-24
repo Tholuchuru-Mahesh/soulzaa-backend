@@ -130,6 +130,25 @@ export class AuthorizationController {
     return this.permissionService.assignPermissionToRole(dto);
   }
 
+  @ApiOperation({ summary: 'Get permissions mapped to a role' })
+  @ApiResponse({ status: 200, description: 'List of role permissions' })
+  @Get('roles/:roleId/permissions')
+  async getRolePermissions(@Param('roleId') roleId: string) {
+    return this.permissionService.getRolePermissions(roleId);
+  }
+
+  @ApiOperation({ summary: 'Remove a permission from a role' })
+  @ApiResponse({ status: 200, description: 'Permission removed from role' })
+  @RequirePermissions('permission.manage')
+  @AuditLogAction('permission.remove', 'role')
+  @Delete('roles/:roleId/permissions/:permissionId')
+  async removePermissionFromRole(
+    @Param('roleId') roleId: string,
+    @Param('permissionId') permissionId: string,
+  ) {
+    return this.permissionService.removePermissionFromRole(roleId, permissionId);
+  }
+
   // ---------------------------------------------------------
   // Role Hierarchy APIs
   // ---------------------------------------------------------

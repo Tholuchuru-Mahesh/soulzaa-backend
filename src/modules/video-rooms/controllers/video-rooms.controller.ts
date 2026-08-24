@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { NotGuest } from 'src/common/decorators/not-guest.decorator';
+import { Public } from 'src/common/decorators/public.decorator';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import { CreateVideoRoomDto } from '../dto/create-video-room.dto';
@@ -27,13 +28,9 @@ import { VideoRoomQueryService } from '../services/video-room-query.service';
 import { VideoRoomSettingsService } from '../services/video-room-settings.service';
 
 /**
- * Video Room lifecycle REST surface (base `video-rooms`, VR-2). The global
- * JwtAuthGuard secures every route; writes are denied to guests (@NotGuest); UUID
- * params are validated; bodies are validated against their DTOs. Ownership / RBAC
- * checks live in the services (VideoRoomPermissionService) — no per-route role
- * guards. Reads flow through the query service; commands through the lifecycle
- * service (CQRS-ready split). Static/discovery routes are declared before `:id`
- * so they are not captured by the param route.
+ * Video Room lifecycle REST surface (base `video-rooms`, VR-2). Discovery routes
+ * are @Public(); writes are denied to guests (@NotGuest); UUID params are validated;
+ * bodies are validated against their DTOs. Ownership / RBAC checks live in the services.
  */
 @ApiTags('video-rooms')
 @ApiBearerAuth()
@@ -45,31 +42,35 @@ export class VideoRoomsController {
     private readonly settings: VideoRoomSettingsService,
   ) {}
 
-  private actor(user: AuthenticatedUser): RoomActor {
-    return { id: user.id, roles: user.roles };
+  private actor(user?: AuthenticatedUser): RoomActor {
+    return { id: user?.id ?? '', roles: user?.roles ?? [] };
   }
 
   // ---- Discovery / static routes (before ':id') ----
 
   @Get('search')
+  @Public()
   @ApiOperation({ summary: 'Faceted search (category/language/country/tags/access policy)' })
   search(@CurrentUser() user: AuthenticatedUser, @Query() query: SearchVideoRoomsDto) {
     return this.query.search(query, this.actor(user));
   }
 
   @Get('trending')
+  @Public()
   @ApiOperation({ summary: 'Trending rooms (global trending set, highest first)' })
   trending(@Query() query: ListVideoRoomsDto) {
     return this.query.trending(query.limit);
   }
 
   @Get('popular')
+  @Public()
   @ApiOperation({ summary: 'Popular rooms (ranked by room statistics)' })
   popular(@CurrentUser() user: AuthenticatedUser, @Query() query: ListVideoRoomsDto) {
     return this.query.popular(query, this.actor(user));
   }
 
   @Get('featured')
+  @Public()
   @ApiOperation({ summary: 'Featured (verified) rooms' })
   featured(@CurrentUser() user: AuthenticatedUser, @Query() query: ListVideoRoomsDto) {
     return this.query.featured(query, this.actor(user));
@@ -82,6 +83,7 @@ export class VideoRoomsController {
   }
 
   @Get()
+  @Public()
   @ApiOperation({ summary: 'List / discover video rooms (newest first)' })
   list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListVideoRoomsDto) {
     return this.query.list(query, this.actor(user));
@@ -99,6 +101,7 @@ export class VideoRoomsController {
   // ---- Single-room reads ----
 
   @Get(':id')
+  @Public()
   @ApiOperation({ summary: 'Get complete room detail' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Room not found.' })
   detail(@Param('id', ParseUuidPipe) id: string) {
@@ -106,6 +109,7 @@ export class VideoRoomsController {
   }
 
   @Get(':id/status')
+  @Public()
   @ApiOperation({ summary: 'Verify room lifecycle status' })
   status(@Param('id', ParseUuidPipe) id: string) {
     return this.query.verifyStatus(id);

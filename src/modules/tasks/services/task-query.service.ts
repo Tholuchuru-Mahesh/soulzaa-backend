@@ -16,18 +16,6 @@ export class TaskQueryService {
    * Universal evaluation runs on access to ensure session active state is reflected.
    */
   async getUserActiveTasks(userId: string, category?: string) {
-    // Trigger generic user active/login event evaluation through the rule engine
-    if (this.evaluation) {
-      try {
-        await this.evaluation.evaluateEvent({
-          userId,
-          eventCode: 'user.logged_in',
-          metadata: { trigger: 'query_active' },
-        });
-      } catch {
-        // Non-fatal
-      }
-    }
 
     const tasks = await this.prisma.taskDefinition.findMany({
       where: {

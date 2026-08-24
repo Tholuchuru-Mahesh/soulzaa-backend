@@ -341,6 +341,7 @@ export class AudioRoomsRepository {
       where: { roomId_userId: { roomId, userId } },
       create: { roomId, userId, role, isActive: true, ...auditCreate(actorId) },
       update: {
+        role,
         isActive: true,
         leftAt: null,
         joinedAt: new Date(),
