@@ -52,6 +52,7 @@ describe('BackpackService', () => {
       locks as unknown as LockService,
       bus,
       { invalidateProfile: jest.fn().mockResolvedValue(undefined) } as any,
+      { resolve: jest.fn().mockImplementation((key) => Promise.resolve(key)) } as any,
     );
   });
 

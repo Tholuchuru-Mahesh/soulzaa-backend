@@ -5,6 +5,7 @@ import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
 import { LockService } from 'src/infra/redis/lock.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import {
   BACKPACK_ACTIONS,
   EQUIPPABLE_TYPES,
@@ -37,6 +38,7 @@ export class BackpackService implements IBackpackService {
     private readonly locks: LockService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
+    private readonly media: MediaUrlResolver,
   ) {}
 
   // ---- IBackpackService (cross-module grant seam) ----
@@ -101,6 +103,11 @@ export class BackpackService implements IBackpackService {
       const cosmetic = await this.repo.findCosmeticById(item.refId);
       if (cosmetic) mediaUrl = cosmetic.mediaUrl;
     }
+    // Stored media is a raw S3 key, not a servable URL (see MediaUrlResolver) —
+    // every other read path (catalog list, backpack preview) resolves it before
+    // handing it to a client; this is the one that fed a socket broadcast
+    // straight from the DB, so equipped effects silently failed to load in-room.
+    mediaUrl = await this.media.resolve(mediaUrl);
     return { itemId: item.id, cosmeticId: item.refId, name: item.name, mediaUrl };
   }
 
