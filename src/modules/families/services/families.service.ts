@@ -1007,7 +1007,9 @@ export class FamiliesService implements IFamiliesService {
       if (cleanMediaUrl.includes('?')) {
         cleanMediaUrl = cleanMediaUrl.split('?')[0];
       }
-      const match = cleanMediaUrl.match(/(chat-images\/[^\s]+|chat-videos\/[^\s]+|chat-files\/[^\s]+|chat-voice\/[^\s]+|profile-images\/[^\s]+)/);
+      const match = cleanMediaUrl.match(
+        /(chat-images\/[^\s]+|chat-videos\/[^\s]+|chat-files\/[^\s]+|chat-voice\/[^\s]+|profile-images\/[^\s]+)/,
+      );
       if (match) {
         cleanMediaUrl = match[1];
       }

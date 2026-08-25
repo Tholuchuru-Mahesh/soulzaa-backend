@@ -86,7 +86,9 @@ export class RoomCosmeticsSocketListener implements OnModuleInit {
       });
       const username = user?.fullName || user?.username || 'Guest';
 
-      this.logger.log(`Broadcasting entrance effect in room ${roomId} for user ${username} (${userId}): ${equipped.name}`);
+      this.logger.log(
+        `Broadcasting entrance effect in room ${roomId} for user ${username} (${userId}): ${equipped.name}`,
+      );
       this.room(roomId, ROOM_SOCKET_EVENTS.ROOM_ENTRANCE_EFFECT, {
         roomId,
         userId,

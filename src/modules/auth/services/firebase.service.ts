@@ -74,7 +74,7 @@ export class FirebaseService implements OnModuleInit {
         const payloadStr = Buffer.from(parts[1]!, 'base64').toString('utf8');
         const payload = JSON.parse(payloadStr);
 
-        const phone = payload.phone_number || (payload.firebase?.identities?.phone?.[0]);
+        const phone = payload.phone_number || payload.firebase?.identities?.phone?.[0];
         const uid = payload.user_id || payload.sub;
         const now = Math.floor(Date.now() / 1000);
 
@@ -92,4 +92,3 @@ export class FirebaseService implements OnModuleInit {
     throw new Error('Firebase ID Token is invalid or does not contain a verified phone number.');
   }
 }
-

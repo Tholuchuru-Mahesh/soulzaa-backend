@@ -698,13 +698,7 @@ export class UserQueryService {
    * KPI Statistics for Creator Management Screen
    */
   async getCreatorStats() {
-    const [
-      totalCount,
-      audioCount,
-      videoCount,
-      gamingCount,
-      verifiedCount,
-    ] = await Promise.all([
+    const [totalCount, audioCount, videoCount, gamingCount, verifiedCount] = await Promise.all([
       // Total creators: all users who submitted creator verification or are verified
       this.prisma.userVerification.count({
         where: {
@@ -727,9 +721,7 @@ export class UserQueryService {
               ],
             },
             {
-              OR: [
-                { category: { in: ['AUDIO', 'Audio', 'SINGER', 'Singer', 'singer', 'audio'] } },
-              ],
+              OR: [{ category: { in: ['AUDIO', 'Audio', 'SINGER', 'Singer', 'singer', 'audio'] } }],
             },
           ],
         },
@@ -786,10 +778,7 @@ export class UserQueryService {
       // Verified creators: verified boolean true or status APPROVED
       this.prisma.userVerification.count({
         where: {
-          OR: [
-            { verified: true },
-            { status: 'APPROVED' },
-          ],
+          OR: [{ verified: true }, { status: 'APPROVED' }],
         },
       }),
     ]);
@@ -897,12 +886,7 @@ export class UserQueryService {
 
     const userIds = users.map((u) => u.id);
 
-    const [
-      verifications,
-      statistics,
-      profiles,
-      agencyRelationships,
-    ] = await Promise.all([
+    const [verifications, statistics, profiles, agencyRelationships] = await Promise.all([
       this.prisma.userVerification.findMany({
         where: { userId: { in: userIds } },
       }),
@@ -918,12 +902,13 @@ export class UserQueryService {
     ]);
 
     const agencyIds = agencyRelationships.map((ar) => ar.agencyId);
-    const agencyUsers = agencyIds.length > 0
-      ? await this.prisma.user.findMany({
-          where: { id: { in: agencyIds } },
-          select: { id: true, fullName: true, username: true },
-        })
-      : [];
+    const agencyUsers =
+      agencyIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: agencyIds } },
+            select: { id: true, fullName: true, username: true },
+          })
+        : [];
 
     const verificationMap = new Map(verifications.map((v) => [v.userId, v]));
     const statisticsMap = new Map(statistics.map((s) => [s.userId, s]));
@@ -1002,20 +987,30 @@ export class UserQueryService {
       if (tabUpper === 'VERIFIED') {
         filteredItems = filteredItems.filter((i) => i.verification === 'Verified');
       } else if (tabUpper === 'AUDIO') {
-        filteredItems = filteredItems.filter((i) => i.category.toLowerCase().includes('audio') || i.category.toLowerCase().includes('singer'));
+        filteredItems = filteredItems.filter(
+          (i) =>
+            i.category.toLowerCase().includes('audio') ||
+            i.category.toLowerCase().includes('singer'),
+        );
       } else if (tabUpper === 'VIDEO') {
-        filteredItems = filteredItems.filter((i) => i.category.toLowerCase().includes('video') || i.category.toLowerCase().includes('streamer'));
+        filteredItems = filteredItems.filter(
+          (i) =>
+            i.category.toLowerCase().includes('video') ||
+            i.category.toLowerCase().includes('streamer'),
+        );
       } else if (tabUpper === 'GAMING') {
-        filteredItems = filteredItems.filter((i) =>
-          i.category.toLowerCase().includes('gamer') ||
-          i.category.toLowerCase().includes('gaming') ||
-          i.category.toLowerCase().includes('magician') ||
-          i.category.toLowerCase().includes('comedian'),
+        filteredItems = filteredItems.filter(
+          (i) =>
+            i.category.toLowerCase().includes('gamer') ||
+            i.category.toLowerCase().includes('gaming') ||
+            i.category.toLowerCase().includes('magician') ||
+            i.category.toLowerCase().includes('comedian'),
         );
       } else if (tabUpper === 'INFLUENCERS') {
-        filteredItems = filteredItems.filter((i) =>
-          i.category.toLowerCase().includes('influencer') ||
-          i.category.toLowerCase().includes('artist'),
+        filteredItems = filteredItems.filter(
+          (i) =>
+            i.category.toLowerCase().includes('influencer') ||
+            i.category.toLowerCase().includes('artist'),
         );
       }
     }

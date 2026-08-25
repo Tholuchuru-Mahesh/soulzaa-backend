@@ -8,7 +8,10 @@ export class VerificationRequestDto {
   @IsEnum(VerificationType)
   type!: VerificationType;
 
-  @ApiPropertyOptional({ description: 'Creator Category/Type: Gamer, Singer, Magician, Comedian, Audio, Video, Influencer, Artist' })
+  @ApiPropertyOptional({
+    description:
+      'Creator Category/Type: Gamer, Singer, Magician, Comedian, Audio, Video, Influencer, Artist',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(100)

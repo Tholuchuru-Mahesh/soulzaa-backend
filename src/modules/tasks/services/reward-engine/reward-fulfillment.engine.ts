@@ -143,19 +143,41 @@ export class RewardFulfillmentEngine {
         });
         result.coinsAwarded = totalFreeCoins;
         result.gameCoinsAwarded = totalGameCoins;
-        this.logger.log(`Credited ${totalFreeCoins} Free Coins and ${totalGameCoins} Game Coins (Total: ${totalCoinsCombined}) to game balance of user ${userId} for ${refType}:${refId}`);
-        
+        this.logger.log(
+          `Credited ${totalFreeCoins} Free Coins and ${totalGameCoins} Game Coins (Total: ${totalCoinsCombined}) to game balance of user ${userId} for ${refType}:${refId}`,
+        );
+
         // Fetch fresh unified wallet balance
         const balances = await this.walletService.getBalance(userId).catch(() => null);
         const gameBalance = balances?.game ?? totalFreeCoins;
         const goldBalance = balances?.gold ?? 0;
         const diamondBalance = balances?.diamond ?? 0;
 
-        await this.publishSilent('wallet.balance_updated', { userId, gameBalance, freeCoins: gameBalance });
-        this.emitToUser(userId, 'balanceChanged', { userId, coins: gameBalance, freeCoins: gameBalance, game: gameBalance, gold: goldBalance, diamond: diamondBalance });
-        this.emitToUser(userId, 'walletUpdated', { userId, coins: gameBalance, freeCoins: gameBalance, game: gameBalance, gold: goldBalance, diamond: diamondBalance });
+        await this.publishSilent('wallet.balance_updated', {
+          userId,
+          gameBalance,
+          freeCoins: gameBalance,
+        });
+        this.emitToUser(userId, 'balanceChanged', {
+          userId,
+          coins: gameBalance,
+          freeCoins: gameBalance,
+          game: gameBalance,
+          gold: goldBalance,
+          diamond: diamondBalance,
+        });
+        this.emitToUser(userId, 'walletUpdated', {
+          userId,
+          coins: gameBalance,
+          freeCoins: gameBalance,
+          game: gameBalance,
+          gold: goldBalance,
+          diamond: diamondBalance,
+        });
       } catch (err) {
-        this.logger.error(`Failed to credit free coins to user ${userId}: ${(err as Error).message}`);
+        this.logger.error(
+          `Failed to credit free coins to user ${userId}: ${(err as Error).message}`,
+        );
       }
     }
 
@@ -176,12 +198,16 @@ export class RewardFulfillmentEngine {
           referenceId: refId,
         });
         result.goldCoinsAwarded = totalGoldCoins;
-        this.logger.log(`Credited ${totalGoldCoins} gold coins to user ${userId} for ${refType}:${refId}`);
+        this.logger.log(
+          `Credited ${totalGoldCoins} gold coins to user ${userId} for ${refType}:${refId}`,
+        );
         await this.publishSilent('wallet.balance_updated', { userId });
         this.emitToUser(userId, 'balanceChanged', { userId, goldCoins: totalGoldCoins });
         this.emitToUser(userId, 'walletUpdated', { userId, goldCoins: totalGoldCoins });
       } catch (err) {
-        this.logger.error(`Failed to credit gold coins to user ${userId}: ${(err as Error).message}`);
+        this.logger.error(
+          `Failed to credit gold coins to user ${userId}: ${(err as Error).message}`,
+        );
       }
     }
 
@@ -224,17 +250,25 @@ export class RewardFulfillmentEngine {
             },
           });
         } catch (err) {
-          this.logger.error(`Failed to sync user statistics for user ${userId}: ${(err as Error).message}`);
+          this.logger.error(
+            `Failed to sync user statistics for user ${userId}: ${(err as Error).message}`,
+          );
         }
       }
 
       await this.publishSilent('user.profile_updated', { userId });
-      this.emitToUser(userId, 'user.stats_updated', { userId, exp: totalExp, level: result.newLevel });
+      this.emitToUser(userId, 'user.stats_updated', {
+        userId,
+        exp: totalExp,
+        level: result.newLevel,
+      });
     }
 
     // 4. Dispatch Cosmetics (Frames, Themes, Entrance Effects, Badges, Bubbles, Decorations)
     const cosmeticItems = normalizedItems.filter((i) =>
-      ['FRAME', 'THEME', 'BUBBLE', 'ENTRANCE_EFFECT', 'BADGE', 'DECORATION', 'COSMETIC'].includes(i.type),
+      ['FRAME', 'THEME', 'BUBBLE', 'ENTRANCE_EFFECT', 'BADGE', 'DECORATION', 'COSMETIC'].includes(
+        i.type,
+      ),
     );
 
     if (cosmeticItems.length > 0 && this.cosmeticsService) {
@@ -253,12 +287,11 @@ export class RewardFulfillmentEngine {
           });
 
           if (grantRes) {
-            const computedExpiresAt =
-              item.expiresAt
-                ? new Date(item.expiresAt)
-                : item.durationDays && item.durationDays > 0
-                  ? new Date(Date.now() + item.durationDays * 86400000)
-                  : null;
+            const computedExpiresAt = item.expiresAt
+              ? new Date(item.expiresAt)
+              : item.durationDays && item.durationDays > 0
+                ? new Date(Date.now() + item.durationDays * 86400000)
+                : null;
 
             result.cosmeticsAwarded.push({
               cosmeticId: grantRes.cosmeticId,
@@ -271,7 +304,9 @@ export class RewardFulfillmentEngine {
             );
           }
         } catch (err) {
-          this.logger.error(`Failed to grant cosmetic ${cosmeticRef} to user ${userId}: ${(err as Error).message}`);
+          this.logger.error(
+            `Failed to grant cosmetic ${cosmeticRef} to user ${userId}: ${(err as Error).message}`,
+          );
         }
       }
       await this.publishSilent('backpack.item_granted', { userId });
@@ -280,13 +315,21 @@ export class RewardFulfillmentEngine {
 
     // 5. Dispatch VIP Subscriptions / Days
     const vipItems = normalizedItems.filter((i) => i.type === 'VIP');
-    const totalVipDays = vipItems.reduce((sum, i) => sum + (Number(i.vipDays || i.amount || i.durationDays) || 0), 0);
+    const totalVipDays = vipItems.reduce(
+      (sum, i) => sum + (Number(i.vipDays || i.amount || i.durationDays) || 0),
+      0,
+    );
 
     if (totalVipDays > 0 && this.prisma) {
       try {
-        const existingMembership = await this.prisma.vipMembership.findUnique({ where: { userId } });
+        const existingMembership = await this.prisma.vipMembership.findUnique({
+          where: { userId },
+        });
         const now = new Date();
-        const baseDate = existingMembership && existingMembership.expiresAt > now ? existingMembership.expiresAt : now;
+        const baseDate =
+          existingMembership && existingMembership.expiresAt > now
+            ? existingMembership.expiresAt
+            : now;
         const newExpiresAt = new Date(baseDate.getTime() + totalVipDays * 86400000);
 
         await this.prisma.vipMembership.upsert({
@@ -306,10 +349,18 @@ export class RewardFulfillmentEngine {
         });
 
         result.vipAwarded = { days: totalVipDays, expiresAt: newExpiresAt };
-        this.logger.log(`Granted ${totalVipDays} VIP days to user ${userId} (expires ${newExpiresAt.toISOString()})`);
-        this.emitToUser(userId, 'vip:updated', { userId, days: totalVipDays, expiresAt: newExpiresAt });
+        this.logger.log(
+          `Granted ${totalVipDays} VIP days to user ${userId} (expires ${newExpiresAt.toISOString()})`,
+        );
+        this.emitToUser(userId, 'vip:updated', {
+          userId,
+          days: totalVipDays,
+          expiresAt: newExpiresAt,
+        });
       } catch (err) {
-        this.logger.error(`Failed to extend VIP membership for user ${userId}: ${(err as Error).message}`);
+        this.logger.error(
+          `Failed to extend VIP membership for user ${userId}: ${(err as Error).message}`,
+        );
       }
     }
 
@@ -349,7 +400,9 @@ export class RewardFulfillmentEngine {
    * Normalizes any input format (structured `items` array or flat object keys)
    * into a clean list of `RewardItemPayload` objects.
    */
-  private normalizeRewardDefinition(def: Record<string, any> | RewardItemPayload[]): RewardItemPayload[] {
+  private normalizeRewardDefinition(
+    def: Record<string, any> | RewardItemPayload[],
+  ): RewardItemPayload[] {
     const items: RewardItemPayload[] = [];
 
     if (Array.isArray(def)) {
@@ -443,7 +496,8 @@ export class RewardFulfillmentEngine {
     }
 
     // Entrance Rides
-    const entranceId = def.entranceEffectId || (def.cosmeticId?.includes('ride') ? def.cosmeticId : null);
+    const entranceId =
+      def.entranceEffectId || (def.cosmeticId?.includes('ride') ? def.cosmeticId : null);
     if (entranceId) {
       items.push({
         type: 'ENTRANCE_EFFECT',
@@ -493,7 +547,11 @@ export class RewardFulfillmentEngine {
 
     // Virtual Gifts
     if (def.giftId) {
-      items.push({ type: 'GIFT', giftId: String(def.giftId), quantity: Number(def.giftQuantity ?? def.quantity) || 1 });
+      items.push({
+        type: 'GIFT',
+        giftId: String(def.giftId),
+        quantity: Number(def.giftQuantity ?? def.quantity) || 1,
+      });
     }
 
     return items;

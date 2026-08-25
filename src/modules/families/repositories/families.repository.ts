@@ -532,7 +532,9 @@ export class FamiliesRepository {
           if (cleanMedia.includes('?')) {
             cleanMedia = cleanMedia.split('?')[0];
           }
-          const match = cleanMedia.match(/(chat-images\/[^\s]+|chat-videos\/[^\s]+|chat-files\/[^\s]+|chat-voice\/[^\s]+|profile-images\/[^\s]+)/);
+          const match = cleanMedia.match(
+            /(chat-images\/[^\s]+|chat-videos\/[^\s]+|chat-files\/[^\s]+|chat-voice\/[^\s]+|profile-images\/[^\s]+)/,
+          );
           if (match) {
             cleanMedia = match[1];
           }

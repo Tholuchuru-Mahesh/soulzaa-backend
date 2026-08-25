@@ -88,7 +88,12 @@ export function resolveProgressionSubjects(payload: unknown): string[] {
   // 2. Payouts array
   if (Array.isArray(record['payouts'])) {
     for (const p of record['payouts']) {
-      if (p && typeof p === 'object' && typeof (p as any).userId === 'string' && (p as any).userId.length > 0) {
+      if (
+        p &&
+        typeof p === 'object' &&
+        typeof (p as any).userId === 'string' &&
+        (p as any).userId.length > 0
+      ) {
         subjects.add((p as any).userId);
       }
     }

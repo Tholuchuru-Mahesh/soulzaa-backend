@@ -12,7 +12,6 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
-import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import { CreateGiftDto, GiftQueryDto, UpdateGiftDto } from '../dto/gift-catalog.dto';
 import { GiftCatalogService } from '../services/gift-catalog.service';
 

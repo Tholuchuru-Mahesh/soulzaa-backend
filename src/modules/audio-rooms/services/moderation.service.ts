@@ -28,8 +28,6 @@ import type { ReportDto } from '../dto/moderation.dto';
 import type { ReviewReportDto } from '../dto/moderation.dto';
 import type { AppealDto } from '../dto/moderation.dto';
 import type { ResolveAppealDto } from '../dto/moderation.dto';
-import { RoomLeftEvent } from '../events/audio-room.events';
-import { SeatLeftEvent } from '../events/audio-room-seat.events';
 import { ChatMessageSentEvent, type ChatMessagePayload } from '../events/audio-room-chat.events';
 import {
   AppealResolvedEvent,

@@ -16,7 +16,6 @@ export class TaskQueryService {
    * Universal evaluation runs on access to ensure session active state is reflected.
    */
   async getUserActiveTasks(userId: string, category?: string) {
-
     const tasks = await this.prisma.taskDefinition.findMany({
       where: {
         ...(category ? { category } : {}),

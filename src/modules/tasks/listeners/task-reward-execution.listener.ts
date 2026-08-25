@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { RewardFulfillmentEngine } from '../services/reward-engine/reward-fulfillment.engine';
 
@@ -45,4 +45,3 @@ export class TaskRewardExecutionListener implements OnModuleInit {
     }
   }
 }
-

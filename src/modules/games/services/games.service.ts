@@ -218,7 +218,7 @@ export class GamesService {
 
   async recordGamePlay(actor: GameActor, gameCode: string, _resultData?: Record<string, unknown>) {
     const rawCode = (gameCode || 'CARROM').toUpperCase();
-    const code = (rawCode in GameCode ? (rawCode as GameCode) : GameCode.CARROM);
+    const code = rawCode in GameCode ? (rawCode as GameCode) : GameCode.CARROM;
     await this.bus.publish(
       new GameSettledEvent({
         sessionId: `play-${actor.id}-${Date.now()}`,

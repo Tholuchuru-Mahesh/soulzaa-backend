@@ -87,7 +87,12 @@ export class BackpackService implements IBackpackService {
   async getEquipped(
     userId: string,
     type: BackpackItemType,
-  ): Promise<{ itemId: string; cosmeticId: string | null; name: string; mediaUrl?: string | null } | null> {
+  ): Promise<{
+    itemId: string;
+    cosmeticId: string | null;
+    name: string;
+    mediaUrl?: string | null;
+  } | null> {
     const item = await this.repo.findEquippedByType(userId, type);
     if (!item) return null;
     const metadata = (item.metadata as Record<string, any>) || {};

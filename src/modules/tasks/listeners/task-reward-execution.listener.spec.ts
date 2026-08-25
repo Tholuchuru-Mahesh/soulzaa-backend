@@ -29,7 +29,11 @@ describe('TaskRewardExecutionListener & RewardFulfillmentEngine', () => {
     };
 
     mockCosmeticsService = {
-      grantToUser: jest.fn().mockResolvedValue({ cosmeticId: 'frame-vip-gold', backpackItemId: 'item-1', duplicate: false }),
+      grantToUser: jest.fn().mockResolvedValue({
+        cosmeticId: 'frame-vip-gold',
+        backpackItemId: 'item-1',
+        duplicate: false,
+      }),
     };
 
     mockPrismaService = {

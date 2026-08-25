@@ -1,9 +1,4 @@
-import {
-  PremiumSeatStatus,
-  RoomMemberRole,
-  SeatInvitationStatus,
-  SeatRequestStatus,
-} from '@prisma/client';
+import { SeatInvitationStatus, SeatRequestStatus } from '@prisma/client';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { AudioRoomSeatsRepository } from './audio-room-seats.repository';
@@ -29,13 +24,6 @@ describe('AudioRoomSeatsRepository.clearSessionStateTx', () => {
     roomSettings: { updateMany: jest.Mock };
   };
   let repo: AudioRoomSeatsRepository;
-
-  /** The `where` of every call recorded on a given model+op during the run. */
-  const wheres = (fn: jest.Mock): Array<Record<string, unknown>> =>
-    fn.mock.calls.map((c) => (c[0] as { where: Record<string, unknown> }).where);
-
-  const datas = (fn: jest.Mock): Array<Record<string, unknown>> =>
-    fn.mock.calls.map((c) => (c[0] as { data: Record<string, unknown> }).data);
 
   beforeEach(() => {
     prisma = {

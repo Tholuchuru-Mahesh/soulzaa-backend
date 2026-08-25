@@ -76,7 +76,9 @@ export class SuperAdminUserController {
     return this.userManagementService.getPendingVerifications();
   }
 
-  @ApiOperation({ summary: 'Super Admin: get creator KPI stats (Total, Audio, Video, Gaming, Verified)' })
+  @ApiOperation({
+    summary: 'Super Admin: get creator KPI stats (Total, Audio, Video, Gaming, Verified)',
+  })
   @ApiResponse({ status: 200, description: 'Creator KPI statistics' })
   @RequirePermissions('user.list.view')
   @Get('creators/stats')

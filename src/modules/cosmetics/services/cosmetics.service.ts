@@ -248,7 +248,9 @@ export class CosmeticsService implements ICosmeticsService {
         transferable: dto.transferable ?? false,
         enabled: dto.enabled ?? true,
         sortOrder: dto.sortOrder ?? 0,
-        ...(finalMetadata !== undefined ? { metadata: finalMetadata as Prisma.InputJsonValue } : {}),
+        ...(finalMetadata !== undefined
+          ? { metadata: finalMetadata as Prisma.InputJsonValue }
+          : {}),
       },
       actorId,
     );
@@ -283,7 +285,10 @@ export class CosmeticsService implements ICosmeticsService {
       dto.metadata !== undefined
         ? dto.metadata
         : dto.durationDays !== undefined
-          ? { ...(existing.metadata as Record<string, any> || {}), durationDays: dto.durationDays }
+          ? {
+              ...((existing.metadata as Record<string, any>) || {}),
+              durationDays: dto.durationDays,
+            }
           : undefined;
 
     const data: Prisma.CosmeticUpdateInput = {
@@ -297,7 +302,9 @@ export class CosmeticsService implements ICosmeticsService {
       ...(dto.transferable !== undefined ? { transferable: dto.transferable } : {}),
       ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
       ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
-      ...(updatedMetadata !== undefined ? { metadata: updatedMetadata as Prisma.InputJsonValue } : {}),
+      ...(updatedMetadata !== undefined
+        ? { metadata: updatedMetadata as Prisma.InputJsonValue }
+        : {}),
     };
     const updated = await this.repo.update(id, data, actorId);
     return {
