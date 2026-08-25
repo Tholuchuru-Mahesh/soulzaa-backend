@@ -33,6 +33,40 @@ export const STORAGE_CATEGORIES = {
 
 export type MediaCategory = (typeof STORAGE_CATEGORIES)[keyof typeof STORAGE_CATEGORIES];
 
+/**
+ * Key prefixes served over HTTP without a bearer token.
+ *
+ * These are catalog/presentation assets every client renders in an <img> or
+ * CachedNetworkImage, neither of which can attach an Authorization header — so
+ * requiring a JWT makes them permanently unloadable rather than secure.
+ *
+ * Everything absent from this list stays authenticated. That is deliberate and
+ * load-bearing for `kyc-documents` (Aadhaar, PAN, bank proof), the
+ * `broad-ban-evidence` moderation trail and the `chat-*` namespaces, none of
+ * which may be readable by key alone.
+ */
+export const PUBLIC_ASSET_PREFIXES: readonly string[] = [
+  STORAGE_CATEGORIES.PROFILE_IMAGE,
+  STORAGE_CATEGORIES.ROOM_BACKGROUND,
+  STORAGE_CATEGORIES.EVENT_BANNER,
+  STORAGE_CATEGORIES.GIFT_ASSET,
+  STORAGE_CATEGORIES.GIFT_ANIMATION,
+  STORAGE_CATEGORIES.COSMETIC_ASSET,
+  STORAGE_CATEGORIES.CONTENT_ASSET,
+  STORAGE_CATEGORIES.THUMBNAIL,
+];
+
+/**
+ * True when `key` sits under a public prefix. Compares the first path segment
+ * so a lookalike such as `kyc-documents-old/…` cannot pass on a prefix match,
+ * and rejects any key that tries to climb out of its namespace.
+ */
+export function isPublicAssetKey(key: string): boolean {
+  if (!key || key.includes('..')) return false;
+  const segment = key.replace(/^\/+/, '').split('/')[0];
+  return PUBLIC_ASSET_PREFIXES.includes(segment);
+}
+
 export interface StoragePolicy {
   prefix: string;
   isImage: boolean;

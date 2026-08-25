@@ -1,6 +1,8 @@
-import { Body, Controller, Delete, Get, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { PublicAssetGuard } from './guards/public-asset.guard';
 import { ConfirmUploadDto } from './dto/confirm-upload.dto';
 import { PresignUploadDto } from './dto/presign-upload.dto';
 import { UploadService } from './upload.service';
@@ -35,6 +37,11 @@ export class StorageController {
     return { downloadUrl: await this.uploads.getDownloadUrl(key, userId) };
   }
 
+  // <img> and CachedNetworkImage cannot send an Authorization header, so catalog
+  // assets are served unauthenticated. PublicAssetGuard still demands a JWT for
+  // every key outside PUBLIC_ASSET_PREFIXES.
+  @Public()
+  @UseGuards(PublicAssetGuard)
   @Get('download/*')
   @ApiOperation({ summary: 'Stream or redirect to a public or presigned storage object' })
   async downloadFile(@Req() req: any, @Res() res: any) {
@@ -55,6 +62,8 @@ export class StorageController {
     }
   }
 
+  @Public()
+  @UseGuards(PublicAssetGuard)
   @Get('file/*')
   @ApiOperation({ summary: 'Stream a storage object' })
   async streamFile(@Req() req: any, @Res() res: any) {
