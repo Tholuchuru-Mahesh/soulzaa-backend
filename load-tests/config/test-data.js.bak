@@ -1,0 +1,11 @@
+// Generic test data, can be extended for specific scenarios
+export const testData = {
+  users: [
+    { phone: '+10000000001', otp: '123456', email: 'loadtest_001@example.com' },
+    { phone: '+10000000002', otp: '123456', email: 'loadtest_002@example.com' },
+  ],
+  auth: {
+    // If testing requires a pre-existing token
+    token: __ENV.TEST_TOKEN || null,
+  }
+};

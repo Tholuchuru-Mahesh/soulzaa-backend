@@ -1,0 +1,19 @@
+{
+  "name": "soulzaa-load-tests",
+  "version": "1.0.0",
+  "description": "k6 API load testing suite for Soulzaa backend",
+  "main": "index.js",
+  "scripts": {
+    "generate": "node scripts/generate-k6-tests.js",
+    "smoke": "k6 run scenarios/smoke.js",
+    "load": "k6 run scenarios/load.js",
+    "stress": "k6 run scenarios/stress.js",
+    "spike": "k6 run scenarios/spike.js",
+    "soak": "k6 run scenarios/soak.js"
+  },
+  "devDependencies": {
+    "@types/k6": "^0.50.0"
+  },
+  "author": "",
+  "license": "ISC"
+}

@@ -1,0 +1,44 @@
+import http from 'k6/http';
+import { config } from '../config/environments.js';
+import { testData } from '../config/test-data.js';
+
+export function login(userIndex = 0) {
+  // If a pre-configured token exists, use it
+  if (testData.auth.token) {
+    return testData.auth.token;
+  }
+
+  const user = testData.users[userIndex];
+  
+  // NOTE: Adjust payload and endpoint based on actual backend implementation
+  // Based on typical NestJS flows, this might be /auth/login or /session
+  const url = `${config.BASE_URL}/session`;
+  const payload = JSON.stringify({
+    phone: user.phone,
+    otp: user.otp,
+    email: user.email,
+    password: user.password
+  });
+
+  const params = {
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  };
+
+  const res = http.post(url, payload, params);
+  
+  if (res.status === 200 || res.status === 201) {
+    let token = '';
+    try {
+      const body = res.json();
+      token = body.data?.access_token || body.access_token || body.token;
+    } catch (e) {
+      console.error('Failed to parse login response:', res.body);
+    }
+    return token;
+  } else {
+    console.warn(`Login failed for user ${user.email || user.phone} (Status: ${res.status}): ${res.body}`);
+    return null;
+  }
+}
