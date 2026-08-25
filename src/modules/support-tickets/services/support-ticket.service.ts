@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { SupportTicketStatus } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { SupportTicketFanoutService } from './support-ticket-fanout.service';
 import {
   AssignTicketDto,
   CreateSupportTicketDto,
@@ -19,7 +20,10 @@ import {
 export class SupportTicketService {
   private readonly logger = new Logger(SupportTicketService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly fanout: SupportTicketFanoutService,
+  ) {}
 
   /**
    * Creates a new support ticket.
@@ -94,6 +98,13 @@ export class SupportTicketService {
     ]);
 
     await this.audit(ticketId, authorId, 'REPLIED', { isStaff });
+
+    // Re-read rather than reusing `ticket`: a first staff reply flips the status
+    // to IN_PROGRESS in the transaction above, and the socket payload should
+    // carry the ticket as it now is, not as it was when we validated it.
+    const current = await this.prisma.supportTicket.findUnique({ where: { id: ticketId } });
+    if (current) await this.fanout.onMessage(current, message);
+
     return message;
   }
 
@@ -119,6 +130,8 @@ export class SupportTicketService {
       from: ticket.status,
       to: dto.status,
     });
+
+    await this.fanout.onStatusChange(updated, ticket.status, actorId);
     return updated;
   }
 

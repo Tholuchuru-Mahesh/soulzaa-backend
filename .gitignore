@@ -52,3 +52,8 @@ test/**/*.d.ts
 
 # TypeScript incremental build cache — regenerated per machine, never source
 *.tsbuildinfo
+
+# Local env backups — never commit; these carry real secrets
+.env.bak*
+.env.*.bak
+*.conflict.bak

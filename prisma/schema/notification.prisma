@@ -278,6 +278,14 @@ enum NotificationType {
   /// moderators themselves (see MODERATOR_EMERGENCY_REQUEST for that
   /// direction).
   MODERATION_CASE_ESCALATED
+  /// Support staff replied on a ticket the user raised. Durable: the reply is
+  /// the answer to a question the user asked, so it must survive being missed.
+  SUPPORT_TICKET_REPLY
+  /// The user's ticket reached a terminal state (RESOLVED or CLOSED).
+  SUPPORT_TICKET_RESOLVED
+  /// The submitter replied on a ticket — routed to the assigned Official, or to
+  /// the escalation Admin once one is set.
+  SUPPORT_TICKET_USER_REPLY
   /// A Moderator's device-change request needs action — either self-filed or
   /// auto-filed by a blocked login from an unrecognized device. Sent to every
   /// Admin/Super Admin; only they can give final approval.
