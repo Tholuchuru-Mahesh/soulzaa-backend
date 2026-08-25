@@ -5,6 +5,7 @@ import { CosmeticsController } from './controllers/cosmetics.controller';
 import { UserCosmeticsController } from './controllers/user-cosmetics.controller';
 import { COSMETICS_SERVICE } from './interfaces/cosmetics.service.interface';
 import { CosmeticsRepository } from './repositories/cosmetics.repository';
+import { CosmeticsDefaultsSeeder } from './services/cosmetics-defaults.seeder';
 import { CosmeticsStoreService } from './services/cosmetics-store.service';
 import { CosmeticsService } from './services/cosmetics.service';
 
@@ -29,6 +30,7 @@ import { CosmeticsService } from './services/cosmetics.service';
     CosmeticsRepository,
     CosmeticsService,
     CosmeticsStoreService,
+    CosmeticsDefaultsSeeder,
     { provide: COSMETICS_SERVICE, useExisting: CosmeticsService },
   ],
   exports: [COSMETICS_SERVICE],

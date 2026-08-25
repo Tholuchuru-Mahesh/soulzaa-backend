@@ -31,92 +31,6 @@ import { CosmeticsService } from './cosmetics.service';
  * records an immutable purchase — all idempotent on the purchase key, with a
  * compensating refund if the grant/ledger write fails.
  */
-const DEFAULT_ANIMATED_FRAMES = [
-  {
-    id: '00000000-0000-0000-0000-000000000001',
-    name: 'Default Pink Charm',
-    type: 'FRAME' as CosmeticType,
-    mediaUrl: 'default_pink_frame',
-    thumbnailUrl: 'default_pink_frame',
-    rarity: 'COMMON' as any,
-    price: 0,
-    isPremium: false,
-    enabled: true,
-    sortOrder: 1,
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000002',
-    name: 'Neon Cyber Glow',
-    type: 'FRAME' as CosmeticType,
-    mediaUrl: 'neon_cyber_glow',
-    thumbnailUrl: 'neon_cyber_glow',
-    rarity: 'EPIC' as any,
-    price: 0,
-    isPremium: false,
-    enabled: true,
-    sortOrder: 2,
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000003',
-    name: 'Royal Gold & Fire Aura',
-    type: 'FRAME' as CosmeticType,
-    mediaUrl: 'royal_gold_fire',
-    thumbnailUrl: 'royal_gold_fire',
-    rarity: 'LEGENDARY' as any,
-    price: 0,
-    isPremium: false,
-    enabled: true,
-    sortOrder: 3,
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000004',
-    name: 'Cosmic Galaxy & Starburst',
-    type: 'FRAME' as CosmeticType,
-    mediaUrl: 'cosmic_galaxy_star',
-    thumbnailUrl: 'cosmic_galaxy_star',
-    rarity: 'MYTHIC' as any,
-    price: 0,
-    isPremium: false,
-    enabled: true,
-    sortOrder: 4,
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000005',
-    name: 'Dragon Inferno Flame',
-    type: 'FRAME' as CosmeticType,
-    mediaUrl: 'dragon_inferno_flame',
-    thumbnailUrl: 'dragon_inferno_flame',
-    rarity: 'LEGENDARY' as any,
-    price: 0,
-    isPremium: false,
-    enabled: true,
-    sortOrder: 5,
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000006',
-    name: 'Sakura Mystic Blossom',
-    type: 'FRAME' as CosmeticType,
-    mediaUrl: 'sakura_mystic_blossom',
-    thumbnailUrl: 'sakura_mystic_blossom',
-    rarity: 'RARE' as any,
-    price: 0,
-    isPremium: false,
-    enabled: true,
-    sortOrder: 6,
-  },
-  {
-    id: '00000000-0000-0000-0000-000000000007',
-    name: 'Emerald Lightning Surge',
-    type: 'FRAME' as CosmeticType,
-    mediaUrl: 'emerald_lightning',
-    thumbnailUrl: 'emerald_lightning',
-    rarity: 'EPIC' as any,
-    price: 0,
-    isPremium: false,
-    enabled: true,
-    sortOrder: 7,
-  },
-];
 
 @Injectable()
 export class CosmeticsStoreService {
@@ -138,26 +52,13 @@ export class CosmeticsStoreService {
       thumbnailUrl: string | null;
     })[]
   > {
-    if (!type || type === 'FRAME') {
-      for (const frame of DEFAULT_ANIMATED_FRAMES) {
-        await this.prisma.cosmetic
-          .upsert({
-            where: { id: frame.id },
-            create: frame,
-            update: {
-              name: frame.name,
-              mediaUrl: frame.mediaUrl,
-              thumbnailUrl: frame.thumbnailUrl,
-              price: frame.price,
-              enabled: frame.enabled,
-              sortOrder: frame.sortOrder,
-              rarity: frame.rarity,
-            },
-          })
-          .catch(() => null);
-      }
-    }
-
+    // Deliberately no seeding here. This used to upsert DEFAULT_ANIMATED_FRAMES
+    // on every call, which made the catalog un-editable: an admin could delete a
+    // frame (or rename it, or change its price) and the next store listing —
+    // from any user opening the store — wrote the hardcoded values straight back
+    // over the change. Seeding now happens once at boot in
+    // CosmeticsDefaultsSeeder, and only for the one frame the code references by
+    // id. A read must not mutate the catalog it is reading.
     const rows = await this.repo.listStore(type);
     return Promise.all(
       rows.map(async (c) => ({

@@ -92,10 +92,24 @@ export class ProfileRepository {
     field: StatisticField,
     delta: number,
   ): Promise<UserStatistics> {
-    const increment = BIGINT_STATS.has(field) ? BigInt(delta) : delta;
-    return this.prisma.userStatistics.update({
+    const isBig = BIGINT_STATS.has(field);
+    const increment = isBig ? BigInt(delta) : delta;
+
+    // Upsert, not update. A plain update throws P2025 when the row is absent,
+    // and callers await this straight after the write it is counting —
+    // FollowService increments right after creating the follow row — so a user
+    // with no statistics row got the follow persisted, a 500 back, and a counter
+    // stuck at zero forever. Retrying could not repair it either: the second
+    // follow is a no-op, so the increment never ran again.
+    //
+    // Every column defaults, so a first-time row only needs the delta. A
+    // negative delta seeds 0 rather than a negative count — if the row never
+    // existed there was nothing to decrement.
+    const seed = delta > 0 ? increment : isBig ? BigInt(0) : 0;
+    return this.prisma.userStatistics.upsert({
       where: { userId },
-      data: { [field]: { increment } },
+      update: { [field]: { increment } },
+      create: { userId, [field]: seed },
     });
   }
 
