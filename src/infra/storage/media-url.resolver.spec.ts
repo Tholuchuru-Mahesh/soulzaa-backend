@@ -37,6 +37,7 @@ describe('MediaUrlResolver', () => {
       ['profile-images/u1/avatar.jpg'],
       ['room-backgrounds/u1/dp.jpg'],
       ['gift-assets/rose.png'],
+      ['post-images/u1/photo.jpg'],
     ])('serves %s publicly — these are meant to be world-readable', async (key) => {
       expect(await build(PUBLIC_BASE).resolve(key)).toBe(`${PUBLIC_BASE}/${key}`);
     });

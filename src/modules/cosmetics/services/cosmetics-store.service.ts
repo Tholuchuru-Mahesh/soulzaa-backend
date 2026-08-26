@@ -31,7 +31,6 @@ import { CosmeticsService } from './cosmetics.service';
  * records an immutable purchase — all idempotent on the purchase key, with a
  * compensating refund if the grant/ledger write fails.
  */
-
 @Injectable()
 export class CosmeticsStoreService {
   private readonly logger = new Logger(CosmeticsStoreService.name);

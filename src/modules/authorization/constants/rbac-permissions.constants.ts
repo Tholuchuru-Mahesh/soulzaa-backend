@@ -37,6 +37,7 @@ export const PERMISSION_CATEGORIES = [
   'LEVEL',
   'RANKING',
   'TASK',
+  'POST',
   'REFERRAL',
   'NOTIFICATION',
   'DASHBOARD',
@@ -1711,6 +1712,14 @@ export const DEFAULT_PERMISSIONS = [
     displayName: 'Approve Moderation Action',
     description: 'Approve or reject a moderator-proposed ban before it executes',
   },
+  {
+    code: 'post.moderate',
+    module: 'posts',
+    action: 'moderate',
+    category: 'POST',
+    displayName: 'Moderate Posts',
+    description: 'Delete any user post or comment',
+  },
 ];
 
 // Data-Driven Default Role Hierarchy Edges (parent -> child)
@@ -1857,6 +1866,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'task.configuration.manage',
     'task.audit.view',
     'task.statistics.view',
+    // Content moderation
+    'post.moderate',
     // Progression & rankings
     'level.manage',
     'level.configuration.manage',
@@ -2033,6 +2044,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'user.ban',
     'room.update',
     'room.mute',
+    'post.moderate',
     'moderator.shift.view',
     'moderator.device.request',
     'moderator.warning.view.self',

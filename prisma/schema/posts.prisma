@@ -1,0 +1,86 @@
+model Post {
+  id           String     @id @default(uuid()) @db.Uuid
+  authorId     String     @db.Uuid
+  description  String?    @db.Text
+  likeCount    Int        @default(0)
+  commentCount Int        @default(0)
+  score        Float      @default(0)
+  status       PostStatus @default(PUBLISHED)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  author   User          @relation(fields: [authorId], references: [id])
+  media    PostMedia[]
+  likes    PostLike[]
+  comments PostComment[]
+  reports  PostReport[]
+
+  @@index([status, score])
+  @@index([authorId])
+  @@map("posts")
+}
+
+enum PostStatus {
+  PUBLISHED
+  REMOVED
+}
+
+model PostMedia {
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @db.Uuid
+  key       String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@map("post_media")
+}
+
+model PostLike {
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @db.Uuid
+  userId    String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("post_likes")
+}
+
+model PostComment {
+  id        String    @id @default(uuid()) @db.Uuid
+  postId    String    @db.Uuid
+  authorId  String    @db.Uuid
+  body      String    @db.Text
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@map("post_comments")
+}
+
+model PostReport {
+  id         String           @id @default(uuid()) @db.Uuid
+  postId     String           @db.Uuid
+  reporterId String           @db.Uuid
+  reason     String
+  status     PostReportStatus @default(OPEN)
+  createdAt  DateTime         @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, reporterId])
+  @@map("post_reports")
+}
+
+enum PostReportStatus {
+  OPEN
+  REVIEWED
+  DISMISSED
+}

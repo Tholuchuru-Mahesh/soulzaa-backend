@@ -42,6 +42,7 @@ import { AchievementsModule } from './achievements/achievements.module';
 import { EnterpriseRankingsModule } from './enterprise-rankings/enterprise-rankings.module';
 import { EnterpriseEventsModule } from './enterprise-events/enterprise-events.module';
 import { TasksModule } from './tasks/tasks.module';
+import { PostsModule } from './posts/posts.module';
 import { ReferralsModule } from './referrals/referrals.module';
 import { CreatorCenterModule } from './creator-center/creator-center.module';
 import { AdminDashboardModule } from './admin-dashboard/admin-dashboard.module';
@@ -107,6 +108,7 @@ export const DOMAIN_MODULES = [
   EnterpriseRankingsModule,
   EnterpriseEventsModule,
   TasksModule,
+  PostsModule,
   ReferralsModule,
   AdminDashboardModule,
   // Phase 21 web console sections (ADMIN / SUPER_ADMIN only).

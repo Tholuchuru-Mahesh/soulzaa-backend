@@ -232,6 +232,8 @@ enum NotificationType {
   PK_WINNER
   ANNOUNCEMENT
   MENTION
+  POST_LIKED
+  POST_COMMENTED
   SYSTEM
   /// Coins bought. GIFT_RECEIVE movements are excluded from the wallet
   /// producer — GIFT_RECEIVED already covers those, and notifying on both

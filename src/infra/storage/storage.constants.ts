@@ -14,6 +14,7 @@ export const STORAGE_CATEGORIES = {
   VIDEO: 'videos',
   THUMBNAIL: 'thumbnails',
   AUDIO: 'audio-assets',
+  POST_IMAGE: 'post-images',
   // Direct-message media — separate namespaces so retention/ACL policy can
   // diverge from public assets, and so voice notes get their own size cap.
   CHAT_IMAGE: 'chat-images',
@@ -176,6 +177,12 @@ export const STORAGE_POLICIES: Record<MediaCategory, StoragePolicy> = {
     isImage: false,
     allowedMime: ['audio/mpeg', 'audio/aac', 'audio/wav', 'audio/webm'],
     maxSizeBytes: 20 * MB,
+  },
+  [STORAGE_CATEGORIES.POST_IMAGE]: {
+    prefix: STORAGE_CATEGORIES.POST_IMAGE,
+    isImage: true,
+    allowedMime: IMAGE_MIME,
+    maxSizeBytes: 10 * MB,
   },
   [STORAGE_CATEGORIES.CHAT_IMAGE]: {
     prefix: STORAGE_CATEGORIES.CHAT_IMAGE,

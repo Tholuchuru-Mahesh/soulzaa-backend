@@ -36,6 +36,7 @@ model User {
   locationCountry   Country?       @relation("UserLocationCountry", fields: [countryId], references: [id])
   locationRegion    Region?        @relation("UserLocationRegion", fields: [regionId], references: [id])
   locationState     State?         @relation("UserLocationState", fields: [stateId], references: [id])
+  posts             Post[]
 
   @@index([status])
   @@index([isHiddenAccount])
