@@ -193,4 +193,24 @@ export class GiftCatalogService {
 
     return updated;
   }
+
+  /**
+   * Delete a catalog gift
+   */
+  async deleteGift(id: string, actorId?: string) {
+    const gift = await this.getGiftById(id);
+
+    await this.prisma.gift.delete({
+      where: { id: gift.id },
+    });
+
+    await this.auditService.logAudit(
+      gift.id,
+      'GIFT_DELETED',
+      { code: gift.code, name: gift.name },
+      actorId,
+    );
+
+    return { deleted: true, id: gift.id };
+  }
 }

@@ -85,12 +85,13 @@ export class AnalyticsReportingService {
       creatorCoins = dbGifts._sum.creatorEarnings ?? 0n;
     }
 
-    let activityView = activity ? this.roomActivityView(activity) : null;
+    const uniqueVisitors = await this.repo.countUniqueVisitors(roomId);
+    let activityView = activity ? this.roomActivityView(activity, uniqueVisitors) : null;
     if (!activityView) {
       activityView = {
         roomId,
         peakParticipants: Math.max(live.peakParticipants, 1),
-        totalJoined: Math.max(live.joins, live.uniqueVisitors),
+        totalJoined: Math.max(uniqueVisitors, live.uniqueVisitors, live.joins > 0 ? 1 : 0),
         totalGifts: live.giftCount,
         totalGiftCoins: (giftCoins + BigInt(live.giftCoins)).toString(),
         totalSpeakingMinutes: Math.round(live.speakingSeconds / 60),
@@ -398,11 +399,11 @@ export class AnalyticsReportingService {
 
   // ---- views ----
 
-  private roomActivityView(a: RoomActivity) {
+  private roomActivityView(a: RoomActivity, uniqueVisitors?: number) {
     return {
       roomId: a.roomId,
       peakParticipants: a.peakParticipants,
-      totalJoined: a.totalJoined,
+      totalJoined: uniqueVisitors !== undefined && uniqueVisitors > 0 ? uniqueVisitors : a.totalJoined,
       totalGifts: a.totalGifts,
       totalGiftCoins: a.totalGiftCoins.toString(),
       totalSpeakingMinutes: a.totalSpeakingMinutes,

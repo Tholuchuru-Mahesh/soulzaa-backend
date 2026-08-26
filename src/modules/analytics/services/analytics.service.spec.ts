@@ -19,6 +19,7 @@ describe('AnalyticsService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
+      countUniqueVisitors: jest.fn().mockResolvedValue(15),
       getSpeakingDurationsGrouped: jest
         .fn()
         .mockResolvedValue([[{ userId: 'user-1', _sum: { speakingSeconds: 120 } }], 1]),

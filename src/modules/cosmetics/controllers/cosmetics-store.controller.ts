@@ -7,6 +7,7 @@ import { NotGuest } from 'src/common/decorators/not-guest.decorator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import { CosmeticsStoreService } from '../services/cosmetics-store.service';
+import { GiftCosmeticDto } from '../dto/cosmetics.dto';
 
 class StoreQueryDto {
   @ApiPropertyOptional({ enum: CosmeticType })
@@ -25,7 +26,7 @@ class PurchaseCosmeticDto {
 
 /**
  * Premium cosmetics store (base `cosmetics/store`). JWT-guarded. Lists
- * purchasable premium cosmetics and buys one with gold (full account only).
+ * purchasable premium cosmetics, buys one with gold, or gifts one to another user.
  */
 @ApiTags('cosmetics-store')
 @ApiBearerAuth()
@@ -55,5 +56,17 @@ export class CosmeticsStoreController {
     @Body() dto: PurchaseCosmeticDto,
   ) {
     return this.store.purchase(userId, cosmeticId, dto.idempotencyKey);
+  }
+
+  @Post(':cosmeticId/gift')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({ summary: 'Buy and gift a premium cosmetic with gold to another user' })
+  gift(
+    @CurrentUser('id') userId: string,
+    @Param('cosmeticId', ParseUuidPipe) cosmeticId: string,
+    @Body() dto: GiftCosmeticDto,
+  ) {
+    return this.store.gift(userId, cosmeticId, dto.recipientUserId, dto.idempotencyKey);
   }
 }

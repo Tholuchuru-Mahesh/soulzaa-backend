@@ -47,6 +47,7 @@ export interface ICosmeticsService {
     grantKey: string;
     durationDays?: number;
     expiresAt?: Date | null;
+    transferable?: boolean;
   }): Promise<CosmeticGrantResult | null>;
 
   /**

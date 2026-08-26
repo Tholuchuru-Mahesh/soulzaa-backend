@@ -36,6 +36,7 @@ describe('AnalyticsReportingService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       }),
+      countUniqueVisitors: jest.fn().mockResolvedValue(10),
       listRoomDailyStats: jest.fn().mockResolvedValue([
         {
           dateKey: TODAY_KEY,

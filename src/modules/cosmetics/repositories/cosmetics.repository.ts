@@ -17,6 +17,7 @@ export class CosmeticsRepository {
       where: {
         enabled: true,
         ...(type ? { type } : {}),
+        OR: [{ isPremium: true }, { price: { gt: 0 } }],
       },
       orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }, { name: 'asc' }],
     });

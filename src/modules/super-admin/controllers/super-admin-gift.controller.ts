@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -76,6 +77,18 @@ export class SuperAdminGiftController {
     @CurrentUser('id') actorId: string,
   ) {
     return this.catalogService.updateGift(id, dto, actorId);
+  }
+
+  @ApiOperation({ summary: 'Delete an existing catalog gift' })
+  @ApiResponse({ status: 200, description: 'Gift deleted successfully' })
+  @RequirePermissions('gift.catalog.view')
+  @AuditLogAction('GIFT_DELETED', 'gift')
+  @Delete('catalog/:id')
+  async deleteGift(
+    @Param('id') id: string,
+    @CurrentUser('id') actorId: string,
+  ) {
+    return this.catalogService.deleteGift(id, actorId);
   }
 
   @ApiOperation({ summary: 'Create a new gift category' })

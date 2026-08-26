@@ -74,6 +74,39 @@ export class BackpackRepository {
     return client.backpackItem.findUnique({ where: { grantKey } });
   }
 
+  async findByUserIdAndRefId(
+    userId: string,
+    refId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BackpackItem | null> {
+    const client = tx || this.prisma;
+    return client.backpackItem.findFirst({
+      where: {
+        userId,
+        refId,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      orderBy: { acquiredAt: 'desc' },
+    });
+  }
+
+  updateItem(
+    id: string,
+    data: Prisma.BackpackItemUpdateInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BackpackItem> {
+    const client = tx || this.prisma;
+    return client.backpackItem.update({ where: { id }, data });
+  }
+
+  deleteItem(
+    id: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BackpackItem> {
+    const client = tx || this.prisma;
+    return client.backpackItem.delete({ where: { id } });
+  }
+
   /** The user's currently-equipped item of a type (one-per-type), or null. */
   async findEquippedByType(userId: string, type: BackpackItemType): Promise<BackpackItem | null> {
     await this.ensureDefaultPinkFrame(userId);
@@ -158,6 +191,149 @@ export class BackpackRepository {
     return client.backpackItem.create({ data });
   }
 
+  async ensureUserCosmeticsSynced(userId: string): Promise<void> {
+    const now = new Date();
+    const userCosmetics = await this.prisma.userCosmetic.findMany({
+      where: {
+        userId,
+        cosmetic: { enabled: true },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      include: { cosmetic: true },
+    });
+
+    for (const uc of userCosmetics) {
+      if (!uc.cosmetic) continue;
+      const grantKey = `user-cosmetic:${uc.id}`;
+      const existing = await this.prisma.backpackItem.findFirst({
+        where: {
+          userId,
+          OR: [{ grantKey }, { refId: uc.cosmeticId }],
+        },
+      });
+
+      if (!existing) {
+        await this.prisma.backpackItem.create({
+          data: {
+            userId,
+            type: uc.cosmetic.type as BackpackItemType,
+            refId: uc.cosmeticId,
+            name: uc.cosmetic.name,
+            source: 'PURCHASE',
+            quantity: 1,
+            equipped: uc.equipped,
+            transferable: true,
+            grantKey,
+            expiresAt: uc.expiresAt,
+            metadata: {
+              cosmeticId: uc.cosmeticId,
+              mediaUrl: uc.cosmetic.mediaUrl,
+              thumbnailUrl: uc.cosmetic.thumbnailUrl,
+              rarity: uc.cosmetic.rarity,
+            },
+          },
+        });
+      } else {
+        await this.prisma.backpackItem.update({
+          where: { id: existing.id },
+          data: {
+            name: uc.cosmetic.name,
+            equipped: uc.equipped,
+            expiresAt: uc.expiresAt,
+            transferable: existing.source === 'GIFT' ? false : true,
+            metadata: {
+              cosmeticId: uc.cosmeticId,
+              mediaUrl: uc.cosmetic.mediaUrl,
+              thumbnailUrl: uc.cosmetic.thumbnailUrl,
+              rarity: uc.cosmetic.rarity,
+            },
+          },
+        });
+      }
+    }
+
+    // Clean up expired items, items referencing deleted/disabled cosmetics,
+    // and duplicates (same refId or same name+type when refId is absent).
+    const allBackpackItems = await this.prisma.backpackItem.findMany({
+      where: { userId },
+      orderBy: { acquiredAt: 'asc' }, // oldest first — the latest will win dedup
+    });
+
+    // Build a set of ids to delete (duplicates by refId or name+type)
+    const seenRefIds = new Map<string, string>(); // refId → item id (keep latest)
+    const seenNameType = new Map<string, string>(); // `${name}:${type}` → item id (keep latest)
+    const duplicateIds = new Set<string>();
+
+    for (const item of allBackpackItems) {
+      if (item.refId) {
+        const prev = seenRefIds.get(item.refId);
+        if (prev) duplicateIds.add(prev);
+        seenRefIds.set(item.refId, item.id);
+      } else {
+        // Items without refId (TREASURE_BOX themes, ADMIN grants, etc.) — dedup by name+type
+        const key = `${item.name.toLowerCase().trim()}:${item.type}`;
+        const prev = seenNameType.get(key);
+        if (prev) duplicateIds.add(prev);
+        seenNameType.set(key, item.id);
+      }
+    }
+
+    for (const item of allBackpackItems) {
+      // 1. Delete expired
+      if (item.expiresAt !== null && item.expiresAt <= now) {
+        await this.prisma.backpackItem.delete({ where: { id: item.id } }).catch(() => null);
+        continue;
+      }
+      // 2. Delete if cosmetic was deleted or disabled
+      if (item.refId && item.refId !== '00000000-0000-0000-0000-000000000001') {
+        const cosmetic = await this.prisma.cosmetic.findUnique({ where: { id: item.refId } });
+        if (!cosmetic || !cosmetic.enabled) {
+          await this.prisma.backpackItem.delete({ where: { id: item.id } }).catch(() => null);
+          continue;
+        }
+      }
+      // 3. Delete duplicates
+      if (duplicateIds.has(item.id)) {
+        await this.prisma.backpackItem.delete({ where: { id: item.id } }).catch(() => null);
+        continue;
+      }
+      // 4. Fix transferable: non-GIFT-source items should be transferable
+      if (item.source !== 'GIFT' && !item.transferable) {
+        await this.prisma.backpackItem.update({
+          where: { id: item.id },
+          data: { transferable: true },
+        }).catch(() => null);
+      }
+      // 5. Refresh metadata media URLs from cosmetic catalog if they contain
+      //    hardcoded local/IP URLs (e.g. from old local MinIO dev purchases).
+      //    Pattern: http(s)://192.x, http(s)://10.x, http(s)://localhost, http://127.
+      if (item.refId && item.refId !== '00000000-0000-0000-0000-000000000001') {
+        const meta = (item.metadata as Record<string, any>) || {};
+        const mediaUrl: string = meta.mediaUrl ?? '';
+        const isLocalUrl = /^https?:\/\/(192\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.|localhost)/i.test(mediaUrl);
+        if (isLocalUrl) {
+          const cosmetic = await this.prisma.cosmetic.findUnique({ where: { id: item.refId } });
+          if (cosmetic) {
+            await this.prisma.backpackItem.update({
+              where: { id: item.id },
+              data: {
+                name: cosmetic.name,
+                metadata: {
+                  ...meta,
+                  cosmeticId: cosmetic.id,
+                  mediaUrl: cosmetic.mediaUrl,
+                  thumbnailUrl: cosmetic.thumbnailUrl ?? cosmetic.mediaUrl,
+                  rarity: cosmetic.rarity,
+                },
+              },
+            }).catch(() => null);
+          }
+        }
+      }
+    }
+  }
+
+
   async listItems(
     userId: string,
     skip: number,
@@ -165,15 +341,12 @@ export class BackpackRepository {
     filter: { type?: BackpackItemType; equipped?: boolean },
   ): Promise<[BackpackItem[], number]> {
     await this.ensureDefaultPinkFrame(userId);
+    await this.ensureUserCosmeticsSynced(userId);
+    const now = new Date();
     const where: Prisma.BackpackItemWhereInput = {
       userId,
-      ...(filter.type
-        ? { type: filter.type }
-        : {
-            type: {
-              notIn: ['FRAME', 'THEME', 'ENTRANCE_EFFECT'] as BackpackItemType[],
-            },
-          }),
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      ...(filter.type ? { type: filter.type } : {}),
       ...(filter.equipped !== undefined ? { equipped: filter.equipped } : {}),
     };
     return this.prisma.$transaction([
@@ -184,7 +357,13 @@ export class BackpackRepository {
 
   /** Set `equipped` on an item. */
   async setEquipped(id: string, equipped: boolean): Promise<void> {
-    await this.prisma.backpackItem.update({ where: { id }, data: { equipped } });
+    const item = await this.prisma.backpackItem.update({ where: { id }, data: { equipped } });
+    if (item.refId && (item.type === 'FRAME' || item.type === 'THEME' || item.type === 'ENTRANCE_EFFECT')) {
+      await this.prisma.userCosmetic.updateMany({
+        where: { userId: item.userId, cosmeticId: item.refId },
+        data: { equipped },
+      });
+    }
   }
 
   /** Unequip every currently-equipped item of a type for a user (one-per-type). */
@@ -193,13 +372,65 @@ export class BackpackRepository {
       where: { userId, type, equipped: true },
       data: { equipped: false },
     });
+    if (type === 'FRAME' || type === 'THEME' || type === 'ENTRANCE_EFFECT') {
+      const sameTypeCosmetics = await this.prisma.cosmetic.findMany({
+        where: { type: type as any },
+        select: { id: true },
+      });
+      if (sameTypeCosmetics.length > 0) {
+        await this.prisma.userCosmetic.updateMany({
+          where: { userId, cosmeticId: { in: sameTypeCosmetics.map(c => c.id) } },
+          data: { equipped: false },
+        });
+      }
+    }
   }
 
-  /** Reassign an item to another user (transfer); clears equipped state. */
+  /** Sync user_cosmetics table on transfer: remove from sender, grant/merge to recipient. */
+  async syncUserCosmeticsOnTransfer(input: {
+    fromUserId: string;
+    toUserId: string;
+    cosmeticId: string;
+    expiresAt: Date | null;
+    wasEquipped?: boolean;
+  }): Promise<void> {
+    // 1. Remove from sender's user_cosmetics table
+    await this.prisma.userCosmetic.deleteMany({
+      where: { userId: input.fromUserId, cosmeticId: input.cosmeticId },
+    }).catch(() => null);
+
+    // 2. Grant or update recipient's user_cosmetics table
+    const existingRecipientCosmetic = await this.prisma.userCosmetic.findUnique({
+      where: {
+        userId_cosmeticId: {
+          userId: input.toUserId,
+          cosmeticId: input.cosmeticId,
+        },
+      },
+    });
+
+    if (existingRecipientCosmetic) {
+      await this.prisma.userCosmetic.update({
+        where: { id: existingRecipientCosmetic.id },
+        data: { expiresAt: input.expiresAt },
+      }).catch(() => null);
+    } else {
+      await this.prisma.userCosmetic.create({
+        data: {
+          userId: input.toUserId,
+          cosmeticId: input.cosmeticId,
+          expiresAt: input.expiresAt,
+          equipped: false,
+        },
+      }).catch(() => null);
+    }
+  }
+
+  /** Reassign an item to another user (transfer); clears equipped state, marks non-transferable and source GIFT. */
   transfer(id: string, toUserId: string): Promise<BackpackItem> {
     return this.prisma.backpackItem.update({
       where: { id },
-      data: { userId: toUserId, equipped: false },
+      data: { userId: toUserId, equipped: false, transferable: false, source: 'GIFT' },
     });
   }
 

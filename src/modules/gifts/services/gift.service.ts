@@ -73,6 +73,8 @@ interface GiftConfig {
  * to the room socket) plus analytics/notification/ranking jobs. The EXP rewards
  * ride on the published event as the cross-module seam.
  */
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
+
 @Injectable()
 export class GiftService {
   private readonly logger = new Logger(GiftService.name);
@@ -85,6 +87,7 @@ export class GiftService {
     private readonly queue: QueueService,
     private readonly prisma: PrismaService,
     private readonly locks: LockService,
+    private readonly media: MediaUrlResolver,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
     @Inject(WEALTH_SERVICE) private readonly wealth: IWealthService,
@@ -535,12 +538,58 @@ export class GiftService {
       ...(q.contextId ? { contextId: q.contextId } : {}),
     };
     const [rows, total] = await this.repo.listTransactions(where, q.skip, q.limit);
-    return buildPaginated(
-      rows.map((t) => this.toView(t)),
-      total,
-      q.page,
-      q.limit,
+
+    const giftIds = [...new Set(rows.map((r) => r.giftId))];
+    const userIds = [
+      ...new Set([
+        ...rows.map((r) => r.senderId),
+        ...rows.map((r) => r.receiverId),
+      ]),
+    ];
+
+    const [gifts, users] = await Promise.all([
+      giftIds.length > 0 ? this.prisma.gift.findMany({ where: { id: { in: giftIds } } }) : [],
+      userIds.length > 0
+        ? this.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, username: true, fullName: true },
+          })
+        : [],
+    ]);
+
+    const resolvedGifts = await Promise.all(
+      gifts.map(async (g) => {
+        const thumbKey = g.thumbnailUrl || (g as any).iconUrl || g.lottieUrl || g.animationUrl || null;
+        const animKey = g.animationUrl || g.lottieUrl || g.svgaUrl || g.mp4Url || (g as any).mediaUrl || null;
+        return {
+          ...g,
+          resolvedThumbnailUrl: thumbKey ? await this.media.resolve(thumbKey) : null,
+          resolvedAnimationUrl: animKey ? await this.media.resolve(animKey) : null,
+        };
+      }),
     );
+
+    const giftMap = new Map(resolvedGifts.map((g) => [g.id, g]));
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    const enriched = rows.map((t) => {
+      const gift = giftMap.get(t.giftId);
+      const sender = userMap.get(t.senderId);
+      const receiver = userMap.get(t.receiverId);
+
+      return {
+        ...this.toView(t),
+        giftName: gift?.displayName || gift?.name || 'Gift',
+        giftThumbnailUrl: gift?.resolvedThumbnailUrl || gift?.thumbnailUrl || (gift as any)?.iconUrl || null,
+        giftAnimationUrl: gift?.resolvedAnimationUrl || gift?.animationUrl || (gift as any)?.mediaUrl || null,
+        senderName: sender?.fullName || sender?.username || null,
+        senderUsername: sender?.username || null,
+        receiverName: receiver?.fullName || receiver?.username || null,
+        receiverUsername: receiver?.username || null,
+      };
+    });
+
+    return buildPaginated(enriched, total, q.page, q.limit);
   }
 
   // ---- Internals ----

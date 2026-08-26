@@ -161,3 +161,17 @@ export class ListCosmeticsDto extends PaginationQueryDto {
   @IsBoolean()
   enabled?: boolean;
 }
+
+/** Buy and gift a cosmetic to another user. */
+export class GiftCosmeticDto {
+  @ApiProperty({ description: 'Destination user ID receiving the gifted cosmetic.' })
+  @IsString()
+  recipientUserId!: string;
+
+  @ApiPropertyOptional({ description: 'Client idempotency key (a replay returns the original).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  idempotencyKey?: string;
+}
+

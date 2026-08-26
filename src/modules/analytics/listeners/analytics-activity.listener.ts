@@ -99,7 +99,7 @@ export class AnalyticsActivityListener implements OnModuleInit {
     const { roomId, userId, participantCount } = event.payload;
     try {
       await this.repo.createVisitor(roomId, userId);
-      await this.repo.incrementRoomJoins(roomId, participantCount);
+      await this.repo.incrementRoomJoins(roomId, participantCount, userId);
       // Live counters: joins, unique visitors, and peak participants for today.
       const dateKey = dateKeyOf();
       await this.counters.incrRoom(roomId, dateKey, 'joins', 1);

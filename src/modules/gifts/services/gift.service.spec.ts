@@ -176,6 +176,7 @@ describe('GiftService', () => {
     ).onModuleInit();
 
     platformConfig = { get: jest.fn().mockResolvedValue(null) };
+    const media = { resolve: jest.fn().mockImplementation((k: string) => Promise.resolve(`https://cdn.example.com/${k}`)) };
     service = new GiftService(
       repo as unknown as GiftRepository,
       catalog as unknown as GiftCatalogService,
@@ -184,6 +185,7 @@ describe('GiftService', () => {
       queue as unknown as QueueService,
       prisma as unknown as PrismaService,
       locks as unknown as LockService,
+      media as never,
       bus,
       wallet as unknown as IWalletService,
       wealth as unknown as IWealthService,

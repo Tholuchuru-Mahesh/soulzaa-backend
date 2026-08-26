@@ -44,8 +44,71 @@ export class BackpackService implements IBackpackService {
   // ---- IBackpackService (cross-module grant seam) ----
 
   async grant(input: GrantItemInput, tx?: Prisma.TransactionClient): Promise<GrantItemResult> {
-    const existing = await this.repo.findByGrantKey(input.grantKey, tx);
-    if (existing) return { itemId: existing.id, duplicate: true };
+    const byKey = await this.repo.findByGrantKey(input.grantKey, tx);
+    if (byKey) return { itemId: byKey.id, duplicate: true };
+
+    // Detect existing ownership by refId to merge duplicate rewards/gifts without creating duplicate rows
+    if (input.refId) {
+      const existing = await this.repo.findByUserIdAndRefId(input.userId, input.refId, tx);
+      if (existing) {
+        let newExpiresAt: Date | null = existing.expiresAt;
+
+        if (input.expiresAt === null || existing.expiresAt === null) {
+          newExpiresAt = null;
+        } else if (input.expiresAt !== undefined && existing.expiresAt) {
+          const now = new Date();
+          const base = existing.expiresAt > now ? existing.expiresAt : now;
+          const additionalMs = input.expiresAt.getTime() - now.getTime();
+          newExpiresAt = new Date(base.getTime() + (additionalMs > 0 ? additionalMs : 0));
+        } else if (input.expiresAt !== undefined) {
+          newExpiresAt = input.expiresAt;
+        }
+
+        const effectiveTransferable =
+          input.source === 'GIFT' || input.transferable === false
+            ? false
+            : existing.transferable;
+
+        const updated = await this.repo.updateItem(
+          existing.id,
+          {
+            expiresAt: newExpiresAt,
+            transferable: effectiveTransferable,
+            quantity: existing.quantity + (input.quantity ?? 1),
+            ...(input.metadata !== undefined
+              ? { metadata: input.metadata as Prisma.InputJsonValue }
+              : {}),
+          },
+          tx,
+        );
+
+        await this.repo.log(
+          input.userId,
+          BACKPACK_ACTIONS.GRANTED,
+          updated.id,
+          {
+            type: updated.type,
+            source: input.source,
+            merged: true,
+            previousExpiresAt: existing.expiresAt,
+            newExpiresAt: updated.expiresAt,
+          },
+          tx,
+        );
+
+        await this.bus.publish(
+          new BackpackItemGrantedEvent({
+            userId: updated.userId,
+            itemId: updated.id,
+            type: updated.type,
+            name: updated.name,
+            source: input.source,
+          }),
+        );
+
+        return { itemId: updated.id, duplicate: true };
+      }
+    }
 
     const item = await this.repo.create(
       {
@@ -125,8 +188,9 @@ export class BackpackService implements IBackpackService {
       type: q.type,
       equipped: q.equipped,
     });
+    const views = await Promise.all(rows.map((i) => this.toView(i)));
     return buildPaginated(
-      rows.map((i) => this.toView(i)),
+      views,
       total,
       q.page,
       q.limit,
@@ -192,6 +256,86 @@ export class BackpackService implements IBackpackService {
           HttpStatus.CONFLICT,
         );
       }
+
+      // Check if recipient already has an active item with the same refId to merge expiry
+      if (item.refId) {
+        const existingRecipientItem = await this.repo.findByUserIdAndRefId(toUserId, item.refId);
+        let newExpiresAt: Date | null = item.expiresAt;
+        if (existingRecipientItem) {
+          if (item.expiresAt === null || existingRecipientItem.expiresAt === null) {
+            newExpiresAt = null;
+          } else if (item.expiresAt && existingRecipientItem.expiresAt) {
+            const now = new Date();
+            const base = existingRecipientItem.expiresAt > now ? existingRecipientItem.expiresAt : now;
+            const remainingMs = item.expiresAt.getTime() - now.getTime();
+            newExpiresAt = new Date(base.getTime() + (remainingMs > 0 ? remainingMs : 0));
+          }
+
+          await this.repo.updateItem(existingRecipientItem.id, {
+            expiresAt: newExpiresAt,
+            transferable: false,
+            source: 'GIFT',
+            quantity: existingRecipientItem.quantity + item.quantity,
+          });
+
+          await this.repo.deleteItem(itemId);
+
+          // Sync UserCosmetic table: remove from sender, merge into recipient
+          await this.repo.syncUserCosmeticsOnTransfer({
+            fromUserId: userId,
+            toUserId,
+            cosmeticId: item.refId,
+            expiresAt: newExpiresAt,
+            wasEquipped: item.equipped,
+          });
+
+          await this.repo.log(userId, BACKPACK_ACTIONS.TRANSFERRED_OUT, itemId, { toUserId });
+          await this.repo.log(toUserId, BACKPACK_ACTIONS.TRANSFERRED_IN, existingRecipientItem.id, {
+            fromUserId: userId,
+            merged: true,
+            newExpiresAt,
+          });
+          await this.profiles.invalidateProfile(userId);
+          await this.profiles.invalidateProfile(toUserId);
+          await this.bus.publish(
+            new BackpackItemTransferredEvent({
+              fromUserId: userId,
+              toUserId,
+              itemId,
+              newItemId: existingRecipientItem.id,
+            }),
+          );
+          return;
+        }
+
+        const moved = await this.repo.transfer(itemId, toUserId);
+
+        // Sync UserCosmetic table: remove from sender, grant to recipient
+        await this.repo.syncUserCosmeticsOnTransfer({
+          fromUserId: userId,
+          toUserId,
+          cosmeticId: item.refId,
+          expiresAt: item.expiresAt,
+          wasEquipped: item.equipped,
+        });
+
+        await this.repo.log(userId, BACKPACK_ACTIONS.TRANSFERRED_OUT, itemId, { toUserId });
+        await this.repo.log(toUserId, BACKPACK_ACTIONS.TRANSFERRED_IN, moved.id, {
+          fromUserId: userId,
+        });
+        await this.profiles.invalidateProfile(userId);
+        await this.profiles.invalidateProfile(toUserId);
+        await this.bus.publish(
+          new BackpackItemTransferredEvent({
+            fromUserId: userId,
+            toUserId,
+            itemId,
+            newItemId: moved.id,
+          }),
+        );
+        return;
+      }
+
       const moved = await this.repo.transfer(itemId, toUserId);
       await this.repo.log(userId, BACKPACK_ACTIONS.TRANSFERRED_OUT, itemId, { toUserId });
       await this.repo.log(toUserId, BACKPACK_ACTIONS.TRANSFERRED_IN, moved.id, {
@@ -236,7 +380,13 @@ export class BackpackService implements IBackpackService {
     return item.expiresAt !== null && item.expiresAt.getTime() <= Date.now();
   }
 
-  private toView(i: BackpackItem) {
+  private async toView(i: BackpackItem) {
+    const meta = (i.metadata as Record<string, any>) || {};
+    let mediaUrl = meta.mediaUrl;
+    let thumbnailUrl = meta.thumbnailUrl;
+    if (mediaUrl) mediaUrl = await this.media.resolve(mediaUrl);
+    if (thumbnailUrl) thumbnailUrl = await this.media.resolve(thumbnailUrl);
+
     return {
       id: i.id,
       type: i.type,
@@ -248,6 +398,13 @@ export class BackpackService implements IBackpackService {
       transferable: i.transferable,
       acquiredAt: i.acquiredAt,
       expiresAt: i.expiresAt,
+      mediaUrl,
+      thumbnailUrl,
+      metadata: {
+        ...meta,
+        mediaUrl,
+        thumbnailUrl,
+      },
     };
   }
 }

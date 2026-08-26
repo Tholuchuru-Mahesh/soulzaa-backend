@@ -36,16 +36,34 @@ export class AnalyticsRepository {
     });
   }
 
-  async incrementRoomJoins(roomId: string, currentParticipantCount: number): Promise<void> {
+  async countUniqueVisitors(roomId: string): Promise<number> {
+    const groups = await this.prisma.roomVisitor.groupBy({
+      by: ['userId'],
+      where: { roomId },
+    });
+    return groups.length;
+  }
+
+  async incrementRoomJoins(roomId: string, currentParticipantCount: number, userId?: string): Promise<void> {
     const activity = await this.prisma.roomActivity.findUnique({ where: { roomId } });
     if (!activity) return;
 
     const newPeak = Math.max(activity.peakParticipants, currentParticipantCount);
 
+    let isNewVisitor = true;
+    if (userId) {
+      const priorCount = await this.prisma.roomVisitor.count({
+        where: { roomId, userId },
+      });
+      if (priorCount > 1) {
+        isNewVisitor = false;
+      }
+    }
+
     await this.prisma.roomActivity.update({
       where: { roomId },
       data: {
-        totalJoined: { increment: 1 },
+        totalJoined: isNewVisitor ? { increment: 1 } : undefined,
         peakParticipants: newPeak,
       },
     });
@@ -115,15 +133,46 @@ export class AnalyticsRepository {
 
   async listVisitors(roomId: string, skip: number, take: number): Promise<[RoomVisitor[], number]> {
     const where = { roomId };
-    return this.prisma.$transaction([
-      this.prisma.roomVisitor.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { joinedAt: 'desc' },
+    const totalGroups = await this.prisma.roomVisitor.groupBy({
+      by: ['userId'],
+      where,
+    });
+    const total = totalGroups.length;
+
+    if (total === 0) {
+      return [[], 0];
+    }
+
+    const userGroups = await this.prisma.roomVisitor.groupBy({
+      by: ['userId'],
+      where,
+      _max: { joinedAt: true },
+      _sum: { durationSeconds: true },
+      orderBy: { _max: { joinedAt: 'desc' } },
+      skip,
+      take,
+    });
+
+    const items: RoomVisitor[] = await Promise.all(
+      userGroups.map(async (g) => {
+        const latestSession = await this.prisma.roomVisitor.findFirst({
+          where: { roomId, userId: g.userId },
+          orderBy: { joinedAt: 'desc' },
+        });
+        return {
+          id: latestSession?.id ?? g.userId,
+          roomId,
+          userId: g.userId,
+          joinedAt: latestSession?.joinedAt ?? g._max.joinedAt ?? new Date(),
+          leftAt: latestSession?.leftAt ?? null,
+          durationSeconds: g._sum.durationSeconds ?? latestSession?.durationSeconds ?? 0,
+          createdAt: latestSession?.createdAt ?? new Date(),
+          updatedAt: latestSession?.updatedAt ?? new Date(),
+        };
       }),
-      this.prisma.roomVisitor.count({ where }),
-    ]);
+    );
+
+    return [items, total];
   }
 
   /** Every visitor row whose join fell within a time window (unbounded — for a

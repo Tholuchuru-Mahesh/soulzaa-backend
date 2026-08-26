@@ -110,12 +110,16 @@ export class CosmeticsService implements ICosmeticsService {
     });
     if (existing) {
       if (input.expiresAt !== undefined) {
-        let newExpiresAt = input.expiresAt;
-        if (existing.expiresAt && input.expiresAt) {
+        let newExpiresAt: Date | null = existing.expiresAt;
+        if (input.expiresAt === null || existing.expiresAt === null) {
+          newExpiresAt = null;
+        } else if (existing.expiresAt && input.expiresAt) {
           const now = new Date();
           const base = existing.expiresAt > now ? existing.expiresAt : now;
           const additionalMs = input.expiresAt.getTime() - now.getTime();
           newExpiresAt = new Date(base.getTime() + (additionalMs > 0 ? additionalMs : 0));
+        } else if (input.expiresAt) {
+          newExpiresAt = input.expiresAt;
         }
         await this.prisma.userCosmetic.update({
           where: { id: existing.id },
@@ -143,6 +147,7 @@ export class CosmeticsService implements ICosmeticsService {
     grantKey: string;
     durationDays?: number;
     expiresAt?: Date | null;
+    transferable?: boolean;
   }): Promise<CosmeticGrantResult | null> {
     let cosmetic = await this.repo.getById(input.cosmeticId);
     if (!cosmetic) {
@@ -159,14 +164,25 @@ export class CosmeticsService implements ICosmeticsService {
     if (!cosmetic || !cosmetic.enabled) return null;
 
     let computedExpiresAt: Date | null = input.expiresAt ?? null;
-    const durDays =
+    const meta = (cosmetic.metadata as Record<string, any>) || {};
+    let durDays =
       input.durationDays ??
-      (cosmetic.metadata as any)?.durationDays ??
-      (cosmetic.metadata as any)?.ttlDays ??
-      undefined;
+      meta.durationDays ??
+      meta.ttlDays;
 
-    if (!computedExpiresAt && durDays && durDays > 0) {
-      computedExpiresAt = new Date(Date.now() + durDays * 24 * 60 * 60 * 1000);
+    if (durDays === undefined && meta.ttlValue !== undefined) {
+      const val = Number(meta.ttlValue);
+      const unit = String(meta.ttlUnit || 'days').toLowerCase();
+      if (!isNaN(val) && val > 0) {
+        if (unit.startsWith('hour')) durDays = val / 24;
+        else if (unit.startsWith('month')) durDays = val * 30;
+        else if (unit.startsWith('min')) durDays = val / 1440;
+        else durDays = val;
+      }
+    }
+
+    if (!computedExpiresAt && durDays && Number(durDays) > 0) {
+      computedExpiresAt = new Date(Date.now() + Number(durDays) * 24 * 60 * 60 * 1000);
     }
 
     if (
@@ -174,24 +190,35 @@ export class CosmeticsService implements ICosmeticsService {
       cosmetic.type === 'THEME' ||
       cosmetic.type === 'ENTRANCE_EFFECT'
     ) {
-      const res = await this.grantCosmeticToUser({
+      await this.grantCosmeticToUser({
         userId: input.userId,
         cosmeticId: cosmetic.id,
         expiresAt: computedExpiresAt,
       });
-      return { cosmeticId: cosmetic.id, backpackItemId: res.id, duplicate: res.duplicate };
     }
+
+    const effectiveTransferable =
+      input.transferable !== undefined
+        ? input.transferable
+        : input.source === 'GIFT'
+          ? false
+          : cosmetic.transferable;
 
     const res = await this.backpack.grant({
       userId: input.userId,
-      type: TO_BACKPACK_TYPE[cosmetic.type],
+      type: TO_BACKPACK_TYPE[cosmetic.type] || 'OTHER',
       name: cosmetic.name,
       source: input.source,
       refId: cosmetic.id,
-      transferable: cosmetic.transferable,
+      transferable: effectiveTransferable,
       grantKey: input.grantKey,
       expiresAt: computedExpiresAt ?? undefined,
-      metadata: { cosmeticId: cosmetic.id, rarity: cosmetic.rarity, mediaUrl: cosmetic.mediaUrl },
+      metadata: {
+        cosmeticId: cosmetic.id,
+        rarity: cosmetic.rarity,
+        mediaUrl: cosmetic.mediaUrl,
+        thumbnailUrl: cosmetic.thumbnailUrl,
+      },
     });
     return { cosmeticId: cosmetic.id, backpackItemId: res.itemId, duplicate: res.duplicate };
   }
@@ -306,12 +333,10 @@ export class CosmeticsService implements ICosmeticsService {
       finalThumbnailUrl = processed.thumbnailUrl ?? finalThumbnailUrl;
     }
 
-    const finalMetadata =
-      dto.metadata !== undefined
-        ? dto.metadata
-        : dto.durationDays !== undefined
-          ? { durationDays: dto.durationDays }
-          : undefined;
+    const finalMetadata = {
+      ...((dto.metadata as Record<string, any>) || {}),
+      ...(dto.durationDays !== undefined ? { durationDays: dto.durationDays, ttlDays: dto.durationDays } : {}),
+    };
 
     const created = await this.repo.create(
       {
@@ -359,14 +384,13 @@ export class CosmeticsService implements ICosmeticsService {
     }
 
     const updatedMetadata =
-      dto.metadata !== undefined
-        ? dto.metadata
-        : dto.durationDays !== undefined
-          ? {
-              ...((existing.metadata as Record<string, any>) || {}),
-              durationDays: dto.durationDays,
-            }
-          : undefined;
+      dto.metadata !== undefined || dto.durationDays !== undefined
+        ? {
+            ...((existing.metadata as Record<string, any>) || {}),
+            ...((dto.metadata as Record<string, any>) || {}),
+            ...(dto.durationDays !== undefined ? { durationDays: dto.durationDays, ttlDays: dto.durationDays } : {}),
+          }
+        : undefined;
 
     const data: Prisma.CosmeticUpdateInput = {
       ...(dto.type !== undefined ? { type: dto.type } : {}),
@@ -611,11 +635,20 @@ export class CosmeticsService implements ICosmeticsService {
         refId: uc.cosmeticId,
         name: uc.cosmetic.name,
         type: uc.cosmetic.type,
+        source: 'PURCHASE',
+        quantity: 1,
+        transferable: uc.cosmetic.transferable ?? false,
         mediaUrl: await this.media.resolve(uc.cosmetic.mediaUrl),
         thumbnailUrl: await this.media.resolve(uc.cosmetic.thumbnailUrl),
         equipped: uc.equipped,
-        expiresAt: uc.expiresAt,
+        expiresAt: uc.expiresAt ? uc.expiresAt.toISOString() : null,
         acquiredAt: uc.acquiredAt.toISOString(),
+        metadata: {
+          cosmeticId: uc.cosmeticId,
+          rarity: uc.cosmetic.rarity,
+          mediaUrl: uc.cosmetic.mediaUrl,
+          thumbnailUrl: uc.cosmetic.thumbnailUrl,
+        },
       })),
     );
   }

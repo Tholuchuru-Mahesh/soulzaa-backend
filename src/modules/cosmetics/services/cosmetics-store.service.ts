@@ -154,6 +154,90 @@ export class CosmeticsStoreService {
     }
   }
 
+  async gift(
+    senderUserId: string,
+    cosmeticId: string,
+    recipientUserId: string,
+    idempotencyKey?: string,
+  ): Promise<{ purchaseId: string; backpackItemId: string; duplicate: boolean }> {
+    if (senderUserId === recipientUserId) {
+      throw new BusinessException(
+        ERROR_CODES.CANNOT_TRANSFER_SELF,
+        'You cannot gift a cosmetic to yourself.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const cosmetic = await this.repo.getById(cosmeticId);
+    if (!cosmetic || !cosmetic.enabled || cosmetic.price <= 0) {
+      throw new BusinessException(
+        ERROR_CODES.COSMETIC_NOT_PURCHASABLE,
+        'This cosmetic is not available for purchase.',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const key = idempotencyKey?.trim() || `cosmetic-gift:${randomUUID()}`;
+    const prior = await this.repo.findPurchaseByKey(key);
+    if (prior) {
+      return { purchaseId: prior.id, backpackItemId: prior.backpackItemId ?? '', duplicate: true };
+    }
+
+    // 1) Debit gold from sender (throws INSUFFICIENT_BALANCE), idempotent on the key.
+    const debit = await this.wallet.debit({
+      userId: senderUserId,
+      currency: WalletCurrency.GOLD,
+      amount: cosmetic.price,
+      reason: WalletTxnReason.COSMETIC_PURCHASE,
+      idempotencyKey: `cosmetic-gift-debit:${key}`,
+      referenceType: 'cosmetic_gift',
+      referenceId: cosmeticId,
+      metadata: { cosmeticId, name: cosmetic.name, recipientUserId, isGift: true },
+    });
+
+    // 2) Grant cosmetic to recipient with source GIFT and transferable false (non-regiftable).
+    try {
+      const grant = await this.cosmetics.grantToUser({
+        userId: recipientUserId,
+        cosmeticId,
+        source: BackpackItemSource.GIFT,
+        transferable: false,
+        grantKey: `cosmetic-gift-grant:${key}`,
+      });
+      const backpackItemId = grant?.backpackItemId ?? null;
+
+      const purchase = await this.repo.createPurchase({
+        userId: senderUserId,
+        cosmeticId,
+        price: BigInt(cosmetic.price),
+        walletTxnId: debit.transactionId,
+        backpackItemId,
+        idempotencyKey: key,
+      });
+
+      await this.bus.publish(
+        new CosmeticPurchasedEvent({
+          userId: senderUserId,
+          cosmeticId,
+          type: cosmetic.type,
+          name: cosmetic.name,
+          price: cosmetic.price,
+          backpackItemId: backpackItemId ?? '',
+        }),
+      );
+      await this.queue.enqueue(QUEUE_NAMES.ANALYTICS_PROCESSING, 'cosmetic.gifted', {
+        senderUserId,
+        recipientUserId,
+        cosmeticId,
+        price: cosmetic.price,
+      });
+      return { purchaseId: purchase.id, backpackItemId: backpackItemId ?? '', duplicate: false };
+    } catch (err) {
+      await this.refund(senderUserId, cosmetic.price, key);
+      throw err;
+    }
+  }
+
   private async refund(userId: string, price: number, key: string): Promise<void> {
     try {
       await this.wallet.credit({

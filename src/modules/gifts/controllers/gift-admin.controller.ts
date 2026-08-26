@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -17,8 +18,7 @@ import { GiftCatalogService } from '../services/gift-catalog.service';
 
 /**
  * Platform-admin gift catalog CRUD (base `admin/gifts`). Restricted to
- * ADMIN/SUPER_ADMIN. Gifts are disabled via `enabled=false` rather than deleted
- * so the immutable gift ledger keeps referencing a valid catalog id.
+ * ADMIN/SUPER_ADMIN.
  */
 @ApiTags('gifts-admin')
 @ApiBearerAuth()
@@ -48,5 +48,14 @@ export class GiftAdminController {
     @Body() dto: UpdateGiftDto,
   ) {
     return this.catalog.updateGift(giftId, dto, adminId);
+  }
+
+  @Delete(':giftId')
+  @ApiOperation({ summary: 'Delete a catalog gift' })
+  delete(
+    @CurrentUser('id') adminId: string,
+    @Param('giftId') giftId: string,
+  ) {
+    return this.catalog.deleteGift(giftId, adminId);
   }
 }

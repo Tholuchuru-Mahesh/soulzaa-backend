@@ -116,4 +116,40 @@ describe('CosmeticsStoreService', () => {
       expect(repo.createPurchase).not.toHaveBeenCalled();
     });
   });
+
+  describe('gift', () => {
+    it('debits sender gold and grants cosmetic to recipient with source GIFT and non-transferable', async () => {
+      const res = await service.gift('u1', 'c1', 'u2');
+      expect(wallet.debit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u1',
+          currency: 'GOLD',
+          amount: 1000,
+          reason: 'COSMETIC_PURCHASE',
+        }),
+      );
+      expect(cosmetics.grantToUser).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u2',
+          cosmeticId: 'c1',
+          source: 'GIFT',
+          transferable: false,
+        }),
+      );
+      expect(repo.createPurchase).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u1',
+          cosmeticId: 'c1',
+        }),
+      );
+      expect(res).toMatchObject({ purchaseId: 'p1', duplicate: false });
+    });
+
+    it('rejects gifting to self', async () => {
+      await expect(service.gift('u1', 'c1', 'u1')).rejects.toMatchObject({
+        errorCode: 'CANNOT_TRANSFER_SELF',
+      });
+      expect(wallet.debit).not.toHaveBeenCalled();
+    });
+  });
 });

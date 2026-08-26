@@ -39,10 +39,12 @@ export class AnalyticsService implements IAnalyticsService {
       );
     }
 
+    const uniqueVisitors = await this.repo.countUniqueVisitors(roomId);
+
     return {
       roomId: activity.roomId,
       peakParticipants: activity.peakParticipants,
-      totalJoined: activity.totalJoined,
+      totalJoined: uniqueVisitors > 0 ? uniqueVisitors : activity.totalJoined,
       totalGifts: activity.totalGifts,
       totalGiftCoins: activity.totalGiftCoins.toString(),
       totalSpeakingMinutes: activity.totalSpeakingMinutes,

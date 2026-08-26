@@ -34,7 +34,10 @@ describe('BackpackService', () => {
   beforeEach(() => {
     repo = {
       findByGrantKey: jest.fn().mockResolvedValue(null),
+      findByUserIdAndRefId: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockImplementation((d) => Promise.resolve(item(d))),
+      updateItem: jest.fn().mockImplementation((id, d) => Promise.resolve(item({ id, ...d }))),
+      deleteItem: jest.fn().mockImplementation((id) => Promise.resolve(item({ id }))),
       getItem: jest.fn().mockResolvedValue(item()),
       listItems: jest.fn().mockResolvedValue([[], 0]),
       setEquipped: jest.fn().mockResolvedValue(undefined),
@@ -42,6 +45,7 @@ describe('BackpackService', () => {
       transfer: jest
         .fn()
         .mockImplementation((_id, to) => Promise.resolve(item({ id: 'item-2', userId: to }))),
+      syncUserCosmeticsOnTransfer: jest.fn().mockResolvedValue(undefined),
       log: jest.fn().mockResolvedValue(undefined),
       listLogs: jest.fn().mockResolvedValue([[], 0]),
     };
@@ -84,6 +88,52 @@ describe('BackpackService', () => {
       expect(res).toEqual({ itemId: 'existing', duplicate: true });
       expect(repo.create).not.toHaveBeenCalled();
     });
+
+    it('merges TTL and extends expiry when receiving the exact same gift again', async () => {
+      const now = Date.now();
+      const oneDayFromNow = new Date(now + 1 * 24 * 60 * 60 * 1000);
+      const threeDaysFromNow = new Date(now + 3 * 24 * 60 * 60 * 1000);
+
+      repo.findByGrantKey.mockResolvedValue(null);
+      repo.findByUserIdAndRefId.mockResolvedValue(
+        item({
+          id: 'existing-item-1',
+          refId: 'cosmetic-1',
+          expiresAt: oneDayFromNow,
+          transferable: true,
+        }),
+      );
+      repo.updateItem.mockImplementation((id, data) =>
+        Promise.resolve(item({ id, ...data })),
+      );
+
+      const res = await service.grant({
+        userId: 'user-1',
+        type: BackpackItemType.FRAME,
+        refId: 'cosmetic-1',
+        name: 'Gold Frame',
+        source: BackpackItemSource.GIFT,
+        transferable: false,
+        grantKey: 'new-gift-grant-key',
+        expiresAt: threeDaysFromNow,
+      });
+
+      expect(res).toEqual({ itemId: 'existing-item-1', duplicate: true });
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(repo.updateItem).toHaveBeenCalledWith(
+        'existing-item-1',
+        expect.objectContaining({
+          transferable: false,
+        }),
+        undefined,
+      );
+
+      const updateCallData = repo.updateItem.mock.calls[0][1];
+      const mergedExpiresAt: Date = updateCallData.expiresAt;
+      // Merged expiry should be approximately 4 days from now (1 day remaining + 3 days incoming)
+      const diffDays = (mergedExpiresAt.getTime() - now) / (24 * 60 * 60 * 1000);
+      expect(Math.round(diffDays)).toBe(4);
+    });
   });
 
   describe('equip', () => {
@@ -125,17 +175,58 @@ describe('BackpackService', () => {
       );
     });
 
-    it('rejects a non-transferable item', async () => {
-      repo.getItem.mockResolvedValue(item({ transferable: false }));
-      await expect(service.transfer('user-1', 'item-1', 'user-2')).rejects.toMatchObject({
-        errorCode: 'BACKPACK_ITEM_NOT_TRANSFERABLE',
-      });
-    });
+    it('merges TTL into recipient existing item on transfer', async () => {
+      const now = Date.now();
+      const oneDayFromNow = new Date(now + 1 * 24 * 60 * 60 * 1000);
+      const twoDaysFromNow = new Date(now + 2 * 24 * 60 * 60 * 1000);
 
-    it('rejects transferring to yourself', async () => {
-      await expect(service.transfer('user-1', 'item-1', 'user-1')).rejects.toBeInstanceOf(
-        BusinessException,
+      repo.getItem.mockResolvedValue(
+        item({
+          id: 'item-1',
+          userId: 'user-1',
+          refId: 'cosmetic-1',
+          transferable: true,
+          expiresAt: twoDaysFromNow,
+        }),
       );
+      repo.findByUserIdAndRefId.mockResolvedValue(
+        item({
+          id: 'recipient-item-1',
+          userId: 'user-2',
+          refId: 'cosmetic-1',
+          expiresAt: oneDayFromNow,
+        }),
+      );
+      repo.updateItem.mockImplementation((id, data) =>
+        Promise.resolve(item({ id, ...data })),
+      );
+      repo.deleteItem.mockResolvedValue(item({ id: 'item-1' }));
+
+      await service.transfer('user-1', 'item-1', 'user-2');
+
+      expect(repo.updateItem).toHaveBeenCalledWith(
+        'recipient-item-1',
+        expect.objectContaining({
+          transferable: false,
+        }),
+      );
+      expect(repo.deleteItem).toHaveBeenCalledWith('item-1');
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'backpack.item_transferred',
+          payload: expect.objectContaining({
+            fromUserId: 'user-1',
+            toUserId: 'user-2',
+            itemId: 'item-1',
+            newItemId: 'recipient-item-1',
+          }),
+        }),
+      );
+
+      const updateCallData = repo.updateItem.mock.calls[0][1];
+      const mergedExpiresAt: Date = updateCallData.expiresAt;
+      const diffDays = (mergedExpiresAt.getTime() - now) / (24 * 60 * 60 * 1000);
+      expect(Math.round(diffDays)).toBe(3);
     });
   });
 });
