@@ -1,6 +1,8 @@
 import { Global, Module } from '@nestjs/common';
 import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
 import { NotificationModule } from 'src/modules/notification/notification.module';
+import { WorkforceScopeModule } from 'src/modules/mobile-workforce/workforce-scope.module';
+import { PlatformModerationModule } from 'src/modules/platform-moderation/platform-moderation.module';
 import { TaskController } from './controllers/task.controller';
 import { MissionProgressService } from './services/mission-progress.service';
 import { MissionService } from './services/mission.service';
@@ -21,7 +23,13 @@ import { RewardFulfillmentEngine } from './services/reward-engine/reward-fulfill
 
 @Global()
 @Module({
-  imports: [PlatformConfigurationModule, NotificationModule],
+  imports: [
+    PlatformConfigurationModule,
+    NotificationModule,
+    WorkforceScopeModule,
+    // Reuses the one ban engine the in-room Individual Ban already uses.
+    PlatformModerationModule,
+  ],
   controllers: [TaskController],
   providers: [
     // Phase 17: Enterprise Tasks & Missions Engine Services

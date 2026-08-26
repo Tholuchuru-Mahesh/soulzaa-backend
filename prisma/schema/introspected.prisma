@@ -40,14 +40,44 @@ model moderator_task_assignments {
   moderatorId      String         @db.Uuid
   assignedBy       String         @db.Uuid
   status           String         @default("PENDING")
+  /// Set by the Official per assignment, not inherited from the definition —
+  /// the same task can be urgent for one moderator and routine for another.
+  priority         String         @default("MEDIUM")
+  /// Official-defined schedule. `dueAt` also drives the derived OVERDUE state.
+  startDate        DateTime?
   dueAt            DateTime?
+  /// Measurable target (e.g. "Review 100 Reports" -> 100). 1 = a simple
+  /// do-it-once task, which is why progress and target share one model rather
+  /// than a separate quantified-task type.
+  targetCount      Int            @default(1)
+  currentProgress  Int            @default(0)
   completedAt      DateTime?
   notes            String?
+  /// Moderator-supplied remarks, distinct from the Official's `notes`.
+  remarks          String?
+  /// Discriminator for task-type-specific behaviour. GENERAL is the ordinary
+  /// count-based task; BAN_USER carries the two fields below.
+  taskType         String         @default("GENERAL")
+  /// BAN_USER only: the account the moderator must ban, and why.
+  ///
+  /// `targetUserId` holds the first target and is kept for rows written before
+  /// multi-target support; `targetUserIds` is the full list the moderator works
+  /// through. New rows always populate both, first element mirrored.
+  targetUserId     String?        @db.Uuid
+  targetUserIds    String[]       @db.Uuid
+  /// Targets already banned, so a partly-finished task resumes correctly.
+  bannedUserIds    String[]       @db.Uuid
+  banReason        String?
   createdAt        DateTime       @default(now())
-  updatedAt        DateTime
+  updatedAt        DateTime       @updatedAt
   task_definitions TaskDefinition @relation(fields: [taskId], references: [id])
 
-  @@unique([taskId, moderatorId])
+  /// Deliberately NOT unique: the same task definition may be assigned to the
+  /// same moderator more than once over time (recurring duties get re-issued
+  /// once the previous run is completed). "Not twice while the first is still
+  /// open" depends on `status`, so it is enforced in
+  /// ModeratorTaskAssignmentService rather than by a constraint.
+  @@index([taskId, moderatorId])
   @@index([assignedBy])
   @@index([moderatorId, status])
   @@index([status, dueAt])

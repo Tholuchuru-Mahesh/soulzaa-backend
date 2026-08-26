@@ -36,6 +36,7 @@ import { LiveStreamService } from 'src/modules/live-streaming/services/live-stre
 import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
 import { PermissionResolver } from 'src/modules/authorization/services/permission-resolver.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { ModeratorTaskAssignmentService } from 'src/modules/tasks/services/moderator-task-assignment.service';
 import { MODERATION_SENDER_NAME } from 'src/common/constants/moderation-sender.constant';
 import { SYSTEM_MODERATOR_ID } from 'src/modules/audio-rooms/constants/moderation.constants';
 import { deriveReportPriority, deriveRuleViolated } from './report-classification.util';
@@ -125,6 +126,9 @@ export class MobileWorkforceService {
     private readonly permissionResolver?: PermissionResolver,
     @Optional() private readonly platformBans?: PlatformBanService,
     @Optional() private readonly socketManager?: SocketManager,
+    // `TasksModule` is @Global, so this resolves without importing it here.
+    // Optional so the existing positional constructions in the specs still work.
+    @Optional() private readonly moderatorAssignments?: ModeratorTaskAssignmentService,
   ) {}
 
   /** What geography am I responsible for? Drives the client's header and filters. */
@@ -1558,7 +1562,34 @@ export class MobileWorkforceService {
   /**
    * Tasks assigned to the moderator.
    */
+  /**
+   * The moderator's work queue: the tasks an Official assigned them, plus the
+   * report-derived items this endpoint has always produced.
+   *
+   * The assignments come straight from `ModeratorTaskAssignmentService` — the
+   * same rows, presented the same way, that the Official's own monitoring view
+   * reads. There is one task record, so a BAN_USER task the Official created
+   * shows up here without a second copy being made.
+   *
+   * `source` tells the client which of the two an item is: an `ASSIGNMENT`
+   * carries a real `moderator_task_assignments.id` and can be progressed and
+   * completed through the tasks API, while a `REPORT` item is the transient
+   * queue entry it always was.
+   */
   async moderatorTasks(userId: string) {
+    const assignments = this.moderatorAssignments
+      ? await this.moderatorAssignments
+          .getModeratorAssignments(userId)
+          // A failure fetching assignments must not blank the whole queue —
+          // the report items below are still useful work.
+          .catch((error) => {
+            this.logger?.warn?.(
+              `moderatorTasks: assignment fetch failed for ${userId}: ${String(error)}`,
+            );
+            return [] as any[];
+          })
+      : [];
+
     const [assignedAudio, assignedVideo] = await Promise.all([
       this.prisma.roomReport.findMany({
         where: { assigneeId: userId, status: 'PENDING' },
@@ -1599,9 +1630,14 @@ export class MobileWorkforceService {
         dueText: '30m',
         createdAt: r.createdAt.toISOString(),
       })),
-    ];
+    ].map((t) => ({ ...t, source: 'REPORT' as const }));
 
-    return tasks;
+    // Assigned work leads: it has a real deadline and an Official waiting on it,
+    // where the report items are an ambient queue.
+    return [
+      ...assignments.map((a: any) => ({ ...a, source: 'ASSIGNMENT' as const })),
+      ...tasks,
+    ];
   }
 
   /**
@@ -4717,7 +4753,7 @@ export class MobileWorkforceService {
             orderBy: { createdAt: 'desc' },
             take: 500,
           })
-          .catch(() => [] as { roomId: string; roomType: any; createdAt: Date }[]),
+          .catch(() => [] as { roomId: string | null; roomType: any; createdAt: Date }[]),
         this.prisma.roomMember
           .findMany({
             where: { userId },
@@ -4788,6 +4824,9 @@ export class MobileWorkforceService {
     const roomMap = new Map<string, { latestAt: Date; roomType: 'audio' | 'video' }>();
 
     for (const v of visits) {
+      // Audit rows can now carry a null roomId — a BAN_USER task ban is not
+      // tied to any room, so it contributes nothing to room history.
+      if (!v.roomId) continue;
       const existing = roomMap.get(v.roomId);
       const isVid = v.roomType === 'VIDEO_ROOM';
       if (!existing || v.createdAt > existing.latestAt) {
@@ -4809,6 +4848,7 @@ export class MobileWorkforceService {
       }
     }
     for (const a of [...actions, ...kicks, ...bans, ...mutes, ...reports]) {
+      if (!a.roomId) continue;
       const existing = roomMap.get(a.roomId);
       if (!existing || a.createdAt > existing.latestAt) {
         roomMap.set(a.roomId, { latestAt: a.createdAt, roomType: 'audio' });

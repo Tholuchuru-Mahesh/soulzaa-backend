@@ -14,6 +14,7 @@ import {
   GameLobbySettingsUpdatedEvent,
   GameLobbyTeamChangedEvent,
   GameForfeitEvent,
+  GameHostChangedEvent,
   GameMatchCancelledEvent,
   GameMatchFoundEvent,
   GameMatchReadyProgressEvent,
@@ -189,6 +190,22 @@ export class GameSocketListener implements OnModuleInit {
         GAMES_NAMESPACE,
         e.payload.sessionId,
         GAME_SOCKET_EVENTS.RESULT_REPORTED,
+        e.payload,
+      );
+    });
+    // The host role moved. Every socket in the session room needs this — the
+    // new host has to start driving the bot seats, and the old one has to stop
+    // — so it goes to the room, not just to the two users involved.
+    this.bus.subscribe<GameHostChangedEvent>(GAME_EVENTS.HOST_CHANGED, (e) => {
+      this.sockets.emitToNamespaceRoom(
+        GAMES_NAMESPACE,
+        e.payload.sessionId,
+        GAME_SOCKET_EVENTS.HOST_CHANGED,
+        e.payload,
+      );
+      this.sockets.emitToUserEverywhere(
+        e.payload.hostId,
+        GAME_SOCKET_EVENTS.HOST_CHANGED,
         e.payload,
       );
     });

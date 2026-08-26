@@ -42,6 +42,12 @@ export const GAME_SOCKET_EVENTS = {
   RESULT_REPORTED: 'game.result_reported',
   /** A non-host participant disputed the reported result — settlement withheld. */
   RESULT_DISPUTED: 'game.result_disputed',
+  /**
+   * The host role moved to another player. Clients MUST adopt it: the host is
+   * the device that drives every bot seat and reports the winner, so a client
+   * still believing in the old host leaves the bots frozen.
+   */
+  HOST_CHANGED: 'game.host_changed',
 } as const;
 
 /** Bumped when a matchmaking socket payload shape changes (clients gate on it). */

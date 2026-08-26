@@ -89,6 +89,7 @@ import type { CreateLobbyDto, ListSessionsDto, UpdateGameDefinitionDto } from '.
 import {
   GameCancelledEvent,
   GameForfeitEvent,
+  GameHostChangedEvent,
   GameLobbyCancelledEvent,
   GameLobbyCreatedEvent,
   GameLobbyJoinedEvent,
@@ -163,7 +164,17 @@ type ForfeitDecision =
       seat: number;
       remainingCount: number;
     }
-  | { kind: 'continue'; seat: number; remainingCount: number };
+  | {
+      kind: 'continue';
+      seat: number;
+      remainingCount: number;
+      /**
+       * Who should hold the host role now, when the forfeiter WAS the host.
+       * Decided under the lock (it reads the participant roster) but published
+       * outside it, like every other event `forfeit()` emits.
+       */
+      newHostId?: string | null;
+    };
 
 /** Per-user queue pointer (Redis JSON) — dedupe, O(1) leave, and retry carry-over. */
 interface MatchQueuePointer {
@@ -567,16 +578,89 @@ export class GamesService {
    * their host re-point is handled by the casino module's own listener
    * (`RoomCasinoWindowService.onOwnerChanged`), which re-reads the same session.
    */
+  /**
+   * The participant best suited to hold the host role, or null if nobody is.
+   *
+   * The host is the client that drives every BOT seat and reports the winner,
+   * so it must be a HUMAN who is still PLAYING. A bot has no device to run the
+   * driving loop on, and a departed player's client is gone — either choice
+   * leaves the bots frozen and the result unreportable, which is exactly the
+   * "the game got stuck" report.
+   *
+   * `preferred` wins if they qualify (the new room owner, when they happen to
+   * be in the match); otherwise the first eligible seat in join order, which
+   * is stable across callers so two racing handovers agree.
+   */
+  private pickSessionHost(
+    participants: GameParticipant[],
+    opts: { preferred?: string; exclude?: string } = {},
+  ): string | null {
+    const eligible = participants.filter(
+      (p) =>
+        !p.isBot &&
+        p.status === GameParticipantStatus.PLAYING &&
+        p.userId !== opts.exclude,
+    );
+    if (opts.preferred && eligible.some((p) => p.userId === opts.preferred)) {
+      return opts.preferred;
+    }
+    return eligible[0]?.userId ?? null;
+  }
+
+  /**
+   * Move the host role to `newHostId` and tell the room. No-op when the role
+   * is already there or there is nobody to give it to.
+   *
+   * Clients capture `hostId` when they enter and never re-read it, so the
+   * event is not optional bookkeeping — without it the new host's device never
+   * starts driving the bot seats and the board stays frozen regardless of what
+   * the database says.
+   */
+  private async handOverHost(
+    session: GameSession,
+    newHostId: string | null,
+    reason: 'host_forfeited' | 'host_not_playing' | 'room_ownership_transferred',
+  ): Promise<void> {
+    if (!newHostId || newHostId === session.hostId) return;
+    const previousHostId = session.hostId;
+    await this.repo.updateSessionHost(session.id, newHostId);
+    await this.repo.logEvent({
+      sessionId: session.id,
+      userId: newHostId,
+      action: 'session.host_updated',
+      detail: { reason, previousHostId },
+    });
+    await this.bus.publish(
+      new GameHostChangedEvent({
+        sessionId: session.id,
+        roomId: session.roomId,
+        hostId: newHostId,
+        previousHostId,
+        reason,
+      }),
+    );
+  }
+
   async repointRoomGameHost(roomId: string, newOwnerId: string): Promise<void> {
     const session = await this.repo.findActiveSessionForRoom(roomId);
     if (session && session.code !== GameCode.GREEDY_FOOD && session.code !== GameCode.LUCKY_FRUIT) {
-      await this.repo.updateSessionHost(session.id, newOwnerId);
-      await this.repo.logEvent({
-        sessionId: session.id,
-        userId: newOwnerId,
-        action: 'session.host_updated',
-        detail: { reason: 'room_ownership_transferred' },
-      });
+      // The new ROOM owner is not necessarily in the match. Handing them the
+      // SESSION host role anyway put it on someone with no board — nobody to
+      // drive the bot seats, nobody able to report the winner — which is the
+      // "the host who created the room isn't playing and it gets stuck" case.
+      // The role goes to them only if they are actually playing; otherwise it
+      // stays put (if the current host still is) or moves to someone who is.
+      const participants = await this.repo.listParticipants(session.id);
+      const currentHostStillPlaying = participants.some(
+        (p) =>
+          p.userId === session.hostId &&
+          !p.isBot &&
+          p.status === GameParticipantStatus.PLAYING,
+      );
+      const next = this.pickSessionHost(participants, { preferred: newOwnerId });
+      if (!currentHostStillPlaying || next === newOwnerId) {
+        await this.handOverHost(session, next, 'room_ownership_transferred');
+      }
     }
     const lobby = await this.repo.findOpenLobbyForRoom(roomId);
     if (lobby) {
@@ -1340,6 +1424,7 @@ export class GamesService {
         moveData,
         timestamp: frame.timestamp,
         currentTurnUserId: state.currentTurnUserId,
+        rev: state.rev ?? 0,
       }),
     );
     return { accepted: true, currentTurnUserId: state.currentTurnUserId, isOver: state.isOver };
@@ -1617,7 +1702,15 @@ export class GamesService {
     const elapsed = Math.floor((Date.now() - state.turnStartedAt) / 1000);
     return {
       sessionId,
+      // The ordering token for this snapshot. A client that has already
+      // applied live moves past this revision must DISCARD the snapshot
+      // rather than replay it — see `GameLiveState.rev`.
+      rev: state.rev ?? 0,
       currentTurnUserId: state.currentTurnUserId,
+      // The seats still in rotation. A forfeit removes a seat via `removeSeat`
+      // without appending a move frame, so a client restoring purely from
+      // `moves` would otherwise put a departed player back on the board.
+      seatOrder: state.seatOrder,
       turnRemainingSeconds: Math.max(0, state.turnSeconds - elapsed),
       isOver: state.isOver,
       moves: state.moves,
@@ -1682,6 +1775,12 @@ export class GamesService {
         const updated = removeSeat(state, actor.id, Date.now());
         await this.cache.set(gameLiveStateKey(sessionId), updated, GAME_LIVE_STATE_TTL_SECONDS);
       }
+      // The host is the client that drives every bot seat, so a match that
+      // continues WITHOUT its host is a match whose bots have stopped. Hand
+      // the role to someone still at the table before releasing the lock.
+      if (result.kind === 'continue' && session.hostId === actor.id) {
+        result.newHostId = this.pickSessionHost(participants, { exclude: actor.id });
+      }
       return result;
     });
 
@@ -1703,6 +1802,12 @@ export class GamesService {
 
     if (decision.kind === 'settle') {
       return this.settleToHumanWinners(session, decision.winners, decision.resultData, actor.id);
+    }
+    // Published outside the lock, like every other event here — the seat is
+    // already out of rotation, so the new host can start driving the moment
+    // this lands.
+    if (decision.newHostId) {
+      await this.handOverHost(session, decision.newHostId, 'host_forfeited');
     }
     return { forfeitedBy: actor.id, remaining: decision.remainingCount };
   }
@@ -1741,6 +1846,22 @@ export class GamesService {
         resultData: { reason: 'forfeit', forfeitedBy: actorId },
         seat,
         remainingCount: 1,
+      };
+    }
+    // Only bots left. `remaining` counts them as players, so this used to
+    // "continue" a match with nobody at the table: no client drives a bot
+    // (that is the host's job, and the host just left), nobody can report a
+    // winner, and it sat there until the 15-minute stale-session sweep — the
+    // frozen board everyone still in the room was looking at. A match with no
+    // humans in it is over. `settleToHumanWinners` already knows what to do
+    // with an all-bot winner set: refund a staked pot, settle a friendly one.
+    if (remaining.every((p) => p.isBot)) {
+      return {
+        kind: 'settle',
+        winners: remaining.map((p) => p.userId),
+        resultData: { reason: 'forfeit_no_humans_left', forfeitedBy: actorId },
+        seat,
+        remainingCount: remaining.length,
       };
     }
     // 2+ remain — the match continues without the forfeiter; mark them out so
@@ -1783,6 +1904,18 @@ export class GamesService {
         kind: 'settle',
         winners: remaining.map((p) => p.userId),
         resultData: { reason: 'forfeit', forfeitedBy: actorId },
+        seat,
+        remainingCount: remaining.length,
+      };
+    }
+    // Same rule as the CLASSIC path: a table with no humans left on it has
+    // nobody to drive the bots or report a winner, so the match is over rather
+    // than left running against itself.
+    if (remaining.every((p) => p.isBot)) {
+      return {
+        kind: 'settle',
+        winners: remaining.map((p) => p.userId),
+        resultData: { reason: 'forfeit_no_humans_left', forfeitedBy: actorId },
         seat,
         remainingCount: remaining.length,
       };
@@ -2528,6 +2661,7 @@ export class GamesService {
           skippedUserId,
           skippedStrikes,
           currentTurnUserId: advanced.currentTurnUserId,
+          rev: advanced.rev ?? 0,
         }),
       );
 
@@ -2946,7 +3080,11 @@ export class GamesService {
 
   private async loadOrInitLiveState(session: GameSession): Promise<GameLiveState> {
     const cached = await this.cache.get<GameLiveState>(gameLiveStateKey(session.id));
-    if (cached) return cached;
+    // A session that was already live when `rev` shipped has no revision in
+    // its cached JSON. Normalize it to 0 here — once — so every caller
+    // downstream can treat `rev` as a plain number instead of repeating the
+    // fallback (and so the first move on such a session emits rev 1, not NaN).
+    if (cached) return cached.rev === undefined ? { ...cached, rev: 0 } : cached;
     // Only reached if the Redis key is missing mid-match (TTL/eviction/ops
     // incident) — a legitimate first-init happens exactly once, right after
     // start. Log it: silently fabricating a fresh state here resets the move

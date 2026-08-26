@@ -39,7 +39,9 @@ model PlatformUserBan {
   moderatorId  String            @db.Uuid
   reason       String
   roomType     PlatformRoomType
-  originRoomId String            @db.Uuid
+  /// Null when the ban did not originate in a room — e.g. a BAN_USER task an
+  /// Official assigned to a moderator. Room-originated bans still set it.
+  originRoomId String?           @db.Uuid
   reportId     String?           @db.Uuid
   status       PlatformBanStatus @default(ACTIVE)
   bannedAt     DateTime          @default(now())
@@ -60,7 +62,8 @@ model PlatformModerationAuditLog {
   moderatorId  String                       @db.Uuid
   action       PlatformModerationActionType
   roomType     PlatformRoomType
-  roomId       String                       @db.Uuid
+  /// Null for actions taken outside a room, e.g. a BAN_USER task ban.
+  roomId       String?                      @db.Uuid
   targetUserId String?                      @db.Uuid
   reason       String?
   scope        PlatformWarningScope?

@@ -29,10 +29,40 @@ export interface GameMoveFrame {
   playerId: string;
   moveData: Record<string, unknown>;
   timestamp: number;
+  /**
+   * The session revision this frame produced (see `GameLiveState.rev`).
+   * Optional only because frames logged before this field shipped — and
+   * frames built by callers before `applyMove` stamps them — have none.
+   */
+  rev?: number;
 }
 
 /** Per-session live state held between moves (Redis-backed, not persisted to SQL). */
 export interface GameLiveState {
+  /**
+   * Monotonic revision of THIS state — the single ordering token every client
+   * uses to place a snapshot relative to the live event stream.
+   *
+   * Bumped by every operation that changes the state a board renders from
+   * (`applyMove` for stored frames, `removeSeat`, `forceAdvanceTurn`); an
+   * `aim` frame is deliberately excluded because it stores nothing.
+   *
+   * It exists because a late-joining spectator receives its opening snapshot
+   * over HTTP while live moves are already arriving over the socket, and
+   * without a comparable version there is no way to tell which is newer — an
+   * in-flight snapshot would silently rewind a board that had moved on. The
+   * two obvious stand-ins do not work: `moves.length` is not monotone
+   * (`sync_state` compacts the log down to one frame) and `timestamp` is wall
+   * clock, so it is not monotone across nodes or a clock step.
+   *
+   * Optional for one reason only: this state is rehydrated from untyped Redis
+   * JSON, and a session already live when this field shipped genuinely has no
+   * `rev`. Declaring it required would be a lie about the wire shape, so every
+   * reader here (and in GamesService) resolves it as `?? 0` — such a session
+   * simply resumes numbering from 0 rather than producing NaN. `initLiveState`
+   * always sets it, so every session created from here on carries one.
+   */
+  rev?: number;
   currentTurnUserId: string | null;
   turnStartedAt: number;
   turnSeconds: number;
@@ -70,6 +100,7 @@ export function initLiveState(
   turnSeconds: number,
 ): GameLiveState {
   return {
+    rev: 0,
     currentTurnUserId: seatOrder[0] ?? null,
     turnStartedAt: startedAtMs,
     turnSeconds,
@@ -106,15 +137,27 @@ export function canAct(state: GameLiveState, frame: GameMoveFrame): boolean {
 export function applyMove(state: GameLiveState, frame: GameMoveFrame): GameLiveState {
   const action = typeof frame.moveData.action === 'string' ? frame.moveData.action : '';
 
+  // Revision bookkeeping. `aim` stores nothing and changes nothing a board
+  // renders from, so it must NOT consume a revision — otherwise a client that
+  // (correctly) ignores aim frames would see a permanent gap in the sequence
+  // and resync forever. Everything else advances the state by exactly one.
+  const baseRev = state.rev ?? 0;
+  const rev = action === 'aim' ? baseRev : baseRev + 1;
+
   // Move-log handling: sync_state compacts the log to one snapshot; aim is
-  // ephemeral (not stored); everything else appends in order.
+  // ephemeral (not stored); everything else appends in order. A stored frame
+  // carries the revision it produced, so a client replaying the log knows
+  // exactly which live events the replay already accounts for — including
+  // after a `sync_state` compaction, which throws the earlier frames (and
+  // therefore any positional index into them) away.
+  const stamped: GameMoveFrame = { ...frame, rev };
   let moves: GameMoveFrame[];
   if (action === 'sync_state') {
-    moves = [frame];
+    moves = [stamped];
   } else if (action === 'aim') {
     moves = state.moves;
   } else {
-    moves = [...state.moves, frame];
+    moves = [...state.moves, stamped];
   }
 
   // Turn handling. An explicit nextTurnPlayerId is only honored from the seat
@@ -152,6 +195,7 @@ export function applyMove(state: GameLiveState, frame: GameMoveFrame): GameLiveS
 
   return {
     ...state,
+    rev,
     moves,
     currentTurnUserId,
     turnStartedAt,
@@ -176,6 +220,11 @@ export function removeSeat(state: GameLiveState, userId: string, now: number): G
   delete timeoutCounts[userId];
   return {
     ...state,
+    // A forfeit moves the board (a seat leaves, the turn may hand off) without
+    // appending anything to the move log, so it must still advance the
+    // revision — otherwise a client could not tell that a snapshot taken after
+    // the forfeit is newer than the last move it applied.
+    rev: (state.rev ?? 0) + 1,
     seatOrder,
     currentTurnUserId: nextUserId === userId ? null : nextUserId,
     turnStartedAt: wasCurrentTurn ? now : state.turnStartedAt,
@@ -204,6 +253,9 @@ export function forceAdvanceTurn(
   return {
     state: {
       ...state,
+      // Same reasoning as `removeSeat`: the watchdog moves the turn pointer
+      // with no corresponding move frame, so the revision carries the change.
+      rev: (state.rev ?? 0) + 1,
       currentTurnUserId: nextUserId,
       turnStartedAt: now,
       timeoutCounts,

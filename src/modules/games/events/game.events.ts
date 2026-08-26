@@ -37,6 +37,7 @@ export const GAME_EVENTS = {
   TURN_FORCE_ADVANCED: 'game.turn_force_advanced',
   RESULT_REPORTED: 'game.result_reported',
   RESULT_DISPUTED: 'game.result_disputed',
+  HOST_CHANGED: 'game.host_changed',
 } as const;
 
 export interface GameLobbyView {
@@ -140,8 +141,40 @@ export class GameMoveEvent extends DomainEvent<{
   moveData: Record<string, unknown>;
   timestamp: number;
   currentTurnUserId: string | null;
+  /**
+   * The session revision this move produced (see `GameLiveState.rev`). A
+   * client compares it against the revision of the snapshot it restored from,
+   * so a spectator that joins mid-match can order this live event against an
+   * in-flight `GET /sessions/:id/live` instead of guessing from wall clock.
+   */
+  rev: number;
 }> {
   readonly name = GAME_EVENTS.MOVE;
+}
+
+/**
+ * The session's host role moved to a different player.
+ *
+ * The host is not a cosmetic title in a peer-relay match: it is the client
+ * that drives every BOT seat (only the host schedules a bot's move, and
+ * `relayMove(onBehalfOf)` rejects anyone else), and it is the client that
+ * reports the winner. So when the host stops being an active player — they
+ * forfeited, or room ownership moved to someone not in the match — the role
+ * has to follow the match or the bots simply stop and the board looks frozen.
+ *
+ * Clients must adopt `hostId` live: they capture it once when they enter, and
+ * without this event a correct server-side handover would never reach the new
+ * host's device.
+ */
+export class GameHostChangedEvent extends DomainEvent<{
+  sessionId: string;
+  roomId: string | null;
+  hostId: string;
+  previousHostId: string;
+  /** Why the role moved — for the audit log and for debugging a stuck board. */
+  reason: 'host_forfeited' | 'host_not_playing' | 'room_ownership_transferred';
+}> {
+  readonly name = GAME_EVENTS.HOST_CHANGED;
 }
 
 /** A participant forfeited/left an active match. Clients withdraw the seat; if
@@ -244,6 +277,8 @@ export class GameTurnForceAdvancedEvent extends DomainEvent<{
   skippedUserId: string | null;
   skippedStrikes: number;
   currentTurnUserId: string | null;
+  /** Session revision after the force-advance (see `GameLiveState.rev`). */
+  rev: number;
 }> {
   readonly name = GAME_EVENTS.TURN_FORCE_ADVANCED;
 }

@@ -1706,6 +1706,15 @@ export const DEFAULT_PERMISSIONS = [
     description: 'Moderator views and updates tasks assigned to them',
   },
   {
+    code: 'task.assignment.oversight',
+    module: 'tasks',
+    action: 'view',
+    category: 'TASK',
+    displayName: 'Workforce Task Assignment Oversight',
+    description:
+      'Admin/Super Admin views every official-to-moderator task assignment across the platform',
+  },
+  {
     code: 'moderation.action.approve',
     module: 'moderation_approval',
     action: 'approve',
@@ -1871,6 +1880,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'task.configuration.manage',
     'task.audit.view',
     'task.statistics.view',
+    'task.assignment.oversight',
     // Content moderation
     'post.moderate',
     // Progression & rankings
@@ -2029,6 +2039,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'event.create',
     'event.manage',
     'task.manage',
+    'task.assign.moderator',
+    'task.assignment.oversight',
     'analytics.view',
     'ranking.view',
     'family.statistics.view',

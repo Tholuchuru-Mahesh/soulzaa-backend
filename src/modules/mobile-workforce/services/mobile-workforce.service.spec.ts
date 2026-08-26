@@ -1265,4 +1265,111 @@ describe('MobileWorkforceService scope composition', () => {
       }
     });
   });
+
+  describe('moderatorTasks', () => {
+    /** One presented assignment, shaped as ModeratorTaskAssignmentService returns it. */
+    const banAssignment = {
+      id: 'assignment-1',
+      assignmentId: 'assignment-1',
+      taskId: 'task-1',
+      title: 'Ban policy violator',
+      description: 'Ban the listed account.',
+      taskType: 'BAN_USER',
+      targetUserId: 'target-1',
+      targetUserIds: ['target-1'],
+      bannedUserIds: [],
+      banReason: 'Community Guidelines Violation',
+      priority: 'HIGH',
+      status: 'PENDING',
+      targetCount: 1,
+      currentProgress: 0,
+      createdAt: '2026-08-20T10:00:00.000Z',
+    };
+
+    function serviceWithAssignments(assignments: {
+      getModeratorAssignments: jest.Mock;
+    }) {
+      return new MobileWorkforceService(
+        prisma as unknown as PrismaService,
+        scope as unknown as WorkforceScopeService,
+        scopes as unknown as GeographicScopeResolver,
+        shiftService as any,
+        undefined,
+        audioModeration as any,
+        videoReports as any,
+        videoModeration as any,
+        liveStreamReports as any,
+        liveStream as any,
+        investigationRecording as any,
+        permissionResolver as any,
+        platformBans as any,
+        undefined,
+        assignments as any,
+      );
+    }
+
+    it('delivers Official-assigned tasks to the moderator queue, tagged ASSIGNMENT', async () => {
+      const assignments = {
+        getModeratorAssignments: jest.fn().mockResolvedValue([banAssignment]),
+      };
+
+      const tasks = await serviceWithAssignments(assignments).moderatorTasks('mod-1');
+
+      expect(assignments.getModeratorAssignments).toHaveBeenCalledWith('mod-1');
+      // The BAN_USER task the Official created is the same row, not a copy.
+      expect(tasks[0]).toMatchObject({
+        id: 'assignment-1',
+        taskType: 'BAN_USER',
+        targetUserIds: ['target-1'],
+        banReason: 'Community Guidelines Violation',
+        source: 'ASSIGNMENT',
+      });
+    });
+
+    it('still returns the report-derived queue alongside assignments', async () => {
+      prisma.roomReport.findMany.mockResolvedValueOnce([
+        {
+          id: 'report-1',
+          description: 'Abusive language',
+          reason: 'ABUSE',
+          createdAt: new Date('2026-08-20T09:00:00Z'),
+        },
+      ]);
+      const assignments = {
+        getModeratorAssignments: jest.fn().mockResolvedValue([banAssignment]),
+      };
+
+      const tasks = await serviceWithAssignments(assignments).moderatorTasks('mod-1');
+
+      expect(tasks).toHaveLength(2);
+      // Assigned work leads; the ambient report queue follows, untouched.
+      expect(tasks[0].source).toBe('ASSIGNMENT');
+      expect(tasks[1]).toMatchObject({ id: 'task-ar-report-1', source: 'REPORT' });
+    });
+
+    it('keeps the report queue usable when the assignment fetch fails', async () => {
+      prisma.roomReport.findMany.mockResolvedValueOnce([
+        {
+          id: 'report-1',
+          description: 'Abusive language',
+          reason: 'ABUSE',
+          createdAt: new Date('2026-08-20T09:00:00Z'),
+        },
+      ]);
+      const assignments = {
+        getModeratorAssignments: jest.fn().mockRejectedValue(new Error('db down')),
+      };
+
+      const tasks = await serviceWithAssignments(assignments).moderatorTasks('mod-1');
+
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].source).toBe('REPORT');
+    });
+
+    it('returns only report tasks when no assignment service is wired', async () => {
+      const tasks = await service.moderatorTasks('mod-1');
+
+      expect(tasks).toEqual([]);
+    });
+  });
 });

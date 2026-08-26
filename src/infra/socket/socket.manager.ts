@@ -35,6 +35,37 @@ function isModeratorUser(user: AuthenticatedUser): boolean {
   return (user.roles ?? []).some((r) => r === 'MODERATOR' || r === 'ADMIN' || r === 'SUPER_ADMIN');
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whether a Socket.IO room name also identifies a row in the database.
+ *
+ * Socket room names are just strings, and not all of them are rooms anyone can
+ * look up: the casino games broadcast through permanent lobby channels
+ * (`greedy_food_global`, `lucky_fruit_global`), and any gateway may add more.
+ * Every persisted room id, by contrast, is a `@db.Uuid` column — `AudioRoom.id`,
+ * `RoomVisitor.roomId`, `RoomMember.roomId`, `PresenceState.currentRoomId` —
+ * so a name that is not a UUID cannot possibly name a row.
+ *
+ * This matters because [SocketManager.joinRoom] publishes `room.joined`, which
+ * is the SAME name as `AUDIO_ROOM_EVENTS.JOINED`. Every audio-room subscriber
+ * therefore runs on any socket join, and for a lobby channel they hand a
+ * channel name to a UUID column, which Postgres rejects outright:
+ *
+ *   Inconsistent column data: Error creating UUID, invalid character:
+ *   ... found `g` at 1        ← 'greedy_food_global'
+ *
+ * — a burst of noisy failures (analytics visitor rows, presence
+ * `currentRoomId`, the member roster) every time someone opens a casino game.
+ *
+ * Only the database-facing domain events are gated on this. The realtime side
+ * of a lobby join is untouched: the socket still joins the channel, still
+ * receives its broadcasts, and Redis presence still counts it.
+ */
+export function isPersistedRoomId(roomId: string): boolean {
+  return UUID_RE.test(roomId);
+}
+
 /**
  * Central connection manager shared by every namespace gateway. Owns:
  *  - handshake JWT authentication (as Socket.IO middleware),
@@ -222,20 +253,26 @@ export class SocketManager {
     client.to(roomId).emit('video_room:member_joined', payload);
     client.to(roomId).emit('room:member_joined', payload);
 
-    // Publish domain events for progression / task evaluation
-    try {
-      await this.bus.publish({
-        name: namespace === '/video-room' ? 'video_room.joined' : 'audio_room.joined',
-        payload: { roomId, userId: user.id, namespace },
-        timestamp: new Date(),
-      } as any);
-      await this.bus.publish({
-        name: 'room.joined',
-        payload: { roomId, userId: user.id, namespace },
-        timestamp: new Date(),
-      } as any);
-    } catch {
-      // non-fatal
+    // Publish domain events for progression / task evaluation.
+    // Only for a room that actually exists in the database — a socket-only
+    // lobby channel has no row for these listeners to read or write, and
+    // handing them one makes every UUID-column query fail (see
+    // `isPersistedRoomId`).
+    if (isPersistedRoomId(roomId)) {
+      try {
+        await this.bus.publish({
+          name: namespace === '/video-room' ? 'video_room.joined' : 'audio_room.joined',
+          payload: { roomId, userId: user.id, namespace },
+          timestamp: new Date(),
+        } as any);
+        await this.bus.publish({
+          name: 'room.joined',
+          payload: { roomId, userId: user.id, namespace },
+          timestamp: new Date(),
+        } as any);
+      } catch {
+        // non-fatal
+      }
     }
 
     return true;
@@ -267,20 +304,22 @@ export class SocketManager {
       const durationSeconds = Math.round(elapsedSinceLast / 1000);
       const totalDurationMs = Date.now() - joinedAt;
 
-      try {
-        await this.bus.publish({
-          name: 'room.duration_updated',
-          payload: {
-            userId: user.id,
-            roomId,
-            durationMinutes,
-            durationSeconds,
-            durationMs: totalDurationMs,
-          },
-          timestamp: new Date(),
-        } as any);
-      } catch {
-        // non-fatal
+      if (isPersistedRoomId(roomId)) {
+        try {
+          await this.bus.publish({
+            name: 'room.duration_updated',
+            payload: {
+              userId: user.id,
+              roomId,
+              durationMinutes,
+              durationSeconds,
+              durationMs: totalDurationMs,
+            },
+            timestamp: new Date(),
+          } as any);
+        } catch {
+          // non-fatal
+        }
       }
     }
   }
@@ -340,14 +379,16 @@ export class SocketManager {
     client.to(roomId).emit('video_room:member_left', payload);
     client.to(roomId).emit('room:member_left', payload);
 
-    try {
-      await this.bus.publish({
-        name: 'audio_room.left',
-        payload: { roomId, userId: user.id },
-        timestamp: new Date(),
-      } as any);
-    } catch {
-      // non-fatal
+    if (isPersistedRoomId(roomId)) {
+      try {
+        await this.bus.publish({
+          name: 'audio_room.left',
+          payload: { roomId, userId: user.id },
+          timestamp: new Date(),
+        } as any);
+      } catch {
+        // non-fatal
+      }
     }
   }
 

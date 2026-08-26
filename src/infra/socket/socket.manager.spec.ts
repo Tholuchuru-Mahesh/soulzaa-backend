@@ -139,3 +139,98 @@ describe('SocketManager — namespace-scoped user targeting', () => {
     });
   });
 });
+
+describe('SocketManager — socket-only lobby channels never raise room domain events', () => {
+  // A real audio room; every persisted room id is a `@db.Uuid` column.
+  const ROOM_UUID = '11111111-1111-4111-8111-111111111111';
+  // The casino's permanent broadcast channels. Socket names only — no DB row.
+  const CASINO_LOBBY = 'greedy_food_global';
+
+  let presence: Record<string, jest.Mock>;
+  let bus: { publish: jest.Mock };
+  let manager: SocketManager;
+
+  function makeClient(userId: string) {
+    return {
+      id: `socket-${userId}`,
+      data: { user: { id: userId, roles: ['USER'] } },
+      join: jest.fn().mockResolvedValue(undefined),
+      leave: jest.fn().mockResolvedValue(undefined),
+      to: jest.fn(() => ({ emit: jest.fn() })),
+    };
+  }
+
+  function publishedNames(): string[] {
+    return bus.publish.mock.calls.map((c) => (c[0] as { name: string }).name);
+  }
+
+  beforeEach(() => {
+    presence = {
+      joinRoom: jest.fn().mockResolvedValue(undefined),
+      leaveRoom: jest.fn().mockResolvedValue(undefined),
+    };
+    bus = { publish: jest.fn().mockResolvedValue(undefined) };
+    manager = new SocketManager(
+      {} as never,
+      presence as never,
+      {} as never,
+      bus as never,
+      {} as never,
+      new Map() as never,
+    );
+  });
+
+  it('publishes the join domain events for a real room', async () => {
+    await manager.joinRoom(makeClient('user-1') as never, ROOM_UUID, '/audio-room');
+
+    expect(publishedNames()).toEqual(
+      expect.arrayContaining(['audio_room.joined', 'room.joined']),
+    );
+  });
+
+  it('publishes NOTHING for a casino lobby channel', async () => {
+    // REGRESSION: `room.joined` is the same event name as
+    // AUDIO_ROOM_EVENTS.JOINED, so publishing it here ran the analytics
+    // visitor insert, the presence `currentRoomId` upsert and the member
+    // roster query against UUID columns with the literal string
+    // 'greedy_food_global' — Postgres: "Error creating UUID ... found `g` at 1".
+    await manager.joinRoom(makeClient('user-1') as never, CASINO_LOBBY, '/casino');
+
+    expect(bus.publish).not.toHaveBeenCalled();
+  });
+
+  it('still joins the socket channel and Redis presence for a lobby', async () => {
+    // The realtime path must be untouched — this is how a casino watcher
+    // receives the host's live ticks.
+    const client = makeClient('user-1');
+    const ok = await manager.joinRoom(client as never, CASINO_LOBBY, '/casino');
+
+    expect(ok).toBe(true);
+    expect(client.join).toHaveBeenCalledWith(CASINO_LOBBY);
+    expect(presence.joinRoom).toHaveBeenCalledWith(CASINO_LOBBY, 'user-1');
+  });
+
+  it('publishes no leave/duration events for a lobby, but still leaves it', async () => {
+    const client = makeClient('user-1');
+    await manager.joinRoom(client as never, CASINO_LOBBY, '/casino');
+    bus.publish.mockClear();
+
+    await manager.leaveRoom(client as never, CASINO_LOBBY, '/casino');
+
+    expect(bus.publish).not.toHaveBeenCalled();
+    expect(client.leave).toHaveBeenCalledWith(CASINO_LOBBY);
+    expect(presence.leaveRoom).toHaveBeenCalledWith(CASINO_LOBBY, 'user-1');
+  });
+
+  it('publishes the leave domain event for a real room', async () => {
+    const client = makeClient('user-1');
+    await manager.joinRoom(client as never, ROOM_UUID, '/audio-room');
+    bus.publish.mockClear();
+
+    await manager.leaveRoom(client as never, ROOM_UUID, '/audio-room');
+
+    expect(publishedNames()).toEqual(
+      expect.arrayContaining(['room.duration_updated', 'audio_room.left']),
+    );
+  });
+});

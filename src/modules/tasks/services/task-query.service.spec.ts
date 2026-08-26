@@ -16,10 +16,11 @@ describe('TaskQueryService.moderatorAssignmentSummary', () => {
     service = new TaskQueryService(prisma as unknown as PrismaService, rewardService);
   });
 
-  it('computes pending as assigned minus completed, and overdue percentage', async () => {
+  it('computes pending as assigned minus completed and in-progress, plus percentages', async () => {
     prisma.moderator_task_assignments.count
       .mockResolvedValueOnce(10) // assigned
       .mockResolvedValueOnce(6) // completed
+      .mockResolvedValueOnce(2) // in progress
       .mockResolvedValueOnce(2); // overdue
 
     const summary = await service.moderatorAssignmentSummary(MODERATOR_ID);
@@ -27,9 +28,11 @@ describe('TaskQueryService.moderatorAssignmentSummary', () => {
     expect(summary).toEqual({
       assigned: 10,
       completed: 6,
-      pending: 4,
+      inProgress: 2,
+      pending: 2,
       overdue: 2,
       overduePercentage: 20,
+      completionPercentage: 60,
     });
   });
 

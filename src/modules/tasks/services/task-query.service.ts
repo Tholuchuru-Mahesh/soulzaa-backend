@@ -285,15 +285,20 @@ export class TaskQueryService {
   async moderatorAssignmentSummary(moderatorId: string): Promise<{
     assigned: number;
     completed: number;
+    inProgress: number;
     pending: number;
     overdue: number;
     overduePercentage: number;
+    completionPercentage: number;
   }> {
     const now = new Date();
 
-    const [assigned, completed, overdue] = await Promise.all([
+    const [assigned, completed, inProgress, overdue] = await Promise.all([
       this.prisma.moderator_task_assignments.count({ where: { moderatorId } }),
       this.prisma.moderator_task_assignments.count({ where: { moderatorId, status: 'COMPLETED' } }),
+      this.prisma.moderator_task_assignments.count({
+        where: { moderatorId, status: 'IN_PROGRESS' },
+      }),
       this.prisma.moderator_task_assignments.count({
         where: {
           moderatorId,
@@ -303,9 +308,21 @@ export class TaskQueryService {
       }),
     ]);
 
-    const pending = assigned - completed;
+    // "Pending" is what is left once completed and in-progress are accounted
+    // for. Overdue is a *derived* view of those open rows, not a separate
+    // bucket, so it is deliberately not subtracted here.
+    const pending = Math.max(0, assigned - completed - inProgress);
     const overduePercentage = assigned > 0 ? Math.round((overdue / assigned) * 100) : 0;
+    const completionPercentage = assigned > 0 ? Math.round((completed / assigned) * 100) : 0;
 
-    return { assigned, completed, pending, overdue, overduePercentage };
+    return {
+      assigned,
+      completed,
+      inProgress,
+      pending,
+      overdue,
+      overduePercentage,
+      completionPercentage,
+    };
   }
 }

@@ -11,7 +11,7 @@ export interface RecordAuditInput {
   moderatorId: string;
   action: PlatformModerationActionType;
   roomType: PlatformRoomType;
-  roomId: string;
+  roomId?: string | null;
   targetUserId?: string;
   reason?: string;
   /** Only meaningful for a WARNING_SENT row — PRIVATE or ROOM-wide broadcast. */

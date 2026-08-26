@@ -32,7 +32,9 @@ export interface BanUserInput {
   targetUserId: string;
   reason: string;
   roomType: PlatformRoomType;
-  originRoomId: string;
+  /// The room the ban was issued from. Null when it did not come from a room —
+  /// e.g. an Official-assigned BAN_USER task the moderator executed.
+  originRoomId?: string | null;
   reportId?: string;
 }
 
@@ -67,7 +69,7 @@ export class PlatformBanService {
       moderatorId: input.moderatorId,
       reason,
       roomType: input.roomType,
-      originRoomId: input.originRoomId,
+      originRoomId: input.originRoomId ?? null,
       reportId: input.reportId ?? null,
       expiresAt,
     });
@@ -117,7 +119,7 @@ export class PlatformBanService {
       moderatorId: input.moderatorId,
       action: 'BAN_ISSUED',
       roomType: input.roomType,
-      roomId: input.originRoomId,
+      roomId: input.originRoomId ?? null,
       targetUserId: input.targetUserId,
       reason,
     });

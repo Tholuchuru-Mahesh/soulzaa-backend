@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -16,6 +18,7 @@ import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { RbacPermissionsGuard } from 'src/modules/authorization/guards/rbac-permissions.guard';
 import { AuditLogInterceptor } from 'src/modules/authorization/interceptors/audit-log.interceptor';
 import {
+  AssignTaskToModeratorDto,
   ClaimTaskRewardDto,
   CreateMissionDto,
   CreateTaskDto,
@@ -23,6 +26,10 @@ import {
   UpdateTaskConfigurationDto,
   UpdateTaskDto,
   UpdateTaskStatusDto,
+  UpdateAssignmentStatusDto,
+  UpdateAssignmentProgressDto,
+  VerifyBanTargetDto,
+  ExecuteBanTaskDto,
 } from '../dto/task.dto';
 import { MissionProgressService } from '../services/mission-progress.service';
 import { MissionService } from '../services/mission.service';
@@ -155,8 +162,47 @@ export class TaskController {
   @Get('moderator/my-assignments')
   @RequirePermissions('task.view.assigned')
   @ApiOperation({ summary: 'Moderator fetches tasks assigned to them' })
+  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'] })
   async myAssignments(@CurrentUser() user: any, @Query('status') status?: string) {
     return this.moderatorAssignmentService.getModeratorAssignments(user.id, status);
+  }
+
+  @Get('workforce/assignments')
+  @RequirePermissions('task.assignment.oversight')
+  @ApiOperation({
+    summary: 'Admin/Super Admin oversight of every official-to-moderator assignment',
+    description:
+      'Unrestricted roles see the whole platform; an Official sees only assignments held by moderators inside their geographic scope.',
+  })
+  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'] })
+  async workforceAssignments(@CurrentUser() user: any, @Query('status') status?: string) {
+    return this.moderatorAssignmentService.getOversightAssignments(user.id, status);
+  }
+
+  @Get('official/assignable-moderators')
+  @RequirePermissions('task.assign.moderator')
+  @ApiOperation({ summary: 'Moderators the current official may assign work to' })
+  @ApiQuery({ name: 'search', required: false })
+  async assignableModerators(@CurrentUser() user: any, @Query('search') search?: string) {
+    return this.moderatorAssignmentService.getAssignableModerators(user.id, search);
+  }
+
+  @Get('official/lookup-user')
+  @RequirePermissions('task.assign.moderator')
+  @ApiOperation({
+    summary: 'Resolve a ban target by user ID or username, within the Official scope',
+  })
+  @ApiQuery({ name: 'q', required: true, description: 'User ID (uuid) or exact username' })
+  async lookupBanCandidate(@CurrentUser() user: any, @Query('q') q: string) {
+    return this.moderatorAssignmentService.lookupBanCandidate(user.id, q ?? '');
+  }
+
+  @Get('official/assigned-by-me')
+  @RequirePermissions('task.assign.moderator')
+  @ApiOperation({ summary: 'Tasks the current official has assigned, with live moderator status' })
+  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'] })
+  async assignedByMe(@CurrentUser() user: any, @Query('status') status?: string) {
+    return this.moderatorAssignmentService.getAssignedBy(user.id, status);
   }
 
   @Get('moderator/my-assignments/summary')
@@ -168,12 +214,69 @@ export class TaskController {
     return this.queryService.moderatorAssignmentSummary(user.id);
   }
 
+  @Post('moderator/assignments/:assignmentId/verify-target')
+  @RequirePermissions('task.view.assigned')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Moderator verifies the user their BAN_USER task targets',
+    description:
+      'Rejects an id other than the one the Official pinned to the task, and refuses a user outside the moderator region. Both checks are server-side.',
+  })
+  async verifyBanTarget(
+    @Param('assignmentId') assignmentId: string,
+    @Body() dto: VerifyBanTargetDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.moderatorAssignmentService.resolveBanTarget(assignmentId, user.id, dto.userId);
+  }
+
+  @Post('moderator/assignments/:assignmentId/execute-ban')
+  @RequirePermissions('task.view.assigned')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Moderator bans the task target, completing the task',
+    description:
+      'Delegates to the same PlatformBanService the in-room Individual Ban uses, then completes this assignment and notifies the assigning Official.',
+  })
+  async executeBanTask(
+    @Param('assignmentId') assignmentId: string,
+    @Body() dto: ExecuteBanTaskDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.moderatorAssignmentService.executeBanTask(
+      assignmentId,
+      user.id,
+      dto.reason,
+      dto.userId,
+    );
+  }
+
+  @Patch('moderator/assignments/:assignmentId/progress')
+  @RequirePermissions('task.view.assigned')
+  @ApiOperation({
+    summary: 'Moderator records progress against the target (e.g. 50 of 100)',
+    description:
+      'Progress is persisted on the shared assignment row, so the assigning Official sees the same number. Reaching the target completes the task and notifies the Official.',
+  })
+  async updateAssignmentProgress(
+    @Param('assignmentId') assignmentId: string,
+    @Body() dto: UpdateAssignmentProgressDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.moderatorAssignmentService.updateProgress(
+      assignmentId,
+      user.id,
+      dto.currentProgress,
+      dto.remarks,
+    );
+  }
+
   @Patch('moderator/assignments/:assignmentId')
   @RequirePermissions('task.view.assigned')
   @ApiOperation({ summary: 'Moderator updates assignment status (IN_PROGRESS / COMPLETED)' })
   async updateAssignmentStatus(
     @Param('assignmentId') assignmentId: string,
-    @Body() dto: { status: 'IN_PROGRESS' | 'COMPLETED' },
+    @Body() dto: UpdateAssignmentStatusDto,
     @CurrentUser() user: any,
   ) {
     return this.moderatorAssignmentService.updateAssignmentStatus(
@@ -314,14 +417,21 @@ export class TaskController {
   async assignToModerator(
     @Param('id') taskId: string,
     @Param('moderatorId') moderatorId: string,
-    @Body() dto: { dueAt?: string; notes?: string },
+    @Body() dto: AssignTaskToModeratorDto,
     @CurrentUser() user: any,
   ) {
     return this.moderatorAssignmentService.assignTask({
       taskId,
       moderatorId,
       assignedBy: user.id,
+      startDate: dto.startDate ? new Date(dto.startDate) : undefined,
       dueAt: dto.dueAt ? new Date(dto.dueAt) : undefined,
+      targetCount: dto.targetCount,
+      priority: dto.priority,
+      taskType: dto.taskType,
+      targetUserId: dto.targetUserId,
+      targetUserIds: dto.targetUserIds,
+      banReason: dto.banReason,
       notes: dto.notes,
     });
   }

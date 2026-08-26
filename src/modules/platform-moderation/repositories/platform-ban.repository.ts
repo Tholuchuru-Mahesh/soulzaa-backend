@@ -8,7 +8,8 @@ export interface CreatePlatformBanInput {
   moderatorId: string;
   reason: string;
   roomType: PlatformRoomType;
-  originRoomId: string;
+  /// Null for a ban with no originating room (e.g. a BAN_USER task).
+  originRoomId?: string | null;
   reportId?: string | null;
   expiresAt: Date;
 }

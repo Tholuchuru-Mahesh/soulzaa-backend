@@ -714,6 +714,19 @@ describe('GamesService', () => {
         service.relayMove(ACTOR, 'sess-1', { action: 'roll_dice' }),
       ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_SESSION_NOT_ACTIVE });
     });
+
+    // The broadcast is what a spectator applies live; without the revision it
+    // cannot tell whether the HTTP snapshot it is waiting on is older or newer
+    // than this event, which is exactly how a stale snapshot rewinds a board.
+    it('publishes the resulting revision on the relayed move event', async () => {
+      await service.relayMove(ACTOR, 'sess-1', { action: 'roll_dice', value: 6, seat: 0 });
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'game.move',
+          payload: expect.objectContaining({ rev: 1 }),
+        }),
+      );
+    });
   });
 
   describe('reportMatchResult', () => {
@@ -833,6 +846,51 @@ describe('GamesService', () => {
       await expect(service.getLiveState(ACTOR, 'nope')).rejects.toMatchObject({
         errorCode: ERROR_CODES.GAME_SESSION_NOT_FOUND,
       });
+    });
+
+    // A late-joining spectator restores its board from this payload while live
+    // moves are already arriving on the socket. It needs `rev` to order the two
+    // against each other, and `seatOrder` to know which seats have left the
+    // match (a forfeit removes a seat without logging a move frame).
+    it('carries the revision and the live seat order for a late-join snapshot', async () => {
+      cache.get.mockImplementation((key: string) =>
+        Promise.resolve(
+          key.startsWith('game:live:')
+            ? {
+                rev: 42,
+                currentTurnUserId: P2,
+                turnStartedAt: Date.now(),
+                turnSeconds: 30,
+                seatOrder: [HOST, P2],
+                moves: [],
+                isOver: false,
+                timeoutCounts: {},
+              }
+            : null,
+        ),
+      );
+      const res = (await service.getLiveState(ACTOR, 'sess-1')) as Record<string, unknown>;
+      expect(res).toMatchObject({ rev: 42, seatOrder: [HOST, P2], currentTurnUserId: P2 });
+    });
+
+    it('reports rev 0 for a session that predates the field', async () => {
+      cache.get.mockImplementation((key: string) =>
+        Promise.resolve(
+          key.startsWith('game:live:')
+            ? {
+                currentTurnUserId: HOST,
+                turnStartedAt: Date.now(),
+                turnSeconds: 30,
+                seatOrder: [HOST, P2],
+                moves: [],
+                isOver: false,
+                timeoutCounts: {},
+              }
+            : null,
+        ),
+      );
+      const res = (await service.getLiveState(ACTOR, 'sess-1')) as Record<string, unknown>;
+      expect(res.rev).toBe(0);
     });
   });
 
@@ -1908,6 +1966,191 @@ describe('GamesService', () => {
       // Resolved ONCE, batched, with only the human id — bots are never looked up.
       expect(profiles.resolvePublicIdentities).toHaveBeenCalledTimes(1);
       expect(profiles.resolvePublicIdentities).toHaveBeenCalledWith([HOST]);
+    });
+  });
+  /**
+   * "The host left and the game froze."
+   *
+   * Bot seats are driven exclusively by the host — the client only schedules a
+   * bot's move when `myUserId == session.hostId`, and `relayMove(onBehalfOf)`
+   * rejects anyone else with GAME_NOT_HOST. So the instant the host stops
+   * being an active player, every bot on the board stops moving and each of
+   * their turns costs a full turn-watchdog cycle before it is force-skipped.
+   * The host role has to follow the match, not the person who opened it.
+   */
+  describe('host handover', () => {
+    const BOT_A = '77777777-7777-7777-7777-777777777777';
+    const P3 = '33333333-3333-3333-3333-333333333333';
+
+    it('hands the host role to a remaining human when the host forfeits', async () => {
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('p2', P2),
+        participant('p3', P3),
+      ]);
+      repo.getParticipant.mockResolvedValue(participant('p1', HOST));
+
+      await service.forfeit(ACTOR, 'sess-1');
+
+      expect(repo.updateSessionHost).toHaveBeenCalledWith('sess-1', expect.any(String));
+      const [, newHost] = repo.updateSessionHost.mock.calls[0] as [string, string];
+      expect([P2, P3]).toContain(newHost);
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'game.host_changed',
+          payload: expect.objectContaining({ sessionId: 'sess-1', hostId: newHost }),
+        }),
+      );
+    });
+
+    it('never hands the host role to a bot — a bot has no client to drive one', async () => {
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('pb', BOT_A, { isBot: true }),
+        participant('p2', P2),
+      ]);
+      repo.getParticipant.mockResolvedValue(participant('p1', HOST));
+
+      await service.forfeit(ACTOR, 'sess-1');
+
+      const [, newHost] = repo.updateSessionHost.mock.calls[0] as [string, string];
+      expect(newHost).toBe(P2);
+    });
+
+    it('leaves the host alone when a NON-host forfeits', async () => {
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('p2', P2),
+        participant('p3', P3),
+      ]);
+      repo.getParticipant.mockResolvedValue(participant('p2', P2));
+
+      await service.forfeit({ id: P2, roles: ['USER'] }, 'sess-1');
+
+      expect(repo.updateSessionHost).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * "The host who created the room isn't playing and the game gets stuck."
+   *
+   * A room ownership transfer used to point the SESSION host at the new room
+   * owner unconditionally — someone who may not be in the match at all. The
+   * host role then sits on a person with no board: nobody drives the bots and
+   * nobody can report the result.
+   */
+  describe('repointRoomGameHost — the session host must be a player', () => {
+    const OUTSIDER = '88888888-8888-8888-8888-888888888888';
+
+    it('does NOT hand the session host to a new room owner who is not playing', async () => {
+      repo.findActiveSessionForRoom.mockResolvedValue(session({ roomId: 'room-1' }));
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('p2', P2),
+      ]);
+
+      await service.repointRoomGameHost('room-1', OUTSIDER);
+
+      const sessionHostCalls = repo.updateSessionHost.mock.calls as Array<[string, string]>;
+      for (const [, hostId] of sessionHostCalls) {
+        expect(hostId).not.toBe(OUTSIDER);
+      }
+    });
+
+    it('keeps the current host when they are still playing', async () => {
+      repo.findActiveSessionForRoom.mockResolvedValue(session({ roomId: 'room-1' }));
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('p2', P2),
+      ]);
+
+      await service.repointRoomGameHost('room-1', OUTSIDER);
+
+      expect(repo.updateSessionHost).not.toHaveBeenCalled();
+    });
+
+    it('repoints to a playing human when the current host is no longer active', async () => {
+      repo.findActiveSessionForRoom.mockResolvedValue(session({ roomId: 'room-1' }));
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST, { status: GameParticipantStatus.LOST }),
+        participant('p2', P2),
+      ]);
+
+      await service.repointRoomGameHost('room-1', OUTSIDER);
+
+      expect(repo.updateSessionHost).toHaveBeenCalledWith('sess-1', P2);
+    });
+
+    it('still hands the new owner the LOBBY host (they must be able to start it)', async () => {
+      repo.findActiveSessionForRoom.mockResolvedValue(null);
+      repo.findOpenLobbyForRoom.mockResolvedValue(lobby({ roomId: 'room-1' }));
+
+      await service.repointRoomGameHost('room-1', OUTSIDER);
+
+      expect(repo.updateLobbyHost).toHaveBeenCalledWith('lobby-1', OUTSIDER);
+    });
+  });
+
+  /**
+   * "The last player exited and everyone still in the room saw a frozen board."
+   *
+   * `remaining` counted BOTS as players, so the last human leaving handed the
+   * match to a table of bots: no client drives them, nobody can report a
+   * winner, and it sat there until the 15-minute stale-session sweep. A match
+   * with no humans left in it is over.
+   */
+  describe('forfeit — a bot-only remainder ends the match', () => {
+    const BOT_A = '77777777-7777-7777-7777-777777777777';
+    const BOT_B = '66666666-6666-6666-6666-666666666666';
+
+    it('ENDS the match when the last human leaves a table of bots', async () => {
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('pb1', BOT_A, { stake: 0n, isBot: true }),
+        participant('pb2', BOT_B, { stake: 0n, isBot: true }),
+      ]);
+      repo.getParticipant.mockResolvedValue(participant('p1', HOST));
+
+      await service.forfeit(ACTOR, 'sess-1');
+
+      // Whether it settles or refunds depends on the stake — a staked pot with
+      // no human winner is refunded (`settleToHumanWinners`), a friendly one
+      // settles. What matters here is that it does NOT keep running.
+      const ended = bus.publish.mock.calls.some(([e]) =>
+        ['game.settled', 'game.cancelled'].includes((e as { name: string }).name),
+      );
+      expect(ended).toBe(true);
+    });
+
+    it('refunds rather than paying a pot out to a bot', async () => {
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('pb1', BOT_A, { stake: 0n, isBot: true }),
+        participant('pb2', BOT_B, { stake: 0n, isBot: true }),
+      ]);
+      repo.getParticipant.mockResolvedValue(participant('p1', HOST));
+
+      await service.forfeit(ACTOR, 'sess-1');
+
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.cancelled' }),
+      );
+    });
+
+    it('continues normally while another HUMAN is still playing', async () => {
+      repo.listParticipants.mockResolvedValue([
+        participant('p1', HOST),
+        participant('p2', P2),
+        participant('pb1', BOT_A, { stake: 0n, isBot: true }),
+      ]);
+      repo.getParticipant.mockResolvedValue(participant('p1', HOST));
+
+      const res = (await service.forfeit(ACTOR, 'sess-1')) as Record<string, unknown>;
+
+      expect(res).toMatchObject({ forfeitedBy: HOST });
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'game.settled' }),
+      );
     });
   });
 });
