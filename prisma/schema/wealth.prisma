@@ -1,0 +1,291 @@
+// ============================================================
+// Wealth Level (VIP) system — the ONLY VIP progression system.
+//
+// Progression is monthly and driven 1:1 by verified Gold Coin purchase
+// credit (paid + bonus coins). See:
+//   - WealthExpLedger    append-only ledger, exactly-once via idempotencyKey
+//   - WealthUserProgress current month's live state (EXP + effective level)
+//   - WealthMonthlyHistory / WealthMonthlyResetRun  idempotent monthly rollover
+//   - WealthDowngradeConfig  Super-Admin-controlled downgrade policy
+// Replaces the legacy `vip.prisma` schema entirely.
+// ============================================================
+
+/// The 13 Wealth Level tiers (Normal User=0 .. Immortal=12).
+model WealthLevel {
+  id           String   @id @default(uuid()) @db.Uuid
+  level        Int      @unique
+  name         String
+  expThreshold BigInt   @default(0)
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  /// Super-Admin-uploaded badge/icon art for this level (stored S3 key,
+  /// resolved to a servable URL in API responses — see MediaUrlResolver).
+  iconUrl      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  benefits WealthLevelBenefit[]
+  rewards  WealthLevelReward[]
+
+  @@index([isActive])
+  @@map("wealth_levels")
+}
+
+/// Per-level cosmetic/visual benefit configuration. Benefits are cumulative:
+/// a user at level N holds every active benefit for levels 0..N.
+model WealthLevelBenefit {
+  id          String            @id @default(uuid()) @db.Uuid
+  level       Int
+  levelRef    WealthLevel       @relation(fields: [level], references: [level], onDelete: Cascade)
+  benefitType WealthBenefitType
+  config      Json              @default("{}")
+  isActive    Boolean           @default(true)
+  /// Super-Admin-uploaded icon art for this benefit (stored S3 key, resolved
+  /// to a servable URL in API responses — see MediaUrlResolver).
+  iconUrl     String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([level])
+  @@index([isActive])
+  @@map("wealth_level_benefits")
+}
+
+/// Per-level reward configuration (automatic or claimable, one-time/daily/weekly/monthly).
+model WealthLevelReward {
+  id          String                @id @default(uuid()) @db.Uuid
+  level       Int
+  levelRef    WealthLevel           @relation(fields: [level], references: [level], onDelete: Cascade)
+  rewardType  WealthRewardType
+  rewardValue Json                  @default("{}")
+  frequency   WealthRewardFrequency @default(ONE_TIME)
+  grantType   WealthRewardGrantType @default(AUTOMATIC)
+  isActive    Boolean               @default(true)
+  startAt     DateTime?
+  endAt       DateTime?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  claims WealthRewardClaim[]
+
+  @@index([level])
+  @@index([isActive])
+  @@map("wealth_level_rewards")
+}
+
+/// One grant/claim of a level reward for a user in a given period. The unique
+/// constraint is the sole guard against duplicate grants/claims (double click,
+/// retry, concurrent request) — never granted twice for the same
+/// (userId, rewardId, periodKey).
+model WealthRewardClaim {
+  id        String            @id @default(uuid()) @db.Uuid
+  userId    String            @db.Uuid
+  rewardId  String            @db.Uuid
+  reward    WealthLevelReward @relation(fields: [rewardId], references: [id], onDelete: Cascade)
+  /// Dedupe scope: a calendar date (DAILY), ISO week (WEEKLY), "YYYY-MM" (MONTHLY),
+  /// or the literal "LIFETIME" (ONE_TIME).
+  periodKey String
+  status    WealthClaimStatus @default(GRANTED)
+  grantedAt DateTime          @default(now())
+  claimedAt DateTime?
+
+  @@unique([userId, rewardId, periodKey])
+  @@index([userId])
+  @@map("wealth_reward_claims")
+}
+
+/// Current month's live state — one row per user. `currentLevel` is the
+/// *effective* level: max(downgrade floor for this month, level derived from
+/// currentExp). Reset to a new floor + currentExp=0 at each monthly rollover.
+model WealthUserProgress {
+  userId       String   @id @db.Uuid
+  currentExp   BigInt   @default(0)
+  currentLevel Int      @default(0)
+  /// Month this progress belongs to, "YYYY-MM".
+  periodKey    String
+  updatedAt    DateTime @updatedAt
+
+  @@index([periodKey])
+  @@index([currentLevel])
+  @@map("wealth_user_progress")
+}
+
+/// Append-only, immutable EXP ledger. The ONLY way EXP ever changes.
+/// `idempotencyKey` is the exactly-once guard for purchase-driven awards.
+model WealthExpLedger {
+  id             String              @id @default(uuid()) @db.Uuid
+  userId         String              @db.Uuid
+  direction      WealthExpDirection
+  amount         BigInt
+  sourceType     WealthExpSourceType
+  /// The purchase/order id (or original ledger entry id for a REVERSAL).
+  sourceRef      String
+  idempotencyKey String              @unique
+  /// Month this EXP is attributed to, "YYYY-MM".
+  periodKey      String
+  metadata       Json?
+  createdAt      DateTime            @default(now())
+
+  @@index([userId, createdAt])
+  @@index([periodKey])
+  @@index([sourceRef])
+  @@map("wealth_exp_ledger")
+}
+
+/// End-of-month snapshot per user. The unique constraint doubles as the
+/// per-user idempotency guard for the monthly reset job.
+model WealthMonthlyHistory {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @db.Uuid
+  periodKey         String
+  startingLevel     Int
+  finalExp          BigInt
+  finalLevel        Int
+  downgradedToLevel Int?
+  createdAt         DateTime @default(now())
+
+  @@unique([userId, periodKey])
+  @@index([periodKey])
+  @@map("wealth_monthly_history")
+}
+
+/// Batch-level idempotency/observability for the monthly reset job — a re-run
+/// for an already-COMPLETED periodKey is a no-op.
+model WealthMonthlyResetRun {
+  id             String               @id @default(uuid()) @db.Uuid
+  periodKey      String               @unique
+  status         WealthResetRunStatus @default(RUNNING)
+  startedAt      DateTime             @default(now())
+  completedAt    DateTime?
+  usersProcessed Int                  @default(0)
+  createdAt      DateTime             @default(now())
+
+  @@map("wealth_monthly_reset_runs")
+}
+
+/// Super-Admin-controlled downgrade policy. Multiple rows support scheduling a
+/// future policy change; the active row is the one with the latest
+/// `effectiveFrom` <= now that hasn't passed `effectiveTo`.
+model WealthDowngradeConfig {
+  id                 String                @id @default(uuid()) @db.Uuid
+  enabled            Boolean               @default(true)
+  maxDowngradeLevels Int                   @default(1)
+  minLevel           Int                   @default(0)
+  policy             WealthDowngradePolicy @default(STANDARD)
+  effectiveFrom      DateTime              @default(now())
+  effectiveTo        DateTime?
+  updatedBy          String?               @db.Uuid
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  @@index([effectiveFrom])
+  @@map("wealth_downgrade_config")
+}
+
+/// Generic key/value configuration for the Wealth Level module.
+model WealthConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     Json
+  updatedBy String?  @db.Uuid
+  updatedAt DateTime @updatedAt
+
+  @@map("wealth_configuration")
+}
+
+/// Operational audit trail for every Super Admin configuration change
+/// (levels, benefits, rewards, downgrade policy, general configuration).
+model WealthAudit {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String   @db.Uuid
+  action     String
+  entityType String
+  entityId   String?
+  oldValue   Json?
+  newValue   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@map("wealth_audit")
+}
+
+enum WealthBenefitType {
+  BADGE
+  PROFILE_FRAME
+  AVATAR_EFFECT
+  AVATAR_RING
+  CHAT_BUBBLE
+  CHAT_EFFECT
+  CHAT_HIGHLIGHT
+  ROOM_EFFECT
+  GIFT_EFFECT
+  THEME
+  PROFILE_THEME
+  ANIMATION
+  ENTRANCE_ANIMATION
+  PROFILE_STYLE
+  THEME_SLOTS
+  CUSTOM_GIFT_CREATOR
+  VISITOR_HISTORY
+  STICKER_PACK
+  ANONYMOUS_ENTRY
+  ANONYMOUS_GIFT
+  MIC_PRIORITY
+  VOICE_EFFECT
+  SUPPORT_PRIORITY
+  PROFILE_SHOWCASE
+  EVENT_ACCESS
+  VIP_HALL
+  RELATIONSHIP_MANAGER
+  FEATURE_ACCESS
+  RECOGNITION
+  OTHER
+}
+
+enum WealthRewardType {
+  GOLD_COINS
+  COSMETIC
+  BADGE
+  PROFILE_FRAME
+  OTHER
+}
+
+enum WealthRewardFrequency {
+  ONE_TIME
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum WealthRewardGrantType {
+  AUTOMATIC
+  CLAIMABLE
+}
+
+enum WealthClaimStatus {
+  GRANTED
+  CLAIMED
+}
+
+enum WealthExpDirection {
+  AWARD
+  REVERSAL
+}
+
+enum WealthExpSourceType {
+  GOLD_COIN_PURCHASE
+  PURCHASE_REVERSAL
+  ADMIN_ADJUSTMENT
+}
+
+enum WealthResetRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum WealthDowngradePolicy {
+  STANDARD
+}

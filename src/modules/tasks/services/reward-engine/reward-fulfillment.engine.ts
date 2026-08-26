@@ -307,6 +307,8 @@ export class RewardFulfillmentEngine {
       }
       await this.publishSilent('backpack.item_granted', { userId });
       await this.publishSilent('user.profile_updated', { userId });
+    }
+
     // 5. Dispatch Virtual Gifts
     const giftItems = normalizedItems.filter((i) => i.type === 'GIFT');
     if (giftItems.length > 0) {
