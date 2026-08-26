@@ -195,7 +195,11 @@ function buildGiftService(m: Mocks): GiftService {
     m.queue as unknown as QueueService,
     m.prisma as unknown as PrismaService,
     m.locks as unknown as LockService,
-    { resolve: jest.fn().mockImplementation((k: string) => Promise.resolve(`https://cdn.example.com/${k}`)) } as never,
+    {
+      resolve: jest
+        .fn()
+        .mockImplementation((k: string) => Promise.resolve(`https://cdn.example.com/${k}`)),
+    } as never,
     m.bus,
     m.wallet as unknown as IWalletService,
     m.wealth as unknown as IWealthService,

@@ -51,9 +51,18 @@ describe('WealthExpReversalListener', () => {
   });
 
   it.each([
-    ['a non-PURCHASE_REVERSAL reason (e.g. an ordinary debit)', { reason: WalletTxnReason.GIFT_SEND, currency: WalletCurrency.GOLD, amount: 100 }],
-    ['a non-GOLD currency', { reason: WalletTxnReason.PURCHASE_REVERSAL, currency: WalletCurrency.DIAMOND, amount: 100 }],
-    ['a zero amount', { reason: WalletTxnReason.PURCHASE_REVERSAL, currency: WalletCurrency.GOLD, amount: 0 }],
+    [
+      'a non-PURCHASE_REVERSAL reason (e.g. an ordinary debit)',
+      { reason: WalletTxnReason.GIFT_SEND, currency: WalletCurrency.GOLD, amount: 100 },
+    ],
+    [
+      'a non-GOLD currency',
+      { reason: WalletTxnReason.PURCHASE_REVERSAL, currency: WalletCurrency.DIAMOND, amount: 100 },
+    ],
+    [
+      'a zero amount',
+      { reason: WalletTxnReason.PURCHASE_REVERSAL, currency: WalletCurrency.GOLD, amount: 0 },
+    ],
   ])('ignores %s', (_label, partial) => {
     handler({
       payload: {

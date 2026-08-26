@@ -1,10 +1,17 @@
 import { PostScoreListener } from './post-score.listener';
-import { POST_EVENTS, PostCommentDeletedEvent, PostLikedEvent, PostCommentedEvent } from '../events/post.events';
+import {
+  POST_EVENTS,
+  PostCommentDeletedEvent,
+  PostLikedEvent,
+  PostCommentedEvent,
+} from '../events/post.events';
 
 describe('PostScoreListener', () => {
   function build() {
     const handlers = new Map<string, (e: unknown) => unknown>();
-    const bus = { subscribe: jest.fn((name: string, fn: (e: unknown) => unknown) => handlers.set(name, fn)) };
+    const bus = {
+      subscribe: jest.fn((name: string, fn: (e: unknown) => unknown) => handlers.set(name, fn)),
+    };
     const prisma = { post: { update: jest.fn() } };
     const scoring = { computeScore: jest.fn().mockReturnValue(4.2) };
     const listener = new PostScoreListener(bus as any, prisma as any, scoring as any);
@@ -27,7 +34,10 @@ describe('PostScoreListener', () => {
       where: { id: 'p1' },
       data: { likeCount: { increment: 1 }, commentCount: { increment: 0 } },
     });
-    expect(prisma.post.update).toHaveBeenNthCalledWith(2, { where: { id: 'p1' }, data: { score: 4.2 } });
+    expect(prisma.post.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'p1' },
+      data: { score: 4.2 },
+    });
     expect(scoring.computeScore).toHaveBeenCalledWith(3, 0, expect.any(Date));
   });
 

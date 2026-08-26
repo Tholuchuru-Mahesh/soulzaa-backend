@@ -15,7 +15,10 @@ import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import { QueueService } from 'src/infra/queue/queue.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import { EXP_SERVICE, type IExpService } from 'src/modules/exp/interfaces/exp.service.interface';
-import { WEALTH_SERVICE, type IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
+import {
+  WEALTH_SERVICE,
+  type IWealthService,
+} from 'src/modules/wealth/interfaces/wealth.service.interface';
 import {
   eventClaimLockKey,
   type EventEligibility,

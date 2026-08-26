@@ -133,7 +133,10 @@ export class WealthAdminController {
   @Put('downgrade-config')
   @RequirePermissions('wealth.level.downgrade.manage')
   @ApiOperation({ summary: 'Update the monthly downgrade policy (SUPER_ADMIN only)' })
-  updateDowngradeConfig(@CurrentUser('id') actorId: string, @Body() dto: UpdateWealthDowngradeConfigDto) {
+  updateDowngradeConfig(
+    @CurrentUser('id') actorId: string,
+    @Body() dto: UpdateWealthDowngradeConfigDto,
+  ) {
     return this.downgrade.update(actorId, {
       enabled: dto.enabled,
       maxDowngradeLevels: dto.maxDowngradeLevels,
@@ -153,7 +156,10 @@ export class WealthAdminController {
   @Put('configuration')
   @RequirePermissions('wealth.configuration.manage')
   @ApiOperation({ summary: 'Update general Wealth Level configuration (SUPER_ADMIN only)' })
-  updateConfiguration(@CurrentUser('id') actorId: string, @Body() dto: UpdateWealthConfigurationDto) {
+  updateConfiguration(
+    @CurrentUser('id') actorId: string,
+    @Body() dto: UpdateWealthConfigurationDto,
+  ) {
     return this.admin.updateConfiguration(actorId, dto.key, dto.value);
   }
 

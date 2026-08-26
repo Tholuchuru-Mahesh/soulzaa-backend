@@ -44,16 +44,12 @@ export class WealthNotificationListener implements OnModuleInit {
     );
 
     this.bus.subscribe<WealthDowngradedEvent>(WEALTH_EVENTS.DOWNGRADED, (e) =>
-      this.emit(
-        e.payload.userId,
-        `wealth:downgraded:${e.payload.userId}:${e.payload.periodKey}`,
-        {
-          type: NotificationType.WEALTH_LEVEL_DOWNGRADED,
-          title: 'Wealth Level adjusted',
-          body: `Your level moved from ${e.payload.fromLevel} to ${e.payload.toLevel} this month`,
-          data: { fromLevel: e.payload.fromLevel, toLevel: e.payload.toLevel },
-        },
-      ),
+      this.emit(e.payload.userId, `wealth:downgraded:${e.payload.userId}:${e.payload.periodKey}`, {
+        type: NotificationType.WEALTH_LEVEL_DOWNGRADED,
+        title: 'Wealth Level adjusted',
+        body: `Your level moved from ${e.payload.fromLevel} to ${e.payload.toLevel} this month`,
+        data: { fromLevel: e.payload.fromLevel, toLevel: e.payload.toLevel },
+      }),
     );
 
     this.bus.subscribe<WealthMonthlyResetEvent>(WEALTH_EVENTS.MONTHLY_RESET, (e) =>

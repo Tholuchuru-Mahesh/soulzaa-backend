@@ -1,4 +1,14 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { WealthLevel } from '@prisma/client';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
@@ -59,7 +69,9 @@ export class WealthController {
 
   @Get('users/:userId')
   @RequirePermissions('wealth.view')
-  @ApiOperation({ summary: "Get another user's Wealth Level status for this month (in-room badges, PK panels)" })
+  @ApiOperation({
+    summary: "Get another user's Wealth Level status for this month (in-room badges, PK panels)",
+  })
   getUserStatus(@Param('userId') userId: string) {
     return this.progress.getStatus(userId);
   }
@@ -81,7 +93,9 @@ export class WealthController {
 
   @Get('levels/:level/benefits')
   @RequirePermissions('wealth.view')
-  @ApiOperation({ summary: 'Cumulative benefits at a given level (0..level), for the All Levels detail view' })
+  @ApiOperation({
+    summary: 'Cumulative benefits at a given level (0..level), for the All Levels detail view',
+  })
   async getLevelBenefits(
     @Param('level', ParseIntPipe) level: number,
     @CurrentUser() user: AuthenticatedUser,
@@ -91,7 +105,9 @@ export class WealthController {
 
   @Get('levels/:level/rewards')
   @RequirePermissions('wealth.view')
-  @ApiOperation({ summary: 'Rewards available at a given level (0..level), for the All Levels detail view' })
+  @ApiOperation({
+    summary: 'Rewards available at a given level (0..level), for the All Levels detail view',
+  })
   getLevelRewards(@Param('level', ParseIntPipe) level: number) {
     return this.rewards.listAvailableForLevel(level);
   }
@@ -101,7 +117,9 @@ export class WealthController {
   @ApiOperation({ summary: 'Get current user cumulative Wealth Level benefits' })
   async getBenefits(@CurrentUser() user: AuthenticatedUser): Promise<WealthBenefitView[]> {
     const status = await this.progress.getStatus(user.id);
-    return this.resolveBenefitIcons(await this.benefits.getBenefitsUpToLevel(status.level, user.id));
+    return this.resolveBenefitIcons(
+      await this.benefits.getBenefitsUpToLevel(status.level, user.id),
+    );
   }
 
   @Post('benefits/:id/equip')
@@ -109,8 +127,8 @@ export class WealthController {
   @RequirePermissions('wealth.view')
   @ApiOperation({
     summary:
-      "Equip an unlocked display benefit (badge/frame/ring/theme). Grants the underlying " +
-      'cosmetic into the user\'s inventory first if needed (idempotent), then equips it.',
+      'Equip an unlocked display benefit (badge/frame/ring/theme). Grants the underlying ' +
+      "cosmetic into the user's inventory first if needed (idempotent), then equips it.",
   })
   async equipBenefit(@CurrentUser() user: AuthenticatedUser, @Param('id') benefitId: string) {
     const status = await this.progress.getStatus(user.id);

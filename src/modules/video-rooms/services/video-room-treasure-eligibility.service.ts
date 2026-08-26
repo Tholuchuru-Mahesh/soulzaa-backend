@@ -1,6 +1,9 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { REDIS_CLIENT, type RedisClient } from 'src/infra/redis/redis.constants';
-import { WEALTH_SERVICE, type IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
+import {
+  WEALTH_SERVICE,
+  type IWealthService,
+} from 'src/modules/wealth/interfaces/wealth.service.interface';
 import { treasureActivityKey } from '../constants/video-room-treasure.constants';
 import {
   videoRoomHostsKey,

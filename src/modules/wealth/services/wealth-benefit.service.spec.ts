@@ -13,15 +13,22 @@ describe('WealthBenefitService', () => {
 
   beforeEach(() => {
     repo = {
-      listBenefits: jest.fn().mockResolvedValue([
-        benefit(0, 'normal-badge'),
-        benefit(1, 'prestige-badge'),
-        benefit(2, 'rise-badge'),
-        benefit(3, 'nova-badge'),
-        benefit(4, 'elite-badge'),
-      ]),
+      listBenefits: jest
+        .fn()
+        .mockResolvedValue([
+          benefit(0, 'normal-badge'),
+          benefit(1, 'prestige-badge'),
+          benefit(2, 'rise-badge'),
+          benefit(3, 'nova-badge'),
+          benefit(4, 'elite-badge'),
+        ]),
     };
-    cosmetics = { grantToUser: jest.fn(), equip: jest.fn(), unequip: jest.fn(), isEquipped: jest.fn().mockResolvedValue(false) };
+    cosmetics = {
+      grantToUser: jest.fn(),
+      equip: jest.fn(),
+      unequip: jest.fn(),
+      isEquipped: jest.fn().mockResolvedValue(false),
+    };
     service = new WealthBenefitService(
       repo as unknown as WealthRepository,
       cosmetics as unknown as ICosmeticsService,
@@ -31,7 +38,12 @@ describe('WealthBenefitService', () => {
   it('a Nova (level 3) user holds every benefit from Normal User through Nova, cumulatively', async () => {
     const benefits = await service.getBenefitsUpToLevel(3);
 
-    expect(benefits.map((b) => b.id)).toEqual(['normal-badge', 'prestige-badge', 'rise-badge', 'nova-badge']);
+    expect(benefits.map((b) => b.id)).toEqual([
+      'normal-badge',
+      'prestige-badge',
+      'rise-badge',
+      'nova-badge',
+    ]);
   });
 
   it('does not include benefits from levels above the user', async () => {

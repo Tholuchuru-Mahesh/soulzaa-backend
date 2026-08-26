@@ -174,4 +174,3 @@ export class GiftCosmeticDto {
   @MaxLength(100)
   idempotencyKey?: string;
 }
-

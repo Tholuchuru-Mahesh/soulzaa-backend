@@ -4,7 +4,10 @@ import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated, normalizePagination } from 'src/common/utils/pagination.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { PermissionResolver } from 'src/modules/authorization/services/permission-resolver.service';
-import { PROFILE_SERVICE, type IProfileService } from 'src/modules/users/interfaces/profile.interface';
+import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
 import { PostCommentDeletedEvent, PostCommentedEvent } from '../events/post.events';
 import type { PostCommentView } from '../interfaces/post-summary.interface';
 
@@ -39,7 +42,11 @@ export class PostCommentService {
     };
   }
 
-  async listComments(postId: string, page?: number, limit?: number): Promise<Paginated<PostCommentView>> {
+  async listComments(
+    postId: string,
+    page?: number,
+    limit?: number,
+  ): Promise<Paginated<PostCommentView>> {
     const { page: p, limit: l, skip } = normalizePagination({ page, limit });
     const where = { postId, deletedAt: null };
     const [rows, total] = await Promise.all([
@@ -81,7 +88,10 @@ export class PostCommentService {
       }
     }
 
-    await this.prisma.postComment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
+    await this.prisma.postComment.update({
+      where: { id: commentId },
+      data: { deletedAt: new Date() },
+    });
     await this.bus.publish(new PostCommentDeletedEvent({ postId: comment.postId, commentId }));
   }
 }

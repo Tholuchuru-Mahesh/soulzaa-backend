@@ -71,7 +71,10 @@ export class WealthRewardService {
   ): Promise<void> {
     const all = await this.repo.listRewardsActive();
     const unlocked = all.filter(
-      (r) => r.level > fromLevel && r.level <= toLevel && r.grantType === WealthRewardGrantType.AUTOMATIC,
+      (r) =>
+        r.level > fromLevel &&
+        r.level <= toLevel &&
+        r.grantType === WealthRewardGrantType.AUTOMATIC,
     );
     for (const reward of unlocked) {
       await this.grantOne(userId, reward, periodKey);
@@ -92,7 +95,11 @@ export class WealthRewardService {
     }
   }
 
-  private async grantOne(userId: string, reward: WealthLevelReward, fallbackPeriodKey: string): Promise<void> {
+  private async grantOne(
+    userId: string,
+    reward: WealthLevelReward,
+    fallbackPeriodKey: string,
+  ): Promise<void> {
     if (this.isOutsideWindow(reward)) return;
     const periodKey =
       reward.frequency === WealthRewardFrequency.MONTHLY
@@ -108,12 +115,18 @@ export class WealthRewardService {
     // fulfill. Re-checking `existing === null` before the upsert plus the
     // unique constraint means at most one caller reaches here per period.
     await this.fulfill(userId, reward);
-    await this.bus.publish(new WealthRewardAvailableEvent({ userId, rewardId: reward.id, level: reward.level }));
+    await this.bus.publish(
+      new WealthRewardAvailableEvent({ userId, rewardId: reward.id, level: reward.level }),
+    );
     void claim;
   }
 
   /** User-initiated claim of a CLAIMABLE reward. Idempotent — a second call is a no-op replay. */
-  async claimReward(userId: string, rewardId: string, userLevel: number): Promise<{ claimed: boolean }> {
+  async claimReward(
+    userId: string,
+    rewardId: string,
+    userLevel: number,
+  ): Promise<{ claimed: boolean }> {
     const reward = await this.repo.getReward(rewardId);
     if (!reward || !reward.isActive) {
       throw new NotFoundException('Reward not found or inactive.');
@@ -193,7 +206,9 @@ export class WealthRewardService {
           });
         }
       } else if (
-        (reward.rewardType === 'COSMETIC' || reward.rewardType === 'BADGE' || reward.rewardType === 'PROFILE_FRAME') &&
+        (reward.rewardType === 'COSMETIC' ||
+          reward.rewardType === 'BADGE' ||
+          reward.rewardType === 'PROFILE_FRAME') &&
         this.cosmetics
       ) {
         const cosmeticId = String(value.cosmeticId ?? '');

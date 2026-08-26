@@ -4,7 +4,10 @@ import { BusinessException } from 'src/common/exceptions/business.exception';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { LockService } from 'src/infra/redis/lock.service';
-import { WEALTH_SERVICE, type IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
+import {
+  WEALTH_SERVICE,
+  type IWealthService,
+} from 'src/modules/wealth/interfaces/wealth.service.interface';
 import type { SeatStageView } from '../entities/video-room-seat-stage.view';
 import {
   computeQueueScore,

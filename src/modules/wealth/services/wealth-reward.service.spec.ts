@@ -1,4 +1,10 @@
-import { WalletCurrency, WalletTxnReason, WealthClaimStatus, WealthRewardFrequency, WealthRewardGrantType } from '@prisma/client';
+import {
+  WalletCurrency,
+  WalletTxnReason,
+  WealthClaimStatus,
+  WealthRewardFrequency,
+  WealthRewardGrantType,
+} from '@prisma/client';
 import type { IEventBus } from 'src/common/events';
 import type { ICosmeticsService } from 'src/modules/cosmetics/interfaces/cosmetics.service.interface';
 import type { IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
@@ -39,8 +45,17 @@ describe('WealthRewardService', () => {
       listClaims: jest.fn().mockResolvedValue([[], 0]),
     };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
-    wallet = { credit: jest.fn().mockResolvedValue({ transactionId: 't1', balanceAfter: 500, duplicate: false, currency: WalletCurrency.GOLD }) };
-    cosmetics = { grantToUser: jest.fn().mockResolvedValue({ backpackItemId: 'i1', duplicate: false }) };
+    wallet = {
+      credit: jest.fn().mockResolvedValue({
+        transactionId: 't1',
+        balanceAfter: 500,
+        duplicate: false,
+        currency: WalletCurrency.GOLD,
+      }),
+    };
+    cosmetics = {
+      grantToUser: jest.fn().mockResolvedValue({ backpackItemId: 'i1', duplicate: false }),
+    };
     service = new WealthRewardService(
       repo as unknown as WealthRepository,
       bus,
@@ -95,7 +110,10 @@ describe('WealthRewardService', () => {
 
     it('does not re-fulfill a reward already granted for that period (idempotency guard)', async () => {
       repo.listRewardsActive.mockResolvedValue([reward({ id: 'r-1', level: 1 })]);
-      repo.findRewardClaim.mockResolvedValue({ id: 'claim-existing', status: WealthClaimStatus.GRANTED });
+      repo.findRewardClaim.mockResolvedValue({
+        id: 'claim-existing',
+        status: WealthClaimStatus.GRANTED,
+      });
 
       await service.grantAutomaticForCrossedLevels('u1', 0, 1, '2026-08');
 
@@ -122,7 +140,9 @@ describe('WealthRewardService', () => {
 
   describe('claimReward', () => {
     it('claims a CLAIMABLE reward the user is eligible for', async () => {
-      repo.getReward.mockResolvedValue(reward({ grantType: WealthRewardGrantType.CLAIMABLE, level: 2 }));
+      repo.getReward.mockResolvedValue(
+        reward({ grantType: WealthRewardGrantType.CLAIMABLE, level: 2 }),
+      );
 
       const res = await service.claimReward('u1', 'reward-1', 3);
 
@@ -163,7 +183,9 @@ describe('WealthRewardService', () => {
     });
 
     it('is idempotent — double-claiming (double click, retry, concurrent request) never grants twice', async () => {
-      repo.getReward.mockResolvedValue(reward({ grantType: WealthRewardGrantType.CLAIMABLE, level: 0 }));
+      repo.getReward.mockResolvedValue(
+        reward({ grantType: WealthRewardGrantType.CLAIMABLE, level: 0 }),
+      );
       repo.findRewardClaim.mockResolvedValue({ id: 'claim-1', status: WealthClaimStatus.CLAIMED });
 
       const res = await service.claimReward('u1', 'reward-1', 5);
@@ -177,7 +199,9 @@ describe('WealthRewardService', () => {
       // findRewardClaim sees nothing (both requests raced past the check),
       // but the DB-unique upsert in grantRewardClaim returns the row the
       // other request already created and claimed.
-      repo.getReward.mockResolvedValue(reward({ grantType: WealthRewardGrantType.CLAIMABLE, level: 0 }));
+      repo.getReward.mockResolvedValue(
+        reward({ grantType: WealthRewardGrantType.CLAIMABLE, level: 0 }),
+      );
       repo.findRewardClaim.mockResolvedValue(null);
       repo.grantRewardClaim.mockResolvedValue({ id: 'claim-1', status: WealthClaimStatus.CLAIMED });
 

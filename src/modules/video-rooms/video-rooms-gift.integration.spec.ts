@@ -268,7 +268,11 @@ describe('VR-10 gift engine (integration)', () => {
       { enqueue: jest.fn() } as never,
       prisma as never,
       lockService() as never,
-      { resolve: jest.fn().mockImplementation((k: string) => Promise.resolve(`https://cdn.example.com/${k}`)) } as never,
+      {
+        resolve: jest
+          .fn()
+          .mockImplementation((k: string) => Promise.resolve(`https://cdn.example.com/${k}`)),
+      } as never,
       bus as never,
       wallet as never,
       { getEffectiveLevel: jest.fn().mockResolvedValue(0) } as never,

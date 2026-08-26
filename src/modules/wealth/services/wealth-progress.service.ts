@@ -39,7 +39,10 @@ export class WealthProgressService implements IWealthService {
     const currentThreshold = levelDef ? Number(levelDef.expThreshold) : 0;
     const progressPct =
       nextLevelExp !== null && nextLevelExp > currentThreshold
-        ? Math.min(100, Math.max(0, ((exp - currentThreshold) / (nextLevelExp - currentThreshold)) * 100))
+        ? Math.min(
+            100,
+            Math.max(0, ((exp - currentThreshold) / (nextLevelExp - currentThreshold)) * 100),
+          )
         : level > 0
           ? 100
           : 0;

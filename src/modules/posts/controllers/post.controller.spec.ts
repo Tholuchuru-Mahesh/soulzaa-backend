@@ -5,7 +5,11 @@ describe('PostController', () => {
     const postService = { createPost: jest.fn(), deletePost: jest.fn() };
     const queryService = { getFeed: jest.fn(), getById: jest.fn() };
     const likeService = { like: jest.fn(), unlike: jest.fn() };
-    const commentService = { addComment: jest.fn(), listComments: jest.fn(), deleteComment: jest.fn() };
+    const commentService = {
+      addComment: jest.fn(),
+      listComments: jest.fn(),
+      deleteComment: jest.fn(),
+    };
     const reportService = { report: jest.fn() };
     const controller = new PostController(
       postService as any,
@@ -31,7 +35,13 @@ describe('PostController', () => {
 
   it('feed() passes the viewer id and query through to the query service', async () => {
     const { controller, queryService } = build();
-    queryService.getFeed.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20, totalPages: 1 });
+    queryService.getFeed.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+      totalPages: 1,
+    });
 
     await controller.feed({ page: 2, limit: 10 } as any, 'u1');
 

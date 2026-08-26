@@ -53,7 +53,11 @@ describe('WealthMonthlyResetService', () => {
         currentLevel: 5,
         periodKey: CLOSING_PERIOD,
       });
-      downgradeConfig.getActive.mockResolvedValue({ enabled: true, maxDowngradeLevels: 2, minLevel: 0 });
+      downgradeConfig.getActive.mockResolvedValue({
+        enabled: true,
+        maxDowngradeLevels: 2,
+        minLevel: 0,
+      });
 
       await service.run(new Date());
 
@@ -71,7 +75,11 @@ describe('WealthMonthlyResetService', () => {
         currentLevel: 2,
         periodKey: CLOSING_PERIOD,
       });
-      downgradeConfig.getActive.mockResolvedValue({ enabled: true, maxDowngradeLevels: 5, minLevel: 1 });
+      downgradeConfig.getActive.mockResolvedValue({
+        enabled: true,
+        maxDowngradeLevels: 5,
+        minLevel: 1,
+      });
 
       await service.run(new Date());
 
@@ -87,7 +95,11 @@ describe('WealthMonthlyResetService', () => {
         currentLevel: 6,
         periodKey: CLOSING_PERIOD,
       });
-      downgradeConfig.getActive.mockResolvedValue({ enabled: false, maxDowngradeLevels: 3, minLevel: 0 });
+      downgradeConfig.getActive.mockResolvedValue({
+        enabled: false,
+        maxDowngradeLevels: 3,
+        minLevel: 0,
+      });
 
       await service.run(new Date());
 
@@ -123,7 +135,11 @@ describe('WealthMonthlyResetService', () => {
         (c) => c[0].name === 'wealth.downgraded',
       );
       expect(downgradeEvents).toHaveLength(1);
-      expect(downgradeEvents[0][0].payload).toMatchObject({ userId: 'u1', fromLevel: 5, toLevel: 4 });
+      expect(downgradeEvents[0][0].payload).toMatchObject({
+        userId: 'u1',
+        fromLevel: 5,
+        toLevel: 4,
+      });
     });
 
     it('records the monthly history snapshot with starting level, final EXP/level and the applied floor', async () => {
@@ -148,7 +164,11 @@ describe('WealthMonthlyResetService', () => {
 
     it('grants recurring automatic rewards for the new effective level', async () => {
       repo.listAllProgressUserIds.mockResolvedValue(['u1']);
-      repo.getProgress.mockResolvedValue({ currentExp: 0n, currentLevel: 5, periodKey: CLOSING_PERIOD });
+      repo.getProgress.mockResolvedValue({
+        currentExp: 0n,
+        currentLevel: 5,
+        periodKey: CLOSING_PERIOD,
+      });
 
       await service.run(new Date());
 
@@ -158,7 +178,11 @@ describe('WealthMonthlyResetService', () => {
 
   describe('idempotency', () => {
     it('is a no-op batch-wide if a run for this period already COMPLETED', async () => {
-      repo.getResetRun.mockResolvedValue({ periodKey: NEW_PERIOD, status: 'COMPLETED', usersProcessed: 3 });
+      repo.getResetRun.mockResolvedValue({
+        periodKey: NEW_PERIOD,
+        status: 'COMPLETED',
+        usersProcessed: 3,
+      });
       repo.listAllProgressUserIds.mockResolvedValue(['u1']);
 
       const result = await service.run(new Date());

@@ -403,7 +403,8 @@ export class AnalyticsReportingService {
     return {
       roomId: a.roomId,
       peakParticipants: a.peakParticipants,
-      totalJoined: uniqueVisitors !== undefined && uniqueVisitors > 0 ? uniqueVisitors : a.totalJoined,
+      totalJoined:
+        uniqueVisitors !== undefined && uniqueVisitors > 0 ? uniqueVisitors : a.totalJoined,
       totalGifts: a.totalGifts,
       totalGiftCoins: a.totalGiftCoins.toString(),
       totalSpeakingMinutes: a.totalSpeakingMinutes,

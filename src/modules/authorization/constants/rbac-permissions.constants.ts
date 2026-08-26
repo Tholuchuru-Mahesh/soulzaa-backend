@@ -979,7 +979,6 @@ export const DEFAULT_PERMISSIONS = [
     description: 'Can view family activity and contribution statistics',
   },
 
-
   // Wealth Level system — the sole VIP progression system (replaces the VIP
   // Membership Engine above; see prisma/schema/wealth.prisma).
   {
@@ -1012,7 +1011,8 @@ export const DEFAULT_PERMISSIONS = [
     action: 'manage',
     category: 'WEALTH',
     displayName: 'Manage Wealth Level Downgrade Policy',
-    description: 'Can configure the monthly downgrade policy (max levels, floor, effective dates). SUPER_ADMIN only.',
+    description:
+      'Can configure the monthly downgrade policy (max levels, floor, effective dates). SUPER_ADMIN only.',
   },
   {
     code: 'wealth.audit.view',

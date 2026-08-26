@@ -42,7 +42,12 @@ export class PostQueryService {
     return buildPaginated(await this.toSummaries(rows), total, p, l);
   }
 
-  async getUserPosts(authorId: string, viewerId: string, page?: number, limit?: number): Promise<Paginated<PostSummary>> {
+  async getUserPosts(
+    authorId: string,
+    viewerId: string,
+    page?: number,
+    limit?: number,
+  ): Promise<Paginated<PostSummary>> {
     const { page: p, limit: l, skip } = normalizePagination({ page, limit });
     const where = { authorId, status: PostStatus.PUBLISHED, deletedAt: null };
     const [rows, total] = await Promise.all([

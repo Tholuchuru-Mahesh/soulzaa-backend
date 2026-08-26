@@ -110,10 +110,12 @@ describe('VideoRoomPkRepository', () => {
     const result = await repo.getWealthLevel('u1', txDb);
 
     expect(
-      (txDb as never as { wealthUserProgress: { findUnique: jest.Mock } }).wealthUserProgress.findUnique,
+      (txDb as never as { wealthUserProgress: { findUnique: jest.Mock } }).wealthUserProgress
+        .findUnique,
     ).toHaveBeenCalledWith({ where: { userId: 'u1' } });
     expect(
-      (defaultDb as never as { wealthUserProgress: { findUnique: jest.Mock } }).wealthUserProgress.findUnique,
+      (defaultDb as never as { wealthUserProgress: { findUnique: jest.Mock } }).wealthUserProgress
+        .findUnique,
     ).not.toHaveBeenCalled();
     expect(result).toBe(3);
   });

@@ -32,7 +32,12 @@ describe('PostScoreService', () => {
       const prisma = {
         post: {
           findMany: jest.fn().mockResolvedValue([
-            { id: 'p1', likeCount: 3, commentCount: 1, createdAt: new Date('2026-08-24T00:00:00Z') },
+            {
+              id: 'p1',
+              likeCount: 3,
+              commentCount: 1,
+              createdAt: new Date('2026-08-24T00:00:00Z'),
+            },
           ]),
           update: jest.fn(),
         },

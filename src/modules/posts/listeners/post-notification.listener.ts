@@ -7,7 +7,10 @@ import {
   NOTIFICATION_SERVICE,
   type INotificationService,
 } from 'src/modules/notification/interfaces/notification.interface';
-import { PROFILE_SERVICE, type IProfileService } from 'src/modules/users/interfaces/profile.interface';
+import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
 import { POST_EVENTS, type PostCommentedEvent, type PostLikedEvent } from '../events/post.events';
 
 @Injectable()
@@ -74,7 +77,9 @@ export class PostNotificationListener implements OnModuleInit {
     });
   }
 
-  private async actorCard(userId: string): Promise<{ name: string; data: Record<string, unknown> | null }> {
+  private async actorCard(
+    userId: string,
+  ): Promise<{ name: string; data: Record<string, unknown> | null }> {
     const [card] = await this.profile.getCards([userId]);
     if (!card) return { name: 'Someone', data: null };
     return {

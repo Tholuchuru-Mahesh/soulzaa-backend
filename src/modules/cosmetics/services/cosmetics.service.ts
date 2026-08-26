@@ -165,10 +165,7 @@ export class CosmeticsService implements ICosmeticsService {
 
     let computedExpiresAt: Date | null = input.expiresAt ?? null;
     const meta = (cosmetic.metadata as Record<string, any>) || {};
-    let durDays =
-      input.durationDays ??
-      meta.durationDays ??
-      meta.ttlDays;
+    let durDays = input.durationDays ?? meta.durationDays ?? meta.ttlDays;
 
     if (durDays === undefined && meta.ttlValue !== undefined) {
       const val = Number(meta.ttlValue);
@@ -232,7 +229,11 @@ export class CosmeticsService implements ICosmeticsService {
         HttpStatus.NOT_FOUND,
       );
     }
-    if (cosmetic.type === 'FRAME' || cosmetic.type === 'THEME' || cosmetic.type === 'ENTRANCE_EFFECT') {
+    if (
+      cosmetic.type === 'FRAME' ||
+      cosmetic.type === 'THEME' ||
+      cosmetic.type === 'ENTRANCE_EFFECT'
+    ) {
       await this.equipCosmetic(userId, cosmeticId);
       return;
     }
@@ -259,7 +260,11 @@ export class CosmeticsService implements ICosmeticsService {
         HttpStatus.NOT_FOUND,
       );
     }
-    if (cosmetic.type === 'FRAME' || cosmetic.type === 'THEME' || cosmetic.type === 'ENTRANCE_EFFECT') {
+    if (
+      cosmetic.type === 'FRAME' ||
+      cosmetic.type === 'THEME' ||
+      cosmetic.type === 'ENTRANCE_EFFECT'
+    ) {
       await this.unequipCosmetic(userId, cosmeticId);
       return;
     }
@@ -280,7 +285,11 @@ export class CosmeticsService implements ICosmeticsService {
   async isEquipped(userId: string, cosmeticId: string): Promise<boolean> {
     const cosmetic = await this.repo.getById(cosmeticId);
     if (!cosmetic) return false;
-    if (cosmetic.type === 'FRAME' || cosmetic.type === 'THEME' || cosmetic.type === 'ENTRANCE_EFFECT') {
+    if (
+      cosmetic.type === 'FRAME' ||
+      cosmetic.type === 'THEME' ||
+      cosmetic.type === 'ENTRANCE_EFFECT'
+    ) {
       const userCos = await this.prisma.userCosmetic.findUnique({
         where: { userId_cosmeticId: { userId, cosmeticId } },
       });
@@ -335,7 +344,9 @@ export class CosmeticsService implements ICosmeticsService {
 
     const finalMetadata = {
       ...((dto.metadata as Record<string, any>) || {}),
-      ...(dto.durationDays !== undefined ? { durationDays: dto.durationDays, ttlDays: dto.durationDays } : {}),
+      ...(dto.durationDays !== undefined
+        ? { durationDays: dto.durationDays, ttlDays: dto.durationDays }
+        : {}),
     };
 
     const created = await this.repo.create(
@@ -388,7 +399,9 @@ export class CosmeticsService implements ICosmeticsService {
         ? {
             ...((existing.metadata as Record<string, any>) || {}),
             ...((dto.metadata as Record<string, any>) || {}),
-            ...(dto.durationDays !== undefined ? { durationDays: dto.durationDays, ttlDays: dto.durationDays } : {}),
+            ...(dto.durationDays !== undefined
+              ? { durationDays: dto.durationDays, ttlDays: dto.durationDays }
+              : {}),
           }
         : undefined;
 

@@ -435,7 +435,9 @@ describe('VideoRoomRankingRepository', () => {
     it('joins user, profile and statistics for a user ladder in one pass', async () => {
       prisma.user.findMany.mockResolvedValue([{ id: 'u1', username: 'alice' }]);
       prisma.userProfile.findMany.mockResolvedValue([{ userId: 'u1', avatarKey: 'avatar/u1.png' }]);
-      prisma.userStatistics.findMany.mockResolvedValue([{ userId: 'u1', level: 12, wealthLevel: 3 }]);
+      prisma.userStatistics.findMany.mockResolvedValue([
+        { userId: 'u1', level: 12, wealthLevel: 3 },
+      ]);
 
       await expect(repo.hydrateTargets(['u1'], 'user')).resolves.toEqual([
         { id: 'u1', username: 'alice', avatarKey: 'avatar/u1.png', level: 12, vipLevel: 3 },

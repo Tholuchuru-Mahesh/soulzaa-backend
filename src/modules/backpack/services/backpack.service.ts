@@ -65,9 +65,7 @@ export class BackpackService implements IBackpackService {
         }
 
         const effectiveTransferable =
-          input.source === 'GIFT' || input.transferable === false
-            ? false
-            : existing.transferable;
+          input.source === 'GIFT' || input.transferable === false ? false : existing.transferable;
 
         const updated = await this.repo.updateItem(
           existing.id,
@@ -189,12 +187,7 @@ export class BackpackService implements IBackpackService {
       equipped: q.equipped,
     });
     const views = await Promise.all(rows.map((i) => this.toView(i)));
-    return buildPaginated(
-      views,
-      total,
-      q.page,
-      q.limit,
-    );
+    return buildPaginated(views, total, q.page, q.limit);
   }
 
   async equip(userId: string, itemId: string): Promise<void> {
@@ -266,7 +259,8 @@ export class BackpackService implements IBackpackService {
             newExpiresAt = null;
           } else if (item.expiresAt && existingRecipientItem.expiresAt) {
             const now = new Date();
-            const base = existingRecipientItem.expiresAt > now ? existingRecipientItem.expiresAt : now;
+            const base =
+              existingRecipientItem.expiresAt > now ? existingRecipientItem.expiresAt : now;
             const remainingMs = item.expiresAt.getTime() - now.getTime();
             newExpiresAt = new Date(base.getTime() + (remainingMs > 0 ? remainingMs : 0));
           }

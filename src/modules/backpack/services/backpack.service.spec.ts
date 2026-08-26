@@ -1,6 +1,5 @@
 import { BackpackItemSource, BackpackItemType } from '@prisma/client';
 import { IEventBus } from 'src/common/events';
-import { BusinessException } from 'src/common/exceptions';
 import { LockService } from 'src/infra/redis/lock.service';
 import { BackpackRepository } from '../repositories/backpack.repository';
 import { BackpackService } from './backpack.service';
@@ -103,9 +102,7 @@ describe('BackpackService', () => {
           transferable: true,
         }),
       );
-      repo.updateItem.mockImplementation((id, data) =>
-        Promise.resolve(item({ id, ...data })),
-      );
+      repo.updateItem.mockImplementation((id, data) => Promise.resolve(item({ id, ...data })));
 
       const res = await service.grant({
         userId: 'user-1',
@@ -197,9 +194,7 @@ describe('BackpackService', () => {
           expiresAt: oneDayFromNow,
         }),
       );
-      repo.updateItem.mockImplementation((id, data) =>
-        Promise.resolve(item({ id, ...data })),
-      );
+      repo.updateItem.mockImplementation((id, data) => Promise.resolve(item({ id, ...data })));
       repo.deleteItem.mockResolvedValue(item({ id: 'item-1' }));
 
       await service.transfer('user-1', 'item-1', 'user-2');

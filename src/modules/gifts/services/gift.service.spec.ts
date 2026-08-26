@@ -176,7 +176,11 @@ describe('GiftService', () => {
     ).onModuleInit();
 
     platformConfig = { get: jest.fn().mockResolvedValue(null) };
-    const media = { resolve: jest.fn().mockImplementation((k: string) => Promise.resolve(`https://cdn.example.com/${k}`)) };
+    const media = {
+      resolve: jest
+        .fn()
+        .mockImplementation((k: string) => Promise.resolve(`https://cdn.example.com/${k}`)),
+    };
     service = new GiftService(
       repo as unknown as GiftRepository,
       catalog as unknown as GiftCatalogService,

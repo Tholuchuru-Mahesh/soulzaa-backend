@@ -52,9 +52,7 @@ export class WealthLevelService implements OnModuleInit, OnModuleDestroy {
   }
 
   nextLevel(level: number): WealthLevel | null {
-    const higher = this.levels
-      .filter((l) => l.level > level)
-      .sort((a, b) => a.level - b.level);
+    const higher = this.levels.filter((l) => l.level > level).sort((a, b) => a.level - b.level);
     return higher[0] ?? null;
   }
 

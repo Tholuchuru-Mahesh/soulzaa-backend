@@ -52,10 +52,7 @@ export class GiftAdminController {
 
   @Delete(':giftId')
   @ApiOperation({ summary: 'Delete a catalog gift' })
-  delete(
-    @CurrentUser('id') adminId: string,
-    @Param('giftId') giftId: string,
-  ) {
+  delete(@CurrentUser('id') adminId: string, @Param('giftId') giftId: string) {
     return this.catalog.deleteGift(giftId, adminId);
   }
 }

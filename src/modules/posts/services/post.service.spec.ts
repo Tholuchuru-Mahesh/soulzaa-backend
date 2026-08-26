@@ -10,7 +10,9 @@ describe('PostService', () => {
     const bus = { publish: jest.fn() };
     const permissions = {
       resolveUserPermissions: jest.fn(),
-      hasPermission: jest.fn((perms: Set<string>, required: string) => perms.has(required) || perms.has('*')),
+      hasPermission: jest.fn(
+        (perms: Set<string>, required: string) => perms.has(required) || perms.has('*'),
+      ),
     };
     const service = new PostService(prisma as any, bus as any, permissions as any);
     return { service, prisma, bus, permissions };

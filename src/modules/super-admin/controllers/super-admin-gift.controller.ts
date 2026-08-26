@@ -84,10 +84,7 @@ export class SuperAdminGiftController {
   @RequirePermissions('gift.catalog.view')
   @AuditLogAction('GIFT_DELETED', 'gift')
   @Delete('catalog/:id')
-  async deleteGift(
-    @Param('id') id: string,
-    @CurrentUser('id') actorId: string,
-  ) {
+  async deleteGift(@Param('id') id: string, @CurrentUser('id') actorId: string) {
     return this.catalogService.deleteGift(id, actorId);
   }
 

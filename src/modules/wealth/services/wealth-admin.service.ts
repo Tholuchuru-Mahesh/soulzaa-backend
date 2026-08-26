@@ -38,8 +38,7 @@ export class WealthAdminService {
    */
   private async syncCosmeticMedia(benefit: WealthLevelBenefit): Promise<void> {
     const cosmeticId = (benefit.config as Record<string, unknown> | null)?.cosmeticId as
-      | string
-      | undefined;
+      string | undefined;
     if (!cosmeticId || !benefit.iconUrl) return;
     await this.cosmetics.setMedia(cosmeticId, benefit.iconUrl);
   }

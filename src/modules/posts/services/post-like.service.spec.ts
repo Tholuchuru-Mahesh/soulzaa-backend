@@ -11,7 +11,10 @@ function uniqueViolation() {
 
 describe('PostLikeService', () => {
   function build() {
-    const prisma = { post: { findFirst: jest.fn() }, postLike: { create: jest.fn(), deleteMany: jest.fn() } };
+    const prisma = {
+      post: { findFirst: jest.fn() },
+      postLike: { create: jest.fn(), deleteMany: jest.fn() },
+    };
     const bus = { publish: jest.fn() };
     const service = new PostLikeService(prisma as any, bus as any);
     return { service, prisma, bus };

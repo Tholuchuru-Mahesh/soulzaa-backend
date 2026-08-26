@@ -44,7 +44,11 @@ export class AnalyticsRepository {
     return groups.length;
   }
 
-  async incrementRoomJoins(roomId: string, currentParticipantCount: number, userId?: string): Promise<void> {
+  async incrementRoomJoins(
+    roomId: string,
+    currentParticipantCount: number,
+    userId?: string,
+  ): Promise<void> {
     const activity = await this.prisma.roomActivity.findUnique({ where: { roomId } });
     if (!activity) return;
 

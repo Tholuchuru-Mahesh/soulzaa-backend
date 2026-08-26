@@ -22,7 +22,10 @@ import {
   WALLET_SERVICE,
   type IWalletService,
 } from 'src/modules/wallet/interfaces/wallet.service.interface';
-import { WEALTH_SERVICE, type IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
+import {
+  WEALTH_SERVICE,
+  type IWealthService,
+} from 'src/modules/wealth/interfaces/wealth.service.interface';
 import { GIFT_WALLET_REFERENCE_TYPE } from '../constants/gifts.constants';
 import { walletLockKey } from 'src/modules/wallet/constants/wallet.constants';
 
@@ -218,7 +221,10 @@ export class GiftService {
 
     // Wealth-Level-exclusive gate: the sender's level must meet the gift's minimum.
     // `minVipLevel` values are reinterpreted as-is against the new 0-12 level scale.
-    if (gift.minVipLevel > 0 && (await this.wealth.getEffectiveLevel(senderId)) < gift.minVipLevel) {
+    if (
+      gift.minVipLevel > 0 &&
+      (await this.wealth.getEffectiveLevel(senderId)) < gift.minVipLevel
+    ) {
       throw new BusinessException(
         ERROR_CODES.GIFT_VIP_RESTRICTED,
         'This gift requires a higher VIP level.',
@@ -541,10 +547,7 @@ export class GiftService {
 
     const giftIds = [...new Set(rows.map((r) => r.giftId))];
     const userIds = [
-      ...new Set([
-        ...rows.map((r) => r.senderId),
-        ...rows.map((r) => r.receiverId),
-      ]),
+      ...new Set([...rows.map((r) => r.senderId), ...rows.map((r) => r.receiverId)]),
     ];
 
     const [gifts, users] = await Promise.all([
@@ -559,8 +562,10 @@ export class GiftService {
 
     const resolvedGifts = await Promise.all(
       gifts.map(async (g) => {
-        const thumbKey = g.thumbnailUrl || (g as any).iconUrl || g.lottieUrl || g.animationUrl || null;
-        const animKey = g.animationUrl || g.lottieUrl || g.svgaUrl || g.mp4Url || (g as any).mediaUrl || null;
+        const thumbKey =
+          g.thumbnailUrl || (g as any).iconUrl || g.lottieUrl || g.animationUrl || null;
+        const animKey =
+          g.animationUrl || g.lottieUrl || g.svgaUrl || g.mp4Url || (g as any).mediaUrl || null;
         return {
           ...g,
           resolvedThumbnailUrl: thumbKey ? await this.media.resolve(thumbKey) : null,
@@ -580,8 +585,10 @@ export class GiftService {
       return {
         ...this.toView(t),
         giftName: gift?.displayName || gift?.name || 'Gift',
-        giftThumbnailUrl: gift?.resolvedThumbnailUrl || gift?.thumbnailUrl || (gift as any)?.iconUrl || null,
-        giftAnimationUrl: gift?.resolvedAnimationUrl || gift?.animationUrl || (gift as any)?.mediaUrl || null,
+        giftThumbnailUrl:
+          gift?.resolvedThumbnailUrl || gift?.thumbnailUrl || (gift as any)?.iconUrl || null,
+        giftAnimationUrl:
+          gift?.resolvedAnimationUrl || gift?.animationUrl || (gift as any)?.mediaUrl || null,
         senderName: sender?.fullName || sender?.username || null,
         senderUsername: sender?.username || null,
         receiverName: receiver?.fullName || receiver?.username || null,

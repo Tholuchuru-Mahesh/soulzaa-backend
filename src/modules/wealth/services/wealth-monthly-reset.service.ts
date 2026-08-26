@@ -1,7 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { WealthResetRunStatus } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
-import { currentPeriodKey, previousPeriodKey, wealthResetLockKey } from '../constants/wealth.constants';
+import {
+  currentPeriodKey,
+  previousPeriodKey,
+  wealthResetLockKey,
+} from '../constants/wealth.constants';
 import { WealthDowngradedEvent, WealthMonthlyResetEvent } from '../events/wealth.events';
 import { WealthRepository } from '../repositories/wealth.repository';
 import { LockService } from 'src/infra/redis/lock.service';
@@ -43,17 +47,22 @@ export class WealthMonthlyResetService {
     const newPeriodKey = currentPeriodKey(now);
     const closingPeriodKey = previousPeriodKey(newPeriodKey);
 
-    return this.locks.withLock(
-      wealthResetLockKey(newPeriodKey),
-      () => this.runForPeriod(closingPeriodKey, newPeriodKey),
-      { ttlMs: 600_000, retries: 0 },
-    ).catch((err) => {
-      this.logger.warn(`Monthly reset for ${newPeriodKey} skipped: ${(err as Error).message}`);
-      return { periodKey: newPeriodKey, usersProcessed: 0, skipped: true };
-    });
+    return this.locks
+      .withLock(
+        wealthResetLockKey(newPeriodKey),
+        () => this.runForPeriod(closingPeriodKey, newPeriodKey),
+        { ttlMs: 600_000, retries: 0 },
+      )
+      .catch((err) => {
+        this.logger.warn(`Monthly reset for ${newPeriodKey} skipped: ${(err as Error).message}`);
+        return { periodKey: newPeriodKey, usersProcessed: 0, skipped: true };
+      });
   }
 
-  private async runForPeriod(closingPeriodKey: string, newPeriodKey: string): Promise<WealthResetResult> {
+  private async runForPeriod(
+    closingPeriodKey: string,
+    newPeriodKey: string,
+  ): Promise<WealthResetResult> {
     const existingRun = await this.repo.getResetRun(newPeriodKey);
     if (existingRun?.status === WealthResetRunStatus.COMPLETED) {
       return { periodKey: newPeriodKey, usersProcessed: existingRun.usersProcessed, skipped: true };
@@ -83,7 +92,9 @@ export class WealthMonthlyResetService {
       return { periodKey: newPeriodKey, usersProcessed: processed, skipped: false };
     } catch (err) {
       await this.repo.failResetRun(newPeriodKey);
-      this.logger.error(`Wealth monthly reset for ${newPeriodKey} failed after ${processed} users: ${(err as Error).message}`);
+      this.logger.error(
+        `Wealth monthly reset for ${newPeriodKey} failed after ${processed} users: ${(err as Error).message}`,
+      );
       throw err;
     }
   }
@@ -124,7 +135,12 @@ export class WealthMonthlyResetService {
 
     if (floor < startingLevel) {
       await this.bus.publish(
-        new WealthDowngradedEvent({ userId, fromLevel: startingLevel, toLevel: floor, periodKey: newPeriodKey }),
+        new WealthDowngradedEvent({
+          userId,
+          fromLevel: startingLevel,
+          toLevel: floor,
+          periodKey: newPeriodKey,
+        }),
       );
     }
     await this.bus.publish(

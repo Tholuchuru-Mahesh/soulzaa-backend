@@ -275,7 +275,9 @@ describe('WealthExpLedgerService', () => {
         idempotencyKey: 'wealth-exp-reversal:tx-3',
       });
 
-      expect(repo.applyReversal).toHaveBeenCalledWith(expect.objectContaining({ newExp: 0n, newLevel: 0 }));
+      expect(repo.applyReversal).toHaveBeenCalledWith(
+        expect.objectContaining({ newExp: 0n, newLevel: 0 }),
+      );
     });
 
     it('does not mutate live progress for a purchase whose awarding month has already closed — history stays immutable', async () => {

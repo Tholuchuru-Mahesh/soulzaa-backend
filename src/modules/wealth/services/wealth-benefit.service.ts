@@ -39,9 +39,7 @@ export class WealthBenefitService {
     const equippedByCosmeticId = new Map<string, boolean>();
     if (userId) {
       const cosmeticIds = new Set(
-        eligible
-          .map((b) => this.cosmeticIdOf(b))
-          .filter((id): id is string => !!id),
+        eligible.map((b) => this.cosmeticIdOf(b)).filter((id): id is string => !!id),
       );
       for (const cosmeticId of cosmeticIds) {
         equippedByCosmeticId.set(cosmeticId, await this.cosmetics.isEquipped(userId, cosmeticId));

@@ -54,8 +54,10 @@ export class GiftHistoryService {
 
     const resolvedGifts = await Promise.all(
       gifts.map(async (g) => {
-        const thumbKey = g.thumbnailUrl || (g as any).iconUrl || g.lottieUrl || g.animationUrl || null;
-        const animKey = g.animationUrl || g.lottieUrl || g.svgaUrl || g.mp4Url || (g as any).mediaUrl || null;
+        const thumbKey =
+          g.thumbnailUrl || (g as any).iconUrl || g.lottieUrl || g.animationUrl || null;
+        const animKey =
+          g.animationUrl || g.lottieUrl || g.svgaUrl || g.mp4Url || (g as any).mediaUrl || null;
         return {
           ...g,
           resolvedThumbnailUrl: thumbKey ? await this.media.resolve(thumbKey) : null,
@@ -77,8 +79,10 @@ export class GiftHistoryService {
         totalCoinValue: t.totalCoinValue.toString(),
         creatorEarnings: t.creatorEarnings.toString(),
         giftName: gift?.displayName || gift?.name || 'Gift',
-        giftThumbnailUrl: gift?.resolvedThumbnailUrl || gift?.thumbnailUrl || (gift as any)?.iconUrl || null,
-        giftAnimationUrl: gift?.resolvedAnimationUrl || gift?.animationUrl || (gift as any)?.mediaUrl || null,
+        giftThumbnailUrl:
+          gift?.resolvedThumbnailUrl || gift?.thumbnailUrl || (gift as any)?.iconUrl || null,
+        giftAnimationUrl:
+          gift?.resolvedAnimationUrl || gift?.animationUrl || (gift as any)?.mediaUrl || null,
         senderName: sender?.fullName || sender?.username || null,
         senderUsername: sender?.username || null,
         receiverName: receiver?.fullName || receiver?.username || null,

@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { CreateCommentDto } from '../dto/create-comment.dto';
@@ -68,7 +77,11 @@ export class PostController {
 
   @Post(':id/comments')
   @ApiOperation({ summary: 'Comment on a post' })
-  async comment(@Param('id') id: string, @Body() dto: CreateCommentDto, @CurrentUser('id') userId: string) {
+  async comment(
+    @Param('id') id: string,
+    @Body() dto: CreateCommentDto,
+    @CurrentUser('id') userId: string,
+  ) {
     return this.commentService.addComment(id, userId, dto.body);
   }
 
@@ -81,7 +94,11 @@ export class PostController {
 
   @Post(':id/report')
   @ApiOperation({ summary: 'Report a post' })
-  async report(@Param('id') id: string, @Body() dto: ReportPostDto, @CurrentUser('id') userId: string) {
+  async report(
+    @Param('id') id: string,
+    @Body() dto: ReportPostDto,
+    @CurrentUser('id') userId: string,
+  ) {
     return this.reportService.report(id, userId, dto.reason);
   }
 

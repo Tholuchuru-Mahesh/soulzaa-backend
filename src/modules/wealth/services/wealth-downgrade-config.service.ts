@@ -14,7 +14,9 @@ const DEFAULT_CONFIG = { enabled: true, maxDowngradeLevels: 1, minLevel: 0 };
 export class WealthDowngradeConfigService {
   constructor(private readonly repo: WealthRepository) {}
 
-  async getActive(now: Date = new Date()): Promise<Pick<WealthDowngradeConfig, 'enabled' | 'maxDowngradeLevels' | 'minLevel'>> {
+  async getActive(
+    now: Date = new Date(),
+  ): Promise<Pick<WealthDowngradeConfig, 'enabled' | 'maxDowngradeLevels' | 'minLevel'>> {
     const active = await this.repo.getActiveDowngradeConfig(now);
     return active ?? DEFAULT_CONFIG;
   }

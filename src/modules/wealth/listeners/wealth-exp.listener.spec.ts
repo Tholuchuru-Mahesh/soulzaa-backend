@@ -17,8 +17,13 @@ describe('WealthExpListener', () => {
       }),
       publish: jest.fn(),
     };
-    ledger = { award: jest.fn().mockResolvedValue({ currentExp: 0, currentLevel: 0, leveledUp: false }) };
-    listener = new WealthExpListener(bus as unknown as IEventBus, ledger as unknown as WealthExpLedgerService);
+    ledger = {
+      award: jest.fn().mockResolvedValue({ currentExp: 0, currentLevel: 0, leveledUp: false }),
+    };
+    listener = new WealthExpListener(
+      bus as unknown as IEventBus,
+      ledger as unknown as WealthExpLedgerService,
+    );
     listener.onModuleInit();
   });
 
@@ -64,10 +69,22 @@ describe('WealthExpListener', () => {
   });
 
   it.each([
-    ['a non-RECHARGE reason', { reason: WalletTxnReason.ADMIN_CREDIT, currency: WalletCurrency.GOLD, amount: 100 }],
-    ['a non-GOLD currency', { reason: WalletTxnReason.RECHARGE, currency: WalletCurrency.DIAMOND, amount: 100 }],
-    ['a zero amount', { reason: WalletTxnReason.RECHARGE, currency: WalletCurrency.GOLD, amount: 0 }],
-    ['a negative amount', { reason: WalletTxnReason.RECHARGE, currency: WalletCurrency.GOLD, amount: -1 }],
+    [
+      'a non-RECHARGE reason',
+      { reason: WalletTxnReason.ADMIN_CREDIT, currency: WalletCurrency.GOLD, amount: 100 },
+    ],
+    [
+      'a non-GOLD currency',
+      { reason: WalletTxnReason.RECHARGE, currency: WalletCurrency.DIAMOND, amount: 100 },
+    ],
+    [
+      'a zero amount',
+      { reason: WalletTxnReason.RECHARGE, currency: WalletCurrency.GOLD, amount: 0 },
+    ],
+    [
+      'a negative amount',
+      { reason: WalletTxnReason.RECHARGE, currency: WalletCurrency.GOLD, amount: -1 },
+    ],
   ])('ignores %s', (_label, partial) => {
     handler({
       payload: {

@@ -139,7 +139,11 @@ describe('GiftService.sendGiftBatch (multi-receiver)', () => {
       { enqueue: jest.fn() } as unknown as QueueService,
       prisma as unknown as PrismaService,
       locks as unknown as LockService,
-      { resolve: jest.fn().mockImplementation((k: string) => Promise.resolve(`https://cdn.example.com/${k}`)) } as never,
+      {
+        resolve: jest
+          .fn()
+          .mockImplementation((k: string) => Promise.resolve(`https://cdn.example.com/${k}`)),
+      } as never,
       bus,
       wallet as unknown as IWalletService,
       { getEffectiveLevel: jest.fn().mockResolvedValue(0) } as unknown as IWealthService,

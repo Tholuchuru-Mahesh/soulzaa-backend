@@ -102,7 +102,12 @@ export class WealthExpLedgerService {
 
       const leveledUp = newLevel > oldLevel;
       if (leveledUp) {
-        await this.rewards.grantAutomaticForCrossedLevels(input.userId, oldLevel, newLevel, periodKey);
+        await this.rewards.grantAutomaticForCrossedLevels(
+          input.userId,
+          oldLevel,
+          newLevel,
+          periodKey,
+        );
         await this.bus.publish(
           new WealthLevelUpEvent({
             userId: input.userId,
@@ -139,7 +144,8 @@ export class WealthExpLedgerService {
       if (existing) return;
 
       const netOutstanding = await this.repo.netAwardedForSourceRef(input.sourceRef);
-      const reverseAmount = BigInt(input.amount) > netOutstanding ? netOutstanding : BigInt(input.amount);
+      const reverseAmount =
+        BigInt(input.amount) > netOutstanding ? netOutstanding : BigInt(input.amount);
       if (reverseAmount <= 0n) {
         this.logger.warn(
           `Wealth EXP reversal for sourceRef=${input.sourceRef} has nothing outstanding to reverse; recording a zero-impact audit entry.`,

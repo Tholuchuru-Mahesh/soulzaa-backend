@@ -99,10 +99,7 @@ export class BackpackRepository {
     return client.backpackItem.update({ where: { id }, data });
   }
 
-  deleteItem(
-    id: string,
-    tx?: Prisma.TransactionClient,
-  ): Promise<BackpackItem> {
+  deleteItem(id: string, tx?: Prisma.TransactionClient): Promise<BackpackItem> {
     const client = tx || this.prisma;
     return client.backpackItem.delete({ where: { id } });
   }
@@ -299,10 +296,12 @@ export class BackpackRepository {
       }
       // 4. Fix transferable: non-GIFT-source items should be transferable
       if (item.source !== 'GIFT' && !item.transferable) {
-        await this.prisma.backpackItem.update({
-          where: { id: item.id },
-          data: { transferable: true },
-        }).catch(() => null);
+        await this.prisma.backpackItem
+          .update({
+            where: { id: item.id },
+            data: { transferable: true },
+          })
+          .catch(() => null);
       }
       // 5. Refresh metadata media URLs from cosmetic catalog if they contain
       //    hardcoded local/IP URLs (e.g. from old local MinIO dev purchases).
@@ -310,29 +309,31 @@ export class BackpackRepository {
       if (item.refId && item.refId !== '00000000-0000-0000-0000-000000000001') {
         const meta = (item.metadata as Record<string, any>) || {};
         const mediaUrl: string = meta.mediaUrl ?? '';
-        const isLocalUrl = /^https?:\/\/(192\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.|localhost)/i.test(mediaUrl);
+        const isLocalUrl =
+          /^https?:\/\/(192\.|10\.|172\.(1[6-9]|2\d|3[01])\.|127\.|localhost)/i.test(mediaUrl);
         if (isLocalUrl) {
           const cosmetic = await this.prisma.cosmetic.findUnique({ where: { id: item.refId } });
           if (cosmetic) {
-            await this.prisma.backpackItem.update({
-              where: { id: item.id },
-              data: {
-                name: cosmetic.name,
-                metadata: {
-                  ...meta,
-                  cosmeticId: cosmetic.id,
-                  mediaUrl: cosmetic.mediaUrl,
-                  thumbnailUrl: cosmetic.thumbnailUrl ?? cosmetic.mediaUrl,
-                  rarity: cosmetic.rarity,
+            await this.prisma.backpackItem
+              .update({
+                where: { id: item.id },
+                data: {
+                  name: cosmetic.name,
+                  metadata: {
+                    ...meta,
+                    cosmeticId: cosmetic.id,
+                    mediaUrl: cosmetic.mediaUrl,
+                    thumbnailUrl: cosmetic.thumbnailUrl ?? cosmetic.mediaUrl,
+                    rarity: cosmetic.rarity,
+                  },
                 },
-              },
-            }).catch(() => null);
+              })
+              .catch(() => null);
           }
         }
       }
     }
   }
-
 
   async listItems(
     userId: string,
@@ -358,7 +359,10 @@ export class BackpackRepository {
   /** Set `equipped` on an item. */
   async setEquipped(id: string, equipped: boolean): Promise<void> {
     const item = await this.prisma.backpackItem.update({ where: { id }, data: { equipped } });
-    if (item.refId && (item.type === 'FRAME' || item.type === 'THEME' || item.type === 'ENTRANCE_EFFECT')) {
+    if (
+      item.refId &&
+      (item.type === 'FRAME' || item.type === 'THEME' || item.type === 'ENTRANCE_EFFECT')
+    ) {
       await this.prisma.userCosmetic.updateMany({
         where: { userId: item.userId, cosmeticId: item.refId },
         data: { equipped },
@@ -379,7 +383,7 @@ export class BackpackRepository {
       });
       if (sameTypeCosmetics.length > 0) {
         await this.prisma.userCosmetic.updateMany({
-          where: { userId, cosmeticId: { in: sameTypeCosmetics.map(c => c.id) } },
+          where: { userId, cosmeticId: { in: sameTypeCosmetics.map((c) => c.id) } },
           data: { equipped: false },
         });
       }
@@ -395,9 +399,11 @@ export class BackpackRepository {
     wasEquipped?: boolean;
   }): Promise<void> {
     // 1. Remove from sender's user_cosmetics table
-    await this.prisma.userCosmetic.deleteMany({
-      where: { userId: input.fromUserId, cosmeticId: input.cosmeticId },
-    }).catch(() => null);
+    await this.prisma.userCosmetic
+      .deleteMany({
+        where: { userId: input.fromUserId, cosmeticId: input.cosmeticId },
+      })
+      .catch(() => null);
 
     // 2. Grant or update recipient's user_cosmetics table
     const existingRecipientCosmetic = await this.prisma.userCosmetic.findUnique({
@@ -410,19 +416,23 @@ export class BackpackRepository {
     });
 
     if (existingRecipientCosmetic) {
-      await this.prisma.userCosmetic.update({
-        where: { id: existingRecipientCosmetic.id },
-        data: { expiresAt: input.expiresAt },
-      }).catch(() => null);
+      await this.prisma.userCosmetic
+        .update({
+          where: { id: existingRecipientCosmetic.id },
+          data: { expiresAt: input.expiresAt },
+        })
+        .catch(() => null);
     } else {
-      await this.prisma.userCosmetic.create({
-        data: {
-          userId: input.toUserId,
-          cosmeticId: input.cosmeticId,
-          expiresAt: input.expiresAt,
-          equipped: false,
-        },
-      }).catch(() => null);
+      await this.prisma.userCosmetic
+        .create({
+          data: {
+            userId: input.toUserId,
+            cosmeticId: input.cosmeticId,
+            expiresAt: input.expiresAt,
+            equipped: false,
+          },
+        })
+        .catch(() => null);
     }
   }
 

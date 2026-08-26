@@ -24,7 +24,8 @@ export class WealthExpReversalListener implements OnModuleInit {
   onModuleInit(): void {
     this.bus.subscribe<WalletDebitedEvent>(WALLET_EVENTS.DEBITED, (e) => {
       const p = e.payload;
-      if (p.reason !== WalletTxnReason.PURCHASE_REVERSAL || p.currency !== WalletCurrency.GOLD) return;
+      if (p.reason !== WalletTxnReason.PURCHASE_REVERSAL || p.currency !== WalletCurrency.GOLD)
+        return;
       if (p.amount <= 0) return;
       void this.ledger
         .reverse({

@@ -11,7 +11,12 @@ const ACTIVE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 export class PostScoreService {
   constructor(private readonly prisma: PrismaService) {}
 
-  computeScore(likeCount: number, commentCount: number, createdAt: Date, now: Date = new Date()): number {
+  computeScore(
+    likeCount: number,
+    commentCount: number,
+    createdAt: Date,
+    now: Date = new Date(),
+  ): number {
     const hoursSincePosted = Math.max(0, (now.getTime() - createdAt.getTime()) / 3_600_000);
     const weight = likeCount * LIKE_WEIGHT + commentCount * COMMENT_WEIGHT;
     return weight / Math.pow(hoursSincePosted + 2, GRAVITY);

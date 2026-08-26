@@ -66,7 +66,13 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
     if (isNumeric) {
       const pattern = `${q}%`;
       idMatchedUsers = await this.prisma.$queryRaw<
-        { id: string; displayId?: number; username: string; fullName: string | null; country: string | null }[]
+        {
+          id: string;
+          displayId?: number;
+          username: string;
+          fullName: string | null;
+          country: string | null;
+        }[]
       >`
         SELECT id, "displayId", username, "fullName", country
         FROM users
@@ -78,7 +84,13 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
     } else if (isHexLike) {
       const pattern = `${q.toLowerCase()}%`;
       idMatchedUsers = await this.prisma.$queryRaw<
-        { id: string; displayId?: number; username: string; fullName: string | null; country: string | null }[]
+        {
+          id: string;
+          displayId?: number;
+          username: string;
+          fullName: string | null;
+          country: string | null;
+        }[]
       >`
         SELECT id, "displayId", username, "fullName", country
         FROM users
@@ -127,7 +139,13 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
 
     const combinedMap = new Map<
       string,
-      { id: string; displayId?: number; username: string; fullName: string | null; country: string | null }
+      {
+        id: string;
+        displayId?: number;
+        username: string;
+        fullName: string | null;
+        country: string | null;
+      }
     >();
     for (const u of idMatchedUsers) {
       combinedMap.set(u.id, u);
@@ -145,7 +163,13 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
 
   /** Attach avatar/verified/level/vipLevel for the page's users. */
   private async hydrate(
-    rows: { id: string; displayId?: number; username: string; fullName: string | null; country: string | null }[],
+    rows: {
+      id: string;
+      displayId?: number;
+      username: string;
+      fullName: string | null;
+      country: string | null;
+    }[],
   ): Promise<UserCard[]> {
     if (rows.length === 0) return [];
     const ids = rows.map((r) => r.id);

@@ -5,15 +5,28 @@ describe('PostCommentService', () => {
   function build() {
     const prisma = {
       post: { findFirst: jest.fn() },
-      postComment: { create: jest.fn(), findMany: jest.fn(), count: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+      postComment: {
+        create: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
     };
     const bus = { publish: jest.fn() };
     const profile = { getCards: jest.fn() };
     const permissions = {
       resolveUserPermissions: jest.fn(),
-      hasPermission: jest.fn((perms: Set<string>, required: string) => perms.has(required) || perms.has('*')),
+      hasPermission: jest.fn(
+        (perms: Set<string>, required: string) => perms.has(required) || perms.has('*'),
+      ),
     };
-    const service = new PostCommentService(prisma as any, bus as any, profile as any, permissions as any);
+    const service = new PostCommentService(
+      prisma as any,
+      bus as any,
+      profile as any,
+      permissions as any,
+    );
     return { service, prisma, bus, profile, permissions };
   }
 
@@ -28,7 +41,9 @@ describe('PostCommentService', () => {
       const { service, prisma, bus, profile } = build();
       prisma.post.findFirst.mockResolvedValue({ id: 'p1' });
       prisma.postComment.create.mockResolvedValue({ id: 'c1', postId: 'p1', authorId: 'u1' });
-      profile.getCards.mockResolvedValue([{ id: 'u1', username: 'bob', fullName: 'Bob', avatarUrl: null }]);
+      profile.getCards.mockResolvedValue([
+        { id: 'u1', username: 'bob', fullName: 'Bob', avatarUrl: null },
+      ]);
 
       const comment = await service.addComment('p1', 'u1', 'hi');
 
@@ -60,7 +75,11 @@ describe('PostCommentService', () => {
   describe('deleteComment', () => {
     it('rejects a non-author without post.moderate', async () => {
       const { service, prisma, permissions } = build();
-      prisma.postComment.findUnique.mockResolvedValue({ id: 'c1', authorId: 'u1', deletedAt: null });
+      prisma.postComment.findUnique.mockResolvedValue({
+        id: 'c1',
+        authorId: 'u1',
+        deletedAt: null,
+      });
       permissions.resolveUserPermissions.mockResolvedValue(new Set());
 
       await expect(service.deleteComment('c1', 'u2')).rejects.toBeInstanceOf(ForbiddenException);
@@ -68,7 +87,11 @@ describe('PostCommentService', () => {
 
     it('lets the author delete their own comment', async () => {
       const { service, prisma, permissions } = build();
-      prisma.postComment.findUnique.mockResolvedValue({ id: 'c1', authorId: 'u1', deletedAt: null });
+      prisma.postComment.findUnique.mockResolvedValue({
+        id: 'c1',
+        authorId: 'u1',
+        deletedAt: null,
+      });
 
       await service.deleteComment('c1', 'u1');
 
