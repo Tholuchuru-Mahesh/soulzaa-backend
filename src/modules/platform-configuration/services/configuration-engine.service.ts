@@ -7,6 +7,29 @@ import { ConfigurationValidationService } from './configuration-validation.servi
 
 const CACHE_TTL_SECONDS = 3600;
 
+/**
+ * Marker stored for a key that resolved to no database row, so the miss is not
+ * re-queried on every call.
+ *
+ * Without it `get()` hit Postgres on every invocation for any key not in
+ * `platform_settings` — and the hot caller is CustomThrottlerGuard, which reads
+ * two such keys on *every* request. Measured before this change: 41 reads of
+ * `platform_settings` across 20 requests, 64% of all database reads on a
+ * profile fetch, none of which could ever return a row.
+ *
+ * A JSON-encodable object rather than `null`: CacheService.get() returns null
+ * for "absent", so a cached null is indistinguishable from a cache miss.
+ */
+const MISS_SENTINEL = { __configMiss: true } as const;
+
+/**
+ * Misses expire faster than hits. A key absent today may be seeded tomorrow —
+ * PlatformConfigurationSeederService writes 94 settings at boot without
+ * touching the cache — so a long-lived miss could mask a real value. Sixty
+ * seconds keeps the per-request queries gone while bounding that window.
+ */
+const MISS_TTL_SECONDS = 60;
+
 @Injectable()
 export class ConfigurationEngineService {
   constructor(
@@ -23,19 +46,27 @@ export class ConfigurationEngineService {
     const cacheKey = `config:setting:${key}`;
 
     // 1. Try Redis cache
-    const cachedStr = await this.cacheService.get<string>(cacheKey);
-    if (cachedStr !== null && cachedStr !== undefined) {
-      return this.deserializeValue(key, cachedStr);
-    }
+    const cached = await this.cacheService.get<string | typeof MISS_SENTINEL>(cacheKey);
+    if (cached !== null && cached !== undefined) {
+      // A cached miss short-circuits straight to the env/default fallbacks
+      // below without touching the database.
+      if (!this.isMiss(cached)) {
+        return this.deserializeValue(key, cached as string);
+      }
+    } else {
+      // 2. Cache miss (not a cached *absence*) — consult the database once.
+      const setting = await this.prisma.platformSetting.findUnique({
+        where: { key },
+      });
 
-    // 2. Try Database lookup
-    const setting = await this.prisma.platformSetting.findUnique({
-      where: { key },
-    });
+      if (setting) {
+        await this.cacheService.set(cacheKey, setting.value, CACHE_TTL_SECONDS);
+        return this.validationService.deserialize<T>(setting.value, setting.valueType);
+      }
 
-    if (setting) {
-      await this.cacheService.set(cacheKey, setting.value, CACHE_TTL_SECONDS);
-      return this.validationService.deserialize<T>(setting.value, setting.valueType);
+      // Remember the absence so the next call skips the query. Invalidated by
+      // updateSetting() and by the seeder, both of which del() this key.
+      await this.cacheService.set(cacheKey, MISS_SENTINEL, MISS_TTL_SECONDS);
     }
 
     // 3. Try Environment variable override
@@ -128,6 +159,15 @@ export class ConfigurationEngineService {
     }
 
     return this.setSetting(key, setting.defaultValue, reason ?? 'Reset to default value', actorId);
+  }
+
+  /** True when the cached entry is the "no such setting" marker, not a value. */
+  private isMiss(cached: unknown): boolean {
+    return (
+      typeof cached === 'object' &&
+      cached !== null &&
+      (cached as Record<string, unknown>)['__configMiss'] === true
+    );
   }
 
   private deserializeValue(key: string, rawStr: string) {

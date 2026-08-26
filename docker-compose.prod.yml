@@ -72,7 +72,18 @@ services:
     container_name: soulzaa-redis
     restart: always
     logging: *default-logging
-    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    # `noeviction`, not `allkeys-lru`. This instance holds BullMQ job state,
+    # DistributedLockService locks and presence alongside the cache, and
+    # `allkeys-lru` lets Redis discard any of them under memory pressure. An
+    # evicted cache entry is harmless; an evicted job is silent loss in payouts
+    # and reconciliation, and an evicted lock admits two workers to the same
+    # critical section. BullMQ warns about exactly this on every queue at boot.
+    #
+    # The trade: at 2gb, writes now fail instead of silently dropping data —
+    # loud and diagnosable rather than quiet and corrupting. If memory pressure
+    # becomes real, split the cache onto a second Redis with its own LRU policy
+    # rather than reverting this.
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy noeviction
     volumes:
       - redis_data:/data
     healthcheck:
@@ -102,7 +113,12 @@ services:
       - .env.production
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB}?schema=public&pgbouncer=true
+      # connection_limit is explicit because Prisma otherwise defaults to
+      # `num_cpus * 2 + 1` — five connections on a 2-vCPU instance, against a
+      # pgbouncer pool of 50. That mismatch is what put `BEGIN` in the
+      # slow-query log at 126ms: not slow database work, but the client waiting
+      # for a free slot. Keep this comfortably under PGBOUNCER_DEFAULT_POOL_SIZE.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB}?schema=public&pgbouncer=true&connection_limit=20
       DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       REDIS_URL: redis://redis:6379
     volumes:
