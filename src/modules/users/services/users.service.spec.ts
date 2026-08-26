@@ -6,6 +6,7 @@ import { UsersService } from './users.service';
 function makeUser(overrides: Partial<User> = {}): User {
   return {
     id: 'u1',
+    displayId: 10000000,
     username: 'aditya',
     email: 'aditya@example.com',
     mobile: '+15551234567',
@@ -32,7 +33,7 @@ describe('UsersService', () => {
   let repo: jest.Mocked<
     Pick<
       UsersRepository,
-      'createWithProfile' | 'update' | 'findByEmail' | 'findByMobile' | 'findByUsername'
+      'createWithProfile' | 'update' | 'findByEmail' | 'findByMobile' | 'findByUsername' | 'findByDisplayId'
     >
   >;
   let service: UsersService;
@@ -44,6 +45,7 @@ describe('UsersService', () => {
       findByEmail: jest.fn(),
       findByMobile: jest.fn(),
       findByUsername: jest.fn(),
+      findByDisplayId: jest.fn().mockResolvedValue(null),
     };
     const config = { get: () => ({ minUserAge: 18 }) } as unknown as ConfigService;
     service = new UsersService(repo as unknown as UsersRepository, config);

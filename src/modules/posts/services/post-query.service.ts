@@ -42,6 +42,22 @@ export class PostQueryService {
     return buildPaginated(await this.toSummaries(rows), total, p, l);
   }
 
+  async getUserPosts(authorId: string, viewerId: string, page?: number, limit?: number): Promise<Paginated<PostSummary>> {
+    const { page: p, limit: l, skip } = normalizePagination({ page, limit });
+    const where = { authorId, status: PostStatus.PUBLISHED, deletedAt: null };
+    const [rows, total] = await Promise.all([
+      this.prisma.post.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }],
+        skip,
+        take: l,
+        include: POST_INCLUDE(viewerId),
+      }),
+      this.prisma.post.count({ where }),
+    ]);
+    return buildPaginated(await this.toSummaries(rows), total, p, l);
+  }
+
   async getById(postId: string, viewerId: string): Promise<PostSummary | null> {
     const row = await this.prisma.post.findFirst({
       where: { id: postId, deletedAt: null },

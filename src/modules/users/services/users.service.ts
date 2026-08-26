@@ -64,10 +64,12 @@ export class UsersService implements IUsersService {
     if (input.dateOfBirth) this.assertMinimumAge(input.dateOfBirth);
 
     try {
+      const displayId = await this.generateUniqueDisplayId();
       // Creates the identity row + default profile/statistics/verification rows
       // atomically (all users-module-owned tables).
       const user = await this.repo.createWithProfile(
         {
+          displayId,
           username: input.username,
           email: input.email ? input.email.toLowerCase() : null,
           mobile: input.mobile ?? null,
@@ -91,6 +93,21 @@ export class UsersService implements IUsersService {
     } catch (err) {
       throw this.mapUniqueViolation(err);
     }
+  }
+
+  /**
+   * Generates a random 8-digit integer (10000000 - 99999999) ensuring uniqueness.
+   */
+  private async generateUniqueDisplayId(): Promise<number> {
+    const MAX_ATTEMPTS = 10;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const candidate = Math.floor(10000000 + Math.random() * 90000000);
+      const existing = await this.repo.findByDisplayId(candidate);
+      if (!existing) {
+        return candidate;
+      }
+    }
+    return Math.floor(10000000 + (Date.now() % 90000000));
   }
 
   async markEmailVerified(id: string): Promise<void> {
@@ -212,6 +229,7 @@ export class UsersService implements IUsersService {
     if (!user) return null;
     return {
       id: user.id,
+      displayId: user.displayId,
       username: user.username,
       email: user.email,
       mobile: user.mobile,

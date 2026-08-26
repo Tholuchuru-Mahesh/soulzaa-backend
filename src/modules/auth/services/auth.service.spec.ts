@@ -30,6 +30,7 @@ import { FirebaseService } from './firebase.service';
 function makeIdentity(overrides: Partial<UserIdentity> = {}): UserIdentity {
   return {
     id: 'u1',
+    displayId: 10000000,
     username: 'aditya',
     email: 'aditya@example.com',
     mobile: '+15551234567',

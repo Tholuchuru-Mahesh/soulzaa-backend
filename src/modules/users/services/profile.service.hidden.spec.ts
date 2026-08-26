@@ -11,6 +11,7 @@ import type { ProfileView } from '../interfaces/profile.interface';
 function view(id: string, hidden: boolean): ProfileView {
   return {
     id,
+    displayId: 10000000,
     username: id,
     fullName: null,
     bio: null,
@@ -23,7 +24,7 @@ function view(id: string, hidden: boolean): ProfileView {
     city: null,
     preferredLanguage: null,
     isHiddenAccount: hidden,
-    statistics: { level: 1, vipLevel: 0 } as ProfileView['statistics'],
+    statistics: { level: 1, vipLevel: 0, postsCount: 0 } as ProfileView['statistics'],
     verification: { verified: false } as ProfileView['verification'],
     createdAt: new Date('2026-01-01'),
   };

@@ -118,9 +118,17 @@ export class RoleAssignmentService {
         roleUpper,
       );
 
+      let displayId = Math.floor(10000000 + Math.random() * 90000000);
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const existing = await this.prisma.user.findUnique({ where: { displayId } });
+        if (!existing) break;
+        displayId = Math.floor(10000000 + Math.random() * 90000000);
+      }
+
       const newUser = await this.prisma.$transaction(async (tx) => {
         const createdUser = await tx.user.create({
           data: {
+            displayId,
             username: uniqueUsername,
             email: cleanEmail,
             fullName: emailPrefix,

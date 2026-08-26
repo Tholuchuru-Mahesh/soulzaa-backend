@@ -48,21 +48,39 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
   async search(query: string, opts: UserSearchOptions): Promise<Paginated<UserCard>> {
     const { page, limit, skip } = normalizePagination(opts);
     const q = query.trim();
+    if (!q) {
+      return buildPaginated([], 0, page, limit);
+    }
+
     const cleanHex = q.replace(/-/g, '');
     const isHexLike = /^[0-9a-f]{8,36}$/i.test(cleanHex);
+    const isNumeric = /^\d{1,10}$/.test(q);
 
     let idMatchedUsers: {
       id: string;
+      displayId?: number;
       username: string;
       fullName: string | null;
       country: string | null;
     }[] = [];
-    if (isHexLike) {
+    if (isNumeric) {
+      const pattern = `${q}%`;
+      idMatchedUsers = await this.prisma.$queryRaw<
+        { id: string; displayId?: number; username: string; fullName: string | null; country: string | null }[]
+      >`
+        SELECT id, "displayId", username, "fullName", country
+        FROM users
+        WHERE "displayId"::text LIKE ${pattern}
+          AND status = 'ACTIVE'
+          AND "deletedAt" IS NULL
+          ${opts.includeHidden ? Prisma.empty : Prisma.sql`AND "isHiddenAccount" = false`}
+      `;
+    } else if (isHexLike) {
       const pattern = `${q.toLowerCase()}%`;
       idMatchedUsers = await this.prisma.$queryRaw<
-        { id: string; username: string; fullName: string | null; country: string | null }[]
+        { id: string; displayId?: number; username: string; fullName: string | null; country: string | null }[]
       >`
-        SELECT id, username, "fullName", country
+        SELECT id, "displayId", username, "fullName", country
         FROM users
         WHERE id::text ILIKE ${pattern}
           AND status = 'ACTIVE'
@@ -71,14 +89,27 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
       `;
     }
 
+    const words = q.split(/\s+/).filter(Boolean);
+    const searchConditions: Prisma.UserWhereInput[] = [
+      { username: { contains: q, mode: 'insensitive' } },
+      { fullName: { contains: q, mode: 'insensitive' } },
+    ];
+    if (words.length > 1) {
+      searchConditions.push({
+        AND: words.map((w) => ({
+          OR: [
+            { username: { contains: w, mode: 'insensitive' } },
+            { fullName: { contains: w, mode: 'insensitive' } },
+          ],
+        })),
+      });
+    }
+
     const where: Prisma.UserWhereInput = {
       status: 'ACTIVE',
       deletedAt: null,
       ...(opts.includeHidden ? {} : { isHiddenAccount: false }),
-      OR: [
-        { username: { contains: q, mode: 'insensitive' } },
-        { fullName: { contains: q, mode: 'insensitive' } },
-      ],
+      OR: searchConditions,
       ...(opts.country ? { country: opts.country } : {}),
       ...(opts.excludeIds && opts.excludeIds.length > 0 ? { id: { notIn: opts.excludeIds } } : {}),
     };
@@ -89,14 +120,14 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
         skip,
         take: limit,
         orderBy: [{ username: 'asc' }],
-        select: { id: true, username: true, fullName: true, country: true },
+        select: { id: true, displayId: true, username: true, fullName: true, country: true },
       }),
       this.prisma.user.count({ where }),
     ]);
 
     const combinedMap = new Map<
       string,
-      { id: string; username: string; fullName: string | null; country: string | null }
+      { id: string; displayId?: number; username: string; fullName: string | null; country: string | null }
     >();
     for (const u of idMatchedUsers) {
       combinedMap.set(u.id, u);
@@ -114,7 +145,7 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
 
   /** Attach avatar/verified/level/vipLevel for the page's users. */
   private async hydrate(
-    rows: { id: string; username: string; fullName: string | null; country: string | null }[],
+    rows: { id: string; displayId?: number; username: string; fullName: string | null; country: string | null }[],
   ): Promise<UserCard[]> {
     if (rows.length === 0) return [];
     const ids = rows.map((r) => r.id);
@@ -141,6 +172,7 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
         const stat = statByUser.get(r.id);
         return {
           id: r.id,
+          displayId: r.displayId,
           username: r.username,
           fullName: r.fullName,
           country: r.country,

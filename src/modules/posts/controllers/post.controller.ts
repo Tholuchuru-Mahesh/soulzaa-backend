@@ -36,6 +36,16 @@ export class PostController {
     return this.queryService.getFeed(userId, query.page, query.limit);
   }
 
+  @Get('user/:userId')
+  @ApiOperation({ summary: 'Get posts published by a specific user' })
+  async userPosts(
+    @Param('userId') authorId: string,
+    @Query() query: FeedQueryDto,
+    @CurrentUser('id') currentUserId: string,
+  ) {
+    return this.queryService.getUserPosts(authorId, currentUserId, query.page, query.limit);
+  }
+
   @Post(':id/like')
   @ApiOperation({ summary: 'Like a post' })
   async like(@Param('id') id: string, @CurrentUser('id') userId: string) {

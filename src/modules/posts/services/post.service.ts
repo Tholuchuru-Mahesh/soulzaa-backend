@@ -4,12 +4,17 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Post, PostStatus } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { STORAGE_CATEGORIES } from 'src/infra/storage/storage.constants';
 import { PermissionResolver } from 'src/modules/authorization/services/permission-resolver.service';
+import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
 import { PostCreatedEvent } from '../events/post.events';
 
 export interface CreatePostInput {
@@ -24,6 +29,7 @@ export class PostService {
     private readonly prisma: PrismaService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly permissions: PermissionResolver,
+    @Optional() @Inject(PROFILE_SERVICE) private readonly profile?: IProfileService,
   ) {}
 
   async createPost(input: CreatePostInput): Promise<Post> {
@@ -42,6 +48,7 @@ export class PostService {
       },
     });
 
+    await this.profile?.invalidateProfile(input.authorId).catch(() => undefined);
     await this.bus.publish(new PostCreatedEvent({ postId: post.id, authorId: post.authorId }));
     return post;
   }
@@ -61,6 +68,7 @@ export class PostService {
       where: { id: postId },
       data: { status: PostStatus.REMOVED, deletedAt: new Date() },
     });
+    await this.profile?.invalidateProfile(post.authorId).catch(() => undefined);
   }
 
   /** Each staged photo's key must have been minted for this user by the storage presign flow. */

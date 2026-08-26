@@ -21,6 +21,7 @@ const CFG = {
 function makeUser(over: Record<string, unknown> = {}) {
   return {
     id: 'u1',
+    displayId: 10000000,
     username: 'aditya',
     fullName: 'Aditya',
     gender: null,

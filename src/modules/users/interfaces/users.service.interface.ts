@@ -11,6 +11,7 @@ export const USERS_SERVICE = Symbol('USERS_SERVICE');
 /** A read model of the account identity row — no password/credential material. */
 export interface UserIdentity {
   id: string;
+  displayId: number;
   username: string;
   email: string | null;
   mobile: string | null;

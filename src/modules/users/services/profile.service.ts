@@ -68,6 +68,7 @@ const USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/;
 /** JSON-safe cached snapshot — stores media KEYS; URLs resolved per response. */
 interface CachedProfile {
   id: string;
+  displayId: number;
   username: string;
   fullName: string | null;
   bio: string | null;
@@ -176,6 +177,9 @@ export class ProfileService implements IProfileService {
     let user = await this.users.findByIdOrPrefix(identifier);
     if (!user) {
       user = await this.users.findByUsername(identifier);
+    }
+    if (!user && this.users.findByFullName) {
+      user = await this.users.findByFullName(identifier);
     }
     return this.gatedView(user, viewerId);
   }
@@ -319,6 +323,7 @@ export class ProfileService implements IProfileService {
             avatarUrl: await this.media.resolve(avatarKey),
             equippedFrameUrl: await this.resolveEquippedFrameUrl(user.id),
             username: user.username,
+            displayId: user.displayId,
             level: stats?.level ?? 1,
             vipLevel: stats?.wealthLevel ?? 0,
             verified: verifiedByUserId.get(user.id)?.verified ?? false,
@@ -696,11 +701,24 @@ export class ProfileService implements IProfileService {
       // fallback to stats.visitorsCount
     }
 
+    let postsCount = 0;
+    try {
+      if (this.prisma?.post) {
+        postsCount = await this.prisma.post.count({
+          where: { authorId: user.id, status: 'PUBLISHED', deletedAt: null },
+        });
+      }
+    } catch {
+      // fallback to 0
+    }
+
     const statsView = this.toStatisticsView(stats);
     statsView.visitorsCount = visitorsCount;
+    statsView.postsCount = postsCount;
 
     return {
       id: user.id,
+      displayId: user.displayId,
       username: user.username,
       fullName: user.fullName,
       bio: profile.bio,
@@ -931,6 +949,7 @@ export class ProfileService implements IProfileService {
       followingCount: 0,
       friendsCount: 0,
       visitorsCount: 0,
+      postsCount: 0,
       giftsSent: 0,
       giftsReceived: 0,
       coinsReceived: 0,
@@ -941,15 +960,34 @@ export class ProfileService implements IProfileService {
       level: 1,
       vipLevel: 0,
     };
-    const baseStats = snap.statistics ? { ...defaultStats, ...snap.statistics } : defaultStats;
+    let postsCount = snap.statistics?.postsCount;
+    if (postsCount === undefined) {
+      try {
+        if (this.prisma?.post) {
+          postsCount = await this.prisma.post.count({
+            where: { authorId: snap.id, status: 'PUBLISHED', deletedAt: null },
+          });
+        }
+      } catch {
+        postsCount = 0;
+      }
+    }
+    const baseStats = snap.statistics
+      ? {
+          ...defaultStats,
+          ...snap.statistics,
+          postsCount: postsCount ?? snap.statistics.postsCount ?? 0,
+        }
+      : { ...defaultStats, postsCount: postsCount ?? 0 };
     const baseVerification: VerificationView = snap.verification ?? {
       verified: false,
-      status: 'NONE' as any,
+      status: VerificationStatus.NONE,
       type: null,
     };
 
     return {
       id: snap.id,
+      displayId: snap.displayId,
       username: snap.username,
       fullName: snap.fullName ?? null,
       bio: snap.bio ?? null,
@@ -974,7 +1012,7 @@ export class ProfileService implements IProfileService {
           }
         : baseStats,
       verification: isHidden
-        ? { verified: false, status: 'NONE' as any, type: null }
+        ? { verified: false, status: VerificationStatus.NONE, type: null }
         : baseVerification,
       isHiddenAccount: isHidden,
       createdAt: snap.createdAt ? new Date(snap.createdAt) : new Date(),
@@ -987,7 +1025,8 @@ export class ProfileService implements IProfileService {
       followersCount: s.followersCount,
       followingCount: s.followingCount,
       friendsCount: s.friendsCount,
-      visitorsCount: (s as any).visitorsCount ?? 0,
+      visitorsCount: (s as unknown as { visitorsCount?: number }).visitorsCount ?? 0,
+      postsCount: (s as unknown as { postsCount?: number }).postsCount ?? 0,
       giftsSent: Number(s.giftsSent),
       giftsReceived: Number(s.giftsReceived),
       coinsReceived: Number(s.coinsReceived),
@@ -1086,7 +1125,7 @@ export class ProfileService implements IProfileService {
       const [users, profiles, stats, verifications, follows] = await Promise.all([
         this.prisma.user.findMany({
           where: { id: { in: visitorIds } },
-          select: { id: true, username: true, fullName: true, country: true },
+          select: { id: true, displayId: true, username: true, fullName: true, country: true },
         }),
         this.prisma.userProfile.findMany({
           where: { userId: { in: visitorIds } },
@@ -1126,6 +1165,7 @@ export class ProfileService implements IProfileService {
             visitorId: r.visitorId,
             visitedAt: r.visitedAt,
             username: u?.username ?? 'user',
+            displayId: u?.displayId,
             fullName: u?.fullName ?? null,
             avatarUrl,
             equippedFrameUrl: frameUrl,

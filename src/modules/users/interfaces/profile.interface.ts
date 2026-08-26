@@ -29,6 +29,7 @@ export interface StatisticsView {
   followingCount: number;
   friendsCount: number;
   visitorsCount: number;
+  postsCount: number;
   giftsSent: number;
   giftsReceived: number;
   coinsReceived: number;
@@ -49,6 +50,7 @@ export interface VerificationView {
 /** Composed profile read model (identity + profile + statistics + verification). */
 export interface ProfileView {
   id: string;
+  displayId: number;
   username: string;
   fullName: string | null;
   bio: string | null;
@@ -79,6 +81,7 @@ export interface ProfileVisitorItem {
   visitorId: string;
   visitedAt: Date;
   username: string;
+  displayId?: number;
   fullName: string | null;
   avatarUrl: string | null;
   equippedFrameUrl?: string | null;
@@ -92,6 +95,7 @@ export interface ProfileVisitorItem {
 /** Lightweight card returned by search / listings. */
 export interface UserCard {
   id: string;
+  displayId?: number;
   username: string;
   fullName: string | null;
   avatarUrl: string | null;
@@ -116,6 +120,7 @@ export interface PublicIdentity {
   equippedFrameUrl?: string | null;
   /** Raw handle, for surfaces that show @handle alongside the display name. */
   username?: string;
+  displayId?: number;
   /** `UserStatistics.level`; 1 when the row is absent. */
   level?: number;
   /** `UserStatistics.vipLevel`; 0 (not VIP) when the row is absent. */

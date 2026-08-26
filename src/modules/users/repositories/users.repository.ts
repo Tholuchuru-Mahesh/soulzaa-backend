@@ -16,17 +16,28 @@ export class UsersRepository {
     return this.prisma.user.findFirst({ where: { id, deletedAt: null } });
   }
 
-  /** Lookup user by exact UUID or UUID prefix (e.g. 8-char short ID). */
+  findByDisplayId(displayId: number): Promise<User | null> {
+    return this.prisma.user.findFirst({ where: { displayId, deletedAt: null } });
+  }
+
+  /** Lookup user by numeric displayId, exact UUID, or UUID prefix. */
   async findByIdOrPrefix(identifier: string): Promise<User | null> {
+    const trimmed = identifier.trim();
+    // Numeric ID lookup
+    if (/^\d{1,10}$/.test(trimmed)) {
+      const byDisplayId = await this.findByDisplayId(Number(trimmed));
+      if (byDisplayId) return byDisplayId;
+    }
+
     const isFullUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-      identifier,
+      trimmed,
     );
     if (isFullUuid) {
-      return this.findById(identifier);
+      return this.findById(trimmed);
     }
-    const clean = identifier.replace(/-/g, '').toLowerCase();
+    const clean = trimmed.replace(/-/g, '').toLowerCase();
     if (/^[0-9a-f]{8,36}$/i.test(clean)) {
-      const pattern = `${identifier.toLowerCase()}%`;
+      const pattern = `${trimmed.toLowerCase()}%`;
       const matches = await this.prisma.$queryRaw<User[]>`
         SELECT * FROM users
         WHERE id::text ILIKE ${pattern}
@@ -47,7 +58,22 @@ export class UsersRepository {
   }
 
   findByUsername(username: string): Promise<User | null> {
-    return this.prisma.user.findFirst({ where: { username, deletedAt: null } });
+    return this.prisma.user.findFirst({
+      where: {
+        username: { equals: username, mode: 'insensitive' },
+        deletedAt: null,
+      },
+    });
+  }
+
+  findByFullName(fullName: string): Promise<User | null> {
+    return this.prisma.user.findFirst({
+      where: {
+        fullName: { equals: fullName.trim(), mode: 'insensitive' },
+        deletedAt: null,
+        status: 'ACTIVE',
+      },
+    });
   }
 
   /** Batch lookup for cross-module identity resolution (e.g. games player panels). */
