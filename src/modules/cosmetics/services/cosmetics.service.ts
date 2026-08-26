@@ -161,7 +161,52 @@ export class CosmeticsService implements ICosmeticsService {
       });
       if (byName) cosmetic = byName;
     }
-    if (!cosmetic || !cosmetic.enabled) return null;
+    if (!cosmetic) {
+      const lower = input.cosmeticId.toLowerCase();
+      let inferredType: import('@prisma/client').CosmeticType = 'FRAME';
+      if (lower.includes('theme') || lower.includes('wallpaper') || lower.includes('bg')) {
+        inferredType = 'THEME';
+      } else if (lower.includes('entrance') || lower.includes('ride') || lower.includes('car') || lower.includes('effect')) {
+        inferredType = 'ENTRANCE_EFFECT';
+      } else if (lower.includes('badge')) {
+        inferredType = 'BADGE';
+      }
+      // No 'bubble' branch: `CosmeticType` has no BUBBLE member (schema only
+      // defines FRAME/BADGE/ENTRANCE_EFFECT/THEME/DECORATION) — chat bubbles
+      // are granted through a different reward field entirely (TaskReward's
+      // bubbleId, not a catalog Cosmetic), so a bubble-named id falls through
+      // to the FRAME default like any other unrecognized keyword would.
+
+      const displayName = input.cosmeticId
+        .replace(/^frame[-_]|^theme[-_]|^ride[-_]|^effect[-_]|^bubble[-_]|^badge[-_]/i, '')
+        .replace(/[-_]/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+      // `Cosmetic` has no `description`/`priceCoins`/`priceDiamonds` columns
+      // (see prisma/schema/cosmetics.prisma) — those three fields here used
+      // to be silently invalid, which the strict `tsc` build refused to
+      // compile at all. The one piece worth keeping, a human-readable blurb,
+      // goes into `metadata` (a Json column meant for exactly this); pricing
+      // uses the real `price`/`isPremium` columns — an auto-created ad hoc
+      // cosmetic is free/non-purchasable, matching the old `0`/`0` intent.
+      cosmetic = await this.prisma.cosmetic.create({
+        data: {
+          name: displayName.trim().length > 0 ? displayName.trim() : input.cosmeticId,
+          type: inferredType,
+          rarity: 'RARE',
+          enabled: true,
+          isPremium: false,
+          price: 0,
+          transferable: false,
+          metadata: {
+            code: input.cosmeticId,
+            description: `${displayName || input.cosmeticId} (${inferredType})`,
+            durationDays: input.durationDays ?? 7,
+          },
+        },
+      });
+    }
+    if (!cosmetic.enabled) return null;
 
     let computedExpiresAt: Date | null = input.expiresAt ?? null;
     const meta = (cosmetic.metadata as Record<string, any>) || {};
@@ -476,17 +521,60 @@ export class CosmeticsService implements ICosmeticsService {
   }
 
   async equipCosmetic(userId: string, cosmeticId: string): Promise<void> {
-    let userCos = await this.prisma.userCosmetic.findUnique({
+    let userCos = await this.prisma.userCosmetic.findFirst({
       where: {
-        userId_cosmeticId: {
-          userId,
-          cosmeticId,
-        },
+        userId,
+        OR: [
+          { cosmeticId },
+          { id: cosmeticId.length === 36 ? cosmeticId : undefined },
+          { cosmetic: { name: { equals: cosmeticId, mode: 'insensitive' } } },
+        ],
       },
       include: {
         cosmetic: true,
       },
     });
+
+    if (!userCos) {
+      // Check if the user owns it via BackpackItem
+      const backpackItem = await this.prisma.backpackItem.findFirst({
+        where: {
+          userId,
+          OR: [
+            { id: cosmeticId },
+            { refId: cosmeticId },
+            { name: { equals: cosmeticId, mode: 'insensitive' } },
+          ],
+        },
+      });
+
+      if (backpackItem) {
+        let targetCosId: string | null | undefined = backpackItem.refId;
+        if (!targetCosId || targetCosId.length !== 36) {
+          const cos = await this.prisma.cosmetic.findFirst({
+            where: {
+              OR: [
+                { name: { equals: backpackItem.name, mode: 'insensitive' } },
+                { id: targetCosId && targetCosId.length === 36 ? targetCosId : undefined },
+              ],
+            },
+          });
+          targetCosId = cos?.id;
+        }
+
+        if (targetCosId) {
+          await this.grantCosmeticToUser({
+            userId,
+            cosmeticId: targetCosId,
+            expiresAt: backpackItem.expiresAt,
+          });
+          userCos = await this.prisma.userCosmetic.findUnique({
+            where: { userId_cosmeticId: { userId, cosmeticId: targetCosId } },
+            include: { cosmetic: true },
+          });
+        }
+      }
+    }
 
     if (!userCos) {
       const cosmetic = await this.repo.getById(cosmeticId);
@@ -522,6 +610,8 @@ export class CosmeticsService implements ICosmeticsService {
       );
     }
 
+    const actualCosId = userCos.cosmeticId;
+
     // Unequip all other cosmetics of the same type for this user
     const sameTypeCosmetics = await this.prisma.userCosmetic.findMany({
       where: {
@@ -547,25 +637,46 @@ export class CosmeticsService implements ICosmeticsService {
       }),
     ]);
 
+    // Also sync BackpackItem table for consistent state across views
+    await this.prisma.backpackItem.updateMany({
+      where: {
+        userId,
+        type: TO_BACKPACK_TYPE[userCos.cosmetic.type] || 'OTHER',
+      },
+      data: { equipped: false },
+    });
+    await this.prisma.backpackItem.updateMany({
+      where: {
+        userId,
+        OR: [
+          { refId: actualCosId },
+          { name: userCos.cosmetic.name },
+        ],
+      },
+      data: { equipped: true },
+    });
+
     await this.profiles.invalidateProfile(userId);
 
     // Publish equipped event for realtime synchronization
     await this.bus.publish(
       new BackpackItemEquippedEvent({
         userId,
-        itemId: cosmeticId,
+        itemId: actualCosId,
         type: userCos.cosmetic.type as any,
       }),
     );
   }
 
   async unequipCosmetic(userId: string, cosmeticId: string): Promise<void> {
-    const userCos = await this.prisma.userCosmetic.findUnique({
+    let userCos = await this.prisma.userCosmetic.findFirst({
       where: {
-        userId_cosmeticId: {
-          userId,
-          cosmeticId,
-        },
+        userId,
+        OR: [
+          { cosmeticId },
+          { id: cosmeticId.length === 36 ? cosmeticId : undefined },
+          { cosmetic: { name: { equals: cosmeticId, mode: 'insensitive' } } },
+        ],
       },
       include: {
         cosmetic: true,
@@ -580,8 +691,22 @@ export class CosmeticsService implements ICosmeticsService {
       );
     }
 
+    const actualCosId = userCos.cosmeticId;
+
     await this.prisma.userCosmetic.update({
       where: { id: userCos.id },
+      data: { equipped: false },
+    });
+
+    // Also sync BackpackItem table
+    await this.prisma.backpackItem.updateMany({
+      where: {
+        userId,
+        OR: [
+          { refId: actualCosId },
+          { name: userCos.cosmetic.name },
+        ],
+      },
       data: { equipped: false },
     });
 

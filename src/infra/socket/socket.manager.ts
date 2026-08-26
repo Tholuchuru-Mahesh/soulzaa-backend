@@ -208,6 +208,8 @@ export class SocketManager {
     // Track join timestamp for duration evaluation
     client.data.roomJoinedAt = client.data.roomJoinedAt || {};
     client.data.roomJoinedAt[roomId] = Date.now();
+    client.data.roomLastEvaluatedAt = client.data.roomLastEvaluatedAt || {};
+    client.data.roomLastEvaluatedAt[roomId] = Date.now();
 
     const payload = {
       roomId,
@@ -239,19 +241,31 @@ export class SocketManager {
     return true;
   }
 
-  /** Leave a room: keep the socket room and the Redis presence set in sync. */
-  async leaveRoom(client: Socket, roomId: string, namespace?: string): Promise<void> {
-    const user = client.data.user as AuthenticatedUser;
-    await client.leave(roomId);
-    (client.data.spectatorRooms as Set<string> | undefined)?.delete(roomId);
+  /**
+   * Heartbeat from client or periodic worker evaluating active room stay duration in realtime.
+   */
+  async heartbeatRoomStay(client: Socket, roomId: string): Promise<void> {
+    const user = client.data.user as AuthenticatedUser | undefined;
+    if (!user?.id || !roomId) return;
 
-    // Calculate room duration spent
     const joinedAt = client.data.roomJoinedAt?.[roomId] as number | undefined;
-    if (joinedAt) {
-      delete client.data.roomJoinedAt[roomId];
-      const durationMs = Math.max(0, Date.now() - joinedAt);
-      const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
-      const durationSeconds = Math.round(durationMs / 1000);
+    if (!joinedAt) {
+      client.data.roomJoinedAt = client.data.roomJoinedAt || {};
+      client.data.roomJoinedAt[roomId] = Date.now();
+      client.data.roomLastEvaluatedAt = client.data.roomLastEvaluatedAt || {};
+      client.data.roomLastEvaluatedAt[roomId] = Date.now();
+      return;
+    }
+
+    const lastEvaluated = (client.data.roomLastEvaluatedAt?.[roomId] as number | undefined) ?? joinedAt;
+    const elapsedSinceLast = Date.now() - lastEvaluated;
+
+    // Evaluate progress when at least 30 seconds have accumulated since last evaluation
+    if (elapsedSinceLast >= 30000) {
+      client.data.roomLastEvaluatedAt[roomId] = Date.now();
+      const durationMinutes = Math.max(1, Math.floor(elapsedSinceLast / 60000) || 1);
+      const durationSeconds = Math.round(elapsedSinceLast / 1000);
+      const totalDurationMs = Date.now() - joinedAt;
 
       try {
         await this.bus.publish({
@@ -261,12 +275,52 @@ export class SocketManager {
             roomId,
             durationMinutes,
             durationSeconds,
-            durationMs,
+            durationMs: totalDurationMs,
           },
           timestamp: new Date(),
         } as any);
       } catch {
         // non-fatal
+      }
+    }
+  }
+
+  /** Leave a room: keep the socket room and the Redis presence set in sync. */
+  async leaveRoom(client: Socket, roomId: string, namespace?: string): Promise<void> {
+    const user = client.data.user as AuthenticatedUser;
+    await client.leave(roomId);
+    (client.data.spectatorRooms as Set<string> | undefined)?.delete(roomId);
+
+    // Calculate room duration spent
+    const joinedAt = client.data.roomJoinedAt?.[roomId] as number | undefined;
+    if (joinedAt) {
+      const lastEvaluated = (client.data.roomLastEvaluatedAt?.[roomId] as number | undefined) ?? joinedAt;
+      delete client.data.roomJoinedAt[roomId];
+      if (client.data.roomLastEvaluatedAt) {
+        delete client.data.roomLastEvaluatedAt[roomId];
+      }
+
+      const totalDurationMs = Math.max(0, Date.now() - joinedAt);
+      const remainingSinceLast = Math.max(0, Date.now() - lastEvaluated);
+      const durationMinutes = Math.max(1, Math.round(remainingSinceLast / 60000) || (remainingSinceLast >= 15000 ? 1 : 0));
+      const durationSeconds = Math.round(remainingSinceLast / 1000);
+
+      if (durationMinutes > 0 || durationSeconds >= 15) {
+        try {
+          await this.bus.publish({
+            name: 'room.duration_updated',
+            payload: {
+              userId: user.id,
+              roomId,
+              durationMinutes: Math.max(1, durationMinutes),
+              durationSeconds,
+              durationMs: totalDurationMs,
+            },
+            timestamp: new Date(),
+          } as any);
+        } catch {
+          // non-fatal
+        }
       }
     }
 

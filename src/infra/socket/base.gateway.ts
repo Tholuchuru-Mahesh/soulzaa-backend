@@ -90,6 +90,19 @@ export abstract class BaseGateway
     return { ok: true, roomId: body.roomId };
   }
 
+  @SubscribeMessage('room:stay_heartbeat')
+  @SubscribeMessage('room:heartbeat')
+  @SubscribeMessage('stay_heartbeat')
+  async onRoomHeartbeat(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { roomId: string },
+  ): Promise<{ ok: boolean }> {
+    if (body?.roomId) {
+      await this.manager.heartbeatRoomStay(client, body.roomId);
+    }
+    return { ok: true };
+  }
+
   @SubscribeMessage('send_chat')
   @SubscribeMessage('chat_message')
   @SubscribeMessage('send_message')

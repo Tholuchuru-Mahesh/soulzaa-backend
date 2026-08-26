@@ -124,6 +124,11 @@ export const ROOM_SOCKET_EVENTS = {
   COUNTDOWN_RESUMED: 'countdown.resumed',
   COUNTDOWN_COMPLETED: 'countdown.completed',
   COUNTDOWN_CANCELLED: 'countdown.cancelled',
+  // ---- Enterprise Events (super-admin launch → room entry point) ----
+  /** An event was launched (status flipped to ACTIVE) and is now live for its audience. */
+  EVENT_LIVE: 'event.live',
+  /** A previously-live event ended (completed or cancelled) — clients should retract the entry point. */
+  EVENT_ENDED: 'event.ended',
 } as const;
 
 /** Validation bounds for room fields (mirrored by the DTOs). */

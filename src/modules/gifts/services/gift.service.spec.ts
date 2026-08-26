@@ -199,15 +199,16 @@ describe('GiftService', () => {
   });
 
   describe('sendGift', () => {
-    it('debits sender 100% GOLD and credits receiver 100% EARNINGS on gift send', async () => {
+    it('debits sender 100% GOLD and credits receiver Soul Gems at the default 50% creator conversion rate', async () => {
       const res = await service.sendGift(SENDER, dto());
       expect(wallet.debit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: SENDER.id, currency: 'GOLD', amount: 100 }),
         expect.anything(),
       );
-      // Universal Settlement Engine: Receiver DIAMOND credited 100% (100 coins)
+      // Universal Settlement Engine: Receiver DIAMOND (Soul Gems) credited at
+      // the default 50% creator conversion rate: 100 gifting-value coins -> 50.
       expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 100 }),
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 50 }),
         expect.anything(),
       );
       // Because 100 <= 1000, Receiver Available Balance (GOLD) is NOT updated.
@@ -220,7 +221,7 @@ describe('GiftService', () => {
       expect(res.id).toBeDefined();
     });
 
-    it('credits receiver 10% Available Balance (GOLD) when gift value >= 1000', async () => {
+    it('credits receiver 10% Available Balance (GOLD) when gift value >= 1000, and Soul Gems at the 50% creator conversion rate', async () => {
       catalog.getGiftById.mockResolvedValue(gift({ coinValue: 15000 }));
       await service.sendGift(SENDER, dto());
 
@@ -230,36 +231,38 @@ describe('GiftService', () => {
         expect.anything(),
       );
 
-      // Receiver DIAMOND credited 15,000 (100%)
+      // Receiver DIAMOND (Soul Gems) credited 7,500 — 15,000 gifting-value
+      // coins at the default 50% creator conversion rate.
       expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 15000 }),
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 7500 }),
         expect.anything(),
       );
 
-      // Receiver Available Balance (GOLD) credited 1,500 (10%)
+      // Receiver Available Balance (GOLD) credited 1,500 (10% cashback — unrelated to the creator conversion rate)
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: RECEIVER, currency: 'GOLD', amount: 1500 }),
         expect.anything(),
       );
     });
 
-    it('correctly calculates 10,000 coin gift (Earnings: 10,000, Wallet: 1,000, Treasure: 10,000)', async () => {
+    it('correctly calculates 10,000 coin gift (Soul Gems: 5,000 at 50%, Wallet: 1,000, Treasure: 10,000)', async () => {
       catalog.getGiftById.mockResolvedValue(gift({ coinValue: 10000 }));
       await service.sendGift(SENDER, dto());
 
-      // Receiver DIAMOND credited 10,000 (100%)
+      // Receiver DIAMOND (Soul Gems) credited 5,000 — 10,000 coins at 50%.
       expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 10000 }),
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 5000 }),
         expect.anything(),
       );
 
-      // Receiver GOLD credited 1,000 (10%)
+      // Receiver GOLD credited 1,000 (10% cashback)
       expect(wallet.credit).toHaveBeenCalledWith(
         expect.objectContaining({ userId: RECEIVER, currency: 'GOLD', amount: 1000 }),
         expect.anything(),
       );
 
-      // Treasure contribution 10,000
+      // Treasure contribution 10,000 — treasure is fed by the full gifting
+      // value, not the post-conversion Soul Gems amount.
       expect(treasure.processTreasureContribution).toHaveBeenCalledWith(
         expect.anything(),
         ROOM,
@@ -270,8 +273,18 @@ describe('GiftService', () => {
       );
     });
 
-    it('correctly calculates 50,000 coin gift (Earnings: 50,000)', async () => {
+    it('correctly calculates 50,000 coin gift (Soul Gems: 25,000 at 50%)', async () => {
       catalog.getGiftById.mockResolvedValue(gift({ coinValue: 50000 }));
+      await service.sendGift(SENDER, dto());
+
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 25000 }),
+        expect.anything(),
+      );
+    });
+
+    it('correctly calculates 100,000 coin gift (Soul Gems: 50,000 at 50%)', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 100000 }));
       await service.sendGift(SENDER, dto());
 
       expect(wallet.credit).toHaveBeenCalledWith(
@@ -280,22 +293,12 @@ describe('GiftService', () => {
       );
     });
 
-    it('correctly calculates 100,000 coin gift (Earnings: 100,000)', async () => {
-      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 100000 }));
-      await service.sendGift(SENDER, dto());
-
-      expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 100000 }),
-        expect.anything(),
-      );
-    });
-
-    it('correctly calculates 20,000 coin gift (Earnings: 20,000, Wallet: 2,000, Treasure: 20,000)', async () => {
+    it('correctly calculates 20,000 coin gift (Soul Gems: 10,000 at 50%, Wallet: 2,000, Treasure: 20,000)', async () => {
       catalog.getGiftById.mockResolvedValue(gift({ coinValue: 20000 }));
       await service.sendGift(SENDER, dto());
 
       expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 20000 }),
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 10000 }),
         expect.anything(),
       );
       expect(wallet.credit).toHaveBeenCalledWith(
@@ -312,12 +315,12 @@ describe('GiftService', () => {
       );
     });
 
-    it('correctly calculates 1,000 coin gift (Earnings: 1,000, Wallet: 100, Treasure: 1,000)', async () => {
+    it('correctly calculates 1,000 coin gift (Soul Gems: 500 at 50%, Wallet: 100, Treasure: 1,000)', async () => {
       catalog.getGiftById.mockResolvedValue(gift({ coinValue: 1000 }));
       await service.sendGift(SENDER, dto());
 
       expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 1000 }),
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 500 }),
         expect.anything(),
       );
       expect(wallet.credit).toHaveBeenCalledWith(
@@ -334,12 +337,12 @@ describe('GiftService', () => {
       );
     });
 
-    it('correctly calculates 500 coin gift (Earnings: 500, Wallet: 0, Treasure: 500)', async () => {
+    it('correctly calculates 500 coin gift (Soul Gems: 250 at 50%, Wallet: 0, Treasure: 500)', async () => {
       catalog.getGiftById.mockResolvedValue(gift({ coinValue: 500 }));
       await service.sendGift(SENDER, dto());
 
       expect(wallet.credit).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 500 }),
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 250 }),
         expect.anything(),
       );
       expect(wallet.credit).not.toHaveBeenCalledWith(
@@ -353,6 +356,32 @@ describe('GiftService', () => {
         RECEIVER,
         500,
         expect.any(String),
+      );
+    });
+
+    it('converts 250 gifting-value coins at the default 50% creator conversion rate into 125 Soul Gems', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 250 }));
+      await service.sendGift(SENDER, dto());
+
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 125 }),
+        expect.anything(),
+      );
+    });
+
+    it('honours a super-admin-configured creator conversion rate other than the 50% default', async () => {
+      platformConfig.get.mockImplementation(async (key: string) => {
+        if (key === 'gift.receiver_earnings_percentage') return 75;
+        return null;
+      });
+      catalog.getGiftById.mockResolvedValue(gift({ coinValue: 400 }));
+
+      await service.sendGift(SENDER, dto());
+
+      // 400 gifting-value coins at a super-admin-configured 75% rate -> 300.
+      expect(wallet.credit).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: RECEIVER, currency: 'DIAMOND', amount: 300 }),
+        expect.anything(),
       );
     });
 

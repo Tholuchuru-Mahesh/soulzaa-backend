@@ -106,6 +106,15 @@ export class EnterpriseEventController {
     return this.queryService.getEventsByCategory(category);
   }
 
+  @Get('mobile/active-events')
+  @ApiOperation({
+    summary:
+      'Mobile: currently live events in scope for the caller (no staff permission required)',
+  })
+  async getActiveEventsForMe(@CurrentUser('id') userId: string) {
+    return this.eventService.getActiveEventsForUser(userId);
+  }
+
   @Get(':idOrCode')
   @RequirePermissions('event.view')
   @ApiOperation({ summary: 'Get a single event definition by ID or code' })

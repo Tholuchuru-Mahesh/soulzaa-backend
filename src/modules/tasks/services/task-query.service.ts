@@ -1,11 +1,13 @@
 import { forwardRef, Inject, Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { TaskEvaluationService } from './task-evaluation.service';
+import { TaskRewardService } from './task-reward.service';
 
 @Injectable()
 export class TaskQueryService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly rewardService: TaskRewardService,
     @Optional()
     @Inject(forwardRef(() => TaskEvaluationService))
     private readonly evaluation?: TaskEvaluationService,
@@ -201,8 +203,26 @@ export class TaskQueryService {
   }
 
   /**
-   * Self-scoped reward claim for regular users.
-   * Records a TaskReward entry so getMobileFeed() marks isClaimed=true.
+   * Self-scoped reward claim for regular users (GET /tasks/mobile/feed's
+   * companion claim action).
+   *
+   * Used to insert the `TaskReward` row directly and stop there — it looked
+   * claimed (`getMobileFeed`/`getUserActiveTasks` both read `claimed: true`
+   * fine), but nothing was ever actually fulfilled: no coins, no EXP, and
+   * critically no cosmetic grant into the backpack, because those all run off
+   * the `reward.dispatched` event that only `TaskRewardService.dispatchReward`
+   * publishes (consumed by `TaskRewardExecutionListener` ->
+   * `RewardFulfillmentEngine` -> `CosmeticsService.grantToUser` for
+   * FRAME/THEME/ENTRANCE_EFFECT/BADGE rewards). Every other claim route
+   * (`/tasks/me/claim/:taskId`, mission claims, admin-on-behalf claims,
+   * task-evaluation auto-claim) already goes through `dispatchReward` and
+   * fulfills correctly — this was the one path that didn't.
+   *
+   * Keeps its own eligibility checks (task active, progress complete, not
+   * already claimed) since `dispatchReward` itself performs none of them —
+   * callers are expected to have validated first — then delegates the actual
+   * reward row + dispatch to the same shared service everything else uses,
+   * rather than duplicating that logic here.
    */
   async selfClaimReward(
     userId: string,
@@ -226,16 +246,7 @@ export class TaskQueryService {
       return { success: false, message: 'Reward already claimed.' };
     }
 
-    await this.prisma.taskReward.create({
-      data: {
-        userId,
-        taskId,
-        missionId: null,
-        rewardDefinition: (task.rewardDefinition as any) ?? {},
-        claimed: true,
-        claimedAt: new Date(),
-      },
-    });
+    await this.rewardService.dispatchReward(userId, taskId, undefined, undefined, userId);
 
     return { success: true, message: 'Reward claimed successfully.' };
   }

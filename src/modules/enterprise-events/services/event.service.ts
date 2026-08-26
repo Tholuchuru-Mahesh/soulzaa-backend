@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { EventAuditService } from './event-audit.service';
 import { EventEventService } from './event-event.service';
@@ -68,7 +68,7 @@ export interface UpdateEventInput {
 }
 
 @Injectable()
-export class EventService {
+export class EventService implements OnModuleInit {
   private readonly logger = new Logger(EventService.name);
 
   constructor(
@@ -79,6 +79,23 @@ export class EventService {
     private readonly statisticsService: EventStatisticsService,
   ) {}
 
+  async onModuleInit(): Promise<void> {
+    try {
+      // Ensure all event mission task definitions are active for participants
+      await this.prisma.taskDefinition.updateMany({
+        where: {
+          category: 'EVENT_MISSION',
+          status: { in: ['DRAFT', 'SCHEDULED'] },
+        },
+        data: {
+          status: 'ACTIVE',
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to auto-activate event mission tasks on startup: ${(err as Error).message}`);
+    }
+  }
+
   async createEvent(input: CreateEventInput) {
     console.log('CREATE EVENT INPUT:', JSON.stringify(input, null, 2));
     this.validationService.validateCategory(input.category);
@@ -88,11 +105,6 @@ export class EventService {
       input.regStartTime,
       input.regEndTime,
     );
-
-    const mergedRules = {
-      ...(input.participationRules || {}),
-      ...(input.tasks && input.tasks.length > 0 ? { tasks: input.tasks } : {}),
-    };
 
     const def = await this.prisma.eventDefinition.create({
       data: {
@@ -106,7 +118,7 @@ export class EventService {
         endTime: input.endTime,
         regStartTime: input.regStartTime,
         regEndTime: input.regEndTime,
-        participationRules: mergedRules as any,
+        participationRules: input.participationRules as any,
         eligibilityRules: input.eligibilityRules as any,
         rewardDefinition: input.rewardDefinition as any,
         maxParticipants: input.maxParticipants ?? 1000,
@@ -123,7 +135,7 @@ export class EventService {
     const rawTasks = input.tasks || (input.participationRules?.tasks as EventTaskInput[]);
     if (rawTasks && rawTasks.length > 0) {
       const taskStatus =
-        input.status === 'APPROVED' || input.status === 'ACTIVE' ? 'ACTIVE' : 'DRAFT';
+        input.status === 'CANCELLED' || input.status === 'DRAFT' ? 'DRAFT' : 'ACTIVE';
       await this.syncEventTasks(def, rawTasks, taskStatus, input.actorId);
     }
 
@@ -174,7 +186,7 @@ export class EventService {
     const rawTasks = input.tasks || (mergedRules?.tasks as EventTaskInput[]);
     if (rawTasks) {
       const taskStatus =
-        updated.status === 'APPROVED' || updated.status === 'ACTIVE' ? 'ACTIVE' : 'DRAFT';
+        updated.status === 'CANCELLED' || updated.status === 'DRAFT' ? 'DRAFT' : 'ACTIVE';
       await this.syncEventTasks(updated, rawTasks, taskStatus, input.actorId);
     }
 
@@ -276,6 +288,37 @@ export class EventService {
     });
 
     return Promise.all(events.map((e) => this.enrichEventWithTasks(e)));
+  }
+
+  /**
+   * User-facing: events currently live (status ACTIVE) and in scope for this
+   * user's location. An event with a null countryId/regionId is global; one
+   * with a value only matches users whose own location resolves to it. This
+   * is the read path the audio-room "Event" entry point calls — no RBAC
+   * permission is required, unlike the admin-facing endpoints above.
+   */
+  async getActiveEventsForUser(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { countryId: true, regionId: true },
+    });
+
+    const countryFilter = user?.countryId
+      ? [{ countryId: null }, { countryId: user.countryId }]
+      : [{ countryId: null }];
+    const regionFilter = user?.regionId
+      ? [{ regionId: null }, { regionId: user.regionId }]
+      : [{ regionId: null }];
+
+    const events = await this.prisma.eventDefinition.findMany({
+      where: {
+        status: 'ACTIVE',
+        AND: [{ OR: countryFilter }, { OR: regionFilter }],
+      },
+      orderBy: [{ priority: 'desc' }, { startTime: 'asc' }],
+    });
+
+    return Promise.all(events.map((e) => this.enrichEventWithTasksFiltered(e)));
   }
 
   async getEventDefinition(idOrCode: string) {

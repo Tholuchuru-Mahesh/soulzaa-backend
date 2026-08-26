@@ -142,11 +142,44 @@ export class GiftService {
   /**
    * The Soulzaa gift settlement rule, read from platform configuration so a
    * Super Admin can retune it without a deploy:
-   *  - the receiver's EARNINGS wallet takes `earningsPercent` of gift value;
+   *  - the receiver's EARNINGS (Soul Gems / diamond) wallet takes
+   *    `earningsPercent` — the **creator conversion rate** — of gift value;
    *  - their GOLD wallet takes `cashbackPercent`, but only once the gift value
    *    is strictly above `cashbackThreshold`.
    * Defaults match the seeded settings, so an unconfigured environment behaves
    * exactly as a configured one.
+   *
+   * ---- Economy formulas (Gold Coins → Soul Gems → Cash) ----------------
+   *
+   * "Gold Coins" here always means gifting value: the coin worth of gifts a
+   * creator has received (`originalGiftValue` below), never a raw wallet
+   * balance. The creator conversion rate below is what turns that gifting
+   * value into Soul Gems.
+   *
+   * 1. Coin → Diamond (Soul Gems), IMPLEMENTED (this method + the credit in
+   *    `sendGiftBatch` below):
+   *      soulGems = floor(giftingValueCoins × creatorConversionRatePercent / 100)
+   *    e.g. 250 gifting-value coins at the default 50% rate → 125 Soul Gems.
+   *    `creatorConversionRatePercent` is `gift.receiver_earnings_percentage`
+   *    (default 50), edited by a Super Admin via the generic
+   *    `PUT /super-admin/configuration/settings/gift.receiver_earnings_percentage`
+   *    endpoint — never hardcoded here. The rate actually applied to each gift
+   *    is snapshotted onto `GiftTransaction.appliedEarningsPct`, so a later
+   *    rate change never rewrites the value of a past gift.
+   *
+   * 2. Diamond (Soul Gems) → Cash, NOT YET IMPLEMENTED (no withdrawal feature
+   *    exists yet — this is the intended shape for when one is built):
+   *      cashAmount = soulGemsBalance × diamondToCashRate
+   *    `diamondToCashRate` would be a second Super Admin-configurable
+   *    platform setting (e.g. `wallet.diamond_to_cash_rate`), read the exact
+   *    same way via `platformConfig.getNumber(...)` — no separate mechanism
+   *    needed. `WalletTxnReason` already reserves `DIAMOND_GIFT_EARNING` (the
+   *    Soul Gems credit itself, step 1) and `GIFT_CASHBACK` (the separate GOLD
+   *    cashback below) as distinct ledger reasons for exactly this purpose, so
+   *    a future withdrawal flow can debit the diamond wallet with a matching
+   *    dedicated reason and read `GiftTransaction.creatorEarnings` /
+   *    `Wallet.diamondBalance` directly — both already accumulate correctly
+   *    today with no further changes required.
    */
   private async settlementRules(): Promise<{
     earningsPercent: number;
@@ -154,17 +187,21 @@ export class GiftService {
     cashbackThreshold: number;
   }> {
     const [earningsPercent, cashbackPercent, cashbackThreshold] = await Promise.all([
-      this.platformConfig.get<any>('gift.receiver_earnings_percentage').catch(() => 100),
+      // The creator conversion rate (Gold-Coin gifting value → Soul Gems).
+      // Default 50 lives once, here — matches the seeded `PlatformSetting`
+      // row exactly, so an unconfigured environment still behaves correctly.
+      // See the formula doc above.
+      this.platformConfig.get<any>('gift.receiver_earnings_percentage', 50).catch(() => 50),
       this.platformConfig.get<any>('gift.receiver_cashback_percentage').catch(() => 10),
       this.platformConfig.get<any>('gift.receiver_cashback_threshold').catch(() => 1000),
     ]);
 
-    const earnNum = earningsPercent != null ? Number(earningsPercent) : 100;
+    const earnNum = earningsPercent != null ? Number(earningsPercent) : 50;
     const cashNum = cashbackPercent != null ? Number(cashbackPercent) : 10;
     const threshNum = cashbackThreshold != null ? Number(cashbackThreshold) : 1000;
 
     return {
-      earningsPercent: !isNaN(earnNum) && earnNum > 0 ? earnNum : 100,
+      earningsPercent: !isNaN(earnNum) && earnNum > 0 ? earnNum : 50,
       cashbackPercent: !isNaN(cashNum) ? cashNum : 10,
       cashbackThreshold: !isNaN(threshNum) ? threshNum : 1000,
     };
@@ -279,8 +316,8 @@ export class GiftService {
 
     // Universal Soulzaa Gift Settlement Workflow (rates from platform config):
     // 1. Sender pays 100% of the gift value (totalNum) from Available Balance (GOLD).
-    // 2. Receiver EARNINGS increases by the configured share, by default the
-    //    whole gift value, with no further conditions.
+    // 2. Receiver EARNINGS (Soul Gems) increases by the creator conversion
+    //    rate's share of the gifting value, with no further conditions.
     // 3. Receiver Available Balance (GOLD) receives the configured cashback
     //    share, and only once gift value is strictly above the threshold.
     const rules = await this.settlementRules();
@@ -288,14 +325,21 @@ export class GiftService {
     const perReceiver = BigInt(unit) * BigInt(dto.quantity) * BigInt(lucky.multiplier);
     const perReceiverNum = Number(perReceiver);
     const totalNum = perReceiverNum * receiverIds.length;
+    // "Gold Coins" (gifting value): the coin worth of gifts this receiver got
+    // from this send — what the creator conversion rate below applies to.
     const originalGiftValue = perReceiverNum;
 
-    // Rule 2: Receiver EARNINGS always receives 100% of the original gift value by default,
-    // or calculated via configured rules.earningsPercent unconditionally (cashback threshold is Rule 3).
+    // Rule 2 — Coin → Diamond (Soul Gems): soulGems = giftingValueCoins ×
+    // creatorConversionRatePercent / 100 (see the formula doc on
+    // `settlementRules` above). The `=== 100` branch is just the identity
+    // case of that same formula (skips a multiply/floor that would no-op).
     const earningsNum =
       rules.earningsPercent === 100
         ? originalGiftValue
         : Math.floor((originalGiftValue * rules.earningsPercent) / 100);
+    // Soul Gems earned by the creator from this gift — credited to the
+    // DIAMOND wallet below, and this exact value is what accumulates into
+    // `Wallet.diamondBalance` / the "Soul Gems" figure shown in the app.
     const creatorEarnings = BigInt(earningsNum);
 
     // Rule 3: Receiver Available Balance (GOLD) receives 10% cashback ONLY IF originalGiftValue >= 1000.

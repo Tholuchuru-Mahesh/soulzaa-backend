@@ -332,6 +332,160 @@ describe('Phase 17: Enterprise Tasks & Missions Engine', () => {
         }),
       );
     });
+
+    it('should naturally accumulate coin recharge amount for wallet.credited even without explicit incrementField', async () => {
+      const rechargeTask = {
+        id: 'task-recharge-natural',
+        requiredProgress: 1000,
+        status: 'ACTIVE',
+        resetPolicy: 'DAILY',
+        progressRules: { eventCodes: ['wallet.credited'], operator: 'ANY' },
+      };
+      mockPrismaService.taskDefinition.findMany.mockResolvedValue([rechargeTask]);
+      mockPrismaService.taskProgress.findUnique.mockResolvedValue(null);
+
+      const spyIncrement = jest.spyOn(progressService, 'incrementProgress');
+
+      await evaluationService.evaluateEvent({
+        userId: 'user-1',
+        eventCode: 'wallet.credited',
+        metadata: { amount: 750 },
+      });
+
+      expect(spyIncrement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-recharge-natural',
+          incrementBy: 750,
+        }),
+      );
+    });
+
+    it('should evaluate audio_room.joined and video_room.joined tasks', async () => {
+      const joinTask = {
+        id: 'task-join-room',
+        requiredProgress: 3,
+        status: 'ACTIVE',
+        resetPolicy: 'DAILY',
+        progressRules: { eventCodes: ['audio_room.joined', 'video_room.joined'], operator: 'ANY' },
+      };
+      mockPrismaService.taskDefinition.findMany.mockResolvedValue([joinTask]);
+      mockPrismaService.taskProgress.findUnique.mockResolvedValue(null);
+
+      const spyIncrement = jest.spyOn(progressService, 'incrementProgress');
+
+      await evaluationService.evaluateEvent({
+        userId: 'user-1',
+        eventCode: 'audio_room.joined',
+        metadata: { roomId: 'room-123' },
+      });
+
+      expect(spyIncrement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-join-room',
+          incrementBy: 1,
+        }),
+      );
+    });
+
+    it('should evaluate user.logged_in daily task', async () => {
+      const loginTask = {
+        id: 'task-daily-login',
+        requiredProgress: 1,
+        status: 'ACTIVE',
+        resetPolicy: 'DAILY',
+        progressRules: { eventCodes: ['user.logged_in'], operator: 'ANY' },
+      };
+      mockPrismaService.taskDefinition.findMany.mockResolvedValue([loginTask]);
+      mockPrismaService.taskProgress.findUnique.mockResolvedValue(null);
+
+      const spyIncrement = jest.spyOn(progressService, 'incrementProgress');
+
+      await evaluationService.evaluateEvent({
+        userId: 'user-1',
+        eventCode: 'user.logged_in',
+      });
+
+      expect(spyIncrement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-daily-login',
+          incrementBy: 1,
+        }),
+      );
+    });
+
+    it('should evaluate social.friend.accepted and social.followed tasks', async () => {
+      const friendTask = {
+        id: 'task-social-friend',
+        requiredProgress: 2,
+        status: 'ACTIVE',
+        resetPolicy: 'DAILY',
+        progressRules: { eventCodes: ['social.friend.accepted'], operator: 'ANY' },
+      };
+      mockPrismaService.taskDefinition.findMany.mockResolvedValue([friendTask]);
+      mockPrismaService.taskProgress.findUnique.mockResolvedValue(null);
+
+      const spyIncrement = jest.spyOn(progressService, 'incrementProgress');
+
+      await evaluationService.evaluateEvent({
+        userId: 'user-1',
+        eventCode: 'social.friend.accepted',
+        metadata: { friendId: 'user-2' },
+      });
+
+      expect(spyIncrement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-social-friend',
+          incrementBy: 1,
+        }),
+      );
+    });
+
+    it('should evaluate game.settled and family.member_joined tasks', async () => {
+      const gameTask = {
+        id: 'task-game-play',
+        requiredProgress: 5,
+        status: 'ACTIVE',
+        resetPolicy: 'DAILY',
+        progressRules: { eventCodes: ['game.settled'], operator: 'ANY' },
+      };
+      const familyTask = {
+        id: 'task-family-join',
+        requiredProgress: 1,
+        status: 'ACTIVE',
+        resetPolicy: 'DAILY',
+        progressRules: { eventCodes: ['family.member_joined'], operator: 'ANY' },
+      };
+      mockPrismaService.taskDefinition.findMany.mockResolvedValue([gameTask, familyTask]);
+      mockPrismaService.taskProgress.findUnique.mockResolvedValue(null);
+
+      const spyIncrement = jest.spyOn(progressService, 'incrementProgress');
+
+      await evaluationService.evaluateEvent({
+        userId: 'user-1',
+        eventCode: 'game.settled',
+        metadata: { gameId: 'g-1' },
+      });
+
+      expect(spyIncrement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-game-play',
+          incrementBy: 1,
+        }),
+      );
+
+      await evaluationService.evaluateEvent({
+        userId: 'user-1',
+        eventCode: 'family.member_joined',
+        metadata: { familyId: 'fam-1' },
+      });
+
+      expect(spyIncrement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'task-family-join',
+          incrementBy: 1,
+        }),
+      );
+    });
   });
 
   // ─── 5. Reward Service ────────────────────────────────────────────────────

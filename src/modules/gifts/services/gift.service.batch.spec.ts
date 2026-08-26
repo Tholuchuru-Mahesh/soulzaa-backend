@@ -169,10 +169,10 @@ describe('GiftService.sendGiftBatch (multi-receiver)', () => {
     expect(new Set(keys).size).toBe(3);
   });
 
-  it('credits each receiver 100% of THEIR gift in EARNINGS', async () => {
+  it('credits each receiver Soul Gems at the default 50% creator conversion rate of THEIR gift', async () => {
     await service.sendGiftBatch(SENDER, batchDto(['r1', 'r2', 'r3']));
     const amounts = wallet.credit.mock.calls.map((c) => c[0].amount);
-    expect(amounts).toEqual([100, 100, 100]);
+    expect(amounts).toEqual([50, 50, 50]);
     expect(wallet.credit.mock.calls[0][0].currency).toBe(WalletCurrency.DIAMOND);
   });
 

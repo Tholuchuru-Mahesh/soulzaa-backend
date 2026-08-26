@@ -36,6 +36,7 @@ import { PremiumSocketListener } from './listeners/premium-socket.listener';
 import { ProgressionSocketListener } from './listeners/progression-socket.listener';
 import { RoomCosmeticsSocketListener } from './listeners/room-cosmetics-socket.listener';
 import { TreasureSocketListener } from './listeners/treasure-socket.listener';
+import { EventSocketListener } from './listeners/event-socket.listener';
 import { VoiceLifecycleListener } from './listeners/voice-lifecycle.listener';
 import { RoomRecordingLifecycleListener } from './listeners/room-recording-lifecycle.listener';
 import { VoiceSeatSyncListener } from './listeners/voice-seat-sync.listener';
@@ -163,6 +164,7 @@ import { WorkforceScopeModule } from 'src/modules/mobile-workforce/workforce-sco
     ChatSocketListener,
     GiftSocketListener,
     TreasureSocketListener,
+    EventSocketListener,
     LuckyPacketSocketListener,
     RoomUtilitiesSocketListener,
     ProgressionSocketListener,

@@ -16,8 +16,8 @@ export class CosmeticsRepository {
     return this.prisma.cosmetic.findMany({
       where: {
         enabled: true,
+        isPremium: true,
         ...(type ? { type } : {}),
-        OR: [{ isPremium: true }, { price: { gt: 0 } }],
       },
       orderBy: [{ sortOrder: 'asc' }, { price: 'asc' }, { name: 'asc' }],
     });

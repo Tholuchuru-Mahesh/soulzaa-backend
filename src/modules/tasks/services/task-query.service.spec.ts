@@ -1,5 +1,6 @@
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { TaskQueryService } from './task-query.service';
+import { TaskRewardService } from './task-reward.service';
 
 const MODERATOR_ID = 'mod-1';
 
@@ -9,7 +10,10 @@ describe('TaskQueryService.moderatorAssignmentSummary', () => {
 
   beforeEach(() => {
     prisma = { moderator_task_assignments: { count: jest.fn() } };
-    service = new TaskQueryService(prisma as unknown as PrismaService);
+    // Unused by this suite (moderatorAssignmentSummary never touches reward
+    // dispatch) — only here to satisfy the constructor.
+    const rewardService = {} as unknown as TaskRewardService;
+    service = new TaskQueryService(prisma as unknown as PrismaService, rewardService);
   });
 
   it('computes pending as assigned minus completed, and overdue percentage', async () => {

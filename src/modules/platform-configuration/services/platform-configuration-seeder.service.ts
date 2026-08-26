@@ -144,15 +144,20 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultSettingSeed[] = [
   // makes the value visible and editable instead of buried beside a `??`.
   // ---------------------------------------------------------------------
 
-  // Gift settlement (Soulzaa rule: EARNINGS +100% always; GOLD cashback only
-  // above the threshold).
+  // Gift settlement (Soulzaa rule: EARNINGS take the creator conversion rate's
+  // share of gifting value; GOLD cashback only above the threshold).
   {
+    // Creator Conversion Rate: the percent of a gift's coin (Gold Coin)
+    // gifting value that converts into the receiving creator's Soul Gems
+    // (EARNINGS/diamond wallet) — see the formula doc on
+    // GiftService.settlementRules for the full coin→diamond→cash picture.
     key: 'gift.receiver_earnings_percentage',
     category: 'ECONOMY',
-    value: '100',
+    value: '50',
     valueType: SettingValueType.NUMBER,
-    defaultValue: '100',
-    description: 'Percent of gift value credited to the receiver EARNINGS wallet',
+    defaultValue: '50',
+    description:
+      'Creator Conversion Rate — percent of a gift\'s Gold Coin gifting value converted into the receiving creator\'s Soul Gems (e.g. 250 coins at 50% = 125 Soul Gems)',
   },
   {
     key: 'gift.receiver_cashback_percentage',

@@ -53,7 +53,12 @@ export class TaskEvaluationService {
     const normalizedEventCode = eventCode.toLowerCase().trim();
 
     const definitions = await this.prisma.taskDefinition.findMany({
-      where: { status: 'ACTIVE' },
+      where: {
+        OR: [
+          { status: 'ACTIVE' },
+          { category: 'EVENT_MISSION', status: { in: ['ACTIVE', 'SCHEDULED', 'DRAFT'] } },
+        ],
+      },
     });
 
     const matching = definitions.filter((def) => {
@@ -214,9 +219,33 @@ export class TaskEvaluationService {
       }
     }
 
-    // 2. Natural accumulation for duration events
-    if (eventCode === 'room.duration_updated' && metadata['durationMinutes'] !== undefined) {
-      const mins = Number(metadata['durationMinutes']);
+    // 2. Natural accumulation for recharge & wallet credit events
+    if (
+      (eventCode === 'wallet.credited' ||
+        eventCode === 'coin_purchase.completed' ||
+        eventCode === 'recharge.success') &&
+      (metadata['amount'] !== undefined ||
+        metadata['coins'] !== undefined ||
+        metadata['coinAmount'] !== undefined)
+    ) {
+      const coins = Number(
+        metadata['amount'] ?? metadata['coins'] ?? metadata['coinAmount'],
+      );
+      if (!isNaN(coins) && coins > 0) {
+        return Math.floor(coins);
+      }
+    }
+
+    // 3. Natural accumulation for duration events
+    if (
+      eventCode === 'room.duration_updated' &&
+      (metadata['durationMinutes'] !== undefined ||
+        metadata['duration'] !== undefined ||
+        metadata['minutes'] !== undefined)
+    ) {
+      const mins = Number(
+        metadata['durationMinutes'] ?? metadata['duration'] ?? metadata['minutes'],
+      );
       if (!isNaN(mins) && mins > 0) {
         return Math.floor(mins);
       }
