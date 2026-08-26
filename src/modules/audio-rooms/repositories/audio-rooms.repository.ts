@@ -244,6 +244,38 @@ export class AudioRoomsRepository {
     return { rows, total };
   }
 
+  async listFollowingRooms(
+    followerId: string,
+    skip: number,
+    take: number,
+  ): Promise<{ rows: AudioRoom[]; total: number }> {
+    const follows = await this.prisma.follow.findMany({
+      where: { followerId },
+      select: { followingId: true },
+    });
+    const followingIds = follows.map((f) => f.followingId);
+    if (followingIds.length === 0) {
+      return { rows: [], total: 0 };
+    }
+    const where: Prisma.AudioRoomWhereInput = {
+      deletedAt: null,
+      status: 'LIVE',
+      ownerId: { in: followingIds },
+      isDiscoverable: true,
+      visibility: RoomVisibility.PUBLIC,
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.audioRoom.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.audioRoom.count({ where }),
+    ]);
+    return { rows, total };
+  }
+
   updateRoom(roomId: string, data: UpdateRoomData, actorId: string): Promise<AudioRoom> {
     return this.prisma.audioRoom.update({
       where: { id: roomId },

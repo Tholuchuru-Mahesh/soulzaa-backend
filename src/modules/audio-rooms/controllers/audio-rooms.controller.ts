@@ -63,6 +63,12 @@ export class AudioRoomsController {
     return this.rooms.trending(query.limit);
   }
 
+  @Get('following')
+  @ApiOperation({ summary: 'List live rooms from followed users' })
+  following(@CurrentUser() user: AuthenticatedUser, @Query() query: ListRoomsDto) {
+    return this.rooms.listFollowing(user.id, query);
+  }
+
   @Get()
   @ApiOperation({ summary: 'List / discover rooms' })
   list(@CurrentUser() user: AuthenticatedUser, @Query() query: ListRoomsDto) {
