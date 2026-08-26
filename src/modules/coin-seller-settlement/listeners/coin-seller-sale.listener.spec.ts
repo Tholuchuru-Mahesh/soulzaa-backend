@@ -14,7 +14,10 @@ describe('CoinSellerSaleListener', () => {
 
   beforeEach(() => {
     bus = { subscribe: jest.fn((_n, fn) => (handler = fn)), publish: jest.fn() };
-    notifications = { create: jest.fn().mockResolvedValue({}), notify: jest.fn().mockResolvedValue(true) };
+    notifications = {
+      create: jest.fn().mockResolvedValue({}),
+      notify: jest.fn().mockResolvedValue(true),
+    };
     profiles = {
       resolvePublicIdentities: jest
         .fn()
@@ -66,7 +69,11 @@ describe('CoinSellerSaleListener', () => {
     expect(convId).toBe('conv-1');
     expect(input.type).toBe(DirectMessageType.SYSTEM);
     expect(input.content).toBe('Star Agency sent you 500 coins');
-    expect(input.metadata).toMatchObject({ kind: 'coin_seller_sale', saleId: 'sale-1', amount: 500 });
+    expect(input.metadata).toMatchObject({
+      kind: 'coin_seller_sale',
+      saleId: 'sale-1',
+      amount: 500,
+    });
   });
 
   it('derives clientId from the sale so a retry cannot post two receipts', async () => {
