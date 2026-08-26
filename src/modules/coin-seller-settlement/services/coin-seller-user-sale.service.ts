@@ -7,6 +7,8 @@ import {
   type IWalletService,
 } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import { WalletCurrency, WalletTxnReason } from '@prisma/client';
+import { EVENT_BUS, type IEventBus } from 'src/common/events';
+import { CoinSellerSaleCompletedEvent } from '../events/coin-seller.events';
 
 @Injectable()
 export class CoinSellerUserSaleService {
@@ -15,6 +17,7 @@ export class CoinSellerUserSaleService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
+    @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
 
   /**
@@ -92,7 +95,7 @@ export class CoinSellerUserSaleService {
     }
 
     // 3. Execute Transaction
-    return this.prisma.$transaction(async (tx: any) => {
+    const sale = await this.prisma.$transaction(async (tx: any) => {
       // Re-read the inventory under a real row lock. The check above is only a
       // cheap early rejection: without `FOR UPDATE`, two concurrent sales both
       // pass it, both decrement, and the balance goes negative. A plain
@@ -169,5 +172,24 @@ export class CoinSellerUserSaleService {
 
       return sale;
     });
+
+    // Published after the transaction commits, never inside it: a rollback here
+    // would otherwise have already told the buyer about coins they never got.
+    // Failure to announce must not fail the sale — the money has moved and the
+    // row is written, so this is logged and dropped.
+    try {
+      await this.bus.publish(
+        new CoinSellerSaleCompletedEvent({
+          saleId: sale.id,
+          sellerId,
+          buyerId,
+          amount,
+        }),
+      );
+    } catch (err) {
+      this.logger.warn(`coin sale ${sale.id} committed but announcement failed: ${String(err)}`);
+    }
+
+    return sale;
   }
 }

@@ -7,6 +7,7 @@ import { CoinSellerInventoryController } from './controllers/coin-seller-invento
 import { CoinSellerOfficialController } from './controllers/coin-seller-official.controller';
 import { CoinSellerWebhookController } from './controllers/coin-seller-webhook.controller';
 import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
+import { CoinSellerSaleListener } from './listeners/coin-seller-sale.listener';
 import {
   CoinSellerAuditService,
   CoinSellerCommissionService,
@@ -40,6 +41,8 @@ import {
     CoinSellerValidationService,
     CoinSellerInventoryService,
     CoinSellerUserSaleService,
+    // Announces a completed sale: notification + chat receipt, both naming the agency.
+    CoinSellerSaleListener,
     CoinSellerCheckoutService,
     CoinSellerPanelService,
     CoinSellerSettlementService,

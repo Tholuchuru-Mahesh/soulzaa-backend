@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WalletCurrency } from '@prisma/client';
+import { EVENT_BUS } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { WALLET_SERVICE } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import { CoinSellerInventoryService } from './coin-seller-inventory.service';
@@ -23,6 +24,7 @@ describe('Coin Seller inventory and user sale', () => {
 
   let mockPrisma: any;
   let mockWallet: any;
+  let mockBus: any;
   let tx: any;
 
   beforeEach(async () => {
@@ -76,6 +78,8 @@ describe('Coin Seller inventory and user sale', () => {
       },
     };
 
+    mockBus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
+
     mockWallet = {
       credit: jest.fn().mockResolvedValue({
         transactionId: 'wtx-1',
@@ -91,6 +95,9 @@ describe('Coin Seller inventory and user sale', () => {
         CoinSellerUserSaleService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: WALLET_SERVICE, useValue: mockWallet },
+        // The sale announces itself on the bus once committed; these tests are
+        // about inventory and country rules, so a no-op publisher is enough.
+        { provide: EVENT_BUS, useValue: mockBus },
       ],
     }).compile();
 
