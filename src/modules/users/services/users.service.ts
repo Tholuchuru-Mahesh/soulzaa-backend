@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AccountStatus, Prisma, User } from '@prisma/client';
@@ -96,18 +97,18 @@ export class UsersService implements IUsersService {
   }
 
   /**
-   * Generates a random 8-digit integer (10000000 - 99999999) ensuring uniqueness.
+   * Generates a cryptographically random, unique 8-digit integer (10000000 - 99999999).
    */
   private async generateUniqueDisplayId(): Promise<number> {
-    const MAX_ATTEMPTS = 10;
+    const MAX_ATTEMPTS = 50;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      const candidate = Math.floor(10000000 + Math.random() * 90000000);
+      const candidate = randomInt(10000000, 100000000);
       const existing = await this.repo.findByDisplayId(candidate);
       if (!existing) {
         return candidate;
       }
     }
-    return Math.floor(10000000 + (Date.now() % 90000000));
+    return randomInt(10000000, 100000000);
   }
 
   async markEmailVerified(id: string): Promise<void> {

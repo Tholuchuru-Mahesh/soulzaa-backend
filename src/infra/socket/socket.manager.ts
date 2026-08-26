@@ -323,6 +323,13 @@ export class SocketManager {
     }
   }
 
+  /** Broadcast an event to ALL connected clients across every registered namespace. */
+  emitEverywhere(event: string, payload: unknown): void {
+    for (const server of this.servers) {
+      server.emit(event, payload);
+    }
+  }
+
   /**
    * Force-disconnect a user across every registered namespace (cross-instance via
    * the Redis adapter). Used by the session module on force-logout so live

@@ -1,8 +1,9 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated, normalizePagination } from 'src/common/utils/pagination.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { SocketManager } from 'src/infra/socket/socket.manager';
 import { PermissionResolver } from 'src/modules/authorization/services/permission-resolver.service';
 import {
   PROFILE_SERVICE,
@@ -18,6 +19,7 @@ export class PostCommentService {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(PROFILE_SERVICE) private readonly profile: IProfileService,
     private readonly permissions: PermissionResolver,
+    @Optional() private readonly sockets?: SocketManager,
   ) {}
 
   async addComment(postId: string, authorId: string, body: string): Promise<PostCommentView> {
@@ -28,7 +30,7 @@ export class PostCommentService {
     await this.bus.publish(new PostCommentedEvent({ postId, authorId, commentId: comment.id }));
 
     const [card] = await this.profile.getCards([authorId]);
-    return {
+    const commentView: PostCommentView = {
       id: comment.id,
       postId: comment.postId,
       body: comment.body,
@@ -40,6 +42,60 @@ export class PostCommentService {
         avatarUrl: card?.avatarUrl ?? null,
       },
     };
+
+    const commentCount = this.prisma.postComment.count
+      ? await this.prisma.postComment.count({ where: { postId, deletedAt: null } })
+      : 0;
+    const payload = { postId, comment: commentView, commentCount };
+    this.sockets?.emitEverywhere('post.commented', payload);
+    this.sockets?.emitEverywhere('post.comment_added', payload);
+    this.sockets?.emitToNamespace('/notifications', 'post.commented', payload);
+    this.sockets?.emitToNamespace('/notifications', 'post.comment_added', payload);
+    this.sockets?.emitToNamespace('/chat', 'post.commented', payload);
+    this.sockets?.emitToNamespace('/chat', 'post.comment_added', payload);
+
+    return commentView;
+  }
+
+  async updateComment(commentId: string, actorId: string, body: string): Promise<PostCommentView> {
+    const comment = await this.prisma.postComment.findUnique({ where: { id: commentId } });
+    if (!comment || comment.deletedAt) throw new NotFoundException('Comment not found');
+
+    if (comment.authorId !== actorId) {
+      const granted = await this.permissions.resolveUserPermissions(actorId);
+      if (!this.permissions.hasPermission(granted, 'post.moderate')) {
+        throw new ForbiddenException('Not allowed to edit this comment');
+      }
+    }
+
+    const updated = await this.prisma.postComment.update({
+      where: { id: commentId },
+      data: { body },
+    });
+
+    const [card] = await this.profile.getCards([comment.authorId]);
+    const commentView: PostCommentView = {
+      id: updated.id,
+      postId: updated.postId,
+      body: updated.body,
+      createdAt: updated.createdAt,
+      author: {
+        id: comment.authorId,
+        username: card?.username ?? 'user',
+        fullName: card?.fullName ?? null,
+        avatarUrl: card?.avatarUrl ?? null,
+      },
+    };
+
+    const commentCount = this.prisma.postComment.count
+      ? await this.prisma.postComment.count({ where: { postId: comment.postId, deletedAt: null } })
+      : 0;
+    const payload = { postId: comment.postId, comment: commentView, commentCount };
+    this.sockets?.emitEverywhere('post.comment_updated', payload);
+    this.sockets?.emitToNamespace('/notifications', 'post.comment_updated', payload);
+    this.sockets?.emitToNamespace('/chat', 'post.comment_updated', payload);
+
+    return commentView;
   }
 
   async listComments(
@@ -92,6 +148,14 @@ export class PostCommentService {
       where: { id: commentId },
       data: { deletedAt: new Date() },
     });
+    const commentCount = this.prisma.postComment.count
+      ? await this.prisma.postComment.count({ where: { postId: comment.postId, deletedAt: null } })
+      : 0;
     await this.bus.publish(new PostCommentDeletedEvent({ postId: comment.postId, commentId }));
+
+    const payload = { postId: comment.postId, commentId, commentCount };
+    this.sockets?.emitEverywhere('post.comment_deleted', payload);
+    this.sockets?.emitToNamespace('/notifications', 'post.comment_deleted', payload);
+    this.sockets?.emitToNamespace('/chat', 'post.comment_deleted', payload);
   }
 }

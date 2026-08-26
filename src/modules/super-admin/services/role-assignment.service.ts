@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -118,11 +119,11 @@ export class RoleAssignmentService {
         roleUpper,
       );
 
-      let displayId = Math.floor(10000000 + Math.random() * 90000000);
-      for (let attempt = 0; attempt < 5; attempt++) {
+      let displayId = randomInt(10000000, 100000000);
+      for (let attempt = 0; attempt < 10; attempt++) {
         const existing = await this.prisma.user.findUnique({ where: { displayId } });
         if (!existing) break;
-        displayId = Math.floor(10000000 + Math.random() * 90000000);
+        displayId = randomInt(10000000, 100000000);
       }
 
       const newUser = await this.prisma.$transaction(async (tx) => {

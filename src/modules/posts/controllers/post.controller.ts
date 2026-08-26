@@ -5,6 +5,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import { CreateCommentDto } from '../dto/create-comment.dto';
 import { CreatePostDto } from '../dto/create-post.dto';
 import { FeedQueryDto } from '../dto/feed-query.dto';
 import { ReportPostDto } from '../dto/report-post.dto';
+import { UpdatePostDto } from '../dto/update-post.dto';
 import { PostCommentService } from '../services/post-comment.service';
 import { PostLikeService } from '../services/post-like.service';
 import { PostQueryService } from '../services/post-query.service';
@@ -85,6 +87,16 @@ export class PostController {
     return this.commentService.addComment(id, userId, dto.body);
   }
 
+  @Patch(':id/comments/:commentId')
+  @ApiOperation({ summary: 'Update/edit a comment (author or moderator)' })
+  async updateComment(
+    @Param('commentId') commentId: string,
+    @Body() dto: CreateCommentDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.commentService.updateComment(commentId, userId, dto.body);
+  }
+
   @Delete(':id/comments/:commentId')
   @ApiOperation({ summary: 'Delete a comment (author or moderator)' })
   async deleteComment(@Param('commentId') commentId: string, @CurrentUser('id') userId: string) {
@@ -109,6 +121,17 @@ export class PostController {
     const post = await this.queryService.getById(id, userId);
     if (!post) throw new NotFoundException('Post not found');
     return post;
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update/edit a post (author or moderator)' })
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdatePostDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    await this.postService.updatePost(id, userId, dto);
+    return this.queryService.getById(id, userId);
   }
 
   @Delete(':id')
