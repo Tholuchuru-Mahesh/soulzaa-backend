@@ -23,6 +23,7 @@ const allOn: NotificationPreferenceView = {
   walletEvents: true,
   gameEvents: true,
   vipEvents: true,
+  wealthEvents: true,
   familyEvents: true,
   sound: true,
   vibration: true,

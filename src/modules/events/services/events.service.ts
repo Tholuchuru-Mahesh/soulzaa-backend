@@ -15,7 +15,7 @@ import { QUEUE_NAMES } from 'src/infra/queue/queue.constants';
 import { QueueService } from 'src/infra/queue/queue.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import { EXP_SERVICE, type IExpService } from 'src/modules/exp/interfaces/exp.service.interface';
-import { VIP_SERVICE, type IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
+import { WEALTH_SERVICE, type IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
 import {
   eventClaimLockKey,
   type EventEligibility,
@@ -56,7 +56,7 @@ export class EventsService implements IEventsService, OnModuleInit, OnModuleDest
     private readonly queue: QueueService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(EXP_SERVICE) private readonly exp: IExpService,
-    @Inject(VIP_SERVICE) private readonly vip: IVipService,
+    @Inject(WEALTH_SERVICE) private readonly wealth: IWealthService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -210,7 +210,7 @@ export class EventsService implements IEventsService, OnModuleInit, OnModuleDest
       if (level < gate.minUserLevel) this.notEligible();
     }
     if (gate.minVipLevel && gate.minVipLevel > 0) {
-      const ordinal = await this.vip.getLevelOrdinal(userId);
+      const ordinal = await this.wealth.getEffectiveLevel(userId);
       if (ordinal < gate.minVipLevel) this.notEligible();
     }
   }

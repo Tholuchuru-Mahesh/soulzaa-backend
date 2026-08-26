@@ -69,7 +69,7 @@ describe('PostgresUserSearchProvider', () => {
       { id: 'u1', username: 'adi', fullName: 'Adi', country: 'IN' },
     ]);
     prisma.user.count.mockResolvedValue(1);
-    prisma.userStatistics.findMany.mockResolvedValue([{ userId: 'u1', level: 7, vipLevel: 3 }]);
+    prisma.userStatistics.findMany.mockResolvedValue([{ userId: 'u1', level: 7, wealthLevel: 3 }]);
     prisma.userVerification.findMany.mockResolvedValue([{ userId: 'u1', verified: true }]);
     prisma.userProfile.findMany.mockResolvedValue([{ userId: 'u1', avatarKey: 'k' }]);
     media.resolve.mockResolvedValue('https://cdn/k.jpg');

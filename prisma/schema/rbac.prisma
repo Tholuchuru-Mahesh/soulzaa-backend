@@ -183,24 +183,24 @@ model RoleScope {
 
 /// Audit logging entity for platform privileged operations
 model AuditLog {
-  id           String   @id @default(uuid()) @db.Uuid
-  actorId      String   @db.Uuid
-  actorRole    String?
-  action       String
-  resource     String
-  resourceId   String?
-  details      Json?
-  ipAddress    String?
-  userAgent    String?
-  status       String   @default("SUCCESS")
-  createdAt    DateTime @default(now())
-  evidenceId   String?
-  liveStreamId String?  @db.Uuid
-  targetUserId String?  @db.Uuid
-  roomId       String?  @db.Uuid
-  region       String?
-  browser      String?
-  os           String?
+  id              String   @id @default(uuid()) @db.Uuid
+  actorId         String   @db.Uuid
+  actorRole       String?
+  action          String
+  resource        String
+  resourceId      String?
+  details         Json?
+  ipAddress       String?
+  userAgent       String?
+  status          String   @default("SUCCESS")
+  createdAt       DateTime @default(now())
+  evidenceId      String?
+  liveStreamId    String?  @db.Uuid
+  targetUserId    String?  @db.Uuid
+  roomId          String?  @db.Uuid
+  region          String?
+  browser         String?
+  os              String?
   violationReason String?
 
   @@index([actorId])

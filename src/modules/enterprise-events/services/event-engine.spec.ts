@@ -48,7 +48,7 @@ describe('Phase 16: Enterprise Events Engine', () => {
       findUnique: jest.fn().mockResolvedValue({ userId: 'user-1', country: 'US' }),
     },
     userStatistics: {
-      findUnique: jest.fn().mockResolvedValue({ userId: 'user-1', level: 10, vipLevel: 2 }),
+      findUnique: jest.fn().mockResolvedValue({ userId: 'user-1', level: 10, wealthLevel: 2 }),
     },
     // createEvent now mirrors an event's tasks into TaskDefinition and reads
     // them back when enriching the response.

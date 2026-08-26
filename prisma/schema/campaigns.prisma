@@ -47,11 +47,11 @@ model Campaign {
 /// regional initiatives (e.g. creator bootcamps, moderation
 /// drives, charity streams).
 model CommunityProgram {
-  id          String   @id @default(uuid()) @db.Uuid
-  createdById String   @db.Uuid
+  id          String    @id @default(uuid()) @db.Uuid
+  createdById String    @db.Uuid
   name        String
   description String?
-  isActive    Boolean  @default(true)
+  isActive    Boolean   @default(true)
   startAt     DateTime?
   endAt       DateTime?
 

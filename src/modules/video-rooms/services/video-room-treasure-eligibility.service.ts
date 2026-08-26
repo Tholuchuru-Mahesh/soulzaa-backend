@@ -1,6 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { REDIS_CLIENT, type RedisClient } from 'src/infra/redis/redis.constants';
-import { VIP_SERVICE, type IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
+import { WEALTH_SERVICE, type IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
 import { treasureActivityKey } from '../constants/video-room-treasure.constants';
 import {
   videoRoomHostsKey,
@@ -40,7 +40,7 @@ export class VideoRoomTreasureEligibilityService {
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
     private readonly repo: VideoRoomTreasureRepository,
-    @Inject(VIP_SERVICE) private readonly vip: IVipService,
+    @Inject(WEALTH_SERVICE) private readonly wealth: IWealthService,
     @Optional() private readonly now: () => number = () => Date.now(),
   ) {}
 
@@ -137,7 +137,7 @@ export class VideoRoomTreasureEligibilityService {
       return new Map();
     }
     const ordinals = await Promise.all(
-      userIds.map((id) => this.vip.getLevelOrdinal(id).catch(() => 0)),
+      userIds.map((id) => this.wealth.getEffectiveLevel(id).catch(() => 0)),
     );
     return new Map(userIds.map((id, i) => [id, ordinals[i]]));
   }

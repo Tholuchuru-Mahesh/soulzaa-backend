@@ -75,12 +75,10 @@ const DEFAULT_TASKS = [
       freeCoins: 1000,
       exp: 500,
       goldCoins: 50,
-      vipDays: 1,
       items: [
         { type: 'COINS', amount: 1000 },
         { type: 'GOLD', amount: 50 },
         { type: 'EXP', amount: 500 },
-        { type: 'VIP', vipDays: 1 },
       ],
     },
   },

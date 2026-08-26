@@ -15,6 +15,12 @@ export const GUARD_TTL = {
    * same user for every day of the expiry window.
    */
   VIP_WINDOW: 86_400,
+  /**
+   * Wealth Level events are one-shot per occurrence (a level-up, a monthly
+   * reset, a reward grant) — an hour just absorbs event-bus redelivery/retry,
+   * not a recurring sweep like the legacy VIP expiry window.
+   */
+  WEALTH_WINDOW: 3600,
   /** Token refresh can re-emit a login detection; five minutes absorbs it. */
   LOGIN: 300,
 } as const;

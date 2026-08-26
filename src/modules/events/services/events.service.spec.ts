@@ -3,7 +3,7 @@ import { IEventBus } from 'src/common/events';
 import { QueueService } from 'src/infra/queue/queue.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import type { IExpService } from 'src/modules/exp/interfaces/exp.service.interface';
-import type { IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
+import type { IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
 import { EventsRepository } from '../repositories/events.repository';
 import { EventRewardGranter } from './event-reward.granter';
 import { EventsService } from './events.service';
@@ -38,7 +38,7 @@ describe('EventsService', () => {
   let queue: { enqueue: jest.Mock };
   let bus: jest.Mocked<IEventBus>;
   let exp: Record<string, jest.Mock>;
-  let vip: Record<string, jest.Mock>;
+  let wealth: Record<string, jest.Mock>;
   let service: EventsService;
 
   beforeEach(async () => {
@@ -61,7 +61,7 @@ describe('EventsService', () => {
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     exp = { getUserExp: jest.fn().mockResolvedValue({ level: 10 }) };
-    vip = { getLevelOrdinal: jest.fn().mockResolvedValue(3) };
+    wealth = { getEffectiveLevel: jest.fn().mockResolvedValue(3) };
     service = new EventsService(
       repo as unknown as EventsRepository,
       granter as unknown as EventRewardGranter,
@@ -69,7 +69,7 @@ describe('EventsService', () => {
       queue as unknown as QueueService,
       bus,
       exp as unknown as IExpService,
-      vip as unknown as IVipService,
+      wealth as unknown as IWealthService,
     );
     await service.reload();
   });
@@ -140,7 +140,7 @@ describe('EventsService', () => {
 
     it('allows an eligible user', async () => {
       repo.getEvent.mockResolvedValue(evt({ eligibility: { minVipLevel: 2 } }));
-      vip.getLevelOrdinal.mockResolvedValue(3);
+      wealth.getEffectiveLevel.mockResolvedValue(3);
       await expect(service.claim('u1', 'e1')).resolves.toBeDefined();
     });
   });

@@ -435,7 +435,7 @@ export class VideoRoomsAdminController {
           select: {
             userId: true,
             level: true,
-            vipLevel: true,
+            wealthLevel: true,
           },
         }),
         this.prisma.userVerification.findMany({
@@ -450,7 +450,7 @@ export class VideoRoomsAdminController {
       profileRows.forEach((p) => profileMap.set(p.userId, p.avatarKey));
 
       const statsMap = new Map<string, { level: number; vipLevel: number }>();
-      statsRows.forEach((s) => statsMap.set(s.userId, { level: s.level, vipLevel: s.vipLevel }));
+      statsRows.forEach((s) => statsMap.set(s.userId, { level: s.level, vipLevel: s.wealthLevel }));
 
       const verificationMap = new Map<string, boolean>();
       verificationRows.forEach((v) => verificationMap.set(v.userId, v.verified));

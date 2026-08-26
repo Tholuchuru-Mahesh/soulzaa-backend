@@ -63,7 +63,10 @@ model NotificationPreference {
   walletEvents       Boolean   @default(true)
   /// Match found and game settled. Lobby churn is never pushed.
   gameEvents         Boolean   @default(true)
+  /// @deprecated — legacy VIP module notifications, superseded by wealthEvents.
   vipEvents          Boolean   @default(true)
+  /// Wealth Level up/downgrade, monthly reset, reward available/claimed.
+  wealthEvents       Boolean   @default(true)
   /// Membership changes. Family invitations are gated by `inviteEvents`.
   familyEvents       Boolean   @default(true)
 
@@ -252,10 +255,16 @@ enum NotificationType {
   GAME_WON
   GAME_LOST
   GAME_OPPONENT_LEFT
+  /// @deprecated — legacy VIP module notification types.
   VIP_ACTIVATED
   VIP_RENEWED
   VIP_EXPIRING
   VIP_EXPIRED
+  WEALTH_LEVEL_UP
+  WEALTH_LEVEL_DOWNGRADED
+  WEALTH_MONTHLY_RESET
+  WEALTH_REWARD_AVAILABLE
+  WEALTH_REWARD_CLAIMED
   FAMILY_MEMBER_JOINED
   FAMILY_MEMBER_LEFT
   FAMILY_REMOVED

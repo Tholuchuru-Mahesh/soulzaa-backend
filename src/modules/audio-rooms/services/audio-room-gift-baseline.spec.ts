@@ -13,7 +13,7 @@ import { LockService } from 'src/infra/redis/lock.service';
 import type { IAudioRoomsService } from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
 import type { IUsersService } from 'src/modules/users/interfaces/users.service.interface';
-import type { IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
+import type { IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
 import type { IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import type { ITreasureBoxesService } from 'src/modules/treasure-boxes/interfaces/treasure-boxes.service.interface';
 import type { SendGiftDto } from 'src/modules/gifts/dto/gift.dto';
@@ -98,7 +98,7 @@ interface Mocks {
   wallet: Record<string, jest.Mock>;
   rooms: Record<string, jest.Mock>;
   users: Record<string, jest.Mock>;
-  vip: Record<string, jest.Mock>;
+  wealth: Record<string, jest.Mock>;
   prisma: Record<string, jest.Mock>;
   locks: Record<string, jest.Mock>;
   treasure: Record<string, jest.Mock>;
@@ -150,7 +150,7 @@ function buildMocks(): Mocks {
       getOwnerId: jest.fn().mockResolvedValue(HOST),
     },
     users: { findById: jest.fn().mockResolvedValue({ id: RECEIVER, username: 'bob' }) },
-    vip: { getLevelOrdinal: jest.fn().mockResolvedValue(0) },
+    wealth: { getEffectiveLevel: jest.fn().mockResolvedValue(0) },
     prisma,
     locks: { withLock: jest.fn().mockImplementation((_key, cb) => cb()) },
     treasure: {
@@ -197,7 +197,7 @@ function buildGiftService(m: Mocks): GiftService {
     m.locks as unknown as LockService,
     m.bus,
     m.wallet as unknown as IWalletService,
-    m.vip as unknown as IVipService,
+    m.wealth as unknown as IWealthService,
     registry,
     { get: jest.fn().mockResolvedValue(null) },
   );

@@ -1,4 +1,3 @@
-import { VipLevel } from 'src/common/enums/vip-level.enum';
 import { VideoRoomPkRepository } from '../../repositories/video-room-pk.repository';
 import type { PkScoreContext, PkScoringSnapshot } from '../video-room-pk-score.engine';
 import { VideoRoomPkScoreEngine } from '../video-room-pk-score.engine';
@@ -27,34 +26,26 @@ const ctx = (db: unknown, overrides: Partial<PkScoringSnapshot> = {}): PkScoreCo
 const engine = () => new VideoRoomPkScoreEngine();
 
 // The strategy no longer touches Prisma directly — it borrows
-// `VideoRoomPkRepository.getVipStatus`, so the repository is mocked rather
-// than a raw `vipStatus.findUnique` delegate.
-const repo = (status: { level: VipLevel } | null) =>
-  ({ getVipStatus: jest.fn().mockResolvedValue(status) }) as unknown as VideoRoomPkRepository;
+// `VideoRoomPkRepository.getWealthLevel`, so the repository is mocked rather
+// than a raw `wealthUserProgress.findUnique` delegate.
+const repo = (level: number) =>
+  ({ getWealthLevel: jest.fn().mockResolvedValue(level) }) as unknown as VideoRoomPkRepository;
 
 describe('VipMultiplierStrategy', () => {
-  it('returns 0 for a sender with no VIP status row', async () => {
-    const strategy = new VipMultiplierStrategy(engine(), repo(null));
+  it('returns 0 for a sender with no Wealth Level progress row', async () => {
+    const strategy = new VipMultiplierStrategy(engine(), repo(0));
 
     expect(await strategy.bonusBps(ctx({}))).toBe(0);
   });
 
-  // NONE is the explicit default level too, not just a missing row.
-  it('returns 0 for a sender whose VIP level is explicitly NONE', async () => {
-    const strategy = new VipMultiplierStrategy(engine(), repo({ level: VipLevel.NONE }));
+  it('scales with level (level 3)', async () => {
+    const strategy = new VipMultiplierStrategy(engine(), repo(3));
 
-    expect(await strategy.bonusBps(ctx({}))).toBe(0);
-  });
-
-  it('scales with tier level (GOLD = ordinal 3)', async () => {
-    const strategy = new VipMultiplierStrategy(engine(), repo({ level: VipLevel.GOLD }));
-
-    // ordinal(GOLD) = 3 (NONE=0, BRONZE=1, SILVER=2, GOLD=3) * vipBonusBpsPerTier 500
     expect(await strategy.bonusBps(ctx({}, { vipBonusBpsPerTier: 500 }))).toBe(1_500);
   });
 
-  it('scales further for a higher tier (TITAN = ordinal 7)', async () => {
-    const strategy = new VipMultiplierStrategy(engine(), repo({ level: VipLevel.TITAN }));
+  it('scales further for a higher level (level 7)', async () => {
+    const strategy = new VipMultiplierStrategy(engine(), repo(7));
 
     expect(await strategy.bonusBps(ctx({}, { vipBonusBpsPerTier: 500 }))).toBe(3_500);
   });
@@ -64,18 +55,18 @@ describe('VipMultiplierStrategy', () => {
   // caller-supplied `ctx.db` into the repository call, never let the
   // repository fall back to its own module-level PrismaService.
   it('reads through the ctx.db transaction client, not a global Prisma instance', async () => {
-    const passedClient = { vipStatus: { findUnique: jest.fn().mockResolvedValue(null) } };
-    const mockRepo = repo(null);
+    const passedClient = { wealthUserProgress: { findUnique: jest.fn().mockResolvedValue(null) } };
+    const mockRepo = repo(0);
     const strategy = new VipMultiplierStrategy(engine(), mockRepo);
 
     await strategy.bonusBps(ctx(passedClient));
 
-    expect(mockRepo.getVipStatus).toHaveBeenCalledWith('sender-1', passedClient);
+    expect(mockRepo.getWealthLevel).toHaveBeenCalledWith('sender-1', passedClient);
   });
 
   it('registers itself with the engine on module init', () => {
     const e = engine();
-    const strategy = new VipMultiplierStrategy(e, repo(null));
+    const strategy = new VipMultiplierStrategy(e, repo(0));
 
     strategy.onModuleInit();
 

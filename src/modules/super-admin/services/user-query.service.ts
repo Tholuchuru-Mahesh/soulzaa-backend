@@ -533,7 +533,7 @@ export class UserQueryService {
       .slice(0, 10);
 
     const level = stats ? stats.level : 1;
-    const vipLevel = stats ? stats.vipLevel : 0;
+    const vipLevel = stats ? stats.wealthLevel : 0;
     const kycVerifiedAt = verification && verification.verified ? verification.reviewedAt : null;
     const ageVerifiedAt = verification && verification.verified ? verification.reviewedAt : null;
 

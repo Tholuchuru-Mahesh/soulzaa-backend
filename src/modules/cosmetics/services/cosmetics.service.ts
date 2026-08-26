@@ -196,6 +196,83 @@ export class CosmeticsService implements ICosmeticsService {
     return { cosmeticId: cosmetic.id, backpackItemId: res.itemId, duplicate: res.duplicate };
   }
 
+  async equip(userId: string, cosmeticId: string): Promise<void> {
+    const cosmetic = await this.repo.getById(cosmeticId);
+    if (!cosmetic) {
+      throw new BusinessException(
+        ERROR_CODES.COSMETIC_NOT_FOUND,
+        'Cosmetic not found.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    if (cosmetic.type === 'FRAME' || cosmetic.type === 'THEME' || cosmetic.type === 'ENTRANCE_EFFECT') {
+      await this.equipCosmetic(userId, cosmeticId);
+      return;
+    }
+    const item = await this.prisma.backpackItem.findFirst({
+      where: { userId, refId: cosmeticId },
+      orderBy: { acquiredAt: 'desc' },
+    });
+    if (!item) {
+      throw new BusinessException(
+        ERROR_CODES.COSMETIC_NOT_FOUND,
+        'You do not own this cosmetic.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    await this.backpack.equip(userId, item.id);
+  }
+
+  async unequip(userId: string, cosmeticId: string): Promise<void> {
+    const cosmetic = await this.repo.getById(cosmeticId);
+    if (!cosmetic) {
+      throw new BusinessException(
+        ERROR_CODES.COSMETIC_NOT_FOUND,
+        'Cosmetic not found.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    if (cosmetic.type === 'FRAME' || cosmetic.type === 'THEME' || cosmetic.type === 'ENTRANCE_EFFECT') {
+      await this.unequipCosmetic(userId, cosmeticId);
+      return;
+    }
+    const item = await this.prisma.backpackItem.findFirst({
+      where: { userId, refId: cosmeticId },
+      orderBy: { acquiredAt: 'desc' },
+    });
+    if (!item) {
+      throw new BusinessException(
+        ERROR_CODES.COSMETIC_NOT_FOUND,
+        'You do not own this cosmetic.',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    await this.backpack.unequip(userId, item.id);
+  }
+
+  async isEquipped(userId: string, cosmeticId: string): Promise<boolean> {
+    const cosmetic = await this.repo.getById(cosmeticId);
+    if (!cosmetic) return false;
+    if (cosmetic.type === 'FRAME' || cosmetic.type === 'THEME' || cosmetic.type === 'ENTRANCE_EFFECT') {
+      const userCos = await this.prisma.userCosmetic.findUnique({
+        where: { userId_cosmeticId: { userId, cosmeticId } },
+      });
+      return userCos?.equipped ?? false;
+    }
+    const item = await this.prisma.backpackItem.findFirst({
+      where: { userId, refId: cosmeticId },
+      orderBy: { acquiredAt: 'desc' },
+    });
+    return item?.equipped ?? false;
+  }
+
+  async setMedia(cosmeticId: string, mediaUrl: string): Promise<void> {
+    await this.prisma.cosmetic.update({
+      where: { id: cosmeticId },
+      data: { mediaUrl },
+    });
+  }
+
   // ---- Public catalog ----
 
   listCatalog(type?: CosmeticType): Promise<Cosmetic[]> {

@@ -238,19 +238,19 @@ export class VideoRoomPkRepository {
     return { userId: row.senderId, total: row._sum.baseAmount ?? 0n };
   }
 
-  // ---- VIP (read-only borrow) ----
+  // ---- Wealth Level (read-only borrow) ----
 
   /**
-   * The score strategy must read the sender's VIP tier through the gift's own
-   * transaction client (`ctx.db`), and the vip module's own repository always
-   * binds to the module-level `PrismaService`, never a caller-supplied one —
-   * so this PK repository, which already threads `db` through every method,
-   * owns the read instead.
+   * The score strategy must read the sender's Wealth Level through the
+   * gift's own transaction client (`ctx.db`), and the wealth module's own
+   * repository always binds to the module-level `PrismaService`, never a
+   * caller-supplied one — so this PK repository, which already threads `db`
+   * through every method, owns the read instead. A user with no
+   * `WealthUserProgress` row at all (never purchased) reads back level 0.
    */
-  async getVipStatus(userId: string, db: Db = this.prisma): Promise<any> {
-    const m = await db.vipMembership.findUnique({ where: { userId } });
-    if (!m) return null;
-    return { level: `VIP_${m.level}`, lifetimeRecharge: m.totalSpent };
+  async getWealthLevel(userId: string, db: Db = this.prisma): Promise<number> {
+    const p = await db.wealthUserProgress.findUnique({ where: { userId } });
+    return p?.currentLevel ?? 0;
   }
 
   // ---- Listing / recovery ----

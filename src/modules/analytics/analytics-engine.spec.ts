@@ -115,8 +115,7 @@ function buildPrismaMock(overrides: Record<string, unknown> = {}) {
     },
     family: { count: jest.fn().mockResolvedValue(8) },
     familyMember: { count: jest.fn().mockResolvedValue(40) },
-    vipMembership: { count: jest.fn().mockResolvedValue(12) },
-    vipSubscription: { count: jest.fn().mockResolvedValue(11) },
+    wealthUserProgress: { count: jest.fn().mockResolvedValue(12) },
     userLevel: {
       count: jest.fn().mockResolvedValue(60),
       aggregate: jest

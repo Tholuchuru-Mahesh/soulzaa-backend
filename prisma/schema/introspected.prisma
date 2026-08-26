@@ -1,33 +1,33 @@
 model device_change_requests {
-  id                  String                    @id @db.Uuid
-  moderatorId         String                    @db.Uuid
-  oldDeviceId         String?                   @db.Uuid
-  newDeviceInfo       Json
-  reason              String?
-  status              DeviceChangeRequestStatus @default(PENDING)
-  managerReviewedBy   String?                   @db.Uuid
-  managerReviewedAt   DateTime?
-  managerReviewNote   String?
-  reviewedBy          String?                   @db.Uuid
-  reviewedAt          DateTime?
-  reviewNote          String?
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime
+  id                String                    @id @db.Uuid
+  moderatorId       String                    @db.Uuid
+  oldDeviceId       String?                   @db.Uuid
+  newDeviceInfo     Json
+  reason            String?
+  status            DeviceChangeRequestStatus @default(PENDING)
+  managerReviewedBy String?                   @db.Uuid
+  managerReviewedAt DateTime?
+  managerReviewNote String?
+  reviewedBy        String?                   @db.Uuid
+  reviewedAt        DateTime?
+  reviewNote        String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime
 
   @@index([moderatorId, status])
   @@index([status])
 }
 
 model live_stream_moderation_actions {
-  id           String       @id @db.Uuid
-  streamId     String       @db.Uuid
-  moderatorId  String       @db.Uuid
-  targetUserId String       @db.Uuid
+  id           String     @id @db.Uuid
+  streamId     String     @db.Uuid
+  moderatorId  String     @db.Uuid
+  targetUserId String     @db.Uuid
   action       String
   reason       String?
   evidenceId   String?
-  createdAt    DateTime     @default(now())
-  stream                       LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  stream       LiveStream @relation(fields: [streamId], references: [id], onDelete: Cascade)
 
   @@index([moderatorId])
   @@index([streamId])

@@ -95,7 +95,7 @@ export class DashboardOperationsService {
       this.prisma.user.count(),
       this.prisma.user.count({ where: { status: 'ACTIVE' } }),
       this.prisma.user.count({ where: { status: { in: ['BANNED', 'SUSPENDED'] } } }),
-      this.prisma.userStatistics.count({ where: { vipLevel: { gt: 0 } } }),
+      this.prisma.userStatistics.count({ where: { wealthLevel: { gt: 0 } } }),
       this.prisma.user.count({ where: { createdAt: { gte: dayAgo } } }),
       this.prisma.user.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.userRole.groupBy({ by: ['roleId'], _count: { _all: true } }),
@@ -151,7 +151,7 @@ export class DashboardOperationsService {
         avatarUrl: profile?.avatarKey
           ? `https://cdn.soulzaa.com/avatars/${profile.avatarKey}`
           : null,
-        vipLevel: stat?.vipLevel ?? 0,
+        vipLevel: stat?.wealthLevel ?? 0,
         userLevel: stat?.level ?? 1,
         coinsBalance: Number(wallet?.goldBalance ?? 0n),
         lastActive: user.createdAt,

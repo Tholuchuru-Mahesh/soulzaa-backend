@@ -34,18 +34,18 @@ enum PlatformWarningScope {
 /// (e.g. ModeratorWarningRecord) and stay comparable against native-UUID
 /// user/room primary keys without an implicit cast.
 model PlatformUserBan {
-  id           String             @id @default(uuid()) @db.Uuid
-  targetUserId String             @db.Uuid
-  moderatorId  String             @db.Uuid
+  id           String            @id @default(uuid()) @db.Uuid
+  targetUserId String            @db.Uuid
+  moderatorId  String            @db.Uuid
   reason       String
   roomType     PlatformRoomType
-  originRoomId String             @db.Uuid
-  reportId     String?            @db.Uuid
-  status       PlatformBanStatus  @default(ACTIVE)
-  bannedAt     DateTime           @default(now())
+  originRoomId String            @db.Uuid
+  reportId     String?           @db.Uuid
+  status       PlatformBanStatus @default(ACTIVE)
+  bannedAt     DateTime          @default(now())
   expiresAt    DateTime
   liftedAt     DateTime?
-  liftedBy     String?            @db.Uuid
+  liftedBy     String?           @db.Uuid
 
   @@index([targetUserId, status])
   @@index([status, expiresAt])
@@ -56,15 +56,15 @@ model PlatformUserBan {
 /// (incognito presence, warnings, global bans) — admin-visible only, never
 /// shown to room participants.
 model PlatformModerationAuditLog {
-  id           String                        @id @default(uuid()) @db.Uuid
-  moderatorId  String                        @db.Uuid
+  id           String                       @id @default(uuid()) @db.Uuid
+  moderatorId  String                       @db.Uuid
   action       PlatformModerationActionType
   roomType     PlatformRoomType
-  roomId       String                        @db.Uuid
-  targetUserId String?                       @db.Uuid
+  roomId       String                       @db.Uuid
+  targetUserId String?                      @db.Uuid
   reason       String?
   scope        PlatformWarningScope?
-  createdAt    DateTime                      @default(now())
+  createdAt    DateTime                     @default(now())
 
   @@index([moderatorId, createdAt])
   @@index([targetUserId, createdAt])
@@ -83,19 +83,19 @@ enum BroadBanStatus {
 /// 24h; the owner can still log in and join other rooms normally. Never
 /// references PlatformUserBan and is never written to by PlatformBanService.
 model BroadBan {
-  id          String         @id @default(uuid()) @db.Uuid
-  roomId      String         @db.Uuid
+  id          String           @id @default(uuid()) @db.Uuid
+  roomId      String           @db.Uuid
   roomType    PlatformRoomType
-  ownerId     String         @db.Uuid
-  moderatorId String         @db.Uuid
+  ownerId     String           @db.Uuid
+  moderatorId String           @db.Uuid
   reason      String
   description String?
   proofUrl    String?
-  status      BroadBanStatus @default(ACTIVE)
-  bannedAt    DateTime       @default(now())
+  status      BroadBanStatus   @default(ACTIVE)
+  bannedAt    DateTime         @default(now())
   expiresAt   DateTime
   liftedAt    DateTime?
-  liftedBy    String?        @db.Uuid
+  liftedBy    String?          @db.Uuid
 
   @@index([ownerId, status])
   @@index([status, expiresAt])

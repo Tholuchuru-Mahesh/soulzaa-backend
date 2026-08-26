@@ -15,44 +15,44 @@ model GiftCategoryEntity {
 
 /// The enterprise Gift catalog entity
 model Gift {
-  id                  String             @id @default(uuid()) @db.Uuid
+  id                  String       @id @default(uuid()) @db.Uuid
   name                String
-  category            GiftCategory       @default(CLASSIC)
-  type                GiftType           @default(STATIC)
+  category            GiftCategory @default(CLASSIC)
+  type                GiftType     @default(STATIC)
   coinValue           Int
   thumbnailUrl        String?
   animationUrl        String?
   soundUrl            String?
-  minVipLevel         Int                @default(0)
-  comboEnabled        Boolean            @default(false)
-  comboWindowSeconds  Int                @default(10)
-  luckyMultipliers    Int[]              @default([])
-  luckyWinChanceBp    Int                @default(0)
+  minVipLevel         Int          @default(0)
+  comboEnabled        Boolean      @default(false)
+  comboWindowSeconds  Int          @default(10)
+  luckyMultipliers    Int[]        @default([])
+  luckyWinChanceBp    Int          @default(0)
   festivalTag         String?
-  enabled             Boolean            @default(true)
-  sortOrder           Int                @default(0)
-  createdBy           String?            @db.Uuid
-  updatedBy           String?            @db.Uuid
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
+  enabled             Boolean      @default(true)
+  sortOrder           Int          @default(0)
+  createdBy           String?      @db.Uuid
+  updatedBy           String?      @db.Uuid
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
   activeFrom          DateTime?
   activeUntil         DateTime?
-  code                String             @unique
-  countryRestriction  String[]           @default([])
+  code                String       @unique
+  countryRestriction  String[]     @default([])
   description         String?
   displayName         String?
   lottieUrl           String?
   mp4Url              String?
-  platformRestriction String[]           @default([])
-  popularity          Int                @default(0)
-  priority            Int                @default(0)
+  platformRestriction String[]     @default([])
+  popularity          Int          @default(0)
+  priority            Int          @default(0)
 
-  svgaUrl             String?
-  tags                String[]           @default([])
-  ttlValue            Int?
-  ttlUnit             String?
-  availabilities      GiftAvailability[]
-  inventories         GiftInventory[]
+  svgaUrl        String?
+  tags           String[]           @default([])
+  ttlValue       Int?
+  ttlUnit        String?
+  availabilities GiftAvailability[]
+  inventories    GiftInventory[]
 
   @@index([enabled, category])
   @@index([type])
@@ -140,8 +140,6 @@ model GiftAudit {
   @@index([giftId])
   @@index([createdAt])
   @@map("gift_audits")
-
-
 }
 
 enum GiftType {

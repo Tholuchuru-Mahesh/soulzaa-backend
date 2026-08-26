@@ -75,12 +75,12 @@ export class EventEligibilityService {
       }
     }
 
-    // 2. VIP level check
+    // 2. Wealth Level check
     if (rules.minVipLevel !== undefined) {
-      const userVipLevel = userStats?.vipLevel ?? 0;
-      if (userVipLevel < Number(rules.minVipLevel)) {
+      const userWealthLevel = userStats?.wealthLevel ?? 0;
+      if (userWealthLevel < Number(rules.minVipLevel)) {
         reasons.push(
-          `Minimum VIP level required is ${rules.minVipLevel} (Current: ${userVipLevel})`,
+          `Minimum Wealth Level required is ${rules.minVipLevel} (Current: ${userWealthLevel})`,
         );
       }
     }

@@ -25,7 +25,7 @@ describe('VideoRoomSeatQueueService', () => {
         del: jest.fn().mockResolvedValue(1),
       },
       seats: { listPendingRequests: jest.fn().mockResolvedValue([]) },
-      vip: { getLevelOrdinal: jest.fn().mockResolvedValue(0) },
+      vip: { getEffectiveLevel: jest.fn().mockResolvedValue(0) },
       bus: { publish: jest.fn() },
       seatSvc: {
         seatUser: jest.fn().mockResolvedValue({ version: 7 }),
@@ -55,11 +55,11 @@ describe('VideoRoomSeatQueueService', () => {
     });
 
     it('scores a VIP ahead of a non-VIP who arrived earlier', async () => {
-      deps.vip.getLevelOrdinal.mockResolvedValue(5);
+      deps.vip.getEffectiveLevel.mockResolvedValue(5);
       await svc.enqueue('r1', 'vip', new Date('2026-07-21T10:05:00Z'));
       const vipScore = deps.cache.setScore.mock.calls[0][2];
 
-      deps.vip.getLevelOrdinal.mockResolvedValue(0);
+      deps.vip.getEffectiveLevel.mockResolvedValue(0);
       await svc.enqueue('r1', 'free', new Date('2026-07-21T10:00:00Z'));
       const freeScore = deps.cache.setScore.mock.calls[1][2];
 
@@ -173,7 +173,7 @@ describe('VideoRoomSeatQueueService', () => {
         { member: 'u1', score: 10 },
         { member: 'u2', score: 20 },
       ]);
-      deps.vip.getLevelOrdinal.mockResolvedValueOnce(3).mockResolvedValueOnce(0);
+      deps.vip.getEffectiveLevel.mockResolvedValueOnce(3).mockResolvedValueOnce(0);
       const rows = await svc.list('r1');
       expect(rows).toEqual([
         { userId: 'u1', position: 1, vipLevel: 3, score: 10 },

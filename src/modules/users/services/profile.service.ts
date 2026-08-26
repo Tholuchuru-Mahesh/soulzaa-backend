@@ -320,7 +320,7 @@ export class ProfileService implements IProfileService {
             equippedFrameUrl: await this.resolveEquippedFrameUrl(user.id),
             username: user.username,
             level: stats?.level ?? 1,
-            vipLevel: stats?.vipLevel ?? 0,
+            vipLevel: stats?.wealthLevel ?? 0,
             verified: verifiedByUserId.get(user.id)?.verified ?? false,
           });
         }),
@@ -996,7 +996,7 @@ export class ProfileService implements IProfileService {
       liveHours: hours(s.liveMinutes),
       exp: Number(s.exp),
       level: s.level,
-      vipLevel: s.vipLevel,
+      vipLevel: s.wealthLevel,
     };
   }
 
@@ -1094,7 +1094,7 @@ export class ProfileService implements IProfileService {
         }),
         this.prisma.userStatistics.findMany({
           where: { userId: { in: visitorIds } },
-          select: { userId: true, level: true, vipLevel: true },
+          select: { userId: true, level: true, wealthLevel: true },
         }),
         this.prisma.userVerification.findMany({
           where: { userId: { in: visitorIds } },
@@ -1130,7 +1130,7 @@ export class ProfileService implements IProfileService {
             avatarUrl,
             equippedFrameUrl: frameUrl,
             level: s?.level ?? 1,
-            vipLevel: s?.vipLevel ?? 0,
+            vipLevel: s?.wealthLevel ?? 0,
             verified: v?.verified ?? false,
             country: u?.country ?? null,
             isFollowing: followSet.has(r.visitorId),

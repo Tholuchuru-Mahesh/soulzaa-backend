@@ -24,6 +24,7 @@ const CATEGORY_SWITCH: Record<PushCategory, keyof NotificationPreferenceView | n
   [PUSH_CATEGORIES.WALLET]: 'walletEvents',
   [PUSH_CATEGORIES.GAME]: 'gameEvents',
   [PUSH_CATEGORIES.VIP]: 'vipEvents',
+  [PUSH_CATEGORIES.WEALTH]: 'wealthEvents',
   [PUSH_CATEGORIES.FAMILY]: 'familyEvents',
   // Not gated, on purpose. See PUSH_CATEGORIES.SECURITY.
   [PUSH_CATEGORIES.SECURITY]: null,

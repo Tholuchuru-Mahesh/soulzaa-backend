@@ -12,7 +12,7 @@ const prisma = () =>
       groupBy: jest.fn(),
       findMany: jest.fn(),
     },
-    vipMembership: { findUnique: jest.fn() },
+    wealthUserProgress: { findUnique: jest.fn() },
   }) as never;
 
 describe('VideoRoomPkRepository', () => {
@@ -94,27 +94,28 @@ describe('VideoRoomPkRepository', () => {
     expect(await repo.sumBaseAmount('b1')).toBe(0n);
   });
 
-  // VR-12 Task 11 review fix: the VIP score strategy reads through this
-  // repository (rather than a raw Prisma call in the service) precisely so it
-  // can forward the gift's transaction client — pin both the query shape and
-  // that a supplied `db` is actually used instead of the default `this.prisma`.
-  it('getVipStatus queries vipMembership.findUnique by userId, using the passed db client', async () => {
+  // VR-12 Task 11 review fix: the Wealth Level score strategy reads through
+  // this repository (rather than a raw Prisma call in the service) precisely
+  // so it can forward the gift's transaction client — pin both the query
+  // shape and that a supplied `db` is actually used instead of the default
+  // `this.prisma`.
+  it('getWealthLevel queries wealthUserProgress.findUnique by userId, using the passed db client', async () => {
     const defaultDb = prisma();
     const txDb = prisma();
     (
-      txDb as never as { vipMembership: { findUnique: jest.Mock } }
-    ).vipMembership.findUnique.mockResolvedValue({ userId: 'u1', level: 3, totalSpent: 200000n });
+      txDb as never as { wealthUserProgress: { findUnique: jest.Mock } }
+    ).wealthUserProgress.findUnique.mockResolvedValue({ userId: 'u1', currentLevel: 3 });
     const repo = new VideoRoomPkRepository(defaultDb);
 
-    const result = await repo.getVipStatus('u1', txDb);
+    const result = await repo.getWealthLevel('u1', txDb);
 
     expect(
-      (txDb as never as { vipMembership: { findUnique: jest.Mock } }).vipMembership.findUnique,
+      (txDb as never as { wealthUserProgress: { findUnique: jest.Mock } }).wealthUserProgress.findUnique,
     ).toHaveBeenCalledWith({ where: { userId: 'u1' } });
     expect(
-      (defaultDb as never as { vipMembership: { findUnique: jest.Mock } }).vipMembership.findUnique,
+      (defaultDb as never as { wealthUserProgress: { findUnique: jest.Mock } }).wealthUserProgress.findUnique,
     ).not.toHaveBeenCalled();
-    expect(result).toEqual({ level: 'VIP_3', lifetimeRecharge: 200000n });
+    expect(result).toBe(3);
   });
 
   // The reversal path (Task 13) negates the ORIGINAL contribution row rather

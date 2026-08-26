@@ -31,6 +31,7 @@ export interface AuthResult {
 export interface IAuthService {
   register(input: RegisterCommand, ctx: AuthContext): Promise<AuthResult>;
   loginWithPassword(input: PasswordLoginCommand, ctx: AuthContext): Promise<AuthResult>;
+  loginWithMobileOtp(input: MobileOtpLoginCommand, ctx: AuthContext): Promise<AuthResult>;
   loginWithFirebaseMobile(idToken: string, ctx: AuthContext): Promise<AuthResult>;
   loginWithSocial(input: SocialLoginCommand, ctx: AuthContext): Promise<AuthResult>;
   /**

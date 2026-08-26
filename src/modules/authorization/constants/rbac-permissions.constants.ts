@@ -587,15 +587,6 @@ export const DEFAULT_PERMISSIONS = [
     displayName: 'Manage Games',
     description: 'Can configure platform mini-games and rules',
   },
-  {
-    code: 'vip.manage',
-    module: 'vip',
-    action: 'manage',
-    category: 'VIP',
-    displayName: 'Manage VIP',
-    description: 'Can manage VIP tiers, perks, and subscriptions',
-  },
-
   // Authorization administration (RBAC self-management)
   {
     code: 'role.manage',
@@ -988,46 +979,56 @@ export const DEFAULT_PERMISSIONS = [
     description: 'Can view family activity and contribution statistics',
   },
 
-  // VIP Membership Engine (Phase 12)
+
+  // Wealth Level system — the sole VIP progression system (replaces the VIP
+  // Membership Engine above; see prisma/schema/wealth.prisma).
   {
-    code: 'vip.view',
-    module: 'vip',
+    code: 'wealth.view',
+    module: 'wealth',
     action: 'view',
-    category: 'VIP',
-    displayName: 'View VIP',
-    description: 'Can view VIP tiers, benefits, and membership details',
+    category: 'WEALTH',
+    displayName: 'View Wealth Level',
+    description: 'Can view Wealth Level, EXP progress, benefits, and rewards',
   },
   {
-    code: 'vip.purchase',
-    module: 'vip',
-    action: 'create',
-    category: 'VIP',
-    displayName: 'Purchase VIP',
-    description: 'Can purchase, renew, and upgrade a VIP membership',
-  },
-  {
-    code: 'vip.configuration.manage',
-    module: 'vip',
+    code: 'wealth.manage',
+    module: 'wealth',
     action: 'manage',
-    category: 'VIP',
-    displayName: 'Manage VIP Configuration',
-    description: 'Can configure VIP durations, auto-renew, and discount limits',
+    category: 'WEALTH',
+    displayName: 'Manage Wealth Level',
+    description: 'Can manage Wealth Level tiers, benefits, and rewards',
   },
   {
-    code: 'vip.audit.view',
-    module: 'vip',
-    action: 'view',
-    category: 'VIP',
-    displayName: 'View VIP Audit',
-    description: 'Can read the VIP membership audit trail',
+    code: 'wealth.configuration.manage',
+    module: 'wealth',
+    action: 'manage',
+    category: 'WEALTH',
+    displayName: 'Manage Wealth Level Configuration',
+    description: 'Can configure general Wealth Level module parameters',
   },
   {
-    code: 'vip.statistics.view',
-    module: 'vip',
+    code: 'wealth.level.downgrade.manage',
+    module: 'wealth',
+    action: 'manage',
+    category: 'WEALTH',
+    displayName: 'Manage Wealth Level Downgrade Policy',
+    description: 'Can configure the monthly downgrade policy (max levels, floor, effective dates). SUPER_ADMIN only.',
+  },
+  {
+    code: 'wealth.audit.view',
+    module: 'wealth',
     action: 'view',
-    category: 'VIP',
-    displayName: 'View VIP Statistics',
-    description: 'Can view VIP purchase, renewal, and revenue statistics',
+    category: 'WEALTH',
+    displayName: 'View Wealth Level Audit',
+    description: 'Can read the Wealth Level configuration audit trail',
+  },
+  {
+    code: 'wealth.statistics.view',
+    module: 'wealth',
+    action: 'view',
+    category: 'WEALTH',
+    displayName: 'View Wealth Level Statistics',
+    description: 'Can view Wealth Level progression and reward statistics',
   },
 
   // Level & Experience Engine (Phase 13)
@@ -1748,8 +1749,7 @@ const MEMBER_PERMISSIONS = [
   'family.update',
   'family.member.manage',
   'family.role.manage',
-  'vip.view',
-  'vip.purchase',
+  'wealth.view',
   'level.view',
   'achievement.view',
   'ranking.view',
@@ -1845,9 +1845,14 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
     'gift.transaction.view',
     'gift.audit.view',
     'game.manage',
-    'vip.manage',
-    'vip.statistics.view',
-    'vip.audit.view',
+    // Wealth Level: ADMIN may manage tiers/benefits/rewards and view
+    // audit/statistics, but NOT the downgrade policy or general module
+    // configuration — those are SUPER_ADMIN-only (granted via the '*'
+    // wildcard). The legacy VIP module's identical split (manage granted,
+    // configuration withheld) was the precedent for this design.
+    'wealth.manage',
+    'wealth.statistics.view',
+    'wealth.audit.view',
     'badge.manage',
     'achievement.manage',
     'achievement.configuration.manage',

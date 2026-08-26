@@ -48,4 +48,10 @@ export interface IBackpackService {
 
   /** True when the user owns an (unexpired) instance of the given cosmetic. */
   ownsCosmetic(userId: string, cosmeticId: string): Promise<boolean>;
+
+  /** Equip an owned item; unequips whatever else was equipped in that slot. */
+  equip(userId: string, itemId: string): Promise<void>;
+
+  /** Unequip an owned item. */
+  unequip(userId: string, itemId: string): Promise<void>;
 }

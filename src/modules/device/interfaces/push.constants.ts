@@ -22,8 +22,10 @@ export const PUSH_CATEGORIES = {
   WALLET: 'WALLET',
   /** Match found, game settled. In-session churn is socket traffic, not push. */
   GAME: 'GAME',
-  /** VIP activated, renewed, expiring, expired. */
+  /** @deprecated — legacy VIP module notifications. Superseded by WEALTH. */
   VIP: 'VIP',
+  /** Wealth Level up/downgrade, monthly reset, reward available/claimed. */
+  WEALTH: 'WEALTH',
   /** Family membership changes. Family *invitations* ride INVITE. */
   FAMILY: 'FAMILY',
   /**
@@ -65,6 +67,7 @@ const TUNABLE_CHANNEL_PREFIX = {
   [PUSH_CATEGORIES.WALLET]: 'soulzaa_wallet',
   [PUSH_CATEGORIES.GAME]: 'soulzaa_games',
   [PUSH_CATEGORIES.VIP]: 'soulzaa_vip',
+  [PUSH_CATEGORIES.WEALTH]: 'soulzaa_wealth',
   [PUSH_CATEGORIES.FAMILY]: 'soulzaa_family',
 } as const satisfies Partial<Record<PushCategory, string>>;
 

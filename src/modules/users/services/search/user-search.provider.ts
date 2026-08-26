@@ -125,7 +125,7 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
       }),
       this.prisma.userStatistics.findMany({
         where: { userId: { in: ids } },
-        select: { userId: true, level: true, vipLevel: true },
+        select: { userId: true, level: true, wealthLevel: true },
       }),
       this.prisma.userVerification.findMany({
         where: { userId: { in: ids } },
@@ -147,7 +147,7 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
           avatarUrl: await this.media.resolve(avatarByUser.get(r.id)),
           verified: verifiedByUser.get(r.id) ?? false,
           level: stat?.level ?? 1,
-          vipLevel: stat?.vipLevel ?? 0,
+          vipLevel: stat?.wealthLevel ?? 0,
         };
       }),
     );

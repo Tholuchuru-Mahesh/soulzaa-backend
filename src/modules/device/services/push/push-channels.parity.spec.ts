@@ -20,6 +20,7 @@ const EXPECTED_CHANNEL_IDS: readonly string[] = [
     'soulzaa_games',
     'soulzaa_vip',
     'soulzaa_family',
+    'soulzaa_wealth',
   ].flatMap((prefix) => ['sv', 'sn', 'nv', 'nn'].map((tone) => `${prefix}_${tone}`)),
 ];
 

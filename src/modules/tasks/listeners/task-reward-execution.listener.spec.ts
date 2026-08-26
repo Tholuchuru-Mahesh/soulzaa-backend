@@ -40,10 +40,6 @@ describe('TaskRewardExecutionListener & RewardFulfillmentEngine', () => {
       userStatistics: {
         upsert: jest.fn().mockResolvedValue({}),
       },
-      vipMembership: {
-        findUnique: jest.fn().mockResolvedValue(null),
-        upsert: jest.fn().mockResolvedValue({}),
-      },
     };
 
     mockSocketManager = {
@@ -165,7 +161,7 @@ describe('TaskRewardExecutionListener & RewardFulfillmentEngine', () => {
     );
   });
 
-  it('handles modern structured items array with TTL durations and VIP subscriptions', async () => {
+  it('handles modern structured items array with TTL durations', async () => {
     let handler: (event: any) => Promise<void> = () => Promise.resolve();
     mockEventBus.subscribe.mockImplementation((name: string, fn: any) => {
       if (name === 'reward.dispatched') handler = fn;
@@ -180,7 +176,6 @@ describe('TaskRewardExecutionListener & RewardFulfillmentEngine', () => {
         items: [
           { type: 'COINS', amount: 500 },
           { type: 'FRAME', cosmeticId: 'frame-neon', durationDays: 7 },
-          { type: 'VIP', vipDays: 3 },
         ],
       },
     };
@@ -200,12 +195,6 @@ describe('TaskRewardExecutionListener & RewardFulfillmentEngine', () => {
         userId: 'user-300',
         cosmeticId: 'frame-neon',
         durationDays: 7,
-      }),
-    );
-
-    expect(mockPrismaService.vipMembership.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { userId: 'user-300' },
       }),
     );
   });

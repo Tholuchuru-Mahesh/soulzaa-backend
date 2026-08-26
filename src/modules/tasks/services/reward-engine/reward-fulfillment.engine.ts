@@ -31,15 +31,12 @@ export interface RewardItemPayload {
     | 'BADGE'
     | 'DECORATION'
     | 'COSMETIC'
-    | 'VIP'
     | 'GIFT'
     | 'ITEM';
   amount?: number;
   cosmeticId?: string;
   durationDays?: number;
   expiresAt?: Date | string;
-  vipDays?: number;
-  tierLevel?: number;
   giftId?: string;
   quantity?: number;
   name?: string;
@@ -67,7 +64,6 @@ export interface RewardExecutionResult {
     durationDays?: number;
     expiresAt?: Date | null;
   }>;
-  vipAwarded?: { days: number; expiresAt: Date };
   giftsAwarded?: Array<{ giftId: string; quantity: number }>;
   itemsAwarded: string[];
 }
@@ -311,60 +307,7 @@ export class RewardFulfillmentEngine {
       }
       await this.publishSilent('backpack.item_granted', { userId });
       await this.publishSilent('user.profile_updated', { userId });
-    }
-
-    // 5. Dispatch VIP Subscriptions / Days
-    const vipItems = normalizedItems.filter((i) => i.type === 'VIP');
-    const totalVipDays = vipItems.reduce(
-      (sum, i) => sum + (Number(i.vipDays || i.amount || i.durationDays) || 0),
-      0,
-    );
-
-    if (totalVipDays > 0 && this.prisma) {
-      try {
-        const existingMembership = await this.prisma.vipMembership.findUnique({
-          where: { userId },
-        });
-        const now = new Date();
-        const baseDate =
-          existingMembership && existingMembership.expiresAt > now
-            ? existingMembership.expiresAt
-            : now;
-        const newExpiresAt = new Date(baseDate.getTime() + totalVipDays * 86400000);
-
-        await this.prisma.vipMembership.upsert({
-          where: { userId },
-          update: {
-            status: 'ACTIVE',
-            expiresAt: newExpiresAt,
-          },
-          create: {
-            userId,
-            tierId: '00000000-0000-0000-0000-000000000000',
-            level: 1,
-            status: 'ACTIVE',
-            startedAt: now,
-            expiresAt: newExpiresAt,
-          },
-        });
-
-        result.vipAwarded = { days: totalVipDays, expiresAt: newExpiresAt };
-        this.logger.log(
-          `Granted ${totalVipDays} VIP days to user ${userId} (expires ${newExpiresAt.toISOString()})`,
-        );
-        this.emitToUser(userId, 'vip:updated', {
-          userId,
-          days: totalVipDays,
-          expiresAt: newExpiresAt,
-        });
-      } catch (err) {
-        this.logger.error(
-          `Failed to extend VIP membership for user ${userId}: ${(err as Error).message}`,
-        );
-      }
-    }
-
-    // 6. Dispatch Virtual Gifts
+    // 5. Dispatch Virtual Gifts
     const giftItems = normalizedItems.filter((i) => i.type === 'GIFT');
     if (giftItems.length > 0) {
       result.giftsAwarded = giftItems.map((g) => ({
@@ -388,7 +331,6 @@ export class RewardFulfillmentEngine {
       goldCoinsAwarded: result.goldCoinsAwarded,
       expAwarded: result.expAwarded,
       cosmeticsAwarded: result.cosmeticsAwarded,
-      vipAwarded: result.vipAwarded,
       giftsAwarded: result.giftsAwarded,
       newLevel: result.newLevel,
     });
@@ -414,7 +356,6 @@ export class RewardFulfillmentEngine {
             cosmeticId: item.cosmeticId || item.id || item.refId,
             durationDays: Number(item.durationDays) || undefined,
             expiresAt: item.expiresAt,
-            vipDays: Number(item.vipDays || item.days) || undefined,
             giftId: item.giftId,
             quantity: Number(item.quantity) || undefined,
             name: item.name,
@@ -534,15 +475,6 @@ export class RewardFulfillmentEngine {
           items.push({ type: 'COSMETIC', cosmeticId: id.trim() });
         }
       }
-    }
-
-    // VIP Days
-    const vipDays = this.parseDurationDays(
-      def.vipDays ?? def.vipDurationDays ?? def.vipDuration ?? 0,
-      def.vipDurationUnit ?? def.durationUnit,
-    );
-    if (vipDays && vipDays > 0) {
-      items.push({ type: 'VIP', vipDays, tierLevel: Number(def.vipLevel) || 1 });
     }
 
     // Virtual Gifts

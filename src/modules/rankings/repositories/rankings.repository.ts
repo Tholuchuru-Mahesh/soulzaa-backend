@@ -240,7 +240,7 @@ export class RankingsRepository {
       }),
       this.prisma.userStatistics.findMany({
         where: { userId: { in: userIds } },
-        select: { userId: true, level: true, vipLevel: true },
+        select: { userId: true, level: true, wealthLevel: true },
       }),
     ]);
     return { profiles, statistics };

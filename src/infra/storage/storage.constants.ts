@@ -11,6 +11,8 @@ export const STORAGE_CATEGORIES = {
   GIFT_ANIMATION: 'gift-animations',
   COSMETIC_ASSET: 'cosmetic-assets',
   CONTENT_ASSET: 'content-assets',
+  // Super-Admin-uploaded icon art for Wealth Level tiers/benefits.
+  WEALTH_LEVEL_ICON: 'wealth-level-icons',
   VIDEO: 'videos',
   THUMBNAIL: 'thumbnails',
   AUDIO: 'audio-assets',
@@ -159,6 +161,12 @@ export const STORAGE_POLICIES: Record<MediaCategory, StoragePolicy> = {
       'application/octet-stream',
     ],
     maxSizeBytes: 50 * MB,
+  },
+  [STORAGE_CATEGORIES.WEALTH_LEVEL_ICON]: {
+    prefix: STORAGE_CATEGORIES.WEALTH_LEVEL_ICON,
+    isImage: true,
+    allowedMime: IMAGE_MIME,
+    maxSizeBytes: 5 * MB,
   },
   [STORAGE_CATEGORIES.THUMBNAIL]: {
     prefix: STORAGE_CATEGORIES.THUMBNAIL,

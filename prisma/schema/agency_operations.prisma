@@ -21,8 +21,8 @@
 
 /// A target an Official sets for an agency, over a period.
 model AgencyTask {
-  id          String  @id @default(uuid()) @db.Uuid
-  agencyId    String  @db.Uuid
+  id           String  @id @default(uuid()) @db.Uuid
+  agencyId     String  @db.Uuid
   /// The Official who set it. Null once that account is gone — the task
   /// outlives whoever assigned it.
   assignedById String? @db.Uuid
@@ -103,13 +103,13 @@ model AgencyRewardInventory {
   name     String
 
   /// Stock on the shelf now.
-  quantity      Int @default(0)
+  quantity         Int @default(0)
   /// Everything ever allocated, so the panel can show usage against supply.
-  allocatedTotal Int @default(0)
+  allocatedTotal   Int @default(0)
   distributedTotal Int @default(0)
 
   /// The Official who allocated it.
-  allocatedBy String?  @db.Uuid
+  allocatedBy String?   @db.Uuid
   expiresAt   DateTime?
 
   createdAt DateTime @default(now())
@@ -135,7 +135,7 @@ model AgencyRewardDistribution {
   itemType String
   refId    String?
   name     String
-  quantity Int    @default(1)
+  quantity Int     @default(1)
 
   kind AgencyRewardKind @default(ASSIGNED)
 
@@ -223,7 +223,7 @@ model AgencyJoinRequest {
   agencyId String @db.Uuid
   userId   String @db.Uuid
 
-  status  AgencyJoinRequestStatus @default(PENDING)
+  status AgencyJoinRequestStatus @default(PENDING)
 
   /// Who started it. A USER request is accepted by the agency; an AGENCY
   /// invitation is accepted by the user. Same row, same statuses — only the

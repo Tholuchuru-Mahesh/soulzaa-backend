@@ -270,7 +270,7 @@ describe('VR-10 gift engine (integration)', () => {
       lockService() as never,
       bus as never,
       wallet as never,
-      { getLevelOrdinal: jest.fn().mockResolvedValue(0) } as never,
+      { getEffectiveLevel: jest.fn().mockResolvedValue(0) } as never,
       registry,
       { get: jest.fn().mockResolvedValue(null) },
     );

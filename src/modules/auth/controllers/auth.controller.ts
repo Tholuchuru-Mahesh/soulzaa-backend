@@ -113,6 +113,17 @@ export class AuthController {
   }
 
   @Public()
+  @Post('login/mobile')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Login with mobile number + OTP' })
+  loginWithMobile(@Body() dto: VerifyOtpDto, @RequestMeta() meta: RequestMetadata) {
+    return this.auth.loginWithMobileOtp(
+      { mobile: dto.destination, code: dto.code },
+      this.context(meta, dto.device),
+    );
+  }
+
+  @Public()
   @Post('login/firebase-mobile')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login via verified Firebase Phone Authentication ID token' })

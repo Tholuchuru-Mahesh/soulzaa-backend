@@ -80,7 +80,9 @@ model UserStatistics {
   liveMinutes    Int      @default(0)
   exp            BigInt   @default(0)
   level          Int      @default(1)
-  vipLevel       Int      @default(0)
+  /// Current Wealth Level ordinal (0=Normal User .. 12=Immortal), synced from
+  /// WealthUserProgress.currentLevel by the wealth module.
+  wealthLevel    Int      @default(0)
   updatedAt      DateTime @updatedAt
 
   @@map("user_statistics")

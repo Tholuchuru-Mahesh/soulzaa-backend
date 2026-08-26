@@ -33,8 +33,8 @@ describe('RankingsService', () => {
           { userId: 'user-2', avatarKey: 'avatar-2' },
         ],
         statistics: [
-          { userId: 'user-1', level: 5, vipLevel: 1 },
-          { userId: 'user-2', level: 2, vipLevel: 0 },
+          { userId: 'user-1', level: 5, wealthLevel: 1 },
+          { userId: 'user-2', level: 2, wealthLevel: 0 },
         ],
       }),
       getFamiliesDetails: jest

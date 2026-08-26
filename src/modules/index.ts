@@ -26,7 +26,7 @@ import { LuckyPacketsModule } from './lucky-packets/lucky-packets.module';
 import { RoomUtilitiesModule } from './room-utilities/room-utilities.module';
 import { VideoRoomsModule } from './video-rooms/video-rooms.module';
 import { LiveStreamingModule } from './live-streaming/live-streaming.module';
-import { VipModule } from './vip/vip.module';
+import { WealthModule } from './wealth/wealth.module';
 import { ExpModule } from './exp/exp.module';
 import { FamiliesModule } from './families/families.module';
 import { AgenciesModule } from './agencies/agencies.module';
@@ -92,7 +92,7 @@ export const DOMAIN_MODULES = [
   RoomUtilitiesModule,
   VideoRoomsModule,
   LiveStreamingModule,
-  VipModule,
+  WealthModule,
   ExpModule,
   FamiliesModule,
   AgenciesModule,

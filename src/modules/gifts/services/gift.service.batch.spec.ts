@@ -5,7 +5,7 @@ import { QueueService } from 'src/infra/queue/queue.service';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
-import type { IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
+import type { IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
 import type { IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import { GiftRepository } from '../repositories/gift.repository';
 import { GiftCatalogService } from './gift-catalog.service';
@@ -141,7 +141,7 @@ describe('GiftService.sendGiftBatch (multi-receiver)', () => {
       locks as unknown as LockService,
       bus,
       wallet as unknown as IWalletService,
-      { getLevelOrdinal: jest.fn().mockResolvedValue(0) } as unknown as IVipService,
+      { getEffectiveLevel: jest.fn().mockResolvedValue(0) } as unknown as IWealthService,
       registry,
       { get: jest.fn().mockResolvedValue(null) },
     );

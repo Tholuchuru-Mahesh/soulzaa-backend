@@ -39,7 +39,7 @@ model OfficialInventoryItem {
   createdAt         DateTime                  @default(now())
   updatedAt         DateTime                  @updatedAt
 
-  dispatches        OfficialInventoryDispatch[]
+  dispatches OfficialInventoryDispatch[]
 
   @@index([officialId, category])
   @@index([officialId, receivedAt])
@@ -60,7 +60,7 @@ model OfficialInventoryDispatch {
   dispatchedAt    DateTime               @default(now())
   createdAt       DateTime               @default(now())
 
-  inventoryItem   OfficialInventoryItem  @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  inventoryItem OfficialInventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
 
   @@index([officialId, dispatchedAt])
   @@index([inventoryItemId])

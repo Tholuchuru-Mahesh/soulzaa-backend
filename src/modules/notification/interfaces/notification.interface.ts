@@ -56,6 +56,7 @@ export interface NotificationPreferenceView {
   walletEvents: boolean;
   gameEvents: boolean;
   vipEvents: boolean;
+  wealthEvents: boolean;
   familyEvents: boolean;
   sound: boolean;
   vibration: boolean;

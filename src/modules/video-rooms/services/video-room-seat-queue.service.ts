@@ -4,7 +4,7 @@ import { BusinessException } from 'src/common/exceptions/business.exception';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { LockService } from 'src/infra/redis/lock.service';
-import { VIP_SERVICE, type IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
+import { WEALTH_SERVICE, type IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
 import type { SeatStageView } from '../entities/video-room-seat-stage.view';
 import {
   computeQueueScore,
@@ -53,7 +53,7 @@ export class VideoRoomSeatQueueService {
   constructor(
     private readonly cache: CacheService,
     private readonly seats: VideoRoomSeatsRepository,
-    @Inject(VIP_SERVICE) private readonly vip: IVipService,
+    @Inject(WEALTH_SERVICE) private readonly wealth: IWealthService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly seatSvc: VideoRoomSeatService,
     private readonly locks: LockService,
@@ -314,13 +314,13 @@ export class VideoRoomSeatQueueService {
     );
   }
 
-  /** VIP ordinal, degrading to 0 if the VIP module is unavailable. */
+  /** Wealth Level ordinal, degrading to 0 if the wealth module is unavailable. */
   private async vipLevel(userId: string): Promise<number> {
     try {
-      return await this.vip.getLevelOrdinal(userId);
+      return await this.wealth.getEffectiveLevel(userId);
     } catch (err) {
       this.logger.warn(
-        `VIP lookup failed for ${userId}; treating as non-VIP: ${(err as Error).message}`,
+        `Wealth Level lookup failed for ${userId}; treating as level 0: ${(err as Error).message}`,
       );
       return 0;
     }

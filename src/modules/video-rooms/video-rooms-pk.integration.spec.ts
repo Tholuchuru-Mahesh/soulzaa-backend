@@ -196,7 +196,7 @@ function createPkRepo() {
       return top;
     },
 
-    getVipStatus: async () => null,
+    getWealthLevel: async () => 0,
 
     listBattles: async (roomId: string, skip: number, take: number) => {
       const rows = [...battles.values()].filter(

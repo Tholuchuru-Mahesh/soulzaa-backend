@@ -30,17 +30,17 @@ enum ContentRequestCategory {
 }
 
 model ContentRequest {
-  id          String                  @id @default(uuid()) @db.Uuid
-  officialId  String                  @db.Uuid
-  subjectId   String?                 @db.Uuid  // the user the request is about
-  category    ContentRequestCategory  @default(OTHER)
+  id          String                 @id @default(uuid()) @db.Uuid
+  officialId  String                 @db.Uuid
+  subjectId   String?                @db.Uuid // the user the request is about
+  category    ContentRequestCategory @default(OTHER)
   title       String
   description String?
-  referenceId String?                 // e.g. roomId / streamId / postId being flagged
-  status      ContentRequestStatus    @default(OPEN)
+  referenceId String? // e.g. roomId / streamId / postId being flagged
+  status      ContentRequestStatus   @default(OPEN)
   resolvedAt  DateTime?
-  closedById  String?                 @db.Uuid
-  metadata    Json?                   // rich request fields (quantity, requireDate, relatedEvent, region, attachments, additionalNotes)
+  closedById  String?                @db.Uuid
+  metadata    Json? // rich request fields (quantity, requireDate, relatedEvent, region, attachments, additionalNotes)
 
   // Geographic scope snapshot at creation
   countryId String? @db.Uuid

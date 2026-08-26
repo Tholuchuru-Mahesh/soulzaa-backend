@@ -93,7 +93,7 @@ export class RankingsService implements IRankingsService {
         avatarKey: profile?.avatarKey ?? null,
         score: entry.score,
         level: stat?.level ?? 1,
-        vipLevel: stat?.vipLevel ?? 0,
+        vipLevel: stat?.wealthLevel ?? 0,
       };
     });
 
@@ -163,7 +163,7 @@ export class RankingsService implements IRankingsService {
         avatarKey: profile?.avatarKey ?? null,
         score: entry.score,
         level: stat?.level ?? 1,
-        vipLevel: stat?.vipLevel ?? 0,
+        vipLevel: stat?.wealthLevel ?? 0,
       };
     });
 
@@ -297,7 +297,7 @@ export class RankingsService implements IRankingsService {
         avatarKey: profile?.avatarKey ?? null,
         score: entry.score,
         level: stat?.level ?? 1,
-        vipLevel: stat?.vipLevel ?? 0,
+        vipLevel: stat?.wealthLevel ?? 0,
       };
     });
 

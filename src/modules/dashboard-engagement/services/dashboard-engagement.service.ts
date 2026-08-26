@@ -5,7 +5,7 @@ const num = (value: unknown): number => Number(value ?? 0);
 
 /**
  * Read models for the engagement dashboards: gifts, treasure boxes, families,
- * VIP, level & achievements, rankings and referrals.
+ * Wealth Level, level & achievements, rankings and referrals.
  *
  * Read-only. Progression is owned by the engines and driven by domain events;
  * the console reads the result rather than recomputing it, so what an operator
@@ -86,25 +86,25 @@ export class DashboardEngagementService {
     };
   }
 
-  /** VIP management: membership mix by tier and subscription state. */
+  /** Wealth Level management: distribution of users across levels this month. */
   async vipDashboard() {
-    const [memberships, active, byTier, subscriptions, tiers] = await Promise.all([
-      this.prisma.vipMembership.count(),
-      this.prisma.vipMembership.count({ where: { status: 'ACTIVE' } }),
-      this.prisma.vipMembership.groupBy({ by: ['tierId'], _count: { _all: true } }),
-      this.prisma.vipSubscription.count(),
-      this.prisma.vipTier.findMany({ select: { id: true, name: true } }),
+    const [usersWithProgress, byLevel, levels] = await Promise.all([
+      this.prisma.wealthUserProgress.count(),
+      this.prisma.wealthUserProgress.groupBy({ by: ['currentLevel'], _count: { _all: true } }),
+      this.prisma.wealthLevel.findMany({ select: { level: true, name: true } }),
     ]);
 
-    const tierNameById = new Map(tiers.map((t) => [t.id, t.name]));
+    const levelNameByOrdinal = new Map(levels.map((l) => [l.level, l.name]));
 
     return {
-      totalMemberships: memberships,
-      activeMemberships: active,
-      totalSubscriptions: subscriptions,
-      byTier: byTier.map((row) => ({
-        tier: tierNameById.get(row.tierId) ?? row.tierId,
-        members: row._count._all,
+      totalUsersWithProgress: usersWithProgress,
+      activeThisLevelOrAbove: byLevel
+        .filter((row) => row.currentLevel > 0)
+        .reduce((sum, row) => sum + row._count._all, 0),
+      byLevel: byLevel.map((row) => ({
+        level: row.currentLevel,
+        name: levelNameByOrdinal.get(row.currentLevel) ?? `Level ${row.currentLevel}`,
+        users: row._count._all,
       })),
     };
   }

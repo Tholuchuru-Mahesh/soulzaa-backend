@@ -22,7 +22,7 @@ import {
   WALLET_SERVICE,
   type IWalletService,
 } from 'src/modules/wallet/interfaces/wallet.service.interface';
-import { VIP_SERVICE, type IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
+import { WEALTH_SERVICE, type IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
 import { GIFT_WALLET_REFERENCE_TYPE } from '../constants/gifts.constants';
 import { walletLockKey } from 'src/modules/wallet/constants/wallet.constants';
 
@@ -87,7 +87,7 @@ export class GiftService {
     private readonly locks: LockService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
-    @Inject(VIP_SERVICE) private readonly vip: IVipService,
+    @Inject(WEALTH_SERVICE) private readonly wealth: IWealthService,
     private readonly registry: GiftContextRegistry,
     @Inject(PLATFORM_CONFIG) private readonly platformConfig: IPlatformConfiguration,
   ) {}
@@ -213,8 +213,9 @@ export class GiftService {
       );
     }
 
-    // VIP-exclusive gate: the sender's VIP tier must meet the gift's minimum.
-    if (gift.minVipLevel > 0 && (await this.vip.getLevelOrdinal(senderId)) < gift.minVipLevel) {
+    // Wealth-Level-exclusive gate: the sender's level must meet the gift's minimum.
+    // `minVipLevel` values are reinterpreted as-is against the new 0-12 level scale.
+    if (gift.minVipLevel > 0 && (await this.wealth.getEffectiveLevel(senderId)) < gift.minVipLevel) {
       throw new BusinessException(
         ERROR_CODES.GIFT_VIP_RESTRICTED,
         'This gift requires a higher VIP level.',

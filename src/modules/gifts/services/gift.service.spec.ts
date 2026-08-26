@@ -9,7 +9,7 @@ import type { IAudioRoomsService } from 'src/modules/audio-rooms/interfaces/audi
 import type { IUsersService } from 'src/modules/users/interfaces/users.service.interface';
 import type { IWalletService } from 'src/modules/wallet/interfaces/wallet.service.interface';
 import type { ITreasureBoxesService } from 'src/modules/treasure-boxes/interfaces/treasure-boxes.service.interface';
-import type { IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
+import type { IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
 import type { RoomActor } from 'src/modules/audio-rooms/interfaces/room-actor.interface';
 import type { SendGiftDto } from '../dto/gift.dto';
 import { AudioRoomGiftContextHandler } from 'src/modules/audio-rooms/services/audio-room-gift-context.handler';
@@ -77,7 +77,7 @@ describe('GiftService', () => {
   let wallet: Record<string, jest.Mock>;
   let rooms: Record<string, jest.Mock>;
   let users: Record<string, jest.Mock>;
-  let vip: Record<string, jest.Mock>;
+  let wealth: Record<string, jest.Mock>;
   let prisma: Record<string, jest.Mock>;
   let locks: Record<string, jest.Mock>;
   let treasure: Record<string, jest.Mock>;
@@ -128,7 +128,7 @@ describe('GiftService', () => {
       getOwnerId: jest.fn().mockResolvedValue('owner-id'),
     };
     users = { findById: jest.fn().mockResolvedValue({ id: RECEIVER, username: 'bob' }) };
-    vip = { getLevelOrdinal: jest.fn().mockResolvedValue(0) };
+    wealth = { getEffectiveLevel: jest.fn().mockResolvedValue(0) };
     prisma = {
       $transaction: jest.fn().mockImplementation((cb) => cb(prisma)),
     };
@@ -186,7 +186,7 @@ describe('GiftService', () => {
       locks as unknown as LockService,
       bus,
       wallet as unknown as IWalletService,
-      vip as unknown as IVipService,
+      wealth as unknown as IWealthService,
       registry,
       platformConfig,
     );
@@ -501,7 +501,7 @@ describe('GiftService', () => {
 
     it('rejects a VIP-exclusive gift below the required tier', async () => {
       catalog.getGiftById.mockResolvedValue(gift({ minVipLevel: 3 }));
-      vip.getLevelOrdinal.mockResolvedValue(1);
+      wealth.getEffectiveLevel.mockResolvedValue(1);
       await expect(service.sendGift(SENDER, dto())).rejects.toMatchObject({
         errorCode: 'GIFT_VIP_RESTRICTED',
       });
@@ -510,7 +510,7 @@ describe('GiftService', () => {
 
     it('allows a VIP-exclusive gift when the sender meets the tier', async () => {
       catalog.getGiftById.mockResolvedValue(gift({ minVipLevel: 3 }));
-      vip.getLevelOrdinal.mockResolvedValue(5);
+      wealth.getEffectiveLevel.mockResolvedValue(5);
       await service.sendGift(SENDER, dto());
       expect(wallet.debit).toHaveBeenCalled();
     });

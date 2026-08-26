@@ -19,7 +19,7 @@ const rules = (over: Partial<TreasureLevelRules> = {}): TreasureLevelRules => ({
 describe('VideoRoomTreasureEligibilityService', () => {
   let redis: Record<string, jest.Mock>;
   let repo: Record<string, jest.Mock>;
-  let vip: { getLevelOrdinal: jest.Mock };
+  let vip: { getEffectiveLevel: jest.Mock };
   let service: VideoRoomTreasureEligibilityService;
 
   const call = (over: Record<string, unknown> = {}) =>
@@ -42,7 +42,7 @@ describe('VideoRoomTreasureEligibilityService', () => {
       findEligibleMembers: jest.fn().mockResolvedValue([]),
       findBlockedUserIds: jest.fn().mockResolvedValue(new Set<string>()),
     };
-    vip = { getLevelOrdinal: jest.fn().mockResolvedValue(0) };
+    vip = { getEffectiveLevel: jest.fn().mockResolvedValue(0) };
     service = new VideoRoomTreasureEligibilityService(
       redis as never,
       repo as never,
@@ -155,7 +155,7 @@ describe('VideoRoomTreasureEligibilityService', () => {
     it('resolves VIP ordinals for a VIP_PRIORITY draw', async () => {
       redis.srandmember.mockResolvedValueOnce(['u1', 'u2']).mockResolvedValue([]);
       repo.findEligibleMembers.mockResolvedValue(['u1', 'u2']);
-      vip.getLevelOrdinal.mockImplementation(async (id: string) => (id === 'u1' ? 5 : 0));
+      vip.getEffectiveLevel.mockImplementation(async (id: string) => (id === 'u1' ? 5 : 0));
       const res = await call({ rules: rules({ winnerAlgorithm: 'VIP_PRIORITY' }) });
       expect(res.vipTiers.get('u1')).toBe(5);
       expect(res.vipTiers.get('u2')).toBe(0);
@@ -165,14 +165,14 @@ describe('VideoRoomTreasureEligibilityService', () => {
       redis.srandmember.mockResolvedValueOnce(['u1']).mockResolvedValue([]);
       repo.findEligibleMembers.mockResolvedValue(['u1']);
       await call();
-      expect(vip.getLevelOrdinal).not.toHaveBeenCalled();
+      expect(vip.getEffectiveLevel).not.toHaveBeenCalled();
     });
 
     // A VIP lookup failure must not sink an entire payout.
     it('treats a VIP lookup failure as tier 0', async () => {
       redis.srandmember.mockResolvedValueOnce(['u1']).mockResolvedValue([]);
       repo.findEligibleMembers.mockResolvedValue(['u1']);
-      vip.getLevelOrdinal.mockRejectedValue(new Error('vip down'));
+      vip.getEffectiveLevel.mockRejectedValue(new Error('vip down'));
       const res = await call({ rules: rules({ winnerAlgorithm: 'VIP_PRIORITY' }) });
       expect(res.vipTiers.get('u1')).toBe(0);
       expect(res.eligible).toEqual(['u1']);

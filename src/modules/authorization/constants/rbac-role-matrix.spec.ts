@@ -48,7 +48,8 @@ const SUPER_ADMIN_ONLY = [
   'treasury.risk.manage', // Emergency Platform Shutdown
   'revenue.configuration.manage', // Revenue Sharing Configuration
   'coin.manage', // Coin Pricing
-  'vip.configuration.manage', // VIP Pricing & Benefits
+  'wealth.configuration.manage', // Wealth Level general configuration
+  'wealth.level.downgrade.manage', // Wealth Level downgrade policy
   'role.manage', // Platform Security
   'role.hierarchy.manage',
   'permission.manage',
@@ -185,8 +186,7 @@ describe('RBAC role matrix (PRD Authority Matrix)', () => {
       const required = [
         'gift.send',
         'family.view',
-        'vip.view',
-        'vip.purchase',
+        'wealth.view',
         'level.view',
         'achievement.view',
         'ranking.view',

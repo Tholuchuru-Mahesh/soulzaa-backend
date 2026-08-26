@@ -11,7 +11,7 @@ import { InMemoryEventBus } from 'src/common/events';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import type { RedisClient } from 'src/infra/redis/redis.constants';
-import type { IVipService } from 'src/modules/vip/interfaces/vip.service.interface';
+import type { IWealthService } from 'src/modules/wealth/interfaces/wealth.service.interface';
 import { VIDEO_ROOM_SYSTEM_ACTOR_ID } from './constants/video-room.constants';
 import { SeatRequestResolvedEvent, VIDEO_ROOM_SEAT_EVENTS } from './events/video-room-seat.events';
 import { VideoRoomSeatQueueListener } from './listeners/video-room-seat-queue.listener';
@@ -534,7 +534,7 @@ describe('VR-8 seat queue — real service composition over a faked Redis + Pris
 
     eventsRepo = new FakeVideoRoomEventsRepository();
 
-    const vip = { getLevelOrdinal: async () => 0 } as unknown as IVipService;
+    const vip = { getEffectiveLevel: async () => 0 } as unknown as IWealthService;
     // `permissions` is genuinely unused by vacateUser/seatUser — both are
     // called directly here, bypassing the MANAGE_*-gated public verbs that
     // consult it. Any accidental use surfaces immediately as a thrown error.

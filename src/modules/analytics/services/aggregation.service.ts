@@ -241,15 +241,13 @@ export class AggregationService {
   }
 
   private async vip(): Promise<Record<string, number>> {
-    const [memberships, active, subscriptions] = await Promise.all([
-      this.prisma.vipMembership.count(),
-      this.prisma.vipMembership.count({ where: { status: 'ACTIVE' } }),
-      this.prisma.vipSubscription.count(),
+    const [usersWithProgress, activeLevels] = await Promise.all([
+      this.prisma.wealthUserProgress.count(),
+      this.prisma.wealthUserProgress.count({ where: { currentLevel: { gt: 0 } } }),
     ]);
     return {
-      total_vip_memberships: memberships,
-      active_vip_memberships: active,
-      total_vip_subscriptions: subscriptions,
+      total_wealth_progress_rows: usersWithProgress,
+      active_wealth_levels: activeLevels,
     };
   }
 

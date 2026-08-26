@@ -11,7 +11,7 @@ import { ModeratorDeviceChangeNotificationListener } from './listeners/moderator
 import { NotificationSocketListener } from './listeners/notification-socket.listener';
 import { SecurityNotificationListener } from './listeners/security-notification.listener';
 import { SocialNotificationListener } from './listeners/social-notification.listener';
-import { VipNotificationListener } from './listeners/vip-notification.listener';
+import { WealthNotificationListener } from './listeners/wealth-notification.listener';
 import { WalletNotificationListener } from './listeners/wallet-notification.listener';
 import { NotificationPreferenceRepository } from './repositories/notification-preference.repository';
 import { NotificationRepository } from './repositories/notification.repository';
@@ -82,7 +82,7 @@ const ENTERPRISE_SERVICES = [
     GiftNotificationListener,
     WalletNotificationListener,
     GameNotificationListener,
-    VipNotificationListener,
+    WealthNotificationListener,
     FamilyNotificationListener,
     SecurityNotificationListener,
     ModeratorDeviceChangeNotificationListener,

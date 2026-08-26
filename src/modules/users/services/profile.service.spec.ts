@@ -54,6 +54,7 @@ const emptyStats = {
   exp: 0n,
   level: 1,
   vipLevel: 0,
+  wealthLevel: 0,
 } as never;
 const emptyVerification = {
   userId: 'u1',
@@ -512,7 +513,7 @@ describe('ProfileService', () => {
       };
       const profiles = {
         profilesByIds: jest.fn().mockResolvedValue([{ userId: 'u1', avatarKey: 'avatars/u1.jpg' }]),
-        statisticsByIds: jest.fn().mockResolvedValue([{ userId: 'u1', level: 24, vipLevel: 3 }]),
+        statisticsByIds: jest.fn().mockResolvedValue([{ userId: 'u1', level: 24, wealthLevel: 3 }]),
         verificationsByIds: jest.fn().mockResolvedValue([{ userId: 'u1', verified: true }]),
       };
       const media = {

@@ -86,21 +86,21 @@ enum LiveStreamModerationStatus {
 /// label distinguishing an async report-review decision from live
 /// observation, not a separate approval gate.
 model LiveStreamReport {
-  id               String                  @id @default(uuid()) @db.Uuid
-  streamId         String                  @db.Uuid
-  reporterId       String                  @db.Uuid
-  targetUserId     String                  @db.Uuid
+  id               String                 @id @default(uuid()) @db.Uuid
+  streamId         String                 @db.Uuid
+  reporterId       String                 @db.Uuid
+  targetUserId     String                 @db.Uuid
   reason           LiveStreamReportReason
   description      String?
-  status           LiveStreamReportStatus  @default(PENDING)
-  reviewedBy       String?                 @db.Uuid
+  status           LiveStreamReportStatus @default(PENDING)
+  reviewedBy       String?                @db.Uuid
   reviewedAt       DateTime?
   resolutionAction String?
   moderatorNotes   String?
-  createdBy        String?                 @db.Uuid
-  updatedBy        String?                 @db.Uuid
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  createdBy        String?                @db.Uuid
+  updatedBy        String?                @db.Uuid
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 
   @@index([streamId, status])
   @@index([targetUserId])

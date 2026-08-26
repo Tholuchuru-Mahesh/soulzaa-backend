@@ -101,7 +101,7 @@ export class LeaderboardService {
         }),
         this.prisma.userStatistics.findMany({
           where: { userId: { in: entityIds } },
-          select: { userId: true, level: true, vipLevel: true },
+          select: { userId: true, level: true, wealthLevel: true },
         }),
       ]);
 
@@ -113,7 +113,7 @@ export class LeaderboardService {
           name: u.fullName ?? u.username,
           avatarKey: prof?.avatarKey ?? null,
           level: stat?.level ?? 1,
-          vipLevel: stat?.vipLevel ?? 0,
+          vipLevel: stat?.wealthLevel ?? 0,
         });
       }
     } else if (entityType === 'FAMILY') {

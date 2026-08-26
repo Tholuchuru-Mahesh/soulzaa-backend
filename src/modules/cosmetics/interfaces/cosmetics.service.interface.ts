@@ -48,4 +48,24 @@ export interface ICosmeticsService {
     durationDays?: number;
     expiresAt?: Date | null;
   }): Promise<CosmeticGrantResult | null>;
+
+  /**
+   * Equip an owned cosmetic. Storage differs by type (frame/theme/entrance-effect
+   * live in the user-cosmetics table; badge/decoration live in the backpack) — this
+   * hides that split so callers never need to know which store a cosmetic lives in.
+   */
+  equip(userId: string, cosmeticId: string): Promise<void>;
+
+  /** Unequip an owned cosmetic (see `equip`). */
+  unequip(userId: string, cosmeticId: string): Promise<void>;
+
+  /** Whether the given cosmetic is currently equipped for the user. */
+  isEquipped(userId: string, cosmeticId: string): Promise<boolean>;
+
+  /**
+   * Update a catalog cosmetic's media (the image actually rendered wherever
+   * it's equipped) — used to sync an admin-uploaded icon elsewhere (e.g. a
+   * Wealth Level benefit's icon) onto the cosmetic backing it.
+   */
+  setMedia(cosmeticId: string, mediaUrl: string): Promise<void>;
 }

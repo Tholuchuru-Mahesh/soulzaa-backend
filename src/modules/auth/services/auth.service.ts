@@ -448,6 +448,67 @@ export class AuthService implements IAuthService {
     return this.issue(user, ctx, 'PASSWORD', false);
   }
 
+  async loginWithMobileOtp(
+    input: { mobile: string; code: string },
+    ctx: AuthContext,
+  ): Promise<AuthResult> {
+    const phoneNumber = input.mobile.trim();
+    await this.security.assertNotLocked(phoneNumber);
+
+    // 1. Verify OTP code
+    await this.otp.verify({
+      destination: phoneNumber,
+      purpose: OtpPurpose.LOGIN,
+      code: input.code,
+    });
+
+    let isNewUser = false;
+    let user = await this.users.findByMobile(phoneNumber);
+    if (!user && phoneNumber.startsWith('+')) {
+      user = await this.users.findByMobile(phoneNumber.slice(1));
+    }
+    if (!user && !phoneNumber.startsWith('+')) {
+      user = await this.users.findByMobile(`+${phoneNumber}`);
+    }
+
+    if (!user) {
+      isNewUser = true;
+      const username = await this.generateUsername(
+        null,
+        `User_${phoneNumber.replace(/\D/g, '').slice(-4)}`,
+      );
+      const defaultCountry = phoneNumber.startsWith('+91') ? 'India' : null;
+      user = await this.users.createIdentity({
+        username,
+        mobile: phoneNumber,
+        fullName: `User ${phoneNumber.slice(-4)}`,
+        country: defaultCountry,
+        isGuest: false,
+      });
+      await this.bus.publish(
+        new UserRegisteredEvent({
+          userId: user.id,
+          method: AuthProviderType.MOBILE_OTP,
+          isGuest: false,
+          email: user.email,
+          mobile: user.mobile,
+        }),
+      );
+    }
+
+    this.assertActive(user);
+    await this.assertNotBanned(user);
+
+    // A successful OTP login implicitly verifies the number.
+    if (!user.mobileVerifiedAt) {
+      await this.users.markMobileVerified(user.id);
+      await this.repo.ensureProviderMarker(user.id, AuthProviderType.MOBILE_OTP);
+    }
+
+    await this.security.recordSuccess(phoneNumber);
+    return this.issue(user, ctx, 'MOBILE_OTP', isNewUser);
+  }
+
   async loginWithFirebaseMobile(idToken: string, ctx: AuthContext): Promise<AuthResult> {
     const verified = await this.firebaseService.verifyIdToken(idToken);
     const phoneNumber = verified.phoneNumber;

@@ -35,24 +35,24 @@ enum SupportTicketCategory {
 /// if the user later changes region. `assignedOfficialId` is set when an
 /// Official picks up the ticket; `escalatedToAdminId` is set on escalation.
 model SupportTicket {
-  id                  String                @id @default(uuid()) @db.Uuid
-  submitterId         String                @db.Uuid
-  title               String
-  description         String
-  category            SupportTicketCategory @default(OTHER)
-  priority            SupportTicketPriority @default(MEDIUM)
-  status              SupportTicketStatus   @default(OPEN)
-  assignedOfficialId  String?               @db.Uuid
-  escalatedToAdminId  String?               @db.Uuid
+  id                 String                @id @default(uuid()) @db.Uuid
+  submitterId        String                @db.Uuid
+  title              String
+  description        String
+  category           SupportTicketCategory @default(OTHER)
+  priority           SupportTicketPriority @default(MEDIUM)
+  status             SupportTicketStatus   @default(OPEN)
+  assignedOfficialId String?               @db.Uuid
+  escalatedToAdminId String?               @db.Uuid
 
   // Geographic snapshot at ticket creation time — used for scope filtering.
-  countryId  String? @db.Uuid
-  stateId    String? @db.Uuid
-  regionId   String? @db.Uuid
+  countryId String? @db.Uuid
+  stateId   String? @db.Uuid
+  regionId  String? @db.Uuid
 
-  resolvedAt   DateTime?
-  closedAt     DateTime?
-  escalatedAt  DateTime?
+  resolvedAt  DateTime?
+  closedAt    DateTime?
+  escalatedAt DateTime?
 
   // ---- Audit ----
   createdAt DateTime @default(now())

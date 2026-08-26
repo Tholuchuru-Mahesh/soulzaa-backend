@@ -128,7 +128,7 @@ export class VideoRoomRankingRepository {
       }),
       this.prisma.userStatistics.findMany({
         where: { userId: { in: ids } },
-        select: { userId: true, level: true, vipLevel: true },
+        select: { userId: true, level: true, wealthLevel: true },
       }),
     ]);
     const avatarByUser = new Map(profiles.map((p) => [p.userId, p.avatarKey]));
@@ -140,7 +140,7 @@ export class VideoRoomRankingRepository {
         username: u.username,
         avatarKey: avatarByUser.get(u.id) ?? null,
         level: stat?.level ?? 1,
-        vipLevel: stat?.vipLevel ?? 0,
+        vipLevel: stat?.wealthLevel ?? 0,
       };
     });
   }
