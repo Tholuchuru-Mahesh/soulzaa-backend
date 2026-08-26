@@ -349,7 +349,14 @@ export class SocketManager {
       );
       const durationSeconds = Math.round(remainingSinceLast / 1000);
 
-      if (durationMinutes > 0 || durationSeconds >= 15) {
+      // Gated on isPersistedRoomId for the same reason `audio_room.left` below
+      // is: `room.duration_updated` is a database-facing domain event, and its
+      // subscribers hand `roomId` to a `@db.Uuid` column. A lobby channel name
+      // like `greedy_food_global` is not a row id, so publishing it turns every
+      // casino-game exit into a burst of "invalid character ... found `g` at 1"
+      // failures. The bookkeeping above still runs for lobbies — only the
+      // event is suppressed, matching the rule stated at the top of this file.
+      if (isPersistedRoomId(roomId) && (durationMinutes > 0 || durationSeconds >= 15)) {
         try {
           await this.bus.publish({
             name: 'room.duration_updated',
