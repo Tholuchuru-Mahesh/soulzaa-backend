@@ -56,16 +56,43 @@ export class PostService {
     });
 
     await this.profile?.invalidateProfile(input.authorId).catch(() => undefined);
-    this.sockets?.emitToUserEverywhere(input.authorId, 'user.profile_updated', { userId: input.authorId });
-    this.sockets?.emitToUserEverywhere(input.authorId, 'user.posts_updated', { userId: input.authorId });
-    this.sockets?.emitToUserEverywhere(input.authorId, 'post.created', { postId: post.id, authorId: input.authorId });
-    this.sockets?.emitToUserEverywhere(input.authorId, 'profile:updated', { userId: input.authorId });
+    this.sockets?.emitToUserEverywhere(input.authorId, 'user.profile_updated', {
+      userId: input.authorId,
+    });
+    this.sockets?.emitToUserEverywhere(input.authorId, 'user.posts_updated', {
+      userId: input.authorId,
+    });
+    this.sockets?.emitToUserEverywhere(input.authorId, 'post.created', {
+      postId: post.id,
+      authorId: input.authorId,
+    });
+    this.sockets?.emitToUserEverywhere(input.authorId, 'profile:updated', {
+      userId: input.authorId,
+    });
     this.sockets?.emitEverywhere('post.created', { postId: post.id, authorId: input.authorId });
-    this.sockets?.emitEverywhere('posts:feed_updated', { type: 'created', postId: post.id, authorId: input.authorId });
-    this.sockets?.emitToNamespace('/notifications', 'post.created', { postId: post.id, authorId: input.authorId });
-    this.sockets?.emitToNamespace('/notifications', 'posts:feed_updated', { type: 'created', postId: post.id, authorId: input.authorId });
-    this.sockets?.emitToNamespace('/chat', 'post.created', { postId: post.id, authorId: input.authorId });
-    this.sockets?.emitToNamespace('/chat', 'posts:feed_updated', { type: 'created', postId: post.id, authorId: input.authorId });
+    this.sockets?.emitEverywhere('posts:feed_updated', {
+      type: 'created',
+      postId: post.id,
+      authorId: input.authorId,
+    });
+    this.sockets?.emitToNamespace('/notifications', 'post.created', {
+      postId: post.id,
+      authorId: input.authorId,
+    });
+    this.sockets?.emitToNamespace('/notifications', 'posts:feed_updated', {
+      type: 'created',
+      postId: post.id,
+      authorId: input.authorId,
+    });
+    this.sockets?.emitToNamespace('/chat', 'post.created', {
+      postId: post.id,
+      authorId: input.authorId,
+    });
+    this.sockets?.emitToNamespace('/chat', 'posts:feed_updated', {
+      type: 'created',
+      postId: post.id,
+      authorId: input.authorId,
+    });
     await this.bus.publish(new PostCreatedEvent({ postId: post.id, authorId: post.authorId }));
     return post;
   }
@@ -122,16 +149,41 @@ export class PostService {
     }
 
     await this.profile?.invalidateProfile(post.authorId).catch(() => undefined);
-    this.sockets?.emitToUserEverywhere(post.authorId, 'user.profile_updated', { userId: post.authorId });
-    this.sockets?.emitToUserEverywhere(post.authorId, 'user.posts_updated', { userId: post.authorId });
-    this.sockets?.emitToUserEverywhere(post.authorId, 'post.updated', { postId: post.id, authorId: post.authorId });
+    this.sockets?.emitToUserEverywhere(post.authorId, 'user.profile_updated', {
+      userId: post.authorId,
+    });
+    this.sockets?.emitToUserEverywhere(post.authorId, 'user.posts_updated', {
+      userId: post.authorId,
+    });
+    this.sockets?.emitToUserEverywhere(post.authorId, 'post.updated', {
+      postId: post.id,
+      authorId: post.authorId,
+    });
     this.sockets?.emitToUserEverywhere(post.authorId, 'profile:updated', { userId: post.authorId });
     this.sockets?.emitEverywhere('post.updated', { postId: post.id, authorId: post.authorId });
-    this.sockets?.emitEverywhere('posts:feed_updated', { type: 'updated', postId: post.id, authorId: post.authorId });
-    this.sockets?.emitToNamespace('/notifications', 'post.updated', { postId: post.id, authorId: post.authorId });
-    this.sockets?.emitToNamespace('/notifications', 'posts:feed_updated', { type: 'updated', postId: post.id, authorId: post.authorId });
-    this.sockets?.emitToNamespace('/chat', 'post.updated', { postId: post.id, authorId: post.authorId });
-    this.sockets?.emitToNamespace('/chat', 'posts:feed_updated', { type: 'updated', postId: post.id, authorId: post.authorId });
+    this.sockets?.emitEverywhere('posts:feed_updated', {
+      type: 'updated',
+      postId: post.id,
+      authorId: post.authorId,
+    });
+    this.sockets?.emitToNamespace('/notifications', 'post.updated', {
+      postId: post.id,
+      authorId: post.authorId,
+    });
+    this.sockets?.emitToNamespace('/notifications', 'posts:feed_updated', {
+      type: 'updated',
+      postId: post.id,
+      authorId: post.authorId,
+    });
+    this.sockets?.emitToNamespace('/chat', 'post.updated', {
+      postId: post.id,
+      authorId: post.authorId,
+    });
+    this.sockets?.emitToNamespace('/chat', 'posts:feed_updated', {
+      type: 'updated',
+      postId: post.id,
+      authorId: post.authorId,
+    });
     return (await this.prisma.post.findUnique({ where: { id: postId } }))!;
   }
 
@@ -155,16 +207,41 @@ export class PostService {
       data: { status: PostStatus.REMOVED, deletedAt: new Date() },
     });
     await this.profile?.invalidateProfile(post.authorId).catch(() => undefined);
-    this.sockets?.emitToUserEverywhere(post.authorId, 'user.profile_updated', { userId: post.authorId });
-    this.sockets?.emitToUserEverywhere(post.authorId, 'user.posts_updated', { userId: post.authorId });
-    this.sockets?.emitToUserEverywhere(post.authorId, 'post.deleted', { postId: post.id, authorId: post.authorId });
+    this.sockets?.emitToUserEverywhere(post.authorId, 'user.profile_updated', {
+      userId: post.authorId,
+    });
+    this.sockets?.emitToUserEverywhere(post.authorId, 'user.posts_updated', {
+      userId: post.authorId,
+    });
+    this.sockets?.emitToUserEverywhere(post.authorId, 'post.deleted', {
+      postId: post.id,
+      authorId: post.authorId,
+    });
     this.sockets?.emitToUserEverywhere(post.authorId, 'profile:updated', { userId: post.authorId });
     this.sockets?.emitEverywhere('post.deleted', { postId: post.id, authorId: post.authorId });
-    this.sockets?.emitEverywhere('posts:feed_updated', { type: 'deleted', postId: post.id, authorId: post.authorId });
-    this.sockets?.emitToNamespace('/notifications', 'post.deleted', { postId: post.id, authorId: post.authorId });
-    this.sockets?.emitToNamespace('/notifications', 'posts:feed_updated', { type: 'deleted', postId: post.id, authorId: post.authorId });
-    this.sockets?.emitToNamespace('/chat', 'post.deleted', { postId: post.id, authorId: post.authorId });
-    this.sockets?.emitToNamespace('/chat', 'posts:feed_updated', { type: 'deleted', postId: post.id, authorId: post.authorId });
+    this.sockets?.emitEverywhere('posts:feed_updated', {
+      type: 'deleted',
+      postId: post.id,
+      authorId: post.authorId,
+    });
+    this.sockets?.emitToNamespace('/notifications', 'post.deleted', {
+      postId: post.id,
+      authorId: post.authorId,
+    });
+    this.sockets?.emitToNamespace('/notifications', 'posts:feed_updated', {
+      type: 'deleted',
+      postId: post.id,
+      authorId: post.authorId,
+    });
+    this.sockets?.emitToNamespace('/chat', 'post.deleted', {
+      postId: post.id,
+      authorId: post.authorId,
+    });
+    this.sockets?.emitToNamespace('/chat', 'posts:feed_updated', {
+      type: 'deleted',
+      postId: post.id,
+      authorId: post.authorId,
+    });
   }
 
   /** Each staged photo's key must have been minted for this user by the storage presign flow. */
@@ -177,11 +254,7 @@ export class PostService {
     }
   }
 
-  private extractAndAssertKey(
-    authorId: string,
-    item: string,
-    existingKeys: Set<string>,
-  ): string {
+  private extractAndAssertKey(authorId: string, item: string, existingKeys: Set<string>): string {
     const prefix = `${STORAGE_CATEGORIES.POST_IMAGE}/${authorId}/`;
     if (existingKeys.has(item)) return item;
     if (item.startsWith(prefix)) return item;

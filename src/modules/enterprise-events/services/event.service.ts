@@ -92,7 +92,9 @@ export class EventService implements OnModuleInit {
         },
       });
     } catch (err) {
-      this.logger.warn(`Failed to auto-activate event mission tasks on startup: ${(err as Error).message}`);
+      this.logger.warn(
+        `Failed to auto-activate event mission tasks on startup: ${(err as Error).message}`,
+      );
     }
   }
 

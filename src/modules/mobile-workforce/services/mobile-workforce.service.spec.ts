@@ -1286,9 +1286,7 @@ describe('MobileWorkforceService scope composition', () => {
       createdAt: '2026-08-20T10:00:00.000Z',
     };
 
-    function serviceWithAssignments(assignments: {
-      getModeratorAssignments: jest.Mock;
-    }) {
+    function serviceWithAssignments(assignments: { getModeratorAssignments: jest.Mock }) {
       return new MobileWorkforceService(
         prisma as unknown as PrismaService,
         scope as unknown as WorkforceScopeService,

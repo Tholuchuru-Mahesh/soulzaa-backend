@@ -294,7 +294,8 @@ export class SocketManager {
       return;
     }
 
-    const lastEvaluated = (client.data.roomLastEvaluatedAt?.[roomId] as number | undefined) ?? joinedAt;
+    const lastEvaluated =
+      (client.data.roomLastEvaluatedAt?.[roomId] as number | undefined) ?? joinedAt;
     const elapsedSinceLast = Date.now() - lastEvaluated;
 
     // Evaluate progress when at least 30 seconds have accumulated since last evaluation
@@ -333,7 +334,8 @@ export class SocketManager {
     // Calculate room duration spent
     const joinedAt = client.data.roomJoinedAt?.[roomId] as number | undefined;
     if (joinedAt) {
-      const lastEvaluated = (client.data.roomLastEvaluatedAt?.[roomId] as number | undefined) ?? joinedAt;
+      const lastEvaluated =
+        (client.data.roomLastEvaluatedAt?.[roomId] as number | undefined) ?? joinedAt;
       delete client.data.roomJoinedAt[roomId];
       if (client.data.roomLastEvaluatedAt) {
         delete client.data.roomLastEvaluatedAt[roomId];
@@ -341,7 +343,10 @@ export class SocketManager {
 
       const totalDurationMs = Math.max(0, Date.now() - joinedAt);
       const remainingSinceLast = Math.max(0, Date.now() - lastEvaluated);
-      const durationMinutes = Math.max(1, Math.round(remainingSinceLast / 60000) || (remainingSinceLast >= 15000 ? 1 : 0));
+      const durationMinutes = Math.max(
+        1,
+        Math.round(remainingSinceLast / 60000) || (remainingSinceLast >= 15000 ? 1 : 0),
+      );
       const durationSeconds = Math.round(remainingSinceLast / 1000);
 
       if (durationMinutes > 0 || durationSeconds >= 15) {

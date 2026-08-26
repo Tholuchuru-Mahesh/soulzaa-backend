@@ -2044,10 +2044,7 @@ describe('GamesService', () => {
 
     it('does NOT hand the session host to a new room owner who is not playing', async () => {
       repo.findActiveSessionForRoom.mockResolvedValue(session({ roomId: 'room-1' }));
-      repo.listParticipants.mockResolvedValue([
-        participant('p1', HOST),
-        participant('p2', P2),
-      ]);
+      repo.listParticipants.mockResolvedValue([participant('p1', HOST), participant('p2', P2)]);
 
       await service.repointRoomGameHost('room-1', OUTSIDER);
 
@@ -2059,10 +2056,7 @@ describe('GamesService', () => {
 
     it('keeps the current host when they are still playing', async () => {
       repo.findActiveSessionForRoom.mockResolvedValue(session({ roomId: 'room-1' }));
-      repo.listParticipants.mockResolvedValue([
-        participant('p1', HOST),
-        participant('p2', P2),
-      ]);
+      repo.listParticipants.mockResolvedValue([participant('p1', HOST), participant('p2', P2)]);
 
       await service.repointRoomGameHost('room-1', OUTSIDER);
 
@@ -2132,9 +2126,7 @@ describe('GamesService', () => {
 
       await service.forfeit(ACTOR, 'sess-1');
 
-      expect(bus.publish).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'game.cancelled' }),
-      );
+      expect(bus.publish).toHaveBeenCalledWith(expect.objectContaining({ name: 'game.cancelled' }));
     });
 
     it('continues normally while another HUMAN is still playing', async () => {

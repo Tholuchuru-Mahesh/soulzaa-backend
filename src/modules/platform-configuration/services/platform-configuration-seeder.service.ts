@@ -157,7 +157,7 @@ export const DEFAULT_PLATFORM_SETTINGS: DefaultSettingSeed[] = [
     valueType: SettingValueType.NUMBER,
     defaultValue: '50',
     description:
-      'Creator Conversion Rate — percent of a gift\'s Gold Coin gifting value converted into the receiving creator\'s Soul Gems (e.g. 250 coins at 50% = 125 Soul Gems)',
+      "Creator Conversion Rate — percent of a gift's Gold Coin gifting value converted into the receiving creator's Soul Gems (e.g. 250 coins at 50% = 125 Soul Gems)",
   },
   {
     key: 'gift.receiver_cashback_percentage',

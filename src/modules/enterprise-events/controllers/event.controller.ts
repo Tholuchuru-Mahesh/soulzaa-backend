@@ -108,8 +108,7 @@ export class EnterpriseEventController {
 
   @Get('mobile/active-events')
   @ApiOperation({
-    summary:
-      'Mobile: currently live events in scope for the caller (no staff permission required)',
+    summary: 'Mobile: currently live events in scope for the caller (no staff permission required)',
   })
   async getActiveEventsForMe(@CurrentUser('id') userId: string) {
     return this.eventService.getActiveEventsForUser(userId);

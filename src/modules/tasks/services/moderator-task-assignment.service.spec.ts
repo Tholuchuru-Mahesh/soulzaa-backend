@@ -279,9 +279,7 @@ describe('ModeratorTaskAssignmentService', () => {
     });
 
     it('rejects re-completing an already completed task', async () => {
-      prisma.moderator_task_assignments.findUnique.mockResolvedValue(
-        row({ status: 'COMPLETED' }),
-      );
+      prisma.moderator_task_assignments.findUnique.mockResolvedValue(row({ status: 'COMPLETED' }));
 
       await expect(
         service.updateAssignmentStatus(ASSIGNMENT, MODERATOR, 'COMPLETED'),
@@ -830,9 +828,9 @@ describe('ModeratorTaskAssignmentService', () => {
 
       await service.getOversightAssignments(OFFICIAL);
 
-      expect(
-        prisma.moderator_task_assignments.findMany.mock.calls[0][0].where.moderatorId,
-      ).toEqual({ in: [MODERATOR] });
+      expect(prisma.moderator_task_assignments.findMany.mock.calls[0][0].where.moderatorId).toEqual(
+        { in: [MODERATOR] },
+      );
     });
   });
 });

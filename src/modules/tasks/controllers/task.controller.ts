@@ -162,7 +162,11 @@ export class TaskController {
   @Get('moderator/my-assignments')
   @RequirePermissions('task.view.assigned')
   @ApiOperation({ summary: 'Moderator fetches tasks assigned to them' })
-  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'] })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'],
+  })
   async myAssignments(@CurrentUser() user: any, @Query('status') status?: string) {
     return this.moderatorAssignmentService.getModeratorAssignments(user.id, status);
   }
@@ -174,7 +178,11 @@ export class TaskController {
     description:
       'Unrestricted roles see the whole platform; an Official sees only assignments held by moderators inside their geographic scope.',
   })
-  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'] })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'],
+  })
   async workforceAssignments(@CurrentUser() user: any, @Query('status') status?: string) {
     return this.moderatorAssignmentService.getOversightAssignments(user.id, status);
   }
@@ -200,7 +208,11 @@ export class TaskController {
   @Get('official/assigned-by-me')
   @RequirePermissions('task.assign.moderator')
   @ApiOperation({ summary: 'Tasks the current official has assigned, with live moderator status' })
-  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'] })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE'],
+  })
   async assignedByMe(@CurrentUser() user: any, @Query('status') status?: string) {
     return this.moderatorAssignmentService.getAssignedBy(user.id, status);
   }
