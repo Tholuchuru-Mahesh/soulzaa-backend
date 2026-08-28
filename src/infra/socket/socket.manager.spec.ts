@@ -183,7 +183,9 @@ describe('SocketManager — socket-only lobby channels never raise room domain e
   it('publishes the join domain events for a real room', async () => {
     await manager.joinRoom(makeClient('user-1') as never, ROOM_UUID, '/audio-room');
 
-    expect(publishedNames()).toEqual(expect.arrayContaining(['audio_room.joined', 'room.joined']));
+    expect(publishedNames()).toEqual(
+      expect.arrayContaining(['audio_room.joined', 'room.joined']),
+    );
   });
 
   it('publishes NOTHING for a casino lobby channel', async () => {

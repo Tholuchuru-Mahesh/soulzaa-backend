@@ -1634,7 +1634,10 @@ export class MobileWorkforceService {
 
     // Assigned work leads: it has a real deadline and an Official waiting on it,
     // where the report items are an ambient queue.
-    return [...assignments.map((a: any) => ({ ...a, source: 'ASSIGNMENT' as const })), ...tasks];
+    return [
+      ...assignments.map((a: any) => ({ ...a, source: 'ASSIGNMENT' as const })),
+      ...tasks,
+    ];
   }
 
   /**

@@ -80,10 +80,7 @@ export const MAX_BAN_TARGETS = 50;
  * The task's full target list. Falls back to the singular column for rows
  * written before multi-target support.
  */
-function banTargets(row: {
-  targetUserIds?: string[] | null;
-  targetUserId?: string | null;
-}): string[] {
+function banTargets(row: { targetUserIds?: string[] | null; targetUserId?: string | null }): string[] {
   if (row.targetUserIds?.length) return row.targetUserIds;
   return row.targetUserId ? [row.targetUserId] : [];
 }
@@ -137,7 +134,9 @@ export class ModeratorTaskAssignmentService {
 
     const taskType = input.taskType ? input.taskType.toUpperCase() : 'GENERAL';
     if (!(ASSIGNMENT_TASK_TYPES as readonly string[]).includes(taskType)) {
-      throw new BadRequestException(`taskType must be one of ${ASSIGNMENT_TASK_TYPES.join(', ')}.`);
+      throw new BadRequestException(
+        `taskType must be one of ${ASSIGNMENT_TASK_TYPES.join(', ')}.`,
+      );
     }
 
     let targetUserIds: string[] = [];
@@ -155,7 +154,9 @@ export class ModeratorTaskAssignmentService {
         throw new BadRequestException('At least one target user is required for a BAN_USER task.');
       }
       if (requested.length > MAX_BAN_TARGETS) {
-        throw new BadRequestException(`A ban task can target at most ${MAX_BAN_TARGETS} users.`);
+        throw new BadRequestException(
+          `A ban task can target at most ${MAX_BAN_TARGETS} users.`,
+        );
       }
       if (!input.banReason?.trim()) {
         throw new BadRequestException('banReason is required for a BAN_USER task.');
@@ -175,7 +176,9 @@ export class ModeratorTaskAssignmentService {
 
     const priority = input.priority ? input.priority.toUpperCase() : 'MEDIUM';
     if (!(ASSIGNMENT_PRIORITIES as readonly string[]).includes(priority)) {
-      throw new BadRequestException(`priority must be one of ${ASSIGNMENT_PRIORITIES.join(', ')}.`);
+      throw new BadRequestException(
+        `priority must be one of ${ASSIGNMENT_PRIORITIES.join(', ')}.`,
+      );
     }
 
     await this.assertModeratorAssignable(input.moderatorId, input.assignedBy);
@@ -406,12 +409,15 @@ export class ModeratorTaskAssignmentService {
     }
 
     const scopeWhere = (await this.scope.userScopeFilter(officialId)) as Record<string, unknown>;
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term);
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(term);
 
     const user = await this.prisma.user.findFirst({
       where: {
         AND: [
-          isUuid ? { id: term } : { username: { equals: term, mode: 'insensitive' as const } },
+          isUuid
+            ? { id: term }
+            : { username: { equals: term, mode: 'insensitive' as const } },
           { deletedAt: null },
           scopeWhere,
         ],
@@ -548,7 +554,10 @@ export class ModeratorTaskAssignmentService {
     officialId: string,
     moderatorId: string,
   ): Promise<string> {
-    const officialScope = (await this.scope.userScopeFilter(officialId)) as Record<string, unknown>;
+    const officialScope = (await this.scope.userScopeFilter(officialId)) as Record<
+      string,
+      unknown
+    >;
 
     const user = await this.prisma.user.findFirst({
       where: { AND: [{ id: targetUserId }, officialScope] },
@@ -571,7 +580,7 @@ export class ModeratorTaskAssignmentService {
     });
     if (!reachable) {
       throw new BadRequestException(
-        "That user is outside the selected moderator's region. Pick a moderator who covers them.",
+        'That user is outside the selected moderator\'s region. Pick a moderator who covers them.',
       );
     }
 

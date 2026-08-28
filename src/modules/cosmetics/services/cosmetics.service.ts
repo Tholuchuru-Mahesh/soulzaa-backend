@@ -166,12 +166,7 @@ export class CosmeticsService implements ICosmeticsService {
       let inferredType: import('@prisma/client').CosmeticType = 'FRAME';
       if (lower.includes('theme') || lower.includes('wallpaper') || lower.includes('bg')) {
         inferredType = 'THEME';
-      } else if (
-        lower.includes('entrance') ||
-        lower.includes('ride') ||
-        lower.includes('car') ||
-        lower.includes('effect')
-      ) {
+      } else if (lower.includes('entrance') || lower.includes('ride') || lower.includes('car') || lower.includes('effect')) {
         inferredType = 'ENTRANCE_EFFECT';
       } else if (lower.includes('badge')) {
         inferredType = 'BADGE';
@@ -653,7 +648,10 @@ export class CosmeticsService implements ICosmeticsService {
     await this.prisma.backpackItem.updateMany({
       where: {
         userId,
-        OR: [{ refId: actualCosId }, { name: userCos.cosmetic.name }],
+        OR: [
+          { refId: actualCosId },
+          { name: userCos.cosmetic.name },
+        ],
       },
       data: { equipped: true },
     });
@@ -671,7 +669,7 @@ export class CosmeticsService implements ICosmeticsService {
   }
 
   async unequipCosmetic(userId: string, cosmeticId: string): Promise<void> {
-    const userCos = await this.prisma.userCosmetic.findFirst({
+    let userCos = await this.prisma.userCosmetic.findFirst({
       where: {
         userId,
         OR: [
@@ -704,7 +702,10 @@ export class CosmeticsService implements ICosmeticsService {
     await this.prisma.backpackItem.updateMany({
       where: {
         userId,
-        OR: [{ refId: actualCosId }, { name: userCos.cosmetic.name }],
+        OR: [
+          { refId: actualCosId },
+          { name: userCos.cosmetic.name },
+        ],
       },
       data: { equipped: false },
     });

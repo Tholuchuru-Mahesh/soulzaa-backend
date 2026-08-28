@@ -1,10 +1,4 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  NotFoundException,
-  Optional,
-} from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated, normalizePagination } from 'src/common/utils/pagination.util';

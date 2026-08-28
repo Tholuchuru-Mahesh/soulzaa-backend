@@ -228,7 +228,9 @@ export class TaskEvaluationService {
         metadata['coins'] !== undefined ||
         metadata['coinAmount'] !== undefined)
     ) {
-      const coins = Number(metadata['amount'] ?? metadata['coins'] ?? metadata['coinAmount']);
+      const coins = Number(
+        metadata['amount'] ?? metadata['coins'] ?? metadata['coinAmount'],
+      );
       if (!isNaN(coins) && coins > 0) {
         return Math.floor(coins);
       }

@@ -972,7 +972,11 @@ export class AudioRoomsService implements IAudioRoomsService {
   }
 
   async listFollowing(userId: string, query: ListRoomsDto): Promise<Paginated<RoomView>> {
-    const { rows, total } = await this.repo.listFollowingRooms(userId, query.skip, query.limit);
+    const { rows, total } = await this.repo.listFollowingRooms(
+      userId,
+      query.skip,
+      query.limit,
+    );
     const views = await Promise.all(rows.map((r) => this.toView(r)));
     return buildPaginated(views, total, query.page, query.limit);
   }

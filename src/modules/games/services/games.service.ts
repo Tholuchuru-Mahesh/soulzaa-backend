@@ -596,7 +596,10 @@ export class GamesService {
     opts: { preferred?: string; exclude?: string } = {},
   ): string | null {
     const eligible = participants.filter(
-      (p) => !p.isBot && p.status === GameParticipantStatus.PLAYING && p.userId !== opts.exclude,
+      (p) =>
+        !p.isBot &&
+        p.status === GameParticipantStatus.PLAYING &&
+        p.userId !== opts.exclude,
     );
     if (opts.preferred && eligible.some((p) => p.userId === opts.preferred)) {
       return opts.preferred;
@@ -650,7 +653,9 @@ export class GamesService {
       const participants = await this.repo.listParticipants(session.id);
       const currentHostStillPlaying = participants.some(
         (p) =>
-          p.userId === session.hostId && !p.isBot && p.status === GameParticipantStatus.PLAYING,
+          p.userId === session.hostId &&
+          !p.isBot &&
+          p.status === GameParticipantStatus.PLAYING,
       );
       const next = this.pickSessionHost(participants, { preferred: newOwnerId });
       if (!currentHostStillPlaying || next === newOwnerId) {

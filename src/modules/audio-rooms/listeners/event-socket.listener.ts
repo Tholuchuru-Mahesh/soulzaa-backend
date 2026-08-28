@@ -74,9 +74,7 @@ export class EventSocketListener implements OnModuleInit {
         endTime: event.endTime,
       });
     } catch (err) {
-      this.logger.error(
-        `Failed to broadcast launch for event ${eventId}: ${(err as Error).message}`,
-      );
+      this.logger.error(`Failed to broadcast launch for event ${eventId}: ${(err as Error).message}`);
     }
   }
 
