@@ -278,21 +278,14 @@ describe('AUDIO_ROOM gift baseline (VR-10 BC gate)', () => {
     expect(names).toContain('gift.refunded');
   });
 
-  // Rebaselined from 100n to 50n. This is NOT a refactor regression — the
-  // creator conversion rate was deliberately changed from 100% to 50% in
-  // 5197fb3, which also seeded the `gift.receiver_earnings_percentage`
-  // PlatformSetting at 50 ("Creator Conversion Rate"). These mocks resolve
-  // config to null, so what is pinned here is GiftService.settlementRules'
-  // fallback, which must track that seeded default. Everything else in this
-  // file remains a genuine BC gate: if another assertion moves, fix the code.
-  it('writes creatorEarnings = 50n and credits 50% DIAMOND to receiver', async () => {
+  it('writes creatorEarnings = 100n and credits 100% DIAMOND to receiver', async () => {
     await service.sendGift(SENDER, dto());
-    expect(m.repo.createTransaction.mock.calls[0][0].creatorEarnings).toBe(50n);
+    expect(m.repo.createTransaction.mock.calls[0][0].creatorEarnings).toBe(100n);
     const earningsCredits = m.wallet.credit.mock.calls.filter(
       (c) => c[0].currency === WalletCurrency.DIAMOND,
     );
     expect(earningsCredits).toHaveLength(1);
-    expect(earningsCredits[0][0].amount).toBe(50);
+    expect(earningsCredits[0][0].amount).toBe(100);
   });
 
   it('persists the ledger row with the audio-room shape', async () => {
@@ -307,8 +300,7 @@ describe('AUDIO_ROOM gift baseline (VR-10 BC gate)', () => {
       comboTier: 1,
       unitCoinValue: 100,
       totalCoinValue: 100n,
-      // 50% of the 100-coin gifting value — see the rebaseline note above.
-      creatorEarnings: 50n,
+      creatorEarnings: 100n,
       luckyMultiplier: 1,
       isLuckyWin: false,
       idempotencyKey: IDEM,
@@ -325,7 +317,7 @@ describe('AUDIO_ROOM gift baseline (VR-10 BC gate)', () => {
   it('records the leaderboard with receiver earnings', async () => {
     await service.sendGift(SENDER, dto());
     expect(m.leaderboards.record).toHaveBeenCalledWith(
-      expect.objectContaining({ giftValue: 100, receiverEarnings: 50 }),
+      expect.objectContaining({ giftValue: 100, receiverEarnings: 100 }),
     );
   });
 
