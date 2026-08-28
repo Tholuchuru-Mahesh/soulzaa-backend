@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { Prisma, User } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
@@ -140,6 +141,10 @@ export class UsersRepository {
           data.locationState = { connect: { id: r.stateId } };
         }
       }
+    }
+
+    if (!data.displayId) {
+      data.displayId = randomInt(10000000, 100000000);
     }
 
     return this.prisma.$transaction(async (tx) => {
