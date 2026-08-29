@@ -24,20 +24,18 @@ describe('AudioRoomGameAuthzService', () => {
   });
 
   describe('assertCanStartBoardGame', () => {
-    it('allows an OWNER in a live room', async () => {
-      rooms.getEffectiveRole.mockResolvedValue(RoomMemberRole.OWNER);
+    it('allows the room owner in a live room', async () => {
+      rooms.getOwnerId.mockResolvedValue(USER);
       await expect(svc.assertCanStartBoardGame(ROOM, USER)).resolves.toBeUndefined();
     });
 
-    it('allows an ADMIN and PREMIUM_ADMIN in a live room', async () => {
-      rooms.getEffectiveRole.mockResolvedValue(RoomMemberRole.ADMIN);
-      await expect(svc.assertCanStartBoardGame(ROOM, USER)).resolves.toBeUndefined();
-      rooms.getEffectiveRole.mockResolvedValue(RoomMemberRole.PREMIUM_ADMIN);
-      await expect(svc.assertCanStartBoardGame(ROOM, USER)).resolves.toBeUndefined();
-    });
-
-    it('rejects a LISTENER / SPEAKER / non-member', async () => {
-      for (const role of [RoomMemberRole.LISTENER, RoomMemberRole.SPEAKER, null]) {
+    // Deliberately tighter than it used to be. A game takes over the room's
+    // whole Game Area for everyone in it and escrows the players' stakes, so
+    // it is the owner's call — an ADMIN or PREMIUM_ADMIN moderating the room
+    // is not entitled to start one on their behalf.
+    it('rejects an ADMIN / PREMIUM_ADMIN who is not the owner', async () => {
+      rooms.getOwnerId.mockResolvedValue(OTHER);
+      for (const role of [RoomMemberRole.ADMIN, RoomMemberRole.PREMIUM_ADMIN]) {
         rooms.getEffectiveRole.mockResolvedValue(role);
         await expect(svc.assertCanStartBoardGame(ROOM, USER)).rejects.toMatchObject({
           errorCode: ERROR_CODES.GAME_NOT_AUTHORIZED,
@@ -45,8 +43,17 @@ describe('AudioRoomGameAuthzService', () => {
       }
     });
 
-    it('rejects a manager when the room is not live', async () => {
-      rooms.getEffectiveRole.mockResolvedValue(RoomMemberRole.OWNER);
+    it('rejects a SPEAKER, a LISTENER and a non-member', async () => {
+      for (const owner of [OTHER, null]) {
+        rooms.getOwnerId.mockResolvedValue(owner);
+        await expect(svc.assertCanStartBoardGame(ROOM, USER)).rejects.toMatchObject({
+          errorCode: ERROR_CODES.GAME_NOT_AUTHORIZED,
+        });
+      }
+    });
+
+    it('rejects the owner when the room is not live', async () => {
+      rooms.getOwnerId.mockResolvedValue(USER);
       rooms.isRoomLive.mockResolvedValue(false);
       await expect(svc.assertCanStartBoardGame(ROOM, USER)).rejects.toMatchObject({
         errorCode: ERROR_CODES.ROOM_ENDED,
