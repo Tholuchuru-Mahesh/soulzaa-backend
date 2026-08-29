@@ -19,6 +19,7 @@ yarn-error.log*
 # docker-compose.prod.yml feeds the container on EC2 and holds live secrets;
 # it was previously un-ignored, so a stray `git add .` would have committed it.
 .env.production
+.env.testing
 .env.staging
 .env.qa
 .env.development

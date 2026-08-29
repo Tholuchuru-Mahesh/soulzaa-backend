@@ -1,0 +1,146 @@
+# Testing Docker Compose — Soulzaa Backend
+# Usage: docker compose --env-file .env.testing -f docker-compose.testing.yml up -d
+#
+# Isolated testing stack running against soulzaa_testing database and testing volumes.
+# Secrets and environment variables are injected via .env.testing.
+
+name: soulzaa-testing
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: soulzaa-postgres-testing
+    restart: always
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_testing_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  # ── PgBouncer (connection pooler) ────────────────────────────────────────────
+  pgbouncer:
+    image: bitnamilegacy/pgbouncer:1.24.1-debian-12-r10
+    container_name: soulzaa-pgbouncer-testing
+    restart: always
+    logging: *default-logging
+    environment:
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT_NUMBER: 5432
+      POSTGRESQL_USERNAME: ${POSTGRES_USER}
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRESQL_DATABASE: ${POSTGRES_DB}
+      PGBOUNCER_DATABASE: ${POSTGRES_DB}
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_CLIENT_CONN: 2000
+      PGBOUNCER_DEFAULT_POOL_SIZE: 50
+      PGBOUNCER_AUTH_TYPE: scram-sha-256
+      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'timeout 2 bash -c "</dev/tcp/127.0.0.1/6432"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  # ── Redis (with AOF persistence) ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: soulzaa-redis-testing
+    restart: always
+    logging: *default-logging
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy noeviction
+    volumes:
+      - redis_testing_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  # ── API (Testing container using .env.testing) ────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${DOCKER_IMAGE:-ghcr.io/tholuchuru-mahesh/soulzaa-backend}:${IMAGE_TAG:-testing}
+    container_name: soulzaa-api-testing
+    restart: always
+    logging: *default-logging
+    env_file:
+      - .env.testing
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB}?schema=public&pgbouncer=true&connection_limit=20
+      DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./firebase-service-account.json:/app/firebase-service-account.json:ro
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/health/live']
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    networks:
+      - backend
+      - public
+
+  # ── Nginx Reverse Proxy ───────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: soulzaa-nginx-testing
+    restart: always
+    logging: *default-logging
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./deploy/nginx/acme:/var/www/certbot:ro
+    depends_on:
+      - api
+    networks:
+      - public
+
+networks:
+  backend:
+    driver: bridge
+    internal: true
+  public:
+    driver: bridge
+
+volumes:
+  postgres_testing_data:
+  redis_testing_data:
