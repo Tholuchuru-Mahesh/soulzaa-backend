@@ -97,6 +97,8 @@ import { VoiceService } from './services/voice.service';
  * MODERATION_SERVICE by token without importing this module (cross-module access
  * only via `interfaces/` or EVENT_BUS).
  */
+
+
 import { WorkforceScopeModule } from 'src/modules/mobile-workforce/workforce-scope.module';
 
 @Global()
