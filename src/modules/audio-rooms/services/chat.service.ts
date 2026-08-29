@@ -12,6 +12,7 @@ import {
   Prisma,
   ReportReason,
   RoomMessage,
+  RoomStatus,
 } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
@@ -63,6 +64,7 @@ import { BlockedWordService } from 'src/infra/content-moderation';
 import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repository';
 import { AudioRoomsRepository } from '../repositories/audio-rooms.repository';
 import { ChatRepository } from '../repositories/chat.repository';
+import { LiveSessionRepository } from '../repositories/live-session.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
 import { ModerationService } from './moderation.service';
 import { RoomPermissionService } from './room-permission.service';
@@ -110,6 +112,7 @@ export class ChatService implements IAudioRoomChatService {
     private readonly queue: QueueService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
+    private readonly liveSessions: LiveSessionRepository,
   ) {}
 
   // ======================= Send =======================
@@ -143,7 +146,9 @@ export class ChatService implements IAudioRoomChatService {
         );
       }
       const hash = this.hashContent(content);
-      if (await this.chatRepo.isDuplicate(roomId, actor.id, hash, cfg.dedupWindowSeconds)) {
+      // Use a short 2-second dedup window to block rapid accidental double-clicks without blocking normal chat
+      const dedupSeconds = Math.min(cfg.dedupWindowSeconds ?? 2, 2);
+      if (dedupSeconds > 0 && (await this.chatRepo.isDuplicate(roomId, actor.id, hash, dedupSeconds))) {
         throw new BusinessException(
           ERROR_CODES.DUPLICATE_MESSAGE,
           'Duplicate message ignored.',
@@ -158,8 +163,7 @@ export class ChatService implements IAudioRoomChatService {
     // Resolve @mentions to user ids (capped).
     const mentions = await this.resolveMentions(content, actor.id, cfg.maxMentions);
 
-    const messageType =
-      isStaff || dto.type === ChatMessageType.SYSTEM ? ChatMessageType.SYSTEM : dto.type;
+    const messageType = dto.type === ChatMessageType.SYSTEM ? ChatMessageType.SYSTEM : (dto.type || ChatMessageType.TEXT);
 
     const message = await this.chatRepo.createMessage({
       roomId,
@@ -467,11 +471,28 @@ export class ChatService implements IAudioRoomChatService {
 
   async history(actor: RoomActor, roomId: string, q: ListMessagesDto): Promise<Paginated<unknown>> {
     const includeDeleted = await this.permissions.canModerate(roomId, actor);
+
+    // History is strictly scoped to the active live session so reopening an ended room
+    // starts with a fresh chat feed.
+    const session = await this.liveSessions.getOpenSession(roomId);
+    let since: Date | undefined = session?.startedAt;
+
+    if (!session) {
+      const room = await this.rooms.findRoomRow(roomId);
+      if (room && room.status === RoomStatus.LIVE) {
+        since = room.updatedAt ?? room.createdAt;
+      } else {
+        // Room is OFFLINE / ended: return empty paginated result
+        return buildPaginated([], 0, q.page, q.limit);
+      }
+    }
+
     const [rows, total] = await this.chatRepo.listMessages(roomId, {
       skip: q.skip,
       take: q.limit,
       before: q.before,
       includeDeleted,
+      since,
     });
     return buildPaginated(rows, total, q.page, q.limit);
   }
@@ -632,14 +653,23 @@ export class ChatService implements IAudioRoomChatService {
   }
 
   private async assertActiveMember(roomId: string, userId: string): Promise<void> {
-    const member = await this.rooms.getMember(roomId, userId);
-    if (!member?.isActive) {
-      throw new BusinessException(
-        ERROR_CODES.NOT_ROOM_MEMBER,
-        'You are not a member of this room.',
-        HttpStatus.FORBIDDEN,
-      );
+    const room = await this.rooms.findLiveRoomRow(roomId);
+    if (room && room.ownerId === userId) {
+      return;
     }
+    const member = await this.rooms.getMember(roomId, userId);
+    if (member?.isActive) {
+      return;
+    }
+    const seat = await this.seats.getSeatByOccupant(roomId, userId);
+    if (seat) {
+      return;
+    }
+    throw new BusinessException(
+      ERROR_CODES.NOT_ROOM_MEMBER,
+      'You are not a member of this room.',
+      HttpStatus.FORBIDDEN,
+    );
   }
 
   private async slowModeSeconds(roomId: string): Promise<number> {

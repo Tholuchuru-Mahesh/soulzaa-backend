@@ -67,14 +67,16 @@ export class ChatRepository {
    * Paginated history newest-first. `before` (a message id) switches to keyset
    * pagination: only messages older than that message are returned. Moderators
    * see soft-deleted rows; everyone else has them filtered out.
+   * `since` filters messages created at or after the given date (e.g. current live session start).
    */
   async listMessages(
     roomId: string,
-    opts: { skip: number; take: number; before?: string; includeDeleted: boolean },
+    opts: { skip: number; take: number; before?: string; includeDeleted: boolean; since?: Date },
   ): Promise<[RoomMessage[], number]> {
     const where: Prisma.RoomMessageWhereInput = {
       roomId,
       ...(opts.includeDeleted ? {} : { isDeleted: false }),
+      ...(opts.since ? { createdAt: { gte: opts.since } } : {}),
     };
 
     if (opts.before) {
@@ -82,7 +84,12 @@ export class ChatRepository {
         where: { id: opts.before },
         select: { createdAt: true },
       });
-      if (cursor) where.createdAt = { lt: cursor.createdAt };
+      if (cursor) {
+        where.createdAt = {
+          lt: cursor.createdAt,
+          ...(opts.since ? { gte: opts.since } : {}),
+        };
+      }
     }
 
     return this.prisma.$transaction([
@@ -130,6 +137,13 @@ export class ChatRepository {
     await this.prisma.pinnedMessage.update({
       where: { id },
       data: { isActive: false, unpinnedBy, unpinnedAt: new Date() },
+    });
+  }
+
+  async unpinAllForRoom(roomId: string): Promise<void> {
+    await this.prisma.pinnedMessage.updateMany({
+      where: { roomId, isActive: true },
+      data: { isActive: false, unpinnedAt: new Date() },
     });
   }
 

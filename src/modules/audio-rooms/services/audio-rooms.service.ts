@@ -53,6 +53,7 @@ import type {
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { AudioRoomsRepository, type UpdateRoomData } from '../repositories/audio-rooms.repository';
 import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repository';
+import { ChatRepository } from '../repositories/chat.repository';
 import { LiveSessionRepository } from '../repositories/live-session.repository';
 import { ModerationRepository } from '../repositories/moderation.repository';
 import type { RoomPermission } from '../constants/room-permissions';
@@ -138,6 +139,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     @Optional() private readonly platformAudit?: PlatformModerationAuditService,
     @Optional() private readonly platformBans?: PlatformBanService,
     @Optional() private readonly broadBans?: BroadBanService,
+    @Optional() private readonly chatRepo?: ChatRepository,
   ) {
     // Config namespaces surface raw process.env strings at runtime, so coerce.
     const cfg = this.config.get('audioRoom') as {
@@ -1254,6 +1256,9 @@ export class AudioRoomsService implements IAudioRoomsService {
   private async clearRoomRuntime(roomId: string): Promise<void> {
     await this.repo.invalidateSnapshot(roomId);
     await this.repo.trendingRemove(roomId);
+    if (this.chatRepo) {
+      await this.chatRepo.unpinAllForRoom(roomId);
+    }
     const members = await this.presence.roomMembers(roomId);
     await Promise.all(members.map((userId) => this.presence.leaveRoom(roomId, userId)));
     const moderators = await this.presence.roomModerators(roomId);

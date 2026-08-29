@@ -69,6 +69,7 @@ describe('ChatService', () => {
   let queue: { enqueue: jest.Mock };
   let bus: jest.Mocked<IEventBus>;
   let users: Record<string, jest.Mock>;
+  let liveSessions: Record<string, jest.Mock>;
   let service: ChatService;
 
   beforeEach(() => {
@@ -116,15 +117,22 @@ describe('ChatService', () => {
     rooms = {
       getMember: jest.fn().mockResolvedValue({ isActive: true }),
       findLiveRoomRow: jest.fn().mockResolvedValue({ id: ROOM }),
+      findRoomRow: jest.fn().mockResolvedValue({ id: ROOM, status: 'LIVE', createdAt: new Date() }),
       getSettings: jest.fn().mockResolvedValue({ allowChat: true, chatSlowModeSeconds: 0 }),
       getOwnerId: jest.fn().mockResolvedValue('owner-1'),
     };
-    seats = { listElevatedMemberIds: jest.fn().mockResolvedValue(['owner-1']) };
+    seats = {
+      listElevatedMemberIds: jest.fn().mockResolvedValue(['owner-1']),
+      getSeatByOccupant: jest.fn().mockResolvedValue(null),
+    };
     locks = { withLock: jest.fn(<T>(_k: string, fn: () => Promise<T>) => fn()) };
     config = { get: jest.fn().mockReturnValue({ chat: CHAT_CFG }) };
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     users = { findByUsername: jest.fn().mockResolvedValue(null) };
+    liveSessions = {
+      getOpenSession: jest.fn().mockResolvedValue({ id: 'session-1', startedAt: new Date() }),
+    };
 
     service = new ChatService(
       chatRepo as unknown as ChatRepository,
@@ -139,6 +147,7 @@ describe('ChatService', () => {
       queue as unknown as QueueService,
       bus,
       users as unknown as IUsersService,
+      liveSessions as any,
     );
   });
 
@@ -403,6 +412,35 @@ describe('ChatService', () => {
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'audio_room.chat_message_unpinned' }),
       );
+    });
+  });
+
+  describe('history', () => {
+    it('scopes listMessages to active session startedAt when room is live', async () => {
+      const sessionStart = new Date('2026-08-28T10:00:00Z');
+      liveSessions.getOpenSession.mockResolvedValue({ id: 's-1', startedAt: sessionStart });
+
+      await service.history(ACTOR, ROOM, { page: 1, limit: 20, skip: 0 });
+
+      expect(chatRepo.listMessages).toHaveBeenCalledWith(
+        ROOM,
+        expect.objectContaining({
+          since: sessionStart,
+          take: 20,
+          skip: 0,
+        }),
+      );
+    });
+
+    it('returns empty paginated result when room is OFFLINE and no open session', async () => {
+      liveSessions.getOpenSession.mockResolvedValue(null);
+      rooms.findRoomRow.mockResolvedValue({ id: ROOM, status: 'OFFLINE' });
+
+      const res = await service.history(ACTOR, ROOM, { page: 1, limit: 20, skip: 0 });
+
+      expect(res.items).toEqual([]);
+      expect(res.total).toBe(0);
+      expect(chatRepo.listMessages).not.toHaveBeenCalled();
     });
   });
 });
