@@ -318,11 +318,19 @@ export class ProfileService implements IProfileService {
         .map(async (user) => {
           const avatarKey = profileByUserId.get(user.id)?.avatarKey ?? null;
           const stats = statsByUserId.get(user.id);
+          const rawUsername = user.username;
+          const cleanUsername = rawUsername?.includes('@')
+            ? rawUsername.split('@')[0]
+            : rawUsername;
+          const rawDisplayName = user.fullName ?? cleanUsername;
+          const cleanDisplayName = rawDisplayName?.includes('@')
+            ? rawDisplayName.split('@')[0]
+            : rawDisplayName;
           result.set(user.id, {
-            displayName: user.fullName ?? user.username,
+            displayName: cleanDisplayName,
             avatarUrl: await this.media.resolve(avatarKey),
             equippedFrameUrl: await this.resolveEquippedFrameUrl(user.id),
-            username: user.username,
+            username: cleanUsername,
             displayId: user.displayId,
             level: stats?.level ?? 1,
             vipLevel: stats?.wealthLevel ?? 0,
