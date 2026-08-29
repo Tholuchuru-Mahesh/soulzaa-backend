@@ -87,6 +87,8 @@ export class SocketManager {
   // Namespace servers registered by each gateway's afterInit — lets non-gateway
   // callers (e.g. the session logout listener) target a user without a Server ref.
   private readonly servers = new Set<Server>();
+  // 15-second grace period timers for unexpected room socket disconnections
+  private readonly roomDisconnectTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly tokenService: TokenService,
@@ -157,6 +159,10 @@ export class SocketManager {
     const userId = this.userBySocket.get(client.id) ?? (client.data.user as AuthenticatedUser)?.id;
     if (!userId) return false;
 
+    // Check which rooms this disconnecting socket was joined into
+    const joinedRooms = client.data.activeRooms as Set<string> | undefined;
+    const socketNamespace = client.data.socketNamespace as string | undefined;
+
     try {
       const last = await this.presence.disconnect(userId, client.id);
 
@@ -165,6 +171,24 @@ export class SocketManager {
       if (sockets && sockets.size === 0) this.socketsByUser.delete(userId);
       this.userBySocket.delete(client.id);
       this.metrics.setConnectedClients(this.userBySocket.size);
+
+      // Handle room disconnect grace periods if the socket dropped unexpectedly
+      if (joinedRooms && joinedRooms.size > 0) {
+        for (const roomId of joinedRooms) {
+          if (isPersistedRoomId(roomId)) {
+            const timerKey = `${roomId}:${userId}`;
+            if (this.roomDisconnectTimers.has(timerKey)) {
+              clearTimeout(this.roomDisconnectTimers.get(timerKey)!);
+            }
+            const timeout = setTimeout(async () => {
+              this.roomDisconnectTimers.delete(timerKey);
+              await this.handleRoomDisconnectTimeout(roomId, userId, socketNamespace);
+            }, 15000);
+            timeout.unref();
+            this.roomDisconnectTimers.set(timerKey, timeout);
+          }
+        }
+      }
 
       // On the user's last socket, clear their room memberships from the store.
       if (last) {
@@ -186,6 +210,68 @@ export class SocketManager {
       this.metrics.setConnectedClients(this.userBySocket.size);
 
       return false;
+    }
+  }
+
+  /**
+   * Called when a disconnected socket's 15-second grace period expires without reconnection.
+   */
+  async handleRoomDisconnectTimeout(roomId: string, userId: string, namespace?: string): Promise<void> {
+    try {
+      // Check if user has reconnected and is currently active in the room
+      const stillActive = await this.presence.isInRoom(roomId, userId);
+      const liveSockets = this.socketsByUser.get(userId);
+      if (stillActive && liveSockets && liveSockets.size > 0) {
+        return;
+      }
+
+      await this.presence.leaveRoomEverywhere(roomId, userId);
+      const ns = namespace || '/audio-room';
+      this.emitToNamespaceRoom(ns, roomId, 'room:member_left', { roomId, userId });
+      this.emitToNamespaceRoom(ns, roomId, 'video_room:member_left', { roomId, userId });
+
+      if (isPersistedRoomId(roomId)) {
+        await this.bus.publish({
+          name: 'audio_room.force_leave',
+          payload: { roomId, userId },
+          timestamp: new Date(),
+        } as any);
+      }
+    } catch (err) {
+      this.logger.verbose(`Error in handleRoomDisconnectTimeout for ${userId} in ${roomId}: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Immediately ejects a user from all rooms without a grace period (used on logout, account switch, ban).
+   */
+  async leaveUserRoomsImmediately(userId: string): Promise<void> {
+    try {
+      // Cancel any pending timers for this user
+      for (const [key, timer] of this.roomDisconnectTimers.entries()) {
+        if (key.endsWith(`:${userId}`)) {
+          clearTimeout(timer);
+          this.roomDisconnectTimers.delete(key);
+        }
+      }
+
+      const rooms = await this.presence.userRooms(userId);
+      await Promise.all(
+        rooms.map(async (roomId) => {
+          await this.presence.leaveRoomEverywhere(roomId, userId);
+          this.emitToNamespaceRoom('/audio-room', roomId, 'room:member_left', { roomId, userId });
+          this.emitToNamespaceRoom('/video-room', roomId, 'video_room:member_left', { roomId, userId });
+          if (isPersistedRoomId(roomId)) {
+            await this.bus.publish({
+              name: 'audio_room.force_leave',
+              payload: { roomId, userId },
+              timestamp: new Date(),
+            } as any);
+          }
+        }),
+      );
+    } catch (err) {
+      this.logger.warn(`Failed to immediately leave rooms for user ${userId}: ${(err as Error).message}`);
     }
   }
 
@@ -222,6 +308,19 @@ export class SocketManager {
     }
 
     await client.join(roomId);
+
+    // Track active rooms for this socket connection
+    const activeRooms = (client.data.activeRooms ??= new Set<string>());
+    activeRooms.add(roomId);
+    client.data.socketNamespace = namespace;
+
+    // Cancel any pending disconnect grace timer for this user in this room
+    const timerKey = `${roomId}:${user.id}`;
+    const timer = this.roomDisconnectTimers.get(timerKey);
+    if (timer) {
+      clearTimeout(timer);
+      this.roomDisconnectTimers.delete(timerKey);
+    }
 
     // Incognito moderators (see INCOGNITO_MODERATION_NAMESPACES) must never
     // be added to public presence or announced here — this generic handler
@@ -329,6 +428,15 @@ export class SocketManager {
     const user = client.data.user as AuthenticatedUser;
     await client.leave(roomId);
     (client.data.spectatorRooms as Set<string> | undefined)?.delete(roomId);
+    (client.data.activeRooms as Set<string> | undefined)?.delete(roomId);
+
+    // Cancel any pending disconnect timer
+    const timerKey = `${roomId}:${user.id}`;
+    const timer = this.roomDisconnectTimers.get(timerKey);
+    if (timer) {
+      clearTimeout(timer);
+      this.roomDisconnectTimers.delete(timerKey);
+    }
 
     // Calculate room duration spent
     const joinedAt = client.data.roomJoinedAt?.[roomId] as number | undefined;
@@ -344,7 +452,7 @@ export class SocketManager {
       const durationMinutes = Math.max(1, Math.round(remainingSinceLast / 60000) || (remainingSinceLast >= 15000 ? 1 : 0));
       const durationSeconds = Math.round(remainingSinceLast / 1000);
 
-      if (durationMinutes > 0 || durationSeconds >= 15) {
+      if (isPersistedRoomId(roomId) && (durationMinutes > 0 || durationSeconds >= 15)) {
         try {
           await this.bus.publish({
             name: 'room.duration_updated',

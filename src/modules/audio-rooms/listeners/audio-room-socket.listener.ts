@@ -1,4 +1,5 @@
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { SocketManager } from 'src/infra/socket/socket.manager';
 import { AUDIO_ROOM_NAMESPACE, ROOM_SOCKET_EVENTS } from '../constants/audio-room.constants';
@@ -7,6 +8,7 @@ import {
   type RoomCreatedEvent,
   type RoomDeletedEvent,
   type RoomEndedEvent,
+  type RoomForceLeaveEvent,
   type RoomJoinedEvent,
   type RoomLeftEvent,
   type RoomLockedEvent,
@@ -33,6 +35,7 @@ import {
   type IProfileService,
 } from 'src/modules/users/interfaces/profile.interface';
 import { USER_EVENTS, type UserAvatarUpdatedEvent } from 'src/modules/users/events/user.events';
+import { AudioRoomsService } from '../services/audio-rooms.service';
 
 /**
  * Bridges audio-room domain events on the EVENT_BUS to realtime `room.*`
@@ -49,6 +52,7 @@ export class AudioRoomSocketListener implements OnModuleInit {
     private readonly repo: AudioRoomsRepository,
     private readonly presence: PresenceService,
     @Inject(PROFILE_SERVICE) private readonly profileService: IProfileService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   onModuleInit(): void {
@@ -104,6 +108,16 @@ export class AudioRoomSocketListener implements OnModuleInit {
         ...e.payload,
         ...payload,
       });
+    });
+    this.bus.subscribe<RoomForceLeaveEvent>(AUDIO_ROOM_EVENTS.FORCE_LEAVE, async (e) => {
+      try {
+        const audioRoomsService = this.moduleRef.get(AudioRoomsService, { strict: false });
+        if (audioRoomsService) {
+          await audioRoomsService.leave({ id: e.payload.userId, roles: [] }, e.payload.roomId);
+        }
+      } catch {
+        // non-fatal
+      }
     });
     this.bus.subscribe<RoomLockedEvent>(AUDIO_ROOM_EVENTS.LOCKED, (e) =>
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.LOCKED, e.payload),

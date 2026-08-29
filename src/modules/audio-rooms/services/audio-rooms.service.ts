@@ -651,6 +651,16 @@ export class AudioRoomsService implements IAudioRoomsService {
       return;
     }
 
+    // Vacate mic seat if the leaving user currently occupies one
+    try {
+      const seat = await this.seatsRepo.getSeatByOccupant(roomId, actor.id);
+      if (seat) {
+        await this.seatsService.leaveSeat(actor, roomId).catch(() => {});
+      }
+    } catch {
+      // non-fatal
+    }
+
     await this.presence.leaveRoom(roomId, actor.id);
     await this.repo.deactivateMember(roomId, actor.id, actor.id);
     await this.repo.removePresence(roomId, actor.id);

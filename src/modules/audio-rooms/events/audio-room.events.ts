@@ -17,6 +17,7 @@ export const AUDIO_ROOM_EVENTS = {
   ENDED: 'audio_room.ended',
   JOINED: 'audio_room.joined',
   LEFT: 'audio_room.left',
+  FORCE_LEAVE: 'audio_room.force_leave',
   LOCKED: 'audio_room.locked',
   OWNERSHIP_TRANSFERRED: 'audio_room.ownership_transferred',
 } as const;
@@ -122,6 +123,13 @@ export class RoomLeftEvent extends DomainEvent<{
   participantCount: number;
 }> {
   readonly name = AUDIO_ROOM_EVENTS.LEFT;
+}
+
+export class RoomForceLeaveEvent extends DomainEvent<{
+  roomId: string;
+  userId: string;
+}> {
+  readonly name = AUDIO_ROOM_EVENTS.FORCE_LEAVE;
 }
 
 export class RoomLockedEvent extends DomainEvent<{

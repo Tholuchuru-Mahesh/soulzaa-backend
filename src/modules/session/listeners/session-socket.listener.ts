@@ -19,6 +19,9 @@ export class SessionSocketListener implements OnModuleInit {
 
   onModuleInit(): void {
     this.bus.subscribe<SessionLoggedOutEvent>(SESSION_EVENTS.LOGGED_OUT, (event) => {
+      // Immediately purge room presence and vacate seats on logout
+      void this.sockets.leaveUserRoomsImmediately(event.payload.userId);
+
       if (event.payload.allDevices) {
         this.sockets.emitToUserEverywhere(event.payload.userId, 'auth:force_logout', {
           reason: event.payload.byAdmin ? 'ADMIN_FORCE_LOGOUT' : 'SESSION_REVOKED',
@@ -26,6 +29,8 @@ export class SessionSocketListener implements OnModuleInit {
         this.sockets.emitToUserEverywhere(event.payload.userId, 'moderator:force_logout', {
           reason: event.payload.byAdmin ? 'ADMIN_FORCE_LOGOUT' : 'SESSION_REVOKED',
         });
+        this.sockets.disconnectUserEverywhere(event.payload.userId);
+      } else {
         this.sockets.disconnectUserEverywhere(event.payload.userId);
       }
     });
