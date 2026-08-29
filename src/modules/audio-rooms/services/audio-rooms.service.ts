@@ -799,7 +799,7 @@ export class AudioRoomsService implements IAudioRoomsService {
       const identity = identities.get(m.userId);
       return {
         userId: m.userId,
-        username: identity?.username ?? null,
+        username: identity?.displayName || identity?.username || null,
         role: m.role,
         joinedAt: m.joinedAt,
         avatarUrl: identity?.avatarUrl ?? null,
@@ -849,7 +849,7 @@ export class AudioRoomsService implements IAudioRoomsService {
           roomImageKey: room?.imageKey ?? null,
           roomImageUrl: room?.imageKey ? await this.media.resolve(room.imageKey) : null,
           ownerId: room?.ownerId ?? '',
-          ownerName: owner?.username ?? 'Host',
+          ownerName: owner?.fullName || owner?.username || 'Host',
           role: m.role,
           joinedAt: m.joinedAt,
           leftAt: m.leftAt,
@@ -921,7 +921,7 @@ export class AudioRoomsService implements IAudioRoomsService {
           roomImageKey: room?.imageKey ?? null,
           roomImageUrl: room?.imageKey ? await this.media.resolve(room.imageKey) : null,
           ownerId: room?.ownerId ?? '',
-          ownerName: owner?.username ?? 'Host',
+          ownerName: owner?.fullName || owner?.username || 'Host',
           seatIndex: m.seatIndex,
           startedAt: m.startedAt,
           endedAt: m.endedAt,
