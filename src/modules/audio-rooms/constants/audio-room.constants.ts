@@ -168,6 +168,7 @@ export function roomSeatLockKey(roomId: string): string {
 
 /** The owner always occupies seat index 0. */
 export const OWNER_SEAT_INDEX = 0;
+export const PREMIUM_ADMIN_SEAT_INDEX = -1;
 
 /** A planned seat slot in the stage layout. */
 export interface SeatSlot {
@@ -176,15 +177,18 @@ export interface SeatSlot {
 }
 
 /**
- * Build the ordered seat layout: seat 0 is the OWNER seat, then `premiumCount`
- * PREMIUM_ADMIN seats, then `speakerCount` SPEAKER seats. Deterministic indices
- * so a layout change maps old→new seats predictably.
+ * Build the ordered seat layout:
+ * - Seat 0 is the OWNER seat (independent host seat).
+ * - Seats -1, -2... are PREMIUM_ADMIN seats (independent admin seats, like host seat).
+ * - Seats 1..N are SPEAKER seats (consistent speaker numbering 1..N).
  */
 export function buildSeatLayout(premiumCount: number, speakerCount: number): SeatSlot[] {
   const slots: SeatSlot[] = [{ seatIndex: OWNER_SEAT_INDEX, seatType: 'OWNER' }];
-  let index = 1;
-  for (let i = 0; i < premiumCount; i++)
-    slots.push({ seatIndex: index++, seatType: 'PREMIUM_ADMIN' });
-  for (let i = 0; i < speakerCount; i++) slots.push({ seatIndex: index++, seatType: 'SPEAKER' });
+  for (let i = 0; i < premiumCount; i++) {
+    slots.push({ seatIndex: -(i + 1), seatType: 'PREMIUM_ADMIN' });
+  }
+  for (let i = 1; i <= speakerCount; i++) {
+    slots.push({ seatIndex: i, seatType: 'SPEAKER' });
+  }
   return slots;
 }

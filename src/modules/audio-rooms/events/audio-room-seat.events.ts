@@ -98,6 +98,9 @@ export type SeatUpdateReason =
   | 'role_revoked'
   | 'speaker_removed'
   | 'invited'
+  | 'invite_accepted'
+  | 'invite_rejected'
+  | 'invite_expired'
   | 'seat_requested'
   | 'request_accepted'
   | 'request_rejected'
@@ -112,6 +115,9 @@ export class SeatUpdatedEvent extends DomainEvent<{
   seatIndex?: number | null;
   subjectUserId?: string | null;
   role?: RoomMemberRole | null;
+  invitationId?: string | null;
+  expiresAt?: string | null;
+  inviterName?: string | null;
 }> {
   readonly name = AUDIO_ROOM_SEAT_EVENTS.UPDATED;
 }

@@ -323,6 +323,17 @@ export class AudioRoomSeatsRepository {
     return this.prisma.seatInvitation.findUnique({ where: { id } });
   }
 
+  getActiveInvitation(roomId: string, userId: string): Promise<SeatInvitation | null> {
+    return this.prisma.seatInvitation.findFirst({
+      where: {
+        roomId,
+        inviteeUserId: userId,
+        status: SeatInvitationStatus.PENDING,
+        expiresAt: { gt: new Date() },
+      },
+    });
+  }
+
   async resolveInvitation(
     id: string,
     status: SeatInvitationStatus,

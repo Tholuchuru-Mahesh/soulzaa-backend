@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   AudioRoom,
@@ -13,6 +13,10 @@ import { MAX_AUDIO_SEATS } from 'src/common/constants/room.constants';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { LockService } from 'src/infra/redis/lock.service';
+import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
 import { OWNER_SEAT_INDEX, roomSeatLockKey } from '../constants/audio-room.constants';
 import { RoomPermission } from '../constants/room-permissions';
 import type { GrantableRole } from '../dto/grant-role.dto';
@@ -56,6 +60,7 @@ export class AudioRoomSeatsService {
     private readonly locks: LockService,
     private readonly config: ConfigService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    @Optional() @Inject(PROFILE_SERVICE) private readonly profiles?: IProfileService,
   ) {
     const cfg = this.config.get('audioRoom') as {
       cacheTtlSeconds: number | string;
@@ -393,7 +398,24 @@ export class AudioRoomSeatsService {
       action: SeatHistoryAction.INVITE_SENT,
       seatIndex: dto.seatIndex ?? null,
     });
-    await this.publishUpdate(roomId, actor.id, 'invited', dto.seatIndex ?? null, dto.userId);
+
+    let inviterName: string | null = null;
+    if (this.profiles) {
+      const idMap = await this.profiles.resolvePublicIdentities([actor.id]);
+      inviterName = idMap.get(actor.id)?.displayName || idMap.get(actor.id)?.username || null;
+    }
+
+    await this.publishUpdate(
+      roomId,
+      actor.id,
+      'invited',
+      dto.seatIndex ?? null,
+      dto.userId,
+      null,
+      invitation.id,
+      expiresAt.toISOString(),
+      inviterName,
+    );
     return { invitationId: invitation.id, expiresAt };
   }
 
@@ -424,6 +446,7 @@ export class AudioRoomSeatsService {
         actorId: actor.id,
         action: SeatHistoryAction.INVITE_EXPIRED,
       });
+      await this.publishUpdate(roomId, actor.id, 'invite_expired', null, actor.id);
       throw this.err(
         ERROR_CODES.SEAT_INVITATION_EXPIRED,
         'This invitation has expired.',
@@ -438,9 +461,11 @@ export class AudioRoomSeatsService {
         actorId: actor.id,
         action: SeatHistoryAction.INVITE_REJECTED,
       });
+      await this.publishUpdate(roomId, actor.id, 'invite_rejected', null, actor.id);
       return;
     }
 
+    let joinedSeatIndex: number = 0;
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
       await this.assertActiveMember(roomId, actor.id);
       if (await this.seats.getSeatByOccupant(roomId, actor.id)) {
@@ -458,6 +483,7 @@ export class AudioRoomSeatsService {
           HttpStatus.CONFLICT,
         );
       }
+      joinedSeatIndex = seat.seatIndex;
       await this.occupy(roomId, seat, actor.id, actor.id);
       await this.seats.resolveInvitation(invitationId, SeatInvitationStatus.ACCEPTED, actor.id);
       await this.seats.appendSeatHistory({
@@ -470,6 +496,7 @@ export class AudioRoomSeatsService {
         new SeatJoinedEvent({ roomId, userId: actor.id, seatIndex: seat.seatIndex }),
       );
     });
+    await this.publishUpdate(roomId, actor.id, 'invite_accepted', joinedSeatIndex, actor.id);
     await this.rebuildStage(roomId);
   }
 
@@ -492,13 +519,17 @@ export class AudioRoomSeatsService {
       if (current?.seatIndex === seatIndex) return;
 
       // Approval requirement applies only to listeners joining stage from audience/queue,
-      // not to already approved seated speakers moving between available speaker seats.
+      // not to already approved seated speakers moving between available speaker seats,
+      // and not to users with an active pending invitation.
       if (!current && settings.requireApprovalForSeat && !canManage) {
-        throw this.err(
-          ERROR_CODES.NOT_ROOM_ADMIN,
-          'This room requires approval to take a seat — send a request instead.',
-          HttpStatus.FORBIDDEN,
-        );
+        const activeInvite = await this.seats.getActiveInvitation(roomId, actor.id);
+        if (!activeInvite) {
+          throw this.err(
+            ERROR_CODES.NOT_ROOM_ADMIN,
+            'This room requires approval to take a seat — send a request instead.',
+            HttpStatus.FORBIDDEN,
+          );
+        }
       }
 
       const seat = await this.requireSeat(roomId, seatIndex);
@@ -519,6 +550,18 @@ export class AudioRoomSeatsService {
         await this.vacate(roomId, current, actor.id, actor.id, SeatHistoryAction.SEAT_MOVED);
       }
       await this.occupy(roomId, seat, actor.id, actor.id);
+
+      // If user had a pending invitation, resolve it to accepted
+      const activeInvite = await this.seats.getActiveInvitation(roomId, actor.id);
+      if (activeInvite) {
+        await this.seats.resolveInvitation(activeInvite.id, SeatInvitationStatus.ACCEPTED, actor.id);
+        await this.seats.appendSeatHistory({
+          roomId,
+          actorId: actor.id,
+          action: SeatHistoryAction.INVITE_ACCEPTED,
+          seatIndex: seat.seatIndex,
+        });
+      }
 
       // A move is one `moved` update, not a leave/join pair — matching
       // moveSpeaker. The pair would read as the owner dropping off the stage and
@@ -1149,9 +1192,22 @@ export class AudioRoomSeatsService {
     seatIndex: number | null = null,
     subjectUserId: string | null = null,
     role: RoomMemberRole | null = null,
+    invitationId: string | null = null,
+    expiresAt: string | null = null,
+    inviterName: string | null = null,
   ): Promise<void> {
     await this.bus.publish(
-      new SeatUpdatedEvent({ roomId, actorId, reason, seatIndex, subjectUserId, role }),
+      new SeatUpdatedEvent({
+        roomId,
+        actorId,
+        reason,
+        seatIndex,
+        subjectUserId,
+        role,
+        invitationId,
+        expiresAt,
+        inviterName,
+      }),
     );
   }
 

@@ -76,6 +76,10 @@ describe('AudioRoomSeatsService', () => {
       getCachedStage: jest.fn().mockResolvedValue(null),
       invalidateStage: jest.fn().mockResolvedValue(undefined),
       reconfigureLayoutTx: jest.fn().mockResolvedValue({ displaced: [] }),
+      createInvitation: jest.fn().mockResolvedValue({ id: 'inv-1' }),
+      getInvitation: jest.fn(),
+      getActiveInvitation: jest.fn().mockResolvedValue(null),
+      resolveInvitation: jest.fn().mockResolvedValue(undefined),
     };
     permissions = {
       assertPermission: jest.fn().mockResolvedValue(undefined),
