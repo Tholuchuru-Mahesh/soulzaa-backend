@@ -56,9 +56,19 @@ export class AudioRoomSocketListener implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.bus.subscribe<RoomCreatedEvent>(AUDIO_ROOM_EVENTS.CREATED, (e) =>
-      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.CREATED, e.payload),
-    );
+    // A brand-new room has no channel yet for a room-scoped emit to reach —
+    // its only member is the owner who just created it, and nobody has ever
+    // joined its socket room. Discovery screens (home/explore) hold no room
+    // channel either, so they are exactly the audience a namespace-wide emit
+    // is for here, mirroring STARTED/PROFILE_UPDATED below.
+    this.bus.subscribe<RoomCreatedEvent>(AUDIO_ROOM_EVENTS.CREATED, (e) => {
+      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.CREATED, e.payload);
+      this.sockets.emitToNamespace(
+        AUDIO_ROOM_NAMESPACE,
+        ROOM_SOCKET_EVENTS.CREATED,
+        e.payload,
+      );
+    });
     this.bus.subscribe<RoomUpdatedEvent>(AUDIO_ROOM_EVENTS.UPDATED, (e) =>
       this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.UPDATED, e.payload),
     );
@@ -75,12 +85,28 @@ export class AudioRoomSocketListener implements OnModuleInit {
         e.payload,
       ),
     );
-    this.bus.subscribe<RoomDeletedEvent>(AUDIO_ROOM_EVENTS.DELETED, (e) =>
-      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.DELETED, e.payload),
-    );
-    this.bus.subscribe<RoomEndedEvent>(AUDIO_ROOM_EVENTS.ENDED, (e) =>
-      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.CLOSED, e.payload),
-    );
+    // The mirror image of CREATED above: a room leaving the lobby has to reach
+    // the same discovery audience that never joined its channel, or a deleted/
+    // ended room keeps sitting on Home/Explore until the next manual refresh.
+    // The mobile client already listens for both DELETED and CLOSED at the
+    // namespace level (see RoomRealtimeController._ensureConnected) — this was
+    // the missing half.
+    this.bus.subscribe<RoomDeletedEvent>(AUDIO_ROOM_EVENTS.DELETED, (e) => {
+      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.DELETED, e.payload);
+      this.sockets.emitToNamespace(
+        AUDIO_ROOM_NAMESPACE,
+        ROOM_SOCKET_EVENTS.DELETED,
+        e.payload,
+      );
+    });
+    this.bus.subscribe<RoomEndedEvent>(AUDIO_ROOM_EVENTS.ENDED, (e) => {
+      this.emit(e.payload.roomId, ROOM_SOCKET_EVENTS.CLOSED, e.payload);
+      this.sockets.emitToNamespace(
+        AUDIO_ROOM_NAMESPACE,
+        ROOM_SOCKET_EVENTS.CLOSED,
+        e.payload,
+      );
+    });
     // A room going live is the one lifecycle fact that cannot be delivered
     // room-scoped: the clients that need it most are exactly the ones this room
     // ejected when it closed, and they left the room's channel on the way out.
