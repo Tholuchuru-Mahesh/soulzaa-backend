@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TreasureBoxStatus, TreasureSessionStatus } from '@prisma/client';
 import { EVENT_BUS } from 'src/common/events';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import { LockService } from 'src/infra/redis/lock.service';
 import { ConfigurationEngineService } from 'src/modules/platform-configuration/services/configuration-engine.service';
 import { WALLET_SERVICE } from 'src/modules/wallet/interfaces/wallet.service.interface';
@@ -124,6 +125,10 @@ describe('Phase 6: Enterprise Treasure Box Engine', () => {
         TreasureEventService,
         TreasureResetService,
         { provide: PrismaService, useValue: mockPrismaService },
+        {
+          provide: MediaUrlResolver,
+          useValue: { resolve: jest.fn((k: string | null) => Promise.resolve(k ?? null)) },
+        },
         { provide: ConfigurationEngineService, useValue: mockPlatformConfigService },
         { provide: WALLET_SERVICE, useValue: mockWalletService },
         { provide: EVENT_BUS, useValue: mockEventBus },
@@ -305,36 +310,53 @@ describe('Phase 6: Enterprise Treasure Box Engine', () => {
       expect(eligible.map((e) => e.userId)).toEqual(['u1', 'u2']);
     });
 
-    it('should reward the top 3 contributors with exclusive Backpack items and credit no wallets', async () => {
-      mockPrismaService.treasureBoxConfig.findUnique.mockResolvedValue(null);
+    it('distributes exactly the rewards configured for the level (cosmetics + free coins)', async () => {
+      mockPrismaService.treasureBoxConfig.findUnique.mockResolvedValue({
+        level: 1,
+        threshold: BigInt(15_000),
+        rewards: [
+          {
+            rank: 1,
+            kind: 'BACKPACK_ITEM',
+            itemType: 'THEME',
+            itemRefId: 'cos-theme-1',
+            itemName: 'Aurora Room Theme',
+          },
+          { rank: 2, kind: 'COINS', coins: 5000 },
+        ],
+      });
 
       mockTreasureRepository.topContributors.mockResolvedValue([
         { userId: 'u1', total: BigInt(5000) },
         { userId: 'u2', total: BigInt(3000) },
-        { userId: 'u3', total: BigInt(2000) },
       ]);
 
       mockRewardDistributor.distribute.mockResolvedValue([
         {
           userId: 'u1',
           rank: 1,
+          kind: 'BACKPACK_ITEM',
+          coins: null,
           itemType: 'THEME',
-          itemName: 'Bronze Entry Theme',
+          itemName: 'Aurora Room Theme',
+          itemRefId: 'cos-theme-1',
+          mediaUrl: 'https://cdn/theme.png',
+          thumbnailUrl: 'https://cdn/theme-thumb.png',
+          walletTxnId: null,
           backpackItemId: 'bp-1',
         },
         {
           userId: 'u2',
           rank: 2,
-          itemType: 'FRAME',
-          itemName: 'Bronze Profile Frame',
-          backpackItemId: 'bp-2',
-        },
-        {
-          userId: 'u3',
-          rank: 3,
-          itemType: 'BADGE',
-          itemName: 'Bronze Contributor Badge',
-          backpackItemId: 'bp-3',
+          kind: 'COINS',
+          coins: BigInt(5000),
+          itemType: null,
+          itemName: null,
+          itemRefId: null,
+          mediaUrl: null,
+          thumbnailUrl: null,
+          walletTxnId: 'w-tx-1',
+          backpackItemId: null,
         },
       ]);
 
@@ -342,19 +364,30 @@ describe('Phase 6: Enterprise Treasure Box Engine', () => {
 
       const dist = await distributionService.distributeBoxRewards('sess-1', 'box-1', 'room-1', 1);
 
-      expect(mockTreasureRepository.topContributors).toHaveBeenCalledWith('box-1', 3);
-      expect(dist.winnersCount).toBe(3);
-      expect(dist.distributions.every((d) => d.kind === 'BACKPACK_ITEM')).toBe(true);
-
-      // Every winner gets an immutable audit row carrying no coin value.
-      expect(mockPrismaService.treasureReward.create).toHaveBeenCalledTimes(3);
-      expect(mockPrismaService.treasureReward.create).toHaveBeenCalledWith(
+      expect(mockRewardDistributor.distribute).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ kind: 'BACKPACK_ITEM', coins: null }),
+          rewards: expect.arrayContaining([
+            expect.objectContaining({ rank: 1, itemRefId: 'cos-theme-1' }),
+            expect.objectContaining({ rank: 2, kind: 'COINS', coins: 5000 }),
+          ]),
         }),
       );
+      expect(dist.winnersCount).toBe(2);
+      expect(dist.distributions[0].thumbnailUrl).toBe('https://cdn/theme-thumb.png');
+      expect(mockPrismaService.treasureReward.create).toHaveBeenCalledTimes(2);
+    });
 
-      // Contract of TreasureDistributionService: zero wallet credit transactions.
+    it('distributes nothing when the level has no configured rewards (no hardcoded fallback)', async () => {
+      mockPrismaService.treasureBoxConfig.findUnique.mockResolvedValue(null);
+      mockTreasureRepository.topContributors.mockResolvedValue([
+        { userId: 'u1', total: BigInt(5000) },
+      ]);
+
+      const dist = await distributionService.distributeBoxRewards('sess-1', 'box-1', 'room-1', 1);
+
+      expect(dist.winnersCount).toBe(0);
+      expect(dist.distributions).toEqual([]);
+      expect(mockRewardDistributor.distribute).not.toHaveBeenCalled();
       expect(mockWalletService.credit).not.toHaveBeenCalled();
     });
 

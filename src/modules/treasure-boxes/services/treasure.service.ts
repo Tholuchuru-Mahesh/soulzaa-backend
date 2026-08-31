@@ -830,6 +830,17 @@ export class TreasureService implements ITreasureBoxesService {
     }
   }
 
+  /**
+   * Joins every configured reward for a rank into a single label (a rank may
+   * carry multiple rewards). Returns null when the rank has none.
+   */
+  private rewardLabelForRank(rewardEntries: any[], rank: number): string | null {
+    const parts = (rewardEntries ?? [])
+      .filter((r) => r.rank === rank)
+      .map((r) => (r.kind === 'BACKPACK_ITEM' ? (r.itemName ?? 'Reward') : `${r.coins} Gold`));
+    return parts.length > 0 ? parts.join(' + ') : null;
+  }
+
   private rewardSummaries(
     distributed: {
       userId: string;
@@ -837,6 +848,11 @@ export class TreasureService implements ITreasureBoxesService {
       kind: TreasureRewardKind;
       coins: bigint | null;
       itemName: string | null;
+      itemType?: string | null;
+      itemRefId?: string | null;
+      mediaUrl?: string | null;
+      thumbnailUrl?: string | null;
+      expiresAt?: Date | null;
     }[],
   ): RewardSummary[] {
     return distributed.map((d) => ({
@@ -845,6 +861,11 @@ export class TreasureService implements ITreasureBoxesService {
       kind: d.kind,
       coins: d.coins !== null ? Number(d.coins) : null,
       itemName: d.itemName,
+      itemType: d.itemType ?? null,
+      itemRefId: d.itemRefId ?? null,
+      mediaUrl: d.mediaUrl ?? null,
+      thumbnailUrl: d.thumbnailUrl ?? null,
+      expiresAt: d.expiresAt ? d.expiresAt.toISOString() : null,
     }));
   }
 
@@ -918,7 +939,10 @@ export class TreasureService implements ITreasureBoxesService {
     currentUserId: string,
   ): Promise<any[]> {
     const boxes = await this.repo.listBoxes(sessionId);
-    const configs = await this.repo.listEnabledConfigs();
+    const configs =
+      typeof this.repo.listConfigs === 'function'
+        ? await this.repo.listConfigs()
+        : await this.repo.listEnabledConfigs();
     const configMap = new Map(configs.map((c) => [c.level, c]));
 
     const userIdsSet = new Set<string>();
@@ -961,12 +985,7 @@ export class TreasureService implements ITreasureBoxesService {
         }
         topGifters = gifters.map((g) => {
           const profile = profileMap.get(g.userId);
-          const reward = rewardEntries.find((r) => r.rank === g.rank);
-          const rewardLabel = reward
-            ? reward.kind === 'BACKPACK_ITEM'
-              ? reward.itemName
-              : `${reward.coins} Gold`
-            : null;
+          const rewardLabel = this.rewardLabelForRank(rewardEntries, g.rank);
           return {
             rank: g.rank,
             userId: g.userId,
@@ -985,12 +1004,7 @@ export class TreasureService implements ITreasureBoxesService {
         topGifters = totals.map((t, i) => {
           const rank = i + 1;
           const profile = profileMap.get(t.userId);
-          const reward = rewardEntries.find((r) => r.rank === rank);
-          const rewardLabel = reward
-            ? reward.kind === 'BACKPACK_ITEM'
-              ? reward.itemName
-              : `${reward.coins} Gold`
-            : null;
+          const rewardLabel = this.rewardLabelForRank(rewardEntries, rank);
           return {
             rank,
             userId: t.userId,

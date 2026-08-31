@@ -110,6 +110,15 @@ export class TreasureController {
     return this.configService.getAllLevelConfigs();
   }
 
+  @Get(':id/treasure/reward-config')
+  @ApiOperation({
+    summary: 'Configured prize list per box (rank → reward), with resolved asset art',
+  })
+  @ApiResponse({ status: 200, description: 'Per-level configured rewards' })
+  rewardConfig() {
+    return this.configService.getAllLevelRewardViews();
+  }
+
   @Get(':id/treasure/audit')
   @ApiOperation({ summary: 'Treasure audit event log' })
   @ApiResponse({ status: 200, description: 'Audit log' })

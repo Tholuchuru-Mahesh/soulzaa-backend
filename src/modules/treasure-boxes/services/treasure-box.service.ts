@@ -12,6 +12,7 @@ export interface BoxStatusView {
   progress: number | string;
   status: TreasureBoxStatus | string;
   topGifters?: any;
+  rewards?: any;
   openedAt?: Date | string | null;
 }
 
@@ -123,22 +124,39 @@ export class TreasureBoxService {
     }
 
     if (activeSession) {
-      const boxes = await this.prisma.treasureBox.findMany({
-        where: { sessionId: activeSession.id },
-        orderBy: { level: 'asc' },
-      });
+      const [boxes, configs, rewardViews] = await Promise.all([
+        this.prisma.treasureBox.findMany({
+          where: { sessionId: activeSession.id },
+          orderBy: { level: 'asc' },
+        }),
+        this.configService.getAllLevelConfigs(),
+        this.configService.getAllLevelRewardViews(),
+      ]);
 
-      const formattedBoxes = boxes.map((b) => ({
-        id: b.id,
-        sessionId: b.sessionId,
-        roomId: b.roomId,
-        level: b.level,
-        threshold: Number(b.threshold),
-        progress: Number(b.progress),
-        status: b.status,
-        topGifters: (b.topGifters as any) ?? [],
-        openedAt: b.openedAt ? b.openedAt.toISOString() : null,
-      }));
+      const configMap = new Map(configs.map((c) => [c.level, c]));
+      const rewardsByLevel = new Map(rewardViews.map((v) => [v.level, v.rewards]));
+
+      const formattedBoxes = boxes.map((b) => {
+        const liveCfg = configMap.get(b.level);
+        const threshold =
+          b.status === 'OPENED'
+            ? Number(b.threshold)
+            : liveCfg
+              ? Number(liveCfg.threshold)
+              : Number(b.threshold);
+        return {
+          id: b.id,
+          sessionId: b.sessionId,
+          roomId: b.roomId,
+          level: b.level,
+          threshold,
+          progress: Number(b.progress),
+          status: b.status,
+          topGifters: (b.topGifters as any) ?? [],
+          rewards: rewardsByLevel.get(b.level) ?? [],
+          openedAt: b.openedAt ? b.openedAt.toISOString() : null,
+        };
+      });
 
       const activeBox = formattedBoxes.find((b) => b.level === activeSession.currentLevel) ?? null;
 
@@ -172,10 +190,14 @@ export class TreasureBoxService {
     });
 
     if (completedToday) {
-      const boxes = await this.prisma.treasureBox.findMany({
-        where: { sessionId: completedToday.id },
-        orderBy: { level: 'asc' },
-      });
+      const [boxes, rewardViews] = await Promise.all([
+        this.prisma.treasureBox.findMany({
+          where: { sessionId: completedToday.id },
+          orderBy: { level: 'asc' },
+        }),
+        this.configService.getAllLevelRewardViews(),
+      ]);
+      const rewardsByLevel = new Map(rewardViews.map((v) => [v.level, v.rewards]));
 
       const formattedBoxes = boxes.map((b) => ({
         id: b.id,
@@ -186,6 +208,7 @@ export class TreasureBoxService {
         progress: Number(b.progress),
         status: b.status,
         topGifters: (b.topGifters as any) ?? [],
+        rewards: rewardsByLevel.get(b.level) ?? [],
         openedAt: b.openedAt ? b.openedAt.toISOString() : null,
       }));
 

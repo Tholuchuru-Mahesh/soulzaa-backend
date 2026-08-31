@@ -60,4 +60,9 @@ export interface RewardEntry {
   itemName?: string;
   itemRefId?: string;
   transferable?: boolean;
+  /**
+   * Days the granted cosmetic stays with the winner before it expires and is
+   * removed. `0` or omitted means permanent. Ignored for COINS.
+   */
+  ttlDays?: number;
 }

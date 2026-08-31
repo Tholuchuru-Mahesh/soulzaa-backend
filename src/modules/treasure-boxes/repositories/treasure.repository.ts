@@ -45,27 +45,42 @@ export class TreasureRepository {
     return this.prisma.treasureBoxConfig.findUnique({ where: { level } });
   }
 
-  upsertConfig(
+  async upsertConfig(
     level: number,
     data: { threshold: bigint; rewards: Prisma.InputJsonValue; enabled: boolean },
     actorId: string,
   ): Promise<TreasureBoxConfig> {
-    return this.prisma.treasureBoxConfig.upsert({
+    const config = await this.prisma.treasureBoxConfig.upsert({
       where: { level },
       create: { level, ...data, ...auditCreate(actorId) },
       update: { ...data, ...auditUpdate(actorId) },
     });
+    // Sync uncompleted boxes in active sessions with the new threshold
+    await this.prisma.treasureBox.updateMany({
+      where: {
+        level,
+        status: { in: [TreasureBoxStatus.PENDING, TreasureBoxStatus.ACTIVE] },
+      },
+      data: { threshold: data.threshold },
+    });
+    return config;
   }
 
+  /**
+   * Inserts a level's baseline config only when it does not already exist.
+   * Never overwrites an existing row — operator threshold/reward tuning done via
+   * the admin API must survive restarts and deploys. Returns whether a row was
+   * created.
+   */
   async seedConfig(
     level: number,
     threshold: bigint,
     rewards: Prisma.InputJsonValue,
   ): Promise<boolean> {
-    await this.prisma.treasureBoxConfig.upsert({
-      where: { level },
-      create: { level, threshold, rewards, enabled: true },
-      update: { threshold, rewards },
+    const existing = await this.prisma.treasureBoxConfig.findUnique({ where: { level } });
+    if (existing) return false;
+    await this.prisma.treasureBoxConfig.create({
+      data: { level, threshold, rewards, enabled: true },
     });
     return true;
   }

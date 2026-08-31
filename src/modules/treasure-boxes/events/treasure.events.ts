@@ -32,6 +32,15 @@ export interface RewardSummary {
   kind: string;
   coins: number | null;
   itemName: string | null;
+  /** Equippable cosmetic type (FRAME/THEME/ENTRANCE_EFFECT) for BACKPACK_ITEM. */
+  itemType: string | null;
+  /** Catalog cosmetic id the reward granted, if any. */
+  itemRefId: string | null;
+  /** Resolved, servable media/thumbnail URLs for the granted cosmetic. */
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  /** ISO timestamp when the granted cosmetic expires, or null for permanent. */
+  expiresAt: string | null;
 }
 
 export class TreasureSessionStartedEvent extends DomainEvent<{

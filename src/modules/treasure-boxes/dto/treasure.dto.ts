@@ -6,6 +6,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -17,6 +18,18 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { TREASURE_BOX_COUNT } from '../constants/treasure.constants';
+
+/**
+ * The backpack item types a treasure box / rocket may award. Restricted to the
+ * equippable cosmetic kinds the Super Admin panel exposes — room themes, entry
+ * effects and profile frames. Every one must resolve to an existing enabled
+ * `Cosmetic` (see `itemRefId`); nothing is a free-text placeholder.
+ */
+export const TREASURE_REWARD_ITEM_TYPES = [
+  BackpackItemType.FRAME,
+  BackpackItemType.THEME,
+  BackpackItemType.ENTRANCE_EFFECT,
+] as const;
 
 /** One reward in a box/rocket reward list (COINS or BACKPACK_ITEM at a rank). */
 export class RewardEntryDto {
@@ -31,34 +44,57 @@ export class RewardEntryDto {
   @IsEnum({ COINS: 'COINS', BACKPACK_ITEM: 'BACKPACK_ITEM' })
   kind!: 'COINS' | 'BACKPACK_ITEM';
 
-  @ApiPropertyOptional({ minimum: 1, description: 'Gold coins (kind=COINS).' })
+  @ApiPropertyOptional({ minimum: 1, description: 'Free in-game gold coins (kind=COINS).' })
   @ValidateIf((o: RewardEntryDto) => o.kind === 'COINS')
   @Type(() => Number)
   @IsInt()
   @Min(1)
   coins?: number;
 
-  @ApiPropertyOptional({ enum: BackpackItemType, description: 'Item type (kind=BACKPACK_ITEM).' })
+  @ApiPropertyOptional({
+    enum: TREASURE_REWARD_ITEM_TYPES,
+    description: 'Equippable cosmetic type (kind=BACKPACK_ITEM).',
+  })
   @ValidateIf((o: RewardEntryDto) => o.kind === 'BACKPACK_ITEM')
-  @IsEnum(BackpackItemType)
+  @IsIn(TREASURE_REWARD_ITEM_TYPES as readonly string[])
   itemType?: BackpackItemType;
 
-  @ApiPropertyOptional({ description: 'Item display name (kind=BACKPACK_ITEM).' })
+  @ApiPropertyOptional({
+    description:
+      'Catalog cosmetic id this reward grants (kind=BACKPACK_ITEM). Required — the admin ' +
+      'picks an existing asset; the display name is derived from it server-side.',
+  })
   @ValidateIf((o: RewardEntryDto) => o.kind === 'BACKPACK_ITEM')
+  @IsUUID()
+  itemRefId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Server-derived display name for the granted cosmetic (ignored on write).',
+  })
+  @IsOptional()
   @IsString()
   @MaxLength(80)
   itemName?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  itemRefId?: string;
 
   @ApiPropertyOptional({ default: false })
   @IsOptional()
   @IsBoolean()
   transferable?: boolean;
+
+  @ApiPropertyOptional({
+    minimum: 0,
+    default: 0,
+    description:
+      'Days the granted cosmetic stays with the winner before it expires and is ' +
+      'removed. 0 (or omitted) = permanent. Ignored for COINS.',
+  })
+  @ValidateIf((o: RewardEntryDto) => o.kind === 'BACKPACK_ITEM')
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(3650)
+  ttlDays?: number;
 }
 
 /** Admin: create/replace a treasure box level config (level 1..5). */

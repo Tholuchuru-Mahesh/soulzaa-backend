@@ -153,10 +153,11 @@ export class TreasureEventService implements OnModuleInit {
       // Construct room system announcement text
       const medals = ['🥇', '🥈', '🥉'];
       const winnerLines = dist.distributions
-        .map(
-          (d, idx) =>
-            `${medals[idx] || '🎖️'} Rank ${d.rank} won ${d.itemName || 'Exclusive Reward'}`,
-        )
+        .map((d, idx) => {
+          const label =
+            d.kind === 'COINS' ? `${d.coins ?? 0} Free Coins` : d.itemName || 'Exclusive Reward';
+          return `${medals[idx] || '🎖️'} Rank ${d.rank} won ${label}`;
+        })
         .join('  ');
 
       const _announcementContent = `🎁 Treasure Box Level ${completed.level} Opened! ${winnerLines}`;
@@ -175,9 +176,14 @@ export class TreasureEventService implements OnModuleInit {
           rewards: dist.distributions.map((d) => ({
             userId: d.userId,
             rank: d.rank,
-            kind: 'BACKPACK_ITEM',
-            coins: null,
+            kind: d.kind,
+            coins: d.coins !== null ? Number(d.coins) : null,
             itemName: d.itemName,
+            itemType: d.itemType,
+            itemRefId: d.itemRefId,
+            mediaUrl: d.mediaUrl,
+            thumbnailUrl: d.thumbnailUrl,
+            expiresAt: d.expiresAt ? d.expiresAt.toISOString() : null,
           })),
           nextLevel: completed.level < 5 ? completed.level + 1 : null,
         }),

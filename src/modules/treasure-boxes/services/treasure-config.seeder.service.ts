@@ -1,136 +1,22 @@
 import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
-import { BackpackItemType, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { TreasureRepository } from '../repositories/treasure.repository';
-import type { RewardEntry } from '../constants/treasure.constants';
 
 /**
- * Seeds the 5-level treasure box ladder on a fresh database (thresholds ascending
- * per the PRD, Top-3 coin rewards, plus a collectible frame for the rank-1 gifter
- * on the higher boxes). Idempotent by level — operators tune thresholds/rewards
- * via the admin config API. A treasure session cannot start until all 5 levels
- * are configured, so this guarantees the feature is usable out of the box.
+ * Seeds the 5-level treasure box ladder on a fresh database (ascending gift-value
+ * thresholds per the PRD). Rewards are intentionally NOT seeded — they are
+ * configured entirely from the Super Admin panel by picking existing catalog
+ * assets (room themes / entry effects / profile frames) or setting a free-coin
+ * amount. A level with no configured rewards simply distributes nothing when its
+ * box opens. Idempotent by level: thresholds are only inserted, never overwritten,
+ * so operator tuning via the admin API is preserved across restarts.
  */
-const SEED_LEVELS: { level: number; threshold: number; rewards: RewardEntry[] }[] = [
-  {
-    level: 1,
-    threshold: 15_000,
-    rewards: [
-      {
-        rank: 1,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.THEME,
-        itemName: 'Bronze Entry Theme',
-      },
-      {
-        rank: 2,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.FRAME,
-        itemName: 'Bronze Profile Frame',
-      },
-      {
-        rank: 3,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.BADGE,
-        itemName: 'Bronze Contributor Badge',
-      },
-    ],
-  },
-  {
-    level: 2,
-    threshold: 60_000,
-    rewards: [
-      {
-        rank: 1,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.THEME,
-        itemName: 'Silver Entry Theme',
-      },
-      {
-        rank: 2,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.FRAME,
-        itemName: 'Silver Profile Frame',
-      },
-      {
-        rank: 3,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.BADGE,
-        itemName: 'Silver Contributor Badge',
-      },
-    ],
-  },
-  {
-    level: 3,
-    threshold: 120_000,
-    rewards: [
-      {
-        rank: 1,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.THEME,
-        itemName: 'Gold Entry Theme',
-      },
-      {
-        rank: 2,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.FRAME,
-        itemName: 'Gold Profile Frame',
-      },
-      {
-        rank: 3,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.BADGE,
-        itemName: 'Gold Contributor Badge',
-      },
-    ],
-  },
-  {
-    level: 4,
-    threshold: 300_000,
-    rewards: [
-      {
-        rank: 1,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.THEME,
-        itemName: 'Platinum Entry Theme',
-      },
-      {
-        rank: 2,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.FRAME,
-        itemName: 'Platinum Profile Frame',
-      },
-      {
-        rank: 3,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.BADGE,
-        itemName: 'Platinum Contributor Badge',
-      },
-    ],
-  },
-  {
-    level: 5,
-    threshold: 500_000,
-    rewards: [
-      {
-        rank: 1,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.THEME,
-        itemName: 'Diamond Entry Theme',
-      },
-      {
-        rank: 2,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.FRAME,
-        itemName: 'Diamond Profile Frame',
-      },
-      {
-        rank: 3,
-        kind: 'BACKPACK_ITEM',
-        itemType: BackpackItemType.BADGE,
-        itemName: 'Diamond Contributor Badge',
-      },
-    ],
-  },
+const SEED_THRESHOLDS: { level: number; threshold: number }[] = [
+  { level: 1, threshold: 15_000 },
+  { level: 2, threshold: 60_000 },
+  { level: 3, threshold: 120_000 },
+  { level: 4, threshold: 300_000 },
+  { level: 5, threshold: 500_000 },
 ];
 
 @Injectable()
@@ -142,15 +28,15 @@ export class TreasureConfigSeeder implements OnApplicationBootstrap {
   async onApplicationBootstrap(): Promise<void> {
     try {
       let created = 0;
-      for (const l of SEED_LEVELS) {
+      for (const l of SEED_THRESHOLDS) {
         const inserted = await this.repo.seedConfig(
           l.level,
           BigInt(l.threshold),
-          l.rewards as unknown as Prisma.InputJsonValue,
+          [] as unknown as Prisma.InputJsonValue,
         );
         if (inserted) created += 1;
       }
-      if (created > 0) this.logger.log(`Seeded ${created} treasure box level configs`);
+      if (created > 0) this.logger.log(`Seeded ${created} treasure box level thresholds`);
     } catch (err) {
       this.logger.warn(`Treasure config seed skipped: ${(err as Error).message}`);
     }

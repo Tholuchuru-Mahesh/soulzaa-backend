@@ -174,6 +174,11 @@ export class RocketService {
       kind: TreasureRewardKind;
       coins: bigint | null;
       itemName: string | null;
+      itemType?: string | null;
+      itemRefId?: string | null;
+      mediaUrl?: string | null;
+      thumbnailUrl?: string | null;
+      expiresAt?: Date | null;
     }[],
   ): RewardSummary[] {
     return distributed.map((d) => ({
@@ -182,6 +187,11 @@ export class RocketService {
       kind: d.kind,
       coins: d.coins !== null ? Number(d.coins) : null,
       itemName: d.itemName,
+      itemType: d.itemType ?? null,
+      itemRefId: d.itemRefId ?? null,
+      mediaUrl: d.mediaUrl ?? null,
+      thumbnailUrl: d.thumbnailUrl ?? null,
+      expiresAt: d.expiresAt ? d.expiresAt.toISOString() : null,
     }));
   }
 

@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   BackpackItemSource,
-  BackpackItemType,
   TreasureRewardKind,
   TreasureRewardStatus,
   WalletTxnReason,
@@ -10,20 +9,27 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { RewardDistributor } from './reward-distributor.service';
 import { TreasureConfigurationService } from './treasure-configuration.service';
 import { TreasureRepository } from '../repositories/treasure.repository';
+import type { RewardEntry } from '../constants/treasure.constants';
 
-export interface DistributedItemReward {
+export interface DistributedBoxReward {
   userId: string;
   rank: number;
-  kind: 'BACKPACK_ITEM';
+  kind: TreasureRewardKind;
+  coins: bigint | null;
   itemType: string | null;
   itemName: string | null;
+  itemRefId: string | null;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+  expiresAt: Date | null;
   backpackItemId: string | null;
+  walletTxnId: string | null;
 }
 
 export interface DistributionResult {
   boxId: string;
   winnersCount: number;
-  distributions: DistributedItemReward[];
+  distributions: DistributedBoxReward[];
 }
 
 @Injectable()
@@ -38,8 +44,10 @@ export class TreasureDistributionService {
   ) {}
 
   /**
-   * Calculates Top 3 Contributors for this specific box and rewards them with exclusive Backpack Inventory items.
-   * NO COINS ARE DISTRIBUTED. ZERO WALLET CREDIT TRANSACTIONS.
+   * Calculates the Top Contributors for this specific box and rewards them with
+   * the rewards configured for this level in the Super Admin panel (room themes,
+   * entry effects, profile frames, free in-game coins). Nothing is hardcoded — a
+   * level with no configured rewards distributes nothing.
    */
   async distributeBoxRewards(
     sessionId: string,
@@ -60,63 +68,20 @@ export class TreasureDistributionService {
       userId: t.userId,
     }));
 
-    // 2. Fetch configurable rewards for this level
-    let rewards = await this.configService.getLevelRewards(level);
-
+    // 2. Fetch the rewards configured for this level (Super Admin panel). No
+    //    fallback: an unconfigured level pays out nothing.
+    const rewards: RewardEntry[] = await this.configService.getLevelRewards(level);
     if (!rewards || rewards.length === 0) {
-      const levelNames = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
-      const prefix = levelNames[Math.min(level - 1, 4)] || 'Exclusive';
-      rewards = [
-        {
-          rank: 1,
-          kind: 'BACKPACK_ITEM',
-          itemType: BackpackItemType.THEME,
-          itemName: `${prefix} Entry Theme`,
-        },
-        {
-          rank: 2,
-          kind: 'BACKPACK_ITEM',
-          itemType: BackpackItemType.FRAME,
-          itemName: `${prefix} Profile Frame`,
-        },
-        {
-          rank: 3,
-          kind: 'BACKPACK_ITEM',
-          itemType: BackpackItemType.BADGE,
-          itemName: `${prefix} Contributor Badge`,
-        },
-      ];
+      this.logger.warn(
+        `Box ${boxId} (level ${level}) opened with no configured rewards — nothing distributed.`,
+      );
+      return { boxId, winnersCount: 0, distributions: [] };
     }
 
-    // Filter out any legacy COINS entries, converting them to Backpack Item rewards
-    const inventoryRewards = rewards.map((r) => {
-      if (r.kind === 'COINS') {
-        const levelNames = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
-        const prefix = levelNames[Math.min(level - 1, 4)] || 'Exclusive';
-        return {
-          rank: r.rank,
-          kind: 'BACKPACK_ITEM' as const,
-          itemType:
-            r.rank === 1
-              ? BackpackItemType.THEME
-              : r.rank === 2
-                ? BackpackItemType.FRAME
-                : BackpackItemType.BADGE,
-          itemName:
-            r.rank === 1
-              ? `${prefix} Entry Theme`
-              : r.rank === 2
-                ? `${prefix} Profile Frame`
-                : `${prefix} Contributor Badge`,
-        };
-      }
-      return r;
-    });
-
-    // 3. Grant inventory items directly to recipient Backpacks (Idempotent per boxId)
+    // 3. Grant items to Backpack / credit Coins to Wallet (Idempotent per boxId)
     const distributed = await this.distributor.distribute({
       recipients,
-      rewards: inventoryRewards,
+      rewards,
       idempotencyPrefix: `tb-open:${boxId}`,
       walletReason: WalletTxnReason.TREASURE_BOX,
       backpackSource: BackpackItemSource.TREASURE_BOX,
@@ -125,7 +90,7 @@ export class TreasureDistributionService {
     });
 
     // 4. Store immutable TreasureReward entries for audit & UI
-    const distributions: DistributedItemReward[] = [];
+    const distributions: DistributedBoxReward[] = [];
     for (const d of distributed) {
       await this.prisma.treasureReward.create({
         data: {
@@ -135,10 +100,11 @@ export class TreasureDistributionService {
           level,
           userId: d.userId,
           rank: d.rank,
-          kind: TreasureRewardKind.BACKPACK_ITEM,
-          coins: null,
+          kind: d.kind,
+          coins: d.coins,
           itemType: d.itemType,
           itemName: d.itemName,
+          walletTxnId: d.walletTxnId,
           backpackItemId: d.backpackItemId,
           status: TreasureRewardStatus.DISTRIBUTED,
           distributedAt: new Date(),
@@ -148,9 +114,15 @@ export class TreasureDistributionService {
       distributions.push({
         userId: d.userId,
         rank: d.rank,
-        kind: 'BACKPACK_ITEM',
+        kind: d.kind,
+        coins: d.coins,
         itemType: d.itemType,
         itemName: d.itemName,
+        itemRefId: d.itemRefId,
+        mediaUrl: d.mediaUrl,
+        thumbnailUrl: d.thumbnailUrl,
+        expiresAt: d.expiresAt,
+        walletTxnId: d.walletTxnId,
         backpackItemId: d.backpackItemId,
       });
     }
