@@ -14,6 +14,8 @@ export interface UserSearchOptions {
   country?: string;
   /** User ids to omit from results (e.g. the viewer's block relationships). */
   excludeIds?: string[];
+  /** Viewer user ID to hydrate relationship status against results. */
+  viewerId?: string;
   /**
    * Include platform-staff accounts. Off by default — a hidden account must not
    * surface to ordinary users, and search is the most direct way it otherwise
@@ -157,11 +159,11 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
     const rows = Array.from(combinedMap.values()).slice(0, limit);
     const total = Math.max(combinedMap.size, totalCount);
 
-    const cards = await this.hydrate(rows);
+    const cards = await this.hydrate(rows, opts.viewerId);
     return buildPaginated(cards, total, page, limit);
   }
 
-  /** Attach avatar/verified/level/vipLevel for the page's users. */
+  /** Attach avatar/verified/level/vipLevel and relationship for the page's users. */
   private async hydrate(
     rows: {
       id: string;
@@ -170,30 +172,66 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
       fullName: string | null;
       country: string | null;
     }[],
+    viewerId?: string,
   ): Promise<UserCard[]> {
     if (rows.length === 0) return [];
     const ids = rows.map((r) => r.id);
-    const [profiles, stats, verifications] = await Promise.all([
-      this.prisma.userProfile.findMany({
-        where: { userId: { in: ids } },
-        select: { userId: true, avatarKey: true },
-      }),
-      this.prisma.userStatistics.findMany({
-        where: { userId: { in: ids } },
-        select: { userId: true, level: true, wealthLevel: true },
-      }),
-      this.prisma.userVerification.findMany({
-        where: { userId: { in: ids } },
-        select: { userId: true, verified: true },
-      }),
-    ]);
+    const [profiles, stats, verifications, followingRows, followerRows, friendRows] =
+      await Promise.all([
+        this.prisma.userProfile.findMany({
+          where: { userId: { in: ids } },
+          select: { userId: true, avatarKey: true },
+        }),
+        this.prisma.userStatistics.findMany({
+          where: { userId: { in: ids } },
+          select: { userId: true, level: true, wealthLevel: true },
+        }),
+        this.prisma.userVerification.findMany({
+          where: { userId: { in: ids } },
+          select: { userId: true, verified: true },
+        }),
+        viewerId
+          ? this.prisma.follow.findMany({
+              where: { followerId: viewerId, followingId: { in: ids } },
+              select: { followingId: true },
+            })
+          : Promise.resolve([]),
+        viewerId
+          ? this.prisma.follow.findMany({
+              where: { followerId: { in: ids }, followingId: viewerId },
+              select: { followerId: true },
+            })
+          : Promise.resolve([]),
+        viewerId
+          ? this.prisma.friendship.findMany({
+              where: {
+                OR: [
+                  { userAId: viewerId, userBId: { in: ids } },
+                  { userBId: viewerId, userAId: { in: ids } },
+                ],
+              },
+              select: { userAId: true, userBId: true },
+            })
+          : Promise.resolve([]),
+      ]);
     const avatarByUser = new Map(profiles.map((p) => [p.userId, p.avatarKey]));
     const statByUser = new Map(stats.map((s) => [s.userId, s]));
     const verifiedByUser = new Map(verifications.map((v) => [v.userId, v.verified]));
+    const followingSet = new Set(followingRows.map((r) => r.followingId));
+    const followerSet = new Set(followerRows.map((r) => r.followerId));
+    const friendSet = new Set(
+      friendRows.map((r) => (r.userAId === viewerId ? r.userBId : r.userAId)),
+    );
 
     return Promise.all(
       rows.map(async (r): Promise<UserCard> => {
         const stat = statByUser.get(r.id);
+        const isFollowing = viewerId ? followingSet.has(r.id) : undefined;
+        const isFollower = viewerId ? followerSet.has(r.id) : undefined;
+        const isFriend = viewerId
+          ? friendSet.has(r.id) || (Boolean(isFollowing) && Boolean(isFollower))
+          : undefined;
+
         return {
           id: r.id,
           displayId: r.displayId,
@@ -204,6 +242,7 @@ export class PostgresUserSearchProvider implements IUserSearchProvider {
           verified: verifiedByUser.get(r.id) ?? false,
           level: stat?.level ?? 1,
           vipLevel: stat?.wealthLevel ?? 0,
+          ...(viewerId && { isFollowing, isFollower, isFriend }),
         };
       }),
     );

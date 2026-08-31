@@ -121,9 +121,18 @@ export class TreasureReceiverRewardEvent extends DomainEvent<{
 
 export class ContributionCounterUpdatedEvent extends DomainEvent<{
   roomId: string;
-  receiverId: string;
+  /** Null on a week-rollover broadcast (no specific gift receiver). */
+  receiverId: string | null;
+  /** Lifetime totals — kept for admin/all-time; the app reads the *week* totals. */
   roomTotal: number;
-  receiverTotal: number;
+  receiverTotal: number | null;
+  /** Current ISO-week totals (the user-facing "Contrib" figure). */
+  roomWeekTotal: number;
+  receiverWeekTotal: number | null;
+  /** ISO week key these week totals belong to (e.g. "2026W36"). */
+  weekKey: string;
+  /** Why the counter changed — a gift, or the Monday 00:00 UTC reset. */
+  reason: 'gift' | 'week_rollover';
 }> {
   readonly name = TREASURE_EVENTS.CONTRIBUTION_COUNTER_UPDATED;
 }

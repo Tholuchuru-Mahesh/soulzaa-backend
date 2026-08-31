@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TreasureBoxStatus, TreasureSessionStatus } from '@prisma/client';
+import { currentIsoWeekKeyUtc, isoWeekWindowUtc } from 'src/common/utils/iso-week.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { TreasureConfigurationService } from './treasure-configuration.service';
 
@@ -24,6 +25,26 @@ export class TreasureBoxService {
     private readonly prisma: PrismaService,
     private readonly configService: TreasureConfigurationService,
   ) {}
+
+  /**
+   * The room's contribution figure for the *current* ISO week (Monday 00:00 UTC).
+   * Seeds the app so a joiner sees the real number instead of 0-until-first-gift.
+   */
+  async getRoomWeekContribution(
+    roomId: string,
+  ): Promise<{ roomWeekTotal: number; weekKey: string; weekStart: string; weekEnd: string }> {
+    const weekKey = currentIsoWeekKeyUtc();
+    const { start, end } = isoWeekWindowUtc(weekKey);
+    const row = await this.prisma.roomWeeklyContribution.findUnique({
+      where: { roomId_weekKey: { roomId, weekKey } },
+    });
+    return {
+      roomWeekTotal: Number(row?.amount ?? 0n),
+      weekKey,
+      weekStart: start.toISOString(),
+      weekEnd: end.toISOString(),
+    };
+  }
 
   /**
    * Retrieves or creates an active session for a given room.
@@ -109,10 +130,21 @@ export class TreasureBoxService {
     session: any;
     boxes: BoxStatusView[];
     activeBox: BoxStatusView | null;
+    contribution: {
+      roomWeekTotal: number;
+      weekKey: string;
+      weekStart: string;
+      weekEnd: string;
+    };
     message?: string;
   }> {
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
+
+    // Current-week room contribution — seeds the app on join (independent of
+    // whether a treasure session exists), so the "Contrib" figure is never a
+    // stale 0 waiting for the first live gift.
+    const contribution = await this.getRoomWeekContribution(roomId);
 
     // 1. Get or auto-start today's active session if not completed today
     let activeSession = await this.prisma.treasureSession.findFirst({
@@ -176,6 +208,7 @@ export class TreasureBoxService {
         },
         boxes: formattedBoxes,
         activeBox,
+        contribution,
       };
     }
 
@@ -228,6 +261,7 @@ export class TreasureBoxService {
         },
         boxes: formattedBoxes,
         activeBox: null,
+        contribution,
         message:
           "🎁 Today's Treasure Event has been completed. The next Treasure Event will start tomorrow.",
       };
@@ -243,6 +277,7 @@ export class TreasureBoxService {
       session: null,
       boxes: [],
       activeBox: null,
+      contribution,
     };
   }
 

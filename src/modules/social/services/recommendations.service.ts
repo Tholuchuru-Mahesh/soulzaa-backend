@@ -78,7 +78,7 @@ export class RecommendationsService {
 
     const total = merged.length;
     const slice = merged.slice((page - 1) * limit, (page - 1) * limit + limit);
-    const cards = await this.cards.resolve(slice.map((c) => c.userId));
+    const cards = await this.cards.resolve(slice.map((c) => c.userId), userId);
     const cardById = new Map(cards.map((c) => [c.userId, c]));
 
     const items: SuggestionView[] = [];

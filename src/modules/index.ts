@@ -22,6 +22,7 @@ import { CosmeticsModule } from './cosmetics/cosmetics.module';
 import { EventsModule } from './events/events.module';
 import { RankingsModule } from './rankings/rankings.module';
 import { TreasureBoxesModule } from './treasure-boxes/treasure-boxes.module';
+import { ContributionsModule } from './contributions/contributions.module';
 import { LuckyPacketsModule } from './lucky-packets/lucky-packets.module';
 import { RoomUtilitiesModule } from './room-utilities/room-utilities.module';
 import { VideoRoomsModule } from './video-rooms/video-rooms.module';
@@ -88,6 +89,7 @@ export const DOMAIN_MODULES = [
   EventsModule,
   RankingsModule,
   TreasureBoxesModule,
+  ContributionsModule,
   LuckyPacketsModule,
   RoomUtilitiesModule,
   VideoRoomsModule,

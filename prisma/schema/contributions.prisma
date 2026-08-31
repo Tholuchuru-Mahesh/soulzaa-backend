@@ -1,0 +1,40 @@
+/// Per-ISO-week room contribution total (Monday 00:00:00Z .. next Monday, UTC).
+/// One row per (room, week). Written alongside the lifetime
+/// `RoomContributionCounter` on every room gift — the lifetime counter is kept
+/// for admin/all-time visibility while the user-facing "Contrib" figure reads
+/// the current week's row here. Historical weeks are backfilled from
+/// `GiftTransaction`; the ledger stays the source of truth so nothing is lost.
+model RoomWeeklyContribution {
+  id        String   @id @default(uuid()) @db.Uuid
+  roomId    String   @db.Uuid
+  weekKey   String
+  weekStart DateTime
+  weekEnd   DateTime
+  amount    BigInt   @default(0)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([roomId, weekKey])
+  @@index([weekKey])
+  @@index([weekStart])
+  @@map("room_weekly_contributions")
+}
+
+/// Per-ISO-week total of gift coin value a user RECEIVED in rooms (same business
+/// meaning as the lifetime `UserContributionCounter` — coins received, not sent).
+/// One row per (user, week).
+model UserWeeklyContribution {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  weekKey   String
+  weekStart DateTime
+  weekEnd   DateTime
+  amount    BigInt   @default(0)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([userId, weekKey])
+  @@index([weekKey])
+  @@index([weekStart])
+  @@map("user_weekly_contributions")
+}

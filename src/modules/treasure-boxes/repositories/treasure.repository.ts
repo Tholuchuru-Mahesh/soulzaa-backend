@@ -9,7 +9,14 @@ import {
   TreasureSessionStatus,
 } from '@prisma/client';
 import { auditCreate, auditUpdate } from 'src/common/utils/audit.util';
+import { isoWeekKeyUtc, isoWeekWindowUtc } from 'src/common/utils/iso-week.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
+
+/** A weekly contribution bucket after an increment. */
+export interface WeeklyContributionTotal {
+  weekKey: string;
+  amount: bigint;
+}
 
 /** A box's contributor totals (for the Top-3 calculation). */
 export interface BoxContributorTotal {
@@ -310,6 +317,56 @@ export class TreasureRepository {
   async getRoomContribution(roomId: string): Promise<bigint> {
     const res = await this.prisma.roomContributionCounter.findUnique({
       where: { roomId },
+    });
+    return res?.amount ?? 0n;
+  }
+
+  // ---- Weekly contribution buckets (ISO week, Monday 00:00 UTC) ----
+  //
+  // Written alongside the lifetime counters on every room gift. The lifetime
+  // counter is untouched (admin/all-time visibility); the user-facing figure
+  // reads the current week's bucket. One row per (room|user, weekKey).
+
+  /** Add `amount` to the room's bucket for the current ISO week. */
+  async incrementRoomWeeklyContribution(
+    roomId: string,
+    amount: bigint,
+    tx?: Prisma.TransactionClient,
+    now: Date = new Date(),
+  ): Promise<WeeklyContributionTotal> {
+    const client = tx || this.prisma;
+    const weekKey = isoWeekKeyUtc(now);
+    const { start, end } = isoWeekWindowUtc(weekKey);
+    const res = await client.roomWeeklyContribution.upsert({
+      where: { roomId_weekKey: { roomId, weekKey } },
+      create: { roomId, weekKey, weekStart: start, weekEnd: end, amount },
+      update: { amount: { increment: amount } },
+    });
+    return { weekKey, amount: res.amount };
+  }
+
+  /** Add `amount` to the user's received-this-week bucket. */
+  async incrementUserWeeklyContribution(
+    userId: string,
+    amount: bigint,
+    tx?: Prisma.TransactionClient,
+    now: Date = new Date(),
+  ): Promise<WeeklyContributionTotal> {
+    const client = tx || this.prisma;
+    const weekKey = isoWeekKeyUtc(now);
+    const { start, end } = isoWeekWindowUtc(weekKey);
+    const res = await client.userWeeklyContribution.upsert({
+      where: { userId_weekKey: { userId, weekKey } },
+      create: { userId, weekKey, weekStart: start, weekEnd: end, amount },
+      update: { amount: { increment: amount } },
+    });
+    return { weekKey, amount: res.amount };
+  }
+
+  /** The room's contribution total for a given ISO week (0 if no bucket yet). */
+  async getRoomWeeklyContribution(roomId: string, weekKey: string): Promise<bigint> {
+    const res = await this.prisma.roomWeeklyContribution.findUnique({
+      where: { roomId_weekKey: { roomId, weekKey } },
     });
     return res?.amount ?? 0n;
   }

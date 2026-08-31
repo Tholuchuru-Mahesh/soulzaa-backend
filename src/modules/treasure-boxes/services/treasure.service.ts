@@ -321,9 +321,13 @@ export class TreasureService implements ITreasureBoxesService {
       }
     }
 
-    // 2. Increment overall contribution counters in DB using tx client
+    // 2. Increment lifetime contribution counters (unchanged) AND the current
+    //    ISO-week buckets — same tx, same idempotency. The app reads the weekly
+    //    value; the lifetime counter stays for admin/all-time.
     const roomTotal = await this.repo.incrementRoomContribution(roomId, bigAmount, tx);
     const receiverTotal = await this.repo.incrementUserContribution(receiverId, bigAmount, tx);
+    const roomWeek = await this.repo.incrementRoomWeeklyContribution(roomId, bigAmount, tx);
+    const receiverWeek = await this.repo.incrementUserWeeklyContribution(receiverId, bigAmount, tx);
 
     postCommitFns.push(async () => {
       const roomRedisKey = `room:contribution_counter:${roomId}`;
@@ -339,6 +343,10 @@ export class TreasureService implements ITreasureBoxesService {
         receiverId,
         roomTotal: Number(roomTotal),
         receiverTotal: Number(receiverTotal),
+        roomWeekTotal: Number(roomWeek.amount),
+        receiverWeekTotal: Number(receiverWeek.amount),
+        weekKey: roomWeek.weekKey,
+        reason: 'gift',
       }),
     );
 
@@ -594,9 +602,11 @@ export class TreasureService implements ITreasureBoxesService {
   ): Promise<void> {
     const bigAmount = BigInt(amount);
 
-    // 1. Increment Overall Contribution Counters (PostgreSQL + Redis)
+    // 1. Increment lifetime counters (unchanged) + current ISO-week buckets.
     const roomTotal = await this.repo.incrementRoomContribution(roomId, bigAmount);
     const receiverTotal = await this.repo.incrementUserContribution(receiverId, bigAmount);
+    const roomWeek = await this.repo.incrementRoomWeeklyContribution(roomId, bigAmount);
+    const receiverWeek = await this.repo.incrementUserWeeklyContribution(receiverId, bigAmount);
 
     const roomRedisKey = `room:contribution_counter:${roomId}`;
     const userRedisKey = `user:contribution_counter:${receiverId}`;
@@ -611,6 +621,10 @@ export class TreasureService implements ITreasureBoxesService {
         receiverId,
         roomTotal: Number(roomTotal),
         receiverTotal: Number(receiverTotal),
+        roomWeekTotal: Number(roomWeek.amount),
+        receiverWeekTotal: Number(receiverWeek.amount),
+        weekKey: roomWeek.weekKey,
+        reason: 'gift',
       }),
     );
 

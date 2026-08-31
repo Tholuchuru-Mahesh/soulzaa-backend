@@ -94,6 +94,12 @@ describe('TreasureService', () => {
       listRewards: jest.fn().mockResolvedValue([[], 0]),
       incrementRoomContribution: jest.fn().mockResolvedValue(50n),
       incrementUserContribution: jest.fn().mockResolvedValue(50n),
+      incrementRoomWeeklyContribution: jest
+        .fn()
+        .mockResolvedValue({ weekKey: '2026W36', amount: 50n }),
+      incrementUserWeeklyContribution: jest
+        .fn()
+        .mockResolvedValue({ weekKey: '2026W36', amount: 50n }),
     };
     distributor = {
       distribute: jest.fn().mockResolvedValue([

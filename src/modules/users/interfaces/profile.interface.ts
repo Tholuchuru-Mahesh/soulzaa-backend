@@ -90,6 +90,8 @@ export interface ProfileVisitorItem {
   verified: boolean;
   country: string | null;
   isFollowing?: boolean;
+  isFollower?: boolean;
+  isFriend?: boolean;
 }
 
 /** Lightweight card returned by search / listings. */
@@ -104,6 +106,9 @@ export interface UserCard {
   level: number;
   vipLevel: number;
   country: string | null;
+  isFollowing?: boolean;
+  isFollower?: boolean;
+  isFriend?: boolean;
 }
 
 /**

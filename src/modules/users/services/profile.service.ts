@@ -353,7 +353,7 @@ export class ProfileService implements IProfileService {
   ): Promise<Paginated<UserCard>> {
     // Drop anyone in a block relationship (either direction) with the viewer.
     const excludeIds = viewerId ? await this.privacy.blockedIdsFor(viewerId) : [];
-    return this.searchProvider.search(query, { ...opts, excludeIds });
+    return this.searchProvider.search(query, { ...opts, excludeIds, viewerId });
   }
 
   // ---- Commands ----
@@ -1130,34 +1130,40 @@ export class ProfileService implements IProfileService {
         };
       }
 
-      const [users, profiles, stats, verifications, follows] = await Promise.all([
-        this.prisma.user.findMany({
-          where: { id: { in: visitorIds } },
-          select: { id: true, displayId: true, username: true, fullName: true, country: true },
-        }),
-        this.prisma.userProfile.findMany({
-          where: { userId: { in: visitorIds } },
-          select: { userId: true, avatarKey: true },
-        }),
-        this.prisma.userStatistics.findMany({
-          where: { userId: { in: visitorIds } },
-          select: { userId: true, level: true, wealthLevel: true },
-        }),
-        this.prisma.userVerification.findMany({
-          where: { userId: { in: visitorIds } },
-          select: { userId: true, verified: true },
-        }),
-        this.prisma.follow.findMany({
-          where: { followerId: profileId, followingId: { in: visitorIds } },
-          select: { followingId: true },
-        }),
-      ]);
+      const [users, profiles, stats, verifications, outboundFollows, inboundFollows] =
+        await Promise.all([
+          this.prisma.user.findMany({
+            where: { id: { in: visitorIds } },
+            select: { id: true, displayId: true, username: true, fullName: true, country: true },
+          }),
+          this.prisma.userProfile.findMany({
+            where: { userId: { in: visitorIds } },
+            select: { userId: true, avatarKey: true },
+          }),
+          this.prisma.userStatistics.findMany({
+            where: { userId: { in: visitorIds } },
+            select: { userId: true, level: true, wealthLevel: true },
+          }),
+          this.prisma.userVerification.findMany({
+            where: { userId: { in: visitorIds } },
+            select: { userId: true, verified: true },
+          }),
+          this.prisma.follow.findMany({
+            where: { followerId: profileId, followingId: { in: visitorIds } },
+            select: { followingId: true },
+          }),
+          this.prisma.follow.findMany({
+            where: { followerId: { in: visitorIds }, followingId: profileId },
+            select: { followerId: true },
+          }),
+        ]);
 
       const userMap = new Map(users.map((u) => [u.id, u]));
       const profileMap = new Map(profiles.map((p) => [p.userId, p]));
       const statsMap = new Map(stats.map((s) => [s.userId, s]));
       const verifMap = new Map(verifications.map((v) => [v.userId, v]));
-      const followSet = new Set(follows.map((f) => f.followingId));
+      const outboundSet = new Set(outboundFollows.map((f) => f.followingId));
+      const inboundSet = new Set(inboundFollows.map((f) => f.followerId));
 
       const items: ProfileVisitorItem[] = await Promise.all(
         rows.map(async (r: any) => {
@@ -1167,6 +1173,9 @@ export class ProfileService implements IProfileService {
           const v = verifMap.get(r.visitorId);
           const avatarUrl = p?.avatarKey ? await this.media.resolve(p.avatarKey) : null;
           const frameUrl = await this.resolveEquippedFrameUrl(r.visitorId);
+          const isFollowing = outboundSet.has(r.visitorId);
+          const isFollower = inboundSet.has(r.visitorId);
+          const isFriend = isFollowing && isFollower;
 
           return {
             id: r.id,
@@ -1181,7 +1190,9 @@ export class ProfileService implements IProfileService {
             vipLevel: s?.wealthLevel ?? 0,
             verified: v?.verified ?? false,
             country: u?.country ?? null,
-            isFollowing: followSet.has(r.visitorId),
+            isFollowing,
+            isFollower,
+            isFriend,
           };
         }),
       );
