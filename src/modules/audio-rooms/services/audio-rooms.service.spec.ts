@@ -258,6 +258,35 @@ describe('AudioRoomsService', () => {
       );
     });
 
+    it('rejects a kicked user attempting to rejoin', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow());
+      moderation.findActiveKick.mockResolvedValue({ id: 'kick-1' });
+      await expect(service.join(OTHER, 'room-1', {})).rejects.toMatchObject({
+        errorCode: 'ROOM_KICKED',
+      });
+      expect(presence.joinRoom).not.toHaveBeenCalled();
+      // The DB hit warms the Redis gate so the next attempt short-circuits.
+      expect(moderation.addKickCache).toHaveBeenCalledWith('room-1', OTHER.id);
+    });
+
+    it('rejects a kicked user via the Redis gate without hitting the database', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow());
+      moderation.isKickedCached.mockResolvedValue(true);
+      await expect(service.join(OTHER, 'room-1', {})).rejects.toMatchObject({
+        errorCode: 'ROOM_KICKED',
+      });
+      expect(moderation.findActiveKick).not.toHaveBeenCalled();
+      expect(presence.joinRoom).not.toHaveBeenCalled();
+    });
+
+    it('allows rejoining once the kick is lifted (cache cleared by unkick)', async () => {
+      repo.findRoomRow.mockResolvedValue(roomRow());
+      moderation.isKickedCached.mockResolvedValue(false);
+      moderation.findActiveKick.mockResolvedValue(null);
+      await service.join(OTHER, 'room-1', {});
+      expect(presence.joinRoom).toHaveBeenCalledWith('room-1', OTHER.id);
+    });
+
     it('restores elevated ADMIN role on rejoin if the user was promoted to admin', async () => {
       repo.findRoomRow.mockResolvedValue(roomRow());
       seatsRepo.getRole.mockResolvedValue({ role: RoomMemberRole.ADMIN });

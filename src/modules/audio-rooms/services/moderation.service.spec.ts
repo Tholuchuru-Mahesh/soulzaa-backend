@@ -239,6 +239,27 @@ describe('ModerationService', () => {
     });
   });
 
+  describe('assertNotKicked', () => {
+    it('throws ROOM_KICKED when the user is on the kick list', async () => {
+      repo.findActiveKick.mockResolvedValue({ id: 'kick-1' });
+      await expect(service.assertNotKicked('r', TARGET)).rejects.toMatchObject({
+        errorCode: 'ROOM_KICKED',
+      });
+    });
+
+    it('throws on the Redis gate without consulting the database', async () => {
+      repo.isKickedCached.mockResolvedValue(true);
+      await expect(service.assertNotKicked('r', TARGET)).rejects.toMatchObject({
+        errorCode: 'ROOM_KICKED',
+      });
+      expect(repo.findActiveKick).not.toHaveBeenCalled();
+    });
+
+    it('resolves when the user is not on the kick list', async () => {
+      await expect(service.assertNotKicked('r', TARGET)).resolves.toBeUndefined();
+    });
+  });
+
   describe('listKicks', () => {
     it('requires moderator authority to read the kick list', async () => {
       permissions.assertCanModerate.mockRejectedValue(new Error('NOT_ROOM_ADMIN'));

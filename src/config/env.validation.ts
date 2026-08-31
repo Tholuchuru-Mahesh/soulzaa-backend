@@ -247,7 +247,7 @@ export const envSchema = z.object({
   AUDIO_ROOM_TRENDING_WINDOW_SECONDS: z.coerce.number().int().positive().default(3600),
   // Default stage layout for a new room (owner seat is always seat 0, not counted here).
   AUDIO_ROOM_DEFAULT_SPEAKER_SEATS: z.coerce.number().int().nonnegative().default(8),
-  AUDIO_ROOM_DEFAULT_PREMIUM_ADMIN_SEATS: z.coerce.number().int().nonnegative().default(1),
+  AUDIO_ROOM_DEFAULT_PREMIUM_ADMIN_SEATS: z.coerce.number().int().nonnegative().default(0),
   // How long a seat invitation stays valid before it expires.
   AUDIO_ROOM_SEAT_INVITATION_TTL_SECONDS: z.coerce.number().int().positive().default(120),
   // ---- Chat / anti-abuse (AR-4) ----

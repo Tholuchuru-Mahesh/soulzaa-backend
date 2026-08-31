@@ -5,6 +5,7 @@ import { BusinessException } from 'src/common/exceptions';
 import { QueueService } from 'src/infra/queue/queue.service';
 import { LockService } from 'src/infra/redis/lock.service';
 import type { IUsersService } from 'src/modules/users/interfaces/users.service.interface';
+import type { IProfileService } from 'src/modules/users/interfaces/profile.interface';
 import type { SendMessageDto } from '../dto/chat.dto';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { AudioRoomSeatsRepository } from '../repositories/audio-room-seats.repository';
@@ -70,6 +71,7 @@ describe('ChatService', () => {
   let bus: jest.Mocked<IEventBus>;
   let users: Record<string, jest.Mock>;
   let liveSessions: Record<string, jest.Mock>;
+  let profiles: Record<string, jest.Mock>;
   let service: ChatService;
 
   beforeEach(() => {
@@ -133,6 +135,9 @@ describe('ChatService', () => {
     liveSessions = {
       getOpenSession: jest.fn().mockResolvedValue({ id: 'session-1', startedAt: new Date() }),
     };
+    profiles = {
+      resolvePublicIdentities: jest.fn().mockResolvedValue(new Map()),
+    };
 
     service = new ChatService(
       chatRepo as unknown as ChatRepository,
@@ -148,6 +153,7 @@ describe('ChatService', () => {
       bus,
       users as unknown as IUsersService,
       liveSessions as any,
+      profiles as unknown as IProfileService,
     );
   });
 
@@ -166,6 +172,28 @@ describe('ChatService', () => {
         expect.anything(),
       );
       expect(res.id).toBe('msg-1');
+    });
+
+    /**
+     * The wire payload used to carry only `senderId`, so the client resolved a
+     * display name off the room's live roster — which drops a sender the
+     * moment they leave the room, showing a generic placeholder for their
+     * still-visible messages. Resolving it here, from the user's durable
+     * profile rather than room presence, survives that.
+     */
+    it('resolves the sender display name from the profile service', async () => {
+      profiles.resolvePublicIdentities.mockResolvedValue(
+        new Map([[ACTOR.id, { displayName: 'Real Username', avatarUrl: null }]]),
+      );
+
+      await service.sendMessage(ACTOR, ROOM, sendDto());
+
+      expect(profiles.resolvePublicIdentities).toHaveBeenCalledWith([ACTOR.id]);
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({ senderName: 'Real Username' }),
+        }),
+      );
     });
 
     it('rejects when the user is not a member', async () => {
@@ -441,6 +469,23 @@ describe('ChatService', () => {
       expect(res.items).toEqual([]);
       expect(res.total).toBe(0);
       expect(chatRepo.listMessages).not.toHaveBeenCalled();
+    });
+
+    it('enriches each row with a resolved senderName without dropping other row fields', async () => {
+      const row = message({ id: 'msg-2', senderId: 'someone-who-left', isDeleted: true });
+      chatRepo.listMessages.mockResolvedValue([[row], 1]);
+      profiles.resolvePublicIdentities.mockResolvedValue(
+        new Map([['someone-who-left', { displayName: 'Departed User', avatarUrl: null }]]),
+      );
+
+      const res = await service.history(ACTOR, ROOM, { page: 1, limit: 20, skip: 0 });
+
+      expect(profiles.resolvePublicIdentities).toHaveBeenCalledWith(['someone-who-left']);
+      expect(res.items[0]).toMatchObject({
+        id: 'msg-2',
+        isDeleted: true,
+        senderName: 'Departed User',
+      });
     });
   });
 });

@@ -1323,9 +1323,14 @@ export class ModerationService implements IModerationService {
     return (await this.repo.findActiveKick(roomId, userId)) !== null;
   }
 
-  async assertNotKicked(_roomId: string, _userId: string): Promise<void> {
-    // Kick functionality removed — no-op.
-    return;
+  async assertNotKicked(roomId: string, userId: string): Promise<void> {
+    if (await this.isKicked(roomId, userId)) {
+      throw new BusinessException(
+        ERROR_CODES.ROOM_KICKED,
+        "You have been kicked from this room and can't rejoin until the host restores you.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
   }
 
   async isBanned(roomId: string, userId: string): Promise<boolean> {

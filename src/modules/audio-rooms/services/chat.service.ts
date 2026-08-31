@@ -26,6 +26,10 @@ import {
   type IUsersService,
 } from 'src/modules/users/interfaces/users.service.interface';
 import {
+  PROFILE_SERVICE,
+  type IProfileService,
+} from 'src/modules/users/interfaces/profile.interface';
+import {
   CHAT_EMOJI_MESSAGE_MAX_LENGTH,
   CHAT_REACTION_EMOJIS,
   chatPinLockKey,
@@ -113,6 +117,7 @@ export class ChatService implements IAudioRoomChatService {
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(USERS_SERVICE) private readonly users: IUsersService,
     private readonly liveSessions: LiveSessionRepository,
+    @Inject(PROFILE_SERVICE) private readonly profiles: IProfileService,
   ) {}
 
   // ======================= Send =======================
@@ -175,7 +180,7 @@ export class ChatService implements IAudioRoomChatService {
       replyToId: dto.replyToId ?? null,
     });
 
-    const payload = this.toPayload(message);
+    const payload = await this.toPayload(message);
     await this.bus.publish(new ChatMessageSentEvent(payload));
 
     if (mentions.length > 0) {
@@ -371,7 +376,7 @@ export class ChatService implements IAudioRoomChatService {
       );
     });
 
-    await this.bus.publish(new ChatAnnouncementEvent(this.toPayload(message)));
+    await this.bus.publish(new ChatAnnouncementEvent(await this.toPayload(message)));
     return message;
   }
 
@@ -494,7 +499,12 @@ export class ChatService implements IAudioRoomChatService {
       includeDeleted,
       since,
     });
-    return buildPaginated(rows, total, q.page, q.limit);
+    const names = await this.resolveSenderNames(rows);
+    const enriched = rows.map((row) => ({
+      ...row,
+      senderName: row.type === ChatMessageType.SYSTEM ? 'System' : names.get(row.senderId),
+    }));
+    return buildPaginated(enriched, total, q.page, q.limit);
   }
 
   async listPins(roomId: string): Promise<any[]> {
@@ -504,7 +514,7 @@ export class ChatService implements IAudioRoomChatService {
       const message = await this.chatRepo.getMessage(pin.messageId);
       result.push({
         ...pin,
-        message: message ? this.toPayload(message) : null,
+        message: message ? await this.toPayload(message) : null,
       });
     }
     return result;
@@ -805,12 +815,13 @@ export class ChatService implements IAudioRoomChatService {
     return [...ids];
   }
 
-  private toPayload(message: RoomMessage): ChatMessagePayload {
+  private async toPayload(message: RoomMessage): Promise<ChatMessagePayload> {
+    const names = await this.resolveSenderNames([message]);
     return {
       id: message.id,
       roomId: message.roomId,
       senderId: message.senderId,
-      senderName: message.type === ChatMessageType.SYSTEM ? 'System' : undefined,
+      senderName: message.type === ChatMessageType.SYSTEM ? 'System' : names.get(message.senderId),
       type: message.type,
       content: message.content,
       gifUrl: message.gifUrl,
@@ -818,5 +829,29 @@ export class ChatService implements IAudioRoomChatService {
       replyToId: message.replyToId,
       createdAt: message.createdAt.toISOString(),
     };
+  }
+
+  /**
+   * Batch-resolves display names for a set of messages' senders, so a message
+   * keeps showing its sender's real name after they leave the room — the
+   * client has no roster entry to fall back on for a departed member, and
+   * `senderId` alone used to render as a generic placeholder. One
+   * `resolvePublicIdentities` call covers every distinct (non-SYSTEM) sender.
+   */
+  private async resolveSenderNames(
+    messages: Array<{ senderId: string; type: ChatMessageType }>,
+  ): Promise<Map<string, string>> {
+    const senderIds = [
+      ...new Set(
+        messages.filter((m) => m.type !== ChatMessageType.SYSTEM).map((m) => m.senderId),
+      ),
+    ];
+    if (senderIds.length === 0) return new Map();
+    const identities = await this.profiles.resolvePublicIdentities(senderIds);
+    const names = new Map<string, string>();
+    for (const [id, identity] of identities) {
+      if (identity.displayName) names.set(id, identity.displayName);
+    }
+    return names;
   }
 }

@@ -1133,9 +1133,30 @@ export class AudioRoomsService implements IAudioRoomsService {
     return room;
   }
 
-  private async assertNotKicked(_roomId: string, _userId: string): Promise<void> {
-    // Kick functionality removed — no-op.
-    return;
+  /**
+   * Throws ROOM_KICKED when the user is on the room's Kick List. Mirrors
+   * `assertNotBanned` below: Redis is the fast path, the DB is consulted only
+   * on a cache miss (and warms the cache). Unlike a ban, a kick never
+   * expires on its own — only an explicit `unkick` lifts it — so there is no
+   * TTL to thread through the cache write.
+   */
+  private async assertNotKicked(roomId: string, userId: string): Promise<void> {
+    if (await this.moderation.isKickedCached(roomId, userId)) {
+      throw new BusinessException(
+        ERROR_CODES.ROOM_KICKED,
+        "You have been kicked from this room and can't rejoin until the host restores you.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    const kick = await this.moderation.findActiveKick(roomId, userId);
+    if (kick) {
+      await this.moderation.addKickCache(roomId, userId);
+      throw new BusinessException(
+        ERROR_CODES.ROOM_KICKED,
+        "You have been kicked from this room and can't rejoin until the host restores you.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
   }
 
   /**

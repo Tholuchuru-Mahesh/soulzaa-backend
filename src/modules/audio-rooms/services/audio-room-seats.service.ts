@@ -484,39 +484,20 @@ export class AudioRoomSeatsService {
       actor,
       RoomPermission.MANAGE_SEATS,
     );
-    if (settings.requireApprovalForSeat && !canManage) {
-      throw this.err(
-        ERROR_CODES.NOT_ROOM_ADMIN,
-        'This room requires approval to take a seat — send a request instead.',
-        HttpStatus.FORBIDDEN,
-      );
-    }
-
     let movedFrom: number | null = null;
 
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
       const current = await this.seats.getSeatByOccupant(roomId, actor.id);
-      // Asking for the seat you already hold is a no-op, not a conflict. The
-      // owner seat is auto-taken on join, so tapping it is a normal thing to do.
+      // Asking for the seat you already hold is a no-op, not a conflict.
       if (current?.seatIndex === seatIndex) return;
 
-      // The owner moves between seats directly rather than having to vacate
-      // first. Making them leave before taking is not merely clumsy — it drops
-      // them off the stage in between, where a queued listener can be promoted
-      // into the seat they were heading for, and where the owner seat sits
-      // conspicuously empty. Everyone else still has to leave a seat before
-      // taking another; this is the owner's seat freedom, not a general relaxation.
-      // `canManage` (MANAGE_SEATS) earns the same freedom: an admin who is
-      // already seated must be able to move — not least into a seat they have
-      // just unlocked — without dropping off the stage first. The owner seat is
-      // still off-limits to them; `assertSeatTypeAllowed` below is what reserves
-      // it, and it runs before the seat they hold is given up.
-      const isOwner = (await this.rooms.getOwnerId(roomId)) === actor.id;
-      if (current && !isOwner && !canManage) {
+      // Approval requirement applies only to listeners joining stage from audience/queue,
+      // not to already approved seated speakers moving between available speaker seats.
+      if (!current && settings.requireApprovalForSeat && !canManage) {
         throw this.err(
-          ERROR_CODES.ALREADY_ON_SEAT,
-          'You are already on a seat.',
-          HttpStatus.CONFLICT,
+          ERROR_CODES.NOT_ROOM_ADMIN,
+          'This room requires approval to take a seat — send a request instead.',
+          HttpStatus.FORBIDDEN,
         );
       }
 
@@ -884,6 +865,14 @@ export class AudioRoomSeatsService {
       await this.seats.clearPendingRequests(roomId);
     }
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
+      // The client calls start-then-join on every owner entry, and `create()`
+      // reopening an ended room already calls this once internally — so this
+      // runs twice per real entry. Skip the write + publish when the owner is
+      // already seated at 0: nothing changed, and re-publishing SeatJoinedEvent
+      // for an unchanged seat is what produced a duplicate "joined as speaker"
+      // system message and a seat flicker on the client.
+      const current = await this.seats.getSeatByOccupant(roomId, ownerId);
+      if (current?.seatIndex === OWNER_SEAT_INDEX) return;
       // Ensure Seat 0 is occupied by ownerId
       await this.seats.setOccupant(roomId, OWNER_SEAT_INDEX, ownerId, ownerId);
       // Publish SeatJoinedEvent

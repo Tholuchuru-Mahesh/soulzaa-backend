@@ -287,20 +287,30 @@ describe('AudioRoomSeatsService', () => {
       });
 
       // The relaxation reaches the owner and MANAGE_SEATS holders — it must not
-      // become a general "hop between seats" for speakers, who still leave
-      // before taking. This block grants the permission by default, so the
-      // ordinary member being described here has to give it back up.
-      it('still blocks a seated member with no seat permission from moving', async () => {
+      it('lets a seated speaker move freely to an open speaker seat', async () => {
         permissions.hasPermission.mockResolvedValue(false);
-        seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3 }));
-        seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 4 }));
+        seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3, occupantUserId: LISTENER.id }));
+        seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 4, occupantUserId: null }));
 
-        await expect(service.takeSeat(LISTENER, 'r', 4)).rejects.toBeInstanceOf(BusinessException);
-        expect(seats.setOccupant).not.toHaveBeenCalled();
+        await service.takeSeat(LISTENER, 'r', 4);
+        expect(seats.setOccupant).toHaveBeenCalledWith('r', 3, null, LISTENER.id);
+        expect(seats.setOccupant).toHaveBeenCalledWith('r', 4, LISTENER.id, LISTENER.id);
       });
 
-      it('still keeps a non-owner off the owner seat, seated or not', async () => {
-        seats.getSeatByOccupant.mockResolvedValue(null);
+      it('allows a seated speaker to move even when room requires approval for taking seats', async () => {
+        seats.getSettings.mockResolvedValue({ requireApprovalForSeat: true });
+        permissions.hasPermission.mockResolvedValue(false);
+        seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 2, occupantUserId: LISTENER.id }));
+        seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 5, occupantUserId: null }));
+
+        await service.takeSeat(LISTENER, 'r', 5);
+        expect(seats.setOccupant).toHaveBeenCalledWith('r', 2, null, LISTENER.id);
+        expect(seats.setOccupant).toHaveBeenCalledWith('r', 5, LISTENER.id, LISTENER.id);
+      });
+
+      it('strictly keeps a seated speaker off the owner seat (seat 0)', async () => {
+        permissions.hasPermission.mockResolvedValue(false);
+        seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3, occupantUserId: LISTENER.id }));
         seats.getSeatByIndex.mockResolvedValue(ownerSeat());
 
         await expect(service.takeSeat(LISTENER, 'r', 0)).rejects.toBeInstanceOf(BusinessException);
@@ -543,6 +553,24 @@ describe('AudioRoomSeatsService', () => {
 
       expect(seats.setOccupant).toHaveBeenCalledWith('r', 0, OWNER.id, OWNER.id);
     });
+
+    /**
+     * The client calls start-then-join on every owner entry, and `create()`
+     * reopening an ended room already calls this once internally — so a real
+     * reactivation is followed by a redundant `restarted: false` call in the
+     * same entry. Without this guard, that redundant call re-wrote the
+     * already-correct seat-0 occupant and re-published SeatJoinedEvent, which
+     * showed up as a second "joined as speaker" system message and a seat
+     * flicker on the client.
+     */
+    it('does not re-seat or re-publish when the owner already holds seat 0', async () => {
+      seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 0, occupantUserId: OWNER.id }));
+
+      await service.onRoomOpened('r', OWNER.id, false);
+
+      expect(seats.setOccupant).not.toHaveBeenCalled();
+      expect(bus.publish).not.toHaveBeenCalled();
+    });
   });
 
   /**
@@ -581,12 +609,14 @@ describe('AudioRoomSeatsService', () => {
       expect(seats.setOccupant).not.toHaveBeenCalledWith('r', 3, null, ADMIN.id);
     });
 
-    it('leaves an ordinary seated member blocked', async () => {
+    it('allows an ordinary seated member to move to an open speaker seat', async () => {
       permissions.hasPermission.mockResolvedValue(false);
       seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3 }));
       seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 5 }));
 
-      await expect(service.takeSeat(LISTENER, 'r', 5)).rejects.toBeInstanceOf(BusinessException);
+      await service.takeSeat(LISTENER, 'r', 5);
+      expect(seats.setOccupant).toHaveBeenCalledWith('r', 3, null, LISTENER.id);
+      expect(seats.setOccupant).toHaveBeenCalledWith('r', 5, LISTENER.id, LISTENER.id);
     });
   });
 

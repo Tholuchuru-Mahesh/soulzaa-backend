@@ -77,10 +77,18 @@ export class ModerationRepository {
   }
 
   async liftKick(id: string, liftedBy: string): Promise<void> {
-    await this.prisma.roomKick.update({
-      where: { id },
-      data: { status: 'LIFTED', liftedBy, liftedAt: new Date(), ...auditUpdate(liftedBy) },
-    });
+    const kick = await this.prisma.roomKick.findUnique({ where: { id } });
+    if (kick) {
+      await this.prisma.roomKick.updateMany({
+        where: { roomId: kick.roomId, userId: kick.userId, status: 'ACTIVE' },
+        data: { status: 'LIFTED', liftedBy, liftedAt: new Date(), ...auditUpdate(liftedBy) },
+      });
+    } else {
+      await this.prisma.roomKick.update({
+        where: { id },
+        data: { status: 'LIFTED', liftedBy, liftedAt: new Date(), ...auditUpdate(liftedBy) },
+      });
+    }
   }
 
   // ---- Bans ----
