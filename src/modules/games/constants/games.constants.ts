@@ -48,6 +48,36 @@ export const GAME_SOCKET_EVENTS = {
    * still believing in the old host leaves the bots frozen.
    */
   HOST_CHANGED: 'game.host_changed',
+  /**
+   * An audio-room casino window closed — the host ended the table, left the
+   * room, or the room itself went away.
+   *
+   * Spectators hold no state machine of their own for a window: they render
+   * whatever the mirror feed last told them. Without an explicit close frame
+   * the only thing that ever retracts that view is the client's own periodic
+   * snapshot poll, so a spectator sat on a live-looking table for as long as
+   * that poll took — and, when the host merely LEFT the room, forever, because
+   * nothing closed the window server-side at all. This is the authoritative
+   * 'stop watching' every window teardown path emits.
+   */
+  CASINO_WINDOW_CLOSED: 'game.casino_window_closed',
+  /**
+   * A room-bound game started or ended, announced to the AUDIO ROOM's own
+   * channel rather than the game's.
+   *
+   * Every other game event is addressed to people already involved in the
+   * match - the lobby room, the session room, the participants. A spectator
+   * sitting in the audio room is in none of those at the moment a match
+   * begins: they have no session id to subscribe to until they learn a
+   * session exists. So the one audience that needs "a game just started" had
+   * no way to be told, and discovered it only when the room's 10s status poll
+   * next happened to fire - the visible lag between the players starting and
+   * the watchers seeing it.
+   *
+   * The audio-room channel is the one place every member of the room is
+   * already subscribed, which is why the announcement goes there.
+   */
+  ROOM_GAME_CHANGED: 'game.room_game_changed',
 } as const;
 
 /** Bumped when a matchmaking socket payload shape changes (clients gate on it). */

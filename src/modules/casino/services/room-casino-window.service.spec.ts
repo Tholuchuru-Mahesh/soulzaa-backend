@@ -2,6 +2,7 @@ import { HttpStatus } from '@nestjs/common';
 import { CasinoGame, GameCode, GameSession, GameSessionStatus } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { LockService } from 'src/infra/redis/lock.service';
+import { SocketManager } from 'src/infra/socket/socket.manager';
 import { type IAudioRoomsService } from 'src/modules/audio-rooms/interfaces/audio-rooms.service.interface';
 import { GamesRepository } from 'src/modules/games/repositories/games.repository';
 import { AudioRoomGameAuthzService } from 'src/modules/games/services/audio-room-game-authz.service';
@@ -107,6 +108,10 @@ function makeService() {
     getBalance: jest.fn().mockResolvedValue({ gold: 5000, free: 0, game: 0 }),
   };
 
+  const sockets = {
+    emitToNamespaceRoom: jest.fn(),
+  };
+
   const svc = new RoomCasinoWindowService(
     authz as unknown as AudioRoomGameAuthzService,
     rooms as unknown as IAudioRoomsService,
@@ -115,10 +120,11 @@ function makeService() {
     casino as unknown as CasinoService,
     loop as unknown as CasinoLoopService,
     locks as unknown as LockService,
+    sockets as unknown as SocketManager,
     wallet as unknown as IWalletService,
   );
 
-  return { svc, authz, rooms, games, repo, casino, loop, locks, wallet };
+  return { svc, authz, rooms, games, repo, casino, loop, locks, wallet, sockets };
 }
 
 describe('RoomCasinoWindowService — startWindow', () => {
@@ -211,6 +217,65 @@ describe('RoomCasinoWindowService — closeWindow', () => {
     await expect(svc.closeWindow(ROOM, OWNER)).rejects.toMatchObject({
       errorCode: ERROR_CODES.GAME_SESSION_NOT_FOUND,
     });
+    expect(games.completeSession).not.toHaveBeenCalled();
+  });
+
+  it('announces the close into the window session room so spectators stop watching', async () => {
+    const { svc, games, sockets } = makeService();
+    games.findActiveSessionForRoom.mockResolvedValue(windowSession());
+    await svc.closeWindow(ROOM, OWNER);
+    expect(sockets.emitToNamespaceRoom).toHaveBeenCalledWith(
+      '/games',
+      'sess-1',
+      'game.casino_window_closed',
+      expect.objectContaining({ sessionId: 'sess-1', roomId: ROOM, reason: 'closed' }),
+    );
+  });
+
+  it('still closes when the spectator announcement throws', async () => {
+    const { svc, games, sockets } = makeService();
+    games.findActiveSessionForRoom.mockResolvedValue(windowSession());
+    sockets.emitToNamespaceRoom.mockImplementation(() => {
+      throw new Error('socket down');
+    });
+    await expect(svc.closeWindow(ROOM, OWNER)).resolves.toEqual({ ok: true });
+    expect(games.completeSession).toHaveBeenCalledWith('sess-1', OWNER);
+  });
+});
+
+describe('RoomCasinoWindowService — onHostLeft', () => {
+  it('closes the window and tells spectators when the window host leaves the room', async () => {
+    const { svc, games, sockets } = makeService();
+    games.findActiveSessionForRoom.mockResolvedValue(windowSession());
+    await svc.onHostLeft(ROOM, OWNER);
+    expect(games.completeSession).toHaveBeenCalledWith('sess-1', null);
+    expect(sockets.emitToNamespaceRoom).toHaveBeenCalledWith(
+      '/games',
+      'sess-1',
+      'game.casino_window_closed',
+      expect.objectContaining({ reason: 'host_left' }),
+    );
+  });
+
+  it('ignores a non-host leaving — the table keeps running for everyone else', async () => {
+    const { svc, games, sockets } = makeService();
+    games.findActiveSessionForRoom.mockResolvedValue(windowSession());
+    await svc.onHostLeft(ROOM, OTHER);
+    expect(games.completeSession).not.toHaveBeenCalled();
+    expect(sockets.emitToNamespaceRoom).not.toHaveBeenCalled();
+  });
+
+  it('ignores a leave when the room is running a board game, not a casino window', async () => {
+    const { svc, games } = makeService();
+    games.findActiveSessionForRoom.mockResolvedValue(windowSession({ code: GameCode.LUDO }));
+    await svc.onHostLeft(ROOM, OWNER);
+    expect(games.completeSession).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when the room has no active game at all', async () => {
+    const { svc, games } = makeService();
+    games.findActiveSessionForRoom.mockResolvedValue(null);
+    await expect(svc.onHostLeft(ROOM, OWNER)).resolves.toBeUndefined();
     expect(games.completeSession).not.toHaveBeenCalled();
   });
 });

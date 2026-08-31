@@ -1390,6 +1390,57 @@ export class GamesService {
       }
     }
 
+    return this.relayMoveCore(session, sessionId, moveData, moverId);
+  }
+
+  /**
+   * Server-internal relay path used exclusively by the Ludo bot driver: the
+   * backend itself is acting as the bot's "client", so there is no human
+   * actor and thus nothing to check against `session.hostId` — that gate
+   * (see `relayMove` above) only exists to stop a HUMAN from claiming to
+   * move on another seat's behalf. Here we instead verify `moverId` is
+   * itself an active PLAYING bot participant of an ACTIVE session (the same
+   * check `relayMove`'s `onBehalfOf` branch performs), then share the exact
+   * same lock → canAct → applyMove → persist → broadcast body — turn
+   * ownership is still enforced exactly as for any other mover.
+   */
+  async relaySystemMove(
+    sessionId: string,
+    moveData: Record<string, unknown>,
+    moverId: string,
+  ): Promise<{ accepted: true; currentTurnUserId: string | null; isOver: boolean }> {
+    const session = await this.repo.getSession(sessionId);
+    if (!session) throw this.notFound(ERROR_CODES.GAME_SESSION_NOT_FOUND, 'Session not found.');
+    if (session.status !== GameSessionStatus.ACTIVE) {
+      throw this.conflict(ERROR_CODES.GAME_SESSION_NOT_ACTIVE, 'Session is not active.');
+    }
+
+    const bot = await this.repo.getParticipant(sessionId, moverId);
+    if (!bot || !bot.isBot || bot.status !== GameParticipantStatus.PLAYING) {
+      throw new BusinessException(
+        ERROR_CODES.GAME_NOT_PARTICIPANT,
+        'That seat is not an active bot in this session.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    return this.relayMoveCore(session, sessionId, moveData, moverId);
+  }
+
+  /**
+   * Shared body for both relay paths above: lock → canAct (turn ownership)
+   * → applyMove → persist live state → publish GameMoveEvent. Both
+   * `relayMove` and `relaySystemMove` have already resolved who is moving
+   * (`moverId`) and confirmed the session is ACTIVE before calling this —
+   * this method only enforces turn ownership under the lock and applies the
+   * move, so there is exactly one place the core relay logic lives.
+   */
+  private async relayMoveCore(
+    session: GameSession,
+    sessionId: string,
+    moveData: Record<string, unknown>,
+    moverId: string,
+  ): Promise<{ accepted: true; currentTurnUserId: string | null; isOver: boolean }> {
     const frame = { playerId: moverId, moveData, timestamp: Date.now() };
     const state = await this.locks.withLock(gameSessionLockKey(sessionId), async () => {
       const current = await this.loadOrInitLiveState(session);

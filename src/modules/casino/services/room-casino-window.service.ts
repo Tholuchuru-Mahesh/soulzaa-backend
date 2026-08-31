@@ -34,6 +34,8 @@ import {
 import { randomInt } from 'node:crypto';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import { LockService } from 'src/infra/redis/lock.service';
+import { SocketManager } from 'src/infra/socket/socket.manager';
+import { AUDIO_ROOM_NAMESPACE } from 'src/modules/audio-rooms/constants/audio-room.constants';
 import {
   AUDIO_ROOMS_SERVICE,
   type IAudioRoomsService,
@@ -41,6 +43,8 @@ import {
 import {
   GAME_JOIN_CODE_ALPHABET,
   GAME_JOIN_CODE_LENGTH,
+  GAME_SOCKET_EVENTS,
+  GAMES_NAMESPACE,
   roomActiveGameLockKey,
 } from 'src/modules/games/constants/games.constants';
 import { GamesRepository } from 'src/modules/games/repositories/games.repository';
@@ -72,6 +76,7 @@ export class RoomCasinoWindowService {
     private readonly casino: CasinoService,
     private readonly loop: CasinoLoopService,
     private readonly locks: LockService,
+    private readonly sockets: SocketManager,
     @Inject(WALLET_SERVICE) private readonly wallet: IWalletService,
   ) {}
 
@@ -115,7 +120,36 @@ export class RoomCasinoWindowService {
         createdBy: actorId,
       });
     });
+    this.announceRoomGameChanged(roomId, session.id);
     return this.windowView(session);
+  }
+
+  /**
+   * Nudges the audio room that its game situation changed, on the ROOM's own
+   * channel — the one channel every member is already subscribed to.
+   *
+   * A casino window has no "opened" push of its own, so a spectator learned a
+   * table had started only when their 10s snapshot poll next fired: the host
+   * began playing and the watchers saw nothing for up to ten seconds. The
+   * close path has [announceClosed] for the same reason in reverse.
+   *
+   * Carries no state deliberately — clients re-read the membership-gated
+   * snapshot, just immediately rather than on the next tick. Best-effort: the
+   * poll remains the backstop, so a socket failure must never fail the open.
+   */
+  private announceRoomGameChanged(roomId: string, sessionId: string): void {
+    try {
+      this.sockets.emitToNamespaceRoom(
+        AUDIO_ROOM_NAMESPACE,
+        roomId,
+        GAME_SOCKET_EVENTS.ROOM_GAME_CHANGED,
+        { roomId, sessionId },
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to announce casino window open for room ${roomId}: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -139,7 +173,79 @@ export class RoomCasinoWindowService {
     }
     const session = await this.requireWindow(roomId);
     await this.games.completeSession(session.id, actorId);
+    this.announceClosed(session, 'closed');
     return { ok: true };
+  }
+
+  /**
+   * Tells every spectator watching [session] to tear the window down, on the
+   * SAME channel they receive the round feed on (the window's `/games` session
+   * room, which is exactly the set of sockets that can be showing this table).
+   *
+   * Every teardown path funnels through here — the owner's explicit close, the
+   * host leaving the room, room end/delete, and the orphan sweep — because a
+   * spectator's window has no state machine of its own: it renders the mirror
+   * feed, and the feed simply STOPS when the table dies. Silence is
+   * indistinguishable from a quiet round, so without this frame the only thing
+   * that ever retracted the view was the client's own periodic snapshot poll.
+   *
+   * Best-effort by design: the window is already COMPLETED in the database
+   * before this runs, so the client's poll and its room-membership checks
+   * remain the backstop. A socket failure must never make a close fail.
+   */
+  private announceClosed(
+    session: GameSession,
+    reason: 'closed' | 'host_left' | 'room_ended',
+  ): void {
+    try {
+      this.sockets.emitToNamespaceRoom(
+        GAMES_NAMESPACE,
+        session.id,
+        GAME_SOCKET_EVENTS.CASINO_WINDOW_CLOSED,
+        {
+          sessionId: session.id,
+          roomId: session.roomId,
+          game: session.code,
+          reason,
+        },
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to announce casino window ${session.id} close: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Closes the room's active casino window when its HOST leaves the audio room.
+   *
+   * The window is the host's table — they are its only bettor — so once they
+   * are gone there is nobody it can belong to and nothing left to watch. It
+   * used to survive them: the only lifecycle hooks were room END/DELETE and an
+   * orphan sweep that checks whether the ROOM is still live, and a room whose
+   * host merely walked out is still perfectly live. So the session stayed
+   * ACTIVE indefinitely and every spectator kept rendering a table nobody was
+   * playing — the reported "host exited but my game live never closed".
+   *
+   * Scoped deliberately narrowly: a non-host leaving is ignored, and so is a
+   * leave in a room whose active game is a board game. Ownership transfer is
+   * handled by [onOwnerChanged] instead, which re-points the window rather
+   * than closing it, so a room that hands off cleanly keeps its table.
+   */
+  async onHostLeft(roomId: string, userId: string): Promise<void> {
+    const session = await this.findActiveWindow(roomId);
+    if (!session || session.hostId !== userId) return;
+    try {
+      await this.games.completeSession(session.id, null);
+      this.announceClosed(session, 'host_left');
+      this.logger.log(
+        `Closed casino window ${session.id} (room ${roomId}) — host ${userId} left the room`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to close casino window ${session.id} on host leave: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**

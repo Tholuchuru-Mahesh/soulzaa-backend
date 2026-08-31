@@ -66,6 +66,7 @@ function makeListener() {
   const windows = {
     closeWindow: jest.fn().mockResolvedValue({ ok: true }),
     onOwnerChanged: jest.fn().mockResolvedValue(undefined),
+    onHostLeft: jest.fn().mockResolvedValue(undefined),
   };
 
   const listener = new RoomCasinoWindowListener(
@@ -80,12 +81,30 @@ function makeListener() {
 }
 
 describe('RoomCasinoWindowListener — spectator mirror', () => {
-  it('registers handlers for CASINO_ROUND_BROADCAST, ENDED, DELETED and OWNERSHIP_TRANSFERRED', () => {
+  it('registers handlers for CASINO_ROUND_BROADCAST, ENDED, DELETED, LEFT, FORCE_LEAVE and OWNERSHIP_TRANSFERRED', () => {
     const { handlers } = makeListener();
     expect(handlers.has(CASINO_ROUND_BROADCAST)).toBe(true);
     expect(handlers.has(AUDIO_ROOM_EVENTS.ENDED)).toBe(true);
     expect(handlers.has(AUDIO_ROOM_EVENTS.DELETED)).toBe(true);
+    expect(handlers.has(AUDIO_ROOM_EVENTS.LEFT)).toBe(true);
+    expect(handlers.has(AUDIO_ROOM_EVENTS.FORCE_LEAVE)).toBe(true);
     expect(handlers.has(AUDIO_ROOM_EVENTS.OWNERSHIP_TRANSFERRED)).toBe(true);
+  });
+
+  it('routes a room LEFT to onHostLeft so a departing host ends the table', async () => {
+    const { handlers, windows } = makeListener();
+    await handlers.get(AUDIO_ROOM_EVENTS.LEFT)!({
+      payload: { roomId: 'room-1', userId: 'host-1', participantCount: 3 },
+    });
+    expect(windows.onHostLeft).toHaveBeenCalledWith('room-1', 'host-1');
+  });
+
+  it('routes a FORCE_LEAVE (unexpected host disconnect) to onHostLeft too', async () => {
+    const { handlers, windows } = makeListener();
+    await handlers.get(AUDIO_ROOM_EVENTS.FORCE_LEAVE)!({
+      payload: { roomId: 'room-1', userId: 'host-1' },
+    });
+    expect(windows.onHostLeft).toHaveBeenCalledWith('room-1', 'host-1');
   });
 
   it('re-emits a global casino broadcast into every active window room on the /games namespace', async () => {

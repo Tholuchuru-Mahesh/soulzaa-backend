@@ -34,6 +34,8 @@ import {
   AUDIO_ROOM_EVENTS,
   type RoomDeletedEvent,
   type RoomEndedEvent,
+  type RoomForceLeaveEvent,
+  type RoomLeftEvent,
   type RoomOwnershipTransferredEvent,
 } from 'src/modules/audio-rooms/events/audio-room.events';
 import { GAMES_NAMESPACE } from 'src/modules/games/constants/games.constants';
@@ -75,6 +77,24 @@ export class RoomCasinoWindowListener implements OnModuleInit {
       void this.closeWindowForRoom(e.payload.roomId).catch((err: Error) =>
         this.logger.error(`Casino window room-delete cleanup failed: ${err.message}`),
       );
+    });
+    // The HOST walking out ends the table. Without these two the window
+    // outlived them: room END/DELETE were the only lifecycle hooks, and a room
+    // whose host merely left is still live, so nothing closed the session and
+    // every spectator kept watching a table nobody was playing.
+    this.bus.subscribe<RoomLeftEvent>(AUDIO_ROOM_EVENTS.LEFT, (e) => {
+      void this.windows
+        .onHostLeft(e.payload.roomId, e.payload.userId)
+        .catch((err: Error) =>
+          this.logger.error(`Casino window host-left cleanup failed: ${err.message}`),
+        );
+    });
+    this.bus.subscribe<RoomForceLeaveEvent>(AUDIO_ROOM_EVENTS.FORCE_LEAVE, (e) => {
+      void this.windows
+        .onHostLeft(e.payload.roomId, e.payload.userId)
+        .catch((err: Error) =>
+          this.logger.error(`Casino window host-force-leave cleanup failed: ${err.message}`),
+        );
     });
     this.bus.subscribe<RoomOwnershipTransferredEvent>(
       AUDIO_ROOM_EVENTS.OWNERSHIP_TRANSFERRED,

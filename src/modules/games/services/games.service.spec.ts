@@ -729,6 +729,83 @@ describe('GamesService', () => {
     });
   });
 
+  describe('relaySystemMove (bot driver path)', () => {
+    const BOT = '99999999-9999-9999-9999-999999999999';
+
+    it('relays a move for a bot seat with no human actor / host check', async () => {
+      // hostId is some OTHER user entirely — the system path must not care.
+      repo.getSession.mockResolvedValue(session({ hostId: STRANGER }));
+      repo.getParticipant.mockResolvedValue(participant('pb', BOT, { isBot: true }));
+      const botTurn: GameLiveState = {
+        currentTurnUserId: BOT,
+        turnStartedAt: Date.now(),
+        turnSeconds: GAME_TURN_SECONDS,
+        seatOrder: [HOST, BOT],
+        moves: [],
+        isOver: false,
+        timeoutCounts: {},
+      };
+      await cache.set(gameLiveStateKey('sess-1'), botTurn, GAME_LIVE_STATE_TTL_SECONDS);
+
+      const res = (await service.relaySystemMove(
+        'sess-1',
+        { action: 'roll_dice', value: 4, seat: 1 },
+        BOT,
+      )) as Record<string, unknown>;
+
+      expect(res).toMatchObject({ accepted: true });
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'game.move',
+          payload: expect.objectContaining({ playerId: BOT }),
+        }),
+      );
+    });
+
+    it('rejects a system move for a userId that is not an active bot participant', async () => {
+      // Not a bot at all — guards against acting on behalf of a real human.
+      repo.getParticipant.mockResolvedValue(participant('p2', P2, { isBot: false }));
+      await expect(
+        service.relaySystemMove('sess-1', { action: 'roll_dice' }, P2),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_NOT_PARTICIPANT });
+    });
+
+    it('rejects a system move for a bot participant that is not PLAYING', async () => {
+      repo.getParticipant.mockResolvedValue(
+        participant('pb', BOT, { isBot: true, status: GameParticipantStatus.LOST }),
+      );
+      await expect(
+        service.relaySystemMove('sess-1', { action: 'roll_dice' }, BOT),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_NOT_PARTICIPANT });
+    });
+
+    it('still enforces canAct (turn ownership) for a system move', async () => {
+      // The bot exists and is PLAYING, but does not currently hold the turn.
+      repo.getParticipant.mockResolvedValue(participant('pb', BOT, { isBot: true }));
+      const humanTurn: GameLiveState = {
+        currentTurnUserId: HOST,
+        turnStartedAt: Date.now(),
+        turnSeconds: GAME_TURN_SECONDS,
+        seatOrder: [HOST, BOT],
+        moves: [],
+        isOver: false,
+        timeoutCounts: {},
+      };
+      await cache.set(gameLiveStateKey('sess-1'), humanTurn, GAME_LIVE_STATE_TTL_SECONDS);
+
+      await expect(
+        service.relaySystemMove('sess-1', { action: 'roll_dice' }, BOT),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_NOT_YOUR_TURN });
+    });
+
+    it('rejects a system move on a non-active session', async () => {
+      repo.getSession.mockResolvedValue(session({ status: GameSessionStatus.COMPLETED }));
+      await expect(
+        service.relaySystemMove('sess-1', { action: 'roll_dice' }, BOT),
+      ).rejects.toMatchObject({ errorCode: ERROR_CODES.GAME_SESSION_NOT_ACTIVE });
+    });
+  });
+
   describe('reportMatchResult', () => {
     const OTHER: GameActor = { id: P2, roles: ['USER'] };
 
