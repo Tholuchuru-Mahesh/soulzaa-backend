@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 
 import type { PrismaService } from '../src/infra/prisma/prisma.service';

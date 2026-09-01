@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient, ScopeType } from '@prisma/client';
 import { hash } from 'bcryptjs';
 
@@ -78,10 +79,13 @@ async function main(): Promise<void> {
     { username: 'e2e_pop_nowhere', email: 'pop.none@e2e.test', regionId: null, stateId: null, countryId: null },
   ];
 
+  let displayIdCounter = 90001000;
+
   for (const person of population) {
     await prisma.user.upsert({
       where: { email: person.email },
       create: {
+        displayId: displayIdCounter++,
         username: person.username,
         email: person.email,
         country: 'IN',
@@ -107,6 +111,7 @@ async function main(): Promise<void> {
     const user = await prisma.user.upsert({
       where: { email: fixture.email },
       create: {
+        displayId: displayIdCounter++,
         username: fixture.username,
         email: fixture.email,
         country: 'IN',
@@ -175,6 +180,7 @@ async function main(): Promise<void> {
     await prisma.user.upsert({
       where: { email: owner.email },
       create: {
+        displayId: displayIdCounter++,
         username: owner.username,
         email: owner.email,
         country: 'IN',
