@@ -25,6 +25,7 @@ export interface ChatMessagePayload {
   roomId: string;
   senderId: string;
   senderName?: string;
+  senderAvatarUrl?: string | null;
   type: ChatMessageType;
   content: string;
   gifUrl: string | null;

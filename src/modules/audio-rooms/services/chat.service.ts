@@ -499,11 +499,15 @@ export class ChatService implements IAudioRoomChatService {
       includeDeleted,
       since,
     });
-    const names = await this.resolveSenderNames(rows);
-    const enriched = rows.map((row) => ({
-      ...row,
-      senderName: row.type === ChatMessageType.SYSTEM ? 'System' : names.get(row.senderId),
-    }));
+    const profiles = await this.resolveSenderProfiles(rows);
+    const enriched = rows.map((row) => {
+      const profile = profiles.get(row.senderId);
+      return {
+        ...row,
+        senderName: row.type === ChatMessageType.SYSTEM ? 'System' : profile?.name,
+        senderAvatarUrl: row.type === ChatMessageType.SYSTEM ? null : profile?.avatarUrl,
+      };
+    });
     return buildPaginated(enriched, total, q.page, q.limit);
   }
 
@@ -816,12 +820,14 @@ export class ChatService implements IAudioRoomChatService {
   }
 
   private async toPayload(message: RoomMessage): Promise<ChatMessagePayload> {
-    const names = await this.resolveSenderNames([message]);
+    const profiles = await this.resolveSenderProfiles([message]);
+    const profile = profiles.get(message.senderId);
     return {
       id: message.id,
       roomId: message.roomId,
       senderId: message.senderId,
-      senderName: message.type === ChatMessageType.SYSTEM ? 'System' : names.get(message.senderId),
+      senderName: message.type === ChatMessageType.SYSTEM ? 'System' : profile?.name,
+      senderAvatarUrl: message.type === ChatMessageType.SYSTEM ? null : profile?.avatarUrl,
       type: message.type,
       content: message.content,
       gifUrl: message.gifUrl,
@@ -832,15 +838,14 @@ export class ChatService implements IAudioRoomChatService {
   }
 
   /**
-   * Batch-resolves display names for a set of messages' senders, so a message
-   * keeps showing its sender's real name after they leave the room — the
-   * client has no roster entry to fall back on for a departed member, and
-   * `senderId` alone used to render as a generic placeholder. One
-   * `resolvePublicIdentities` call covers every distinct (non-SYSTEM) sender.
+   * Batch-resolves display names and avatar URLs for a set of messages' senders,
+   * so a message keeps showing its sender's real name and avatar after they leave
+   * the room, are kicked, or are banned — the client has no roster entry to fall
+   * back on for a departed member.
    */
-  private async resolveSenderNames(
+  private async resolveSenderProfiles(
     messages: Array<{ senderId: string; type: ChatMessageType }>,
-  ): Promise<Map<string, string>> {
+  ): Promise<Map<string, { name?: string; avatarUrl?: string | null }>> {
     const senderIds = [
       ...new Set(
         messages.filter((m) => m.type !== ChatMessageType.SYSTEM).map((m) => m.senderId),
@@ -848,10 +853,11 @@ export class ChatService implements IAudioRoomChatService {
     ];
     if (senderIds.length === 0) return new Map();
     const identities = await this.profiles.resolvePublicIdentities(senderIds);
-    const names = new Map<string, string>();
+    const profiles = new Map<string, { name?: string; avatarUrl?: string | null }>();
     for (const [id, identity] of identities) {
-      if (identity.displayName) names.set(id, identity.displayName);
+      const name = identity.displayName || identity.username || undefined;
+      profiles.set(id, { name, avatarUrl: identity.avatarUrl ?? null });
     }
-    return names;
+    return profiles;
   }
 }
