@@ -255,7 +255,7 @@ export class AudioRoomsAdminController {
       }),
       this.prisma.giftTransaction.aggregate({
         _sum: { totalCoinValue: true, creatorEarnings: true },
-        where: { contextId: id },
+        where: { contextId: id, contextType: 'AUDIO_ROOM' },
       }),
       this.prisma.roomMessage.count({
         where: { roomId: id, isDeleted: false },
@@ -264,7 +264,7 @@ export class AudioRoomsAdminController {
         where: { roomId: id },
       }),
       this.prisma.giftTransaction.findMany({
-        where: { contextId: id },
+        where: { contextId: id, contextType: 'AUDIO_ROOM' },
         orderBy: { createdAt: 'desc' },
         take: 10,
       }),

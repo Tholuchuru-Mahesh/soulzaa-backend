@@ -163,6 +163,14 @@ export class VideoRoomsRepository {
     });
   }
 
+  /** Find an owner's permanent room (excluding soft-deleted), newest first. */
+  async findOwnedRoom(ownerId: string): Promise<VideoRoom | null> {
+    return this.prisma.videoRoom.findFirst({
+      where: { ownerId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   /** A page of rooms for discovery/listing. */
   async list(params: ListRoomsParams): Promise<{ items: VideoRoom[]; total: number }> {
     const where: Prisma.VideoRoomWhereInput = {

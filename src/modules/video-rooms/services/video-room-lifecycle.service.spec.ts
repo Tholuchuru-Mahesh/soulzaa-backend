@@ -56,6 +56,8 @@ describe('VideoRoomLifecycleService', () => {
   beforeEach(() => {
     repo = {
       countActiveByOwner: jest.fn().mockResolvedValue(0),
+      findByOwnerId: jest.fn().mockResolvedValue([]),
+      findOwnedRoom: jest.fn().mockResolvedValue(null),
       createRoomTx: jest.fn().mockResolvedValue(fullRoom()),
       findById: jest.fn().mockResolvedValue(fullRoom()),
       findDeletedById: jest.fn().mockResolvedValue(null),

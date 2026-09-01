@@ -18,7 +18,7 @@ export interface VideoRoomGiftSummary {
   totalGifts: number;
   totalGiftCoins: number;
   topGifts: { giftId: string; count: number }[];
-  topSenders: { userId: string; coins: number }[];
+  topSenders: { userId: string; coins: number; username?: string; avatarUrl?: string }[];
 }
 
 /** Analytics breakdown, gated behind VIEW_ANALYTICS. */
@@ -149,18 +149,40 @@ export class VideoRoomGiftStatisticsService {
       .filter((e): e is VideoRoomRecentGift => e !== null);
   }
 
-  /** Durable totals + live top lists. */
+  /** Durable totals + live top lists, reconciled with ledger aggregates. */
   async summary(roomId: string): Promise<VideoRoomGiftSummary> {
     const stats = await this.repo.findStatistics(roomId);
-    const [topGifts, topSenders] = await Promise.all([
+    const [topGifts, topSenders, ledgerAgg] = await Promise.all([
       this.cache.top(giftTopKey(roomId), 10),
       this.cache.top(giftTopSendersKey(roomId), 10),
+      this.repo.aggregateBySender(roomId),
     ]);
+
+    const ledgerGifts = ledgerAgg.reduce((sum, r) => sum + r.gifts, 0);
+    const ledgerCoins = ledgerAgg.reduce((sum, r) => sum + r.coins, 0);
+
+    let effectiveSenders = topSenders.map((e) => ({
+      userId: e.member,
+      coins: e.score,
+      username: undefined as string | undefined,
+      avatarUrl: undefined as string | undefined,
+    }));
+
+    if (ledgerAgg.length > 0) {
+      const topLedger = [...ledgerAgg].sort((a, b) => b.coins - a.coins).slice(0, 10);
+      effectiveSenders = topLedger.map((r) => ({
+        userId: r.senderId,
+        coins: r.coins,
+        username: r.username,
+        avatarUrl: r.avatarUrl,
+      }));
+    }
+
     return {
-      totalGifts: Number(stats?.totalGifts ?? 0),
-      totalGiftCoins: Number(stats?.totalGiftCoins ?? 0),
+      totalGifts: Math.max(Number(stats?.totalGifts ?? 0), ledgerGifts),
+      totalGiftCoins: Math.max(Number(stats?.totalGiftCoins ?? 0), ledgerCoins),
       topGifts: topGifts.map((e) => ({ giftId: e.member, count: e.score })),
-      topSenders: topSenders.map((e) => ({ userId: e.member, coins: e.score })),
+      topSenders: effectiveSenders,
     };
   }
 

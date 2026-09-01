@@ -27,12 +27,13 @@ export class WalletReadService {
   ) {}
 
   async getEarnings(userId: string, roomType?: GiftContextType): Promise<HostEarningsDto> {
+    const effectiveRoomType = roomType ?? GiftContextType.AUDIO_ROOM;
     const [giftAgg, goldSums, balances] = await Promise.all([
       this.prisma.giftTransaction.aggregate({
         where: {
           receiverId: userId,
           status: GiftTxnStatus.COMPLETED,
-          ...(roomType ? { contextType: roomType } : {}),
+          contextType: effectiveRoomType,
         },
         _sum: { creatorEarnings: true },
       }),

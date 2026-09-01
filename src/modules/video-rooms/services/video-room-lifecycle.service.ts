@@ -6,6 +6,7 @@ import {
   VideoRoomCreationSource,
   VideoRoomLogAction,
   VideoRoomStatus,
+  VideoRoomStreamingStatus,
   VideoRoomVisibility,
 } from '@prisma/client';
 import { BusinessException } from 'src/common/exceptions/business.exception';
@@ -114,6 +115,87 @@ export class VideoRoomLifecycleService {
       const isUuid = (id?: string | null): boolean =>
         typeof id === 'string' &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+      // Rooms are permanent and one-per-owner (matching Audio Room architecture).
+      // If the owner already has a room, "create" means "update details & reactivate as LIVE".
+      const ownedRooms = await this.repo.findByOwnerId(actor.id);
+      const existing = ownedRooms.length > 0 ? ownedRooms[0] : null;
+      if (existing) {
+        const updateData: UpdateVideoRoomData = {
+          name: dto.name,
+          description: dto.description ?? null,
+          imageKey: dto.imageKey ?? existing.imageKey,
+          categoryId: isUuid(dto.categoryId)
+            ? dto.categoryId!
+            : dto.categoryId === null
+              ? null
+              : existing.categoryId,
+          language: dto.language ?? existing.language,
+          country: dto.country ?? existing.country,
+          tags: dto.tags ?? existing.tags ?? [],
+          visibility: dto.visibility ?? VideoRoomVisibility.PUBLIC,
+          isLocked: passwordHash !== null,
+          passwordHash: passwordHash ?? (wantsPassword ? existing.passwordHash : null),
+          isDiscoverable: dto.isDiscoverable ?? true,
+          status: VideoRoomStatus.LIVE,
+          streamingStatus: VideoRoomStreamingStatus.IDLE,
+          endedAt: null,
+          ...(this.metadataFor(dto.accessPolicy) ?? {}),
+        };
+
+        if (dto.maxParticipants !== undefined) {
+          updateData.maxParticipants = this.clamp(
+            dto.maxParticipants,
+            this.config.defaultMaxParticipants,
+            this.config.maxParticipantsCap,
+          );
+        }
+        if (dto.maxViewers !== undefined) {
+          updateData.maxViewers = this.clamp(
+            dto.maxViewers,
+            this.config.defaultMaxViewers,
+            this.config.maxViewersCap,
+          );
+        }
+
+        await this.repo.updateRoom(existing.id, updateData, actor.id);
+        await this.repo.trendingBump(existing.id);
+        const view = await this.refreshCache(existing.id);
+
+        try {
+          await this.repo.appendLog({
+            roomId: existing.id,
+            actorId: actor.id,
+            action: VideoRoomLogAction.UPDATED,
+            metadata: { status: VideoRoomStatus.LIVE, reopened: true },
+          });
+        } catch (err) {
+          this.logger.warn(`Failed to append log for room ${existing.id}: ${(err as Error).message}`);
+        }
+
+        try {
+          await this.events.emitRoomUpdated({
+            roomId: existing.id,
+            actorId: actor.id,
+            changed: ['status', 'name', 'imageKey', 'visibility'],
+          });
+        } catch (err) {
+          this.logger.warn(`Failed to emit RoomUpdated for room ${existing.id}: ${(err as Error).message}`);
+        }
+
+        try {
+          await this.events.emitRoomStarted({
+            roomId: existing.id,
+            ownerId: existing.ownerId,
+            actorId: actor.id,
+          });
+        } catch (err) {
+          this.logger.warn(`Failed to emit RoomStarted for room ${existing.id}: ${(err as Error).message}`);
+        }
+
+        this.logger.log(`Video room ${existing.id} reactivated/started by ${actor.id}`);
+        return view;
+      }
 
       const data: CreateVideoRoomData = {
         ownerId: actor.id,

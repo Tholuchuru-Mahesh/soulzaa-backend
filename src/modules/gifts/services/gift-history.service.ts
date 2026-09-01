@@ -103,10 +103,11 @@ export class GiftHistoryService {
    * Get gift transactions for a specific room or context ID
    */
   async getRoomGiftHistory(contextId: string, dto: GiftHistoryQueryDto) {
-    const { page = 1, limit = 20 } = dto;
+    const { page = 1, limit = 20, contextType } = dto;
     const skip = (page - 1) * limit;
 
-    const where = { contextId };
+    const where: any = { contextId };
+    if (contextType) where.contextType = contextType.toUpperCase();
 
     const [total, transactions] = await Promise.all([
       this.prisma.giftTransaction.count({ where }),

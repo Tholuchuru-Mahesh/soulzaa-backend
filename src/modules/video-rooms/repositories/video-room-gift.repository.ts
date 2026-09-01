@@ -46,9 +46,15 @@ export class VideoRoomGiftRepository {
    * the send transaction commits, so it is deliberately a separate write.
    */
   async incrementGiftTotals(roomId: string, giftCount: number, coins: bigint): Promise<void> {
-    await this.prisma.videoRoomStatistics.update({
+    await this.prisma.videoRoomStatistics.upsert({
       where: { roomId },
-      data: {
+      create: {
+        roomId,
+        totalGifts: BigInt(giftCount),
+        totalGiftCoins: coins,
+        lastActivityAt: new Date(),
+      },
+      update: {
         totalGifts: { increment: BigInt(giftCount) },
         totalGiftCoins: { increment: coins },
         lastActivityAt: new Date(),
@@ -65,7 +71,10 @@ export class VideoRoomGiftRepository {
   async aggregateByReceiver(roomId: string): Promise<GiftReceiverAggregate[]> {
     const rows = await this.prisma.giftTransaction.groupBy({
       by: ['receiverId'],
-      where: this.roomScope(roomId),
+      where: {
+        ...this.roomScope(roomId),
+        status: GiftTxnStatus.COMPLETED,
+      },
       _sum: { creatorEarnings: true, totalCoinValue: true },
       _count: { _all: true },
     });
@@ -77,17 +86,33 @@ export class VideoRoomGiftRepository {
     }));
   }
 
-  async aggregateBySender(roomId: string): Promise<GiftSenderAggregate[]> {
+  async aggregateBySender(
+    roomId: string,
+  ): Promise<(GiftSenderAggregate & { username?: string; avatarUrl?: string })[]> {
     const rows = await this.prisma.giftTransaction.groupBy({
       by: ['senderId'],
-      where: this.roomScope(roomId),
+      where: {
+        ...this.roomScope(roomId),
+        status: GiftTxnStatus.COMPLETED,
+      },
       _sum: { totalCoinValue: true },
       _count: { _all: true },
     });
+
+    const userIds = rows.map((r) => r.senderId);
+    const users = userIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, username: true },
+        })
+      : [];
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
     return rows.map((row) => ({
       senderId: row.senderId,
       coins: Number(row._sum.totalCoinValue ?? 0),
       gifts: row._count._all,
+      username: userMap.get(row.senderId)?.username,
     }));
   }
 

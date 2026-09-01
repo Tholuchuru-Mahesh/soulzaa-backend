@@ -15,4 +15,5 @@ export interface LiveHistoryEntryView {
   /** Gift coins the creator received during the session, as a JSON-safe string. */
   giftCoins: string;
   newFollowers: number;
+  roomType?: 'VIDEO' | 'AUDIO';
 }

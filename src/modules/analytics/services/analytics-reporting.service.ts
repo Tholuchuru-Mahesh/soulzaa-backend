@@ -77,13 +77,21 @@ export class AnalyticsReportingService {
       creatorCoins += r.creatorCoins;
     }
 
+    let dbGiftsCount = 0;
     if (giftCoins === 0n) {
+      const isVideo = await this.prisma.videoRoom.findUnique({
+        where: { id: roomId },
+        select: { id: true },
+      });
+      const roomContextType = isVideo ? GiftContextType.VIDEO_ROOM : GiftContextType.AUDIO_ROOM;
       const dbGifts = await this.prisma.giftTransaction.aggregate({
-        where: { contextId: roomId, status: GiftTxnStatus.COMPLETED },
+        where: { contextId: roomId, status: GiftTxnStatus.COMPLETED, contextType: roomContextType },
         _sum: { totalCoinValue: true, creatorEarnings: true },
+        _count: true,
       });
       giftCoins = dbGifts._sum.totalCoinValue ?? 0n;
       creatorCoins = dbGifts._sum.creatorEarnings ?? 0n;
+      dbGiftsCount = dbGifts._count ?? 0;
     }
 
     const uniqueVisitors = await this.repo.countUniqueVisitors(roomId);
@@ -93,7 +101,7 @@ export class AnalyticsReportingService {
         roomId,
         peakParticipants: Math.max(live.peakParticipants, 1),
         totalJoined: Math.max(uniqueVisitors, live.uniqueVisitors, live.joins > 0 ? 1 : 0),
-        totalGifts: live.giftCount,
+        totalGifts: Math.max(live.giftCount, dbGiftsCount),
         totalGiftCoins: (giftCoins + BigInt(live.giftCoins)).toString(),
         totalSpeakingMinutes: Math.round(live.speakingSeconds / 60),
         durationSeconds: 0,
@@ -109,8 +117,8 @@ export class AnalyticsReportingService {
         dateKey,
         joins: live.joins,
         messages: live.messages,
-        giftCount: live.giftCount,
-        giftCoins: live.giftCoins,
+        giftCount: Math.max(live.giftCount, dbGiftsCount),
+        giftCoins: live.giftCoins > 0 ? live.giftCoins : Number(giftCoins),
         speakingSeconds: live.speakingSeconds,
         uniqueVisitors: live.uniqueVisitors,
         peakParticipants: live.peakParticipants,
@@ -127,6 +135,7 @@ export class AnalyticsReportingService {
     days: number,
     roomType?: GiftContextType,
   ): Promise<CreatorAnalyticsView> {
+    const effectiveRoomType = roomType ?? GiftContextType.AUDIO_ROOM;
     const now = new Date();
     const todayKey = dateKeyOf(now);
 
@@ -154,7 +163,7 @@ export class AnalyticsReportingService {
         where: {
           receiverId: userId,
           status: GiftTxnStatus.COMPLETED,
-          ...(roomType ? { contextType: roomType } : {}),
+          contextType: effectiveRoomType,
         },
         _sum: { creatorEarnings: true, totalCoinValue: true },
         _count: true,
@@ -171,7 +180,7 @@ export class AnalyticsReportingService {
         where: {
           receiverId: userId,
           status: GiftTxnStatus.COMPLETED,
-          ...(roomType ? { contextType: roomType } : {}),
+          contextType: effectiveRoomType,
           createdAt: { gte: fromDate },
         },
         select: {
@@ -204,9 +213,16 @@ export class AnalyticsReportingService {
 
     let giftCoins = 0n;
     let creatorCoins = 0n;
-    for (const r of revenue) {
-      giftCoins += r.giftCoins;
-      creatorCoins += r.creatorCoins;
+    if (effectiveRoomType === GiftContextType.AUDIO_ROOM) {
+      for (const r of revenue) {
+        giftCoins += r.giftCoins;
+        creatorCoins += r.creatorCoins;
+      }
+    }
+
+    if (giftCoins === 0n || effectiveRoomType === GiftContextType.VIDEO_ROOM) {
+      giftCoins = giftLifetime._sum.totalCoinValue ?? 0n;
+      creatorCoins = giftLifetime._sum.creatorEarnings ?? 0n;
     }
 
     const lifetimeGifts = Number(giftLifetime._sum.creatorEarnings ?? 0n);
@@ -245,34 +261,34 @@ export class AnalyticsReportingService {
 
     // Aggregate DB rooms hosted by dateKey and total
     const dbRoomsByDate = new Map<string, number>();
-    for (const r of audioRooms) {
+    const roomsToCount = effectiveRoomType === GiftContextType.VIDEO_ROOM ? videoRooms : audioRooms;
+    for (const r of roomsToCount) {
       const key = dateKeyOf(r.createdAt);
       dbRoomsByDate.set(key, (dbRoomsByDate.get(key) ?? 0) + 1);
     }
-    for (const r of videoRooms) {
-      const key = dateKeyOf(r.createdAt);
-      dbRoomsByDate.set(key, (dbRoomsByDate.get(key) ?? 0) + 1);
-    }
-    const totalDbRooms = audioRooms.length + videoRooms.length;
+    const totalDbRooms = roomsToCount.length;
     const totalRoomsHosted = Math.max(
       totalDbRooms,
-      (lifetimeStats.roomsHosted ?? 0) + live.roomsHosted,
+      effectiveRoomType === GiftContextType.AUDIO_ROOM
+        ? (lifetimeStats.roomsHosted ?? 0) + live.roomsHosted
+        : totalDbRooms,
     );
 
     // Build complete dailySeries map for the requested days (ordered oldest -> newest)
     const map = new Map(seriesRows.map((s) => [s.dateKey, s]));
     const formattedSeries: CreatorDailyStatView[] = [];
 
+    const isAudio = effectiveRoomType === GiftContextType.AUDIO_ROOM;
     for (let i = days - 1; i >= 0; i--) {
       const key = dateKeyDaysAgo(i);
-      const existing = map.get(key);
+      const existing = isAudio ? map.get(key) : undefined;
       const dbTxn = dbEarningsByDate.get(key);
       const dbRooms = dbRoomsByDate.get(key) ?? 0;
 
       if (key === todayKey) {
-        const liveEarn = live.creatorEarnings;
-        const liveCoins = live.giftCoinsReceived;
-        const liveCount = live.giftsReceivedCount;
+        const liveEarn = isAudio ? live.creatorEarnings : 0;
+        const liveCoins = isAudio ? live.giftCoinsReceived : 0;
+        const liveCount = isAudio ? live.giftsReceivedCount : 0;
 
         const giftsCount = Math.max(
           liveCount,
@@ -289,7 +305,11 @@ export class AnalyticsReportingService {
           dbTxn?.creatorEarnings ?? 0,
           existing ? Number(existing.creatorEarnings) : 0,
         );
-        const roomsRec = Math.max(live.roomsHosted, dbRooms, existing?.roomsHosted ?? 0);
+        const roomsRec = Math.max(
+          isAudio ? live.roomsHosted : 0,
+          dbRooms,
+          existing?.roomsHosted ?? 0,
+        );
 
         formattedSeries.push({
           dateKey: key,
@@ -298,9 +318,9 @@ export class AnalyticsReportingService {
           creatorEarnings: earningsRec.toString(),
           roomsHosted: roomsRec,
           speakingSeconds: (
-            (existing ? Number(existing.speakingSeconds) : 0) + live.speakingSeconds
+            (existing ? Number(existing.speakingSeconds) : 0) + (isAudio ? live.speakingSeconds : 0)
           ).toString(),
-          engagementScore: existing?.engagementScore ?? this.rollup.creatorEngagement(live),
+          engagementScore: existing?.engagementScore ?? (isAudio ? this.rollup.creatorEngagement(live) : 0),
         });
       } else if (existing) {
         const giftsCount = Math.max(existing.giftsReceivedCount, dbTxn?.giftsCount ?? 0);
