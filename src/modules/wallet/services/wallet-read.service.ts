@@ -1,6 +1,5 @@
-// src/modules/wallet/services/wallet-read.service.ts
 import { Injectable } from '@nestjs/common';
-import { GiftTxnStatus, LedgerEntry, WalletCurrency, WalletTxnReason } from '@prisma/client';
+import { GiftContextType, GiftTxnStatus, LedgerEntry, WalletCurrency, WalletTxnReason } from '@prisma/client';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
@@ -27,10 +26,14 @@ export class WalletReadService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async getEarnings(userId: string): Promise<HostEarningsDto> {
+  async getEarnings(userId: string, roomType?: GiftContextType): Promise<HostEarningsDto> {
     const [giftAgg, goldSums, balances] = await Promise.all([
       this.prisma.giftTransaction.aggregate({
-        where: { receiverId: userId, status: GiftTxnStatus.COMPLETED },
+        where: {
+          receiverId: userId,
+          status: GiftTxnStatus.COMPLETED,
+          ...(roomType ? { contextType: roomType } : {}),
+        },
         _sum: { creatorEarnings: true },
       }),
       this.repo.sumByReason(

@@ -108,18 +108,38 @@ export abstract class BaseGateway
   @SubscribeMessage('send_message')
   async onChatMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { roomId: string; message?: string; text?: string },
+    @MessageBody()
+    body: {
+      roomId: string;
+      message?: string;
+      text?: string;
+      username?: string;
+      senderName?: string;
+      avatarUrl?: string;
+      senderId?: string;
+    },
   ): Promise<{ ok: boolean }> {
     const user = client.data.user as AuthenticatedUser | undefined;
     const text = (body.message ?? body.text ?? '').trim();
     if (!text || !body.roomId) return { ok: false };
 
+    const senderId = user?.id ?? body.senderId ?? client.id;
+    const username =
+      (body.username && body.username.trim().length > 0 && body.username.toLowerCase() !== 'user')
+        ? body.username.trim()
+        : (body.senderName && body.senderName.trim().length > 0 && body.senderName.toLowerCase() !== 'user')
+        ? body.senderName.trim()
+        : user?.username ?? user?.name ?? 'User';
+    const avatarUrl = body.avatarUrl ?? user?.avatarUrl;
+
     const payload = {
       roomId: body.roomId,
-      senderId: user?.id ?? 'user',
-      username: user?.username ?? user?.name ?? 'User',
-      avatarUrl: user?.avatarUrl,
+      senderId,
+      username,
+      senderName: username,
+      avatarUrl,
       text: text,
+      content: text,
       timestamp: new Date().toISOString(),
     };
 

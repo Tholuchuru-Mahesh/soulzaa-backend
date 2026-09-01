@@ -86,7 +86,7 @@ export class AnalyticsController {
   @NotGuest()
   @ApiOperation({ summary: "The caller's own creator analytics (today + totals + series)" })
   me(@CurrentUser() user: AuthenticatedUser, @Query() q: AnalyticsSeriesQueryDto) {
-    return this.reporting.getMyAnalytics(user.id, q.days);
+    return this.reporting.getMyAnalytics(user.id, q.days, q.roomType);
   }
 
   // ---- Platform revenue (admins only) ----

@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { GiftContextType } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
 import { ANALYTICS_DEFAULT_SERIES_DAYS } from '../constants/analytics.constants';
 
 export class QueryRevenueDto {
@@ -71,7 +72,7 @@ export interface RevenueReportView {
   creatorCoins: string; // BigInt to string
 }
 
-/** How many days of daily-series history to return. */
+/** How many days of daily-series history to return, and optional room-type scope (AUDIO_ROOM vs VIDEO_ROOM). */
 export class AnalyticsSeriesQueryDto {
   @ApiPropertyOptional({ minimum: 1, maximum: 365, default: ANALYTICS_DEFAULT_SERIES_DAYS })
   @IsOptional()
@@ -80,6 +81,14 @@ export class AnalyticsSeriesQueryDto {
   @Min(1)
   @Max(365)
   days: number = ANALYTICS_DEFAULT_SERIES_DAYS;
+
+  @ApiPropertyOptional({
+    enum: GiftContextType,
+    description: 'Filter creator earnings specifically by room type (e.g. AUDIO_ROOM vs VIDEO_ROOM)',
+  })
+  @IsOptional()
+  @IsEnum(GiftContextType)
+  roomType?: GiftContextType;
 }
 
 export interface RoomDailyStatView {

@@ -1,6 +1,7 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   CreatorDailyStat,
+  GiftContextType,
   GiftTxnStatus,
   RoomActivity,
   RoomDailyStat,
@@ -120,8 +121,12 @@ export class AnalyticsReportingService {
     };
   }
 
-  /** A user's own creator analytics: today + lifetime totals + revenue + series. */
-  async getMyAnalytics(userId: string, days: number): Promise<CreatorAnalyticsView> {
+  /** A user's own creator analytics: today + lifetime totals + revenue + series (optionally scoped to AUDIO_ROOM or VIDEO_ROOM). */
+  async getMyAnalytics(
+    userId: string,
+    days: number,
+    roomType?: GiftContextType,
+  ): Promise<CreatorAnalyticsView> {
     const now = new Date();
     const todayKey = dateKeyOf(now);
 
@@ -146,7 +151,11 @@ export class AnalyticsReportingService {
       this.repo.sumCreatorDailyStats(userId),
       this.repo.getRevenueReports({ userId, roomId: GLOBAL_ANALYTICS_UUID }),
       this.prisma.giftTransaction.aggregate({
-        where: { receiverId: userId, status: GiftTxnStatus.COMPLETED },
+        where: {
+          receiverId: userId,
+          status: GiftTxnStatus.COMPLETED,
+          ...(roomType ? { contextType: roomType } : {}),
+        },
         _sum: { creatorEarnings: true, totalCoinValue: true },
         _count: true,
       }),
@@ -162,6 +171,7 @@ export class AnalyticsReportingService {
         where: {
           receiverId: userId,
           status: GiftTxnStatus.COMPLETED,
+          ...(roomType ? { contextType: roomType } : {}),
           createdAt: { gte: fromDate },
         },
         select: {

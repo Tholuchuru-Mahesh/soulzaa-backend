@@ -111,12 +111,16 @@ export class VideoRoomLifecycleService {
       }
       const passwordHash = dto.password ? await this.passwords.hash(dto.password) : null;
 
+      const isUuid = (id?: string | null): boolean =>
+        typeof id === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
       const data: CreateVideoRoomData = {
         ownerId: actor.id,
         name: dto.name,
         description: dto.description ?? null,
         imageKey: dto.imageKey ?? null,
-        categoryId: dto.categoryId ?? null,
+        categoryId: isUuid(dto.categoryId) ? dto.categoryId! : null,
         language: dto.language ?? null,
         country: dto.country ?? null,
         tags: dto.tags ?? [],
