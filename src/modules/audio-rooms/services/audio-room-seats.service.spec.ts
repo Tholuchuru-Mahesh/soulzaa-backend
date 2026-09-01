@@ -193,9 +193,10 @@ describe('AudioRoomSeatsService', () => {
       await expect(service.takeSeat(LISTENER, 'r', 1)).rejects.toBeInstanceOf(BusinessException);
     });
 
-    it('forbids a non-owner taking the owner seat', async () => {
+    it('allows a non-owner to take the owner seat when open', async () => {
       seats.getSeatByIndex.mockResolvedValue(seat({ seatType: SeatType.OWNER, seatIndex: 0 }));
-      await expect(service.takeSeat(LISTENER, 'r', 0)).rejects.toBeInstanceOf(BusinessException);
+      await service.takeSeat(LISTENER, 'r', 0);
+      expect(seats.setOccupant).toHaveBeenCalledWith('r', 0, LISTENER.id, LISTENER.id);
     });
 
     it('seats a user on an open speaker seat', async () => {
@@ -312,12 +313,14 @@ describe('AudioRoomSeatsService', () => {
         expect(seats.setOccupant).toHaveBeenCalledWith('r', 5, LISTENER.id, LISTENER.id);
       });
 
-      it('strictly keeps a seated speaker off the owner seat (seat 0)', async () => {
+      it('allows a seated speaker to move to the open owner seat (seat 0)', async () => {
         permissions.hasPermission.mockResolvedValue(false);
         seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3, occupantUserId: LISTENER.id }));
         seats.getSeatByIndex.mockResolvedValue(ownerSeat());
 
-        await expect(service.takeSeat(LISTENER, 'r', 0)).rejects.toBeInstanceOf(BusinessException);
+        await service.takeSeat(LISTENER, 'r', 0);
+        expect(seats.setOccupant).toHaveBeenCalledWith('r', 3, null, LISTENER.id);
+        expect(seats.setOccupant).toHaveBeenCalledWith('r', 0, LISTENER.id, LISTENER.id);
       });
     });
   });
@@ -604,13 +607,13 @@ describe('AudioRoomSeatsService', () => {
       expect(seats.setOccupant).toHaveBeenCalledWith('r', 5, ADMIN.id, ADMIN.id);
     });
 
-    it('still refuses to seat an admin on the owner seat', async () => {
+    it('allows an admin or speaker to sit on the top seat when open', async () => {
       seats.getSeatByOccupant.mockResolvedValue(seat({ seatIndex: 3 }));
       seats.getSeatByIndex.mockResolvedValue(seat({ seatIndex: 0, seatType: SeatType.OWNER }));
 
-      await expect(service.takeSeat(ADMIN, 'r', 0)).rejects.toBeInstanceOf(BusinessException);
-      // The seat they already held must not be vacated by a rejected move.
-      expect(seats.setOccupant).not.toHaveBeenCalledWith('r', 3, null, ADMIN.id);
+      await service.takeSeat(ADMIN, 'r', 0);
+      expect(seats.setOccupant).toHaveBeenCalledWith('r', 3, null, ADMIN.id);
+      expect(seats.setOccupant).toHaveBeenCalledWith('r', 0, ADMIN.id, ADMIN.id);
     });
 
     it('allows an ordinary seated member to move to an open speaker seat', async () => {

@@ -1092,7 +1092,7 @@ export class AudioRoomSeatsService {
   /** Whether a user may sit on a seat of the given type. */
   private async seatTypeAllowed(roomId: string, userId: string, seat: RoomSeat): Promise<boolean> {
     if (seat.seatType === SeatType.OWNER) {
-      return (await this.rooms.getOwnerId(roomId)) === userId;
+      return true; // Any member (owner, admin, speaker) may sit on the top seat when open
     }
     if (seat.seatType === SeatType.PREMIUM_ADMIN) {
       const role = await this.permissions.getEffectiveRole(roomId, userId);
