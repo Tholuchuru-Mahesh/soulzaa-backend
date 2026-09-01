@@ -132,4 +132,67 @@ export class GiftHistoryService {
       items: formatted,
     };
   }
+
+  /**
+   * Get user received gifts showcase with counts per gift (e.g. Cap x4, Car x8)
+   */
+  async getUserReceivedGiftsShowcase(userId: string) {
+    const aggregates = await this.prisma.giftTransaction.groupBy({
+      by: ['giftId'],
+      where: { receiverId: userId },
+      _sum: { quantity: true, totalCoinValue: true },
+      _count: { id: true },
+    });
+
+    if (aggregates.length === 0) {
+      return [];
+    }
+
+    const giftIds = aggregates.map((a) => a.giftId);
+    const gifts = await this.prisma.gift.findMany({
+      where: { id: { in: giftIds } },
+    });
+
+    const resolvedGifts = await Promise.all(
+      gifts.map(async (g) => {
+        const thumbKey =
+          g.thumbnailUrl || (g as any).iconUrl || g.lottieUrl || g.animationUrl || null;
+        return {
+          ...g,
+          resolvedThumbnailUrl: thumbKey ? await this.media.resolve(thumbKey) : null,
+        };
+      }),
+    );
+
+    const giftMap = new Map(resolvedGifts.map((g) => [g.id, g]));
+
+    const result = aggregates
+      .map((agg) => {
+        const gift = giftMap.get(agg.giftId);
+        if (!gift) return null;
+        const count = Number(agg._sum.quantity ?? 0);
+        const totalCoinValue = Number(agg._sum.totalCoinValue ?? 0);
+        if (count <= 0) return null;
+
+        return {
+          giftId: agg.giftId,
+          name: gift.name,
+          displayName: gift.displayName || gift.name,
+          thumbnailUrl:
+            gift.resolvedThumbnailUrl || gift.thumbnailUrl || (gift as any)?.iconUrl || null,
+          coinValue: Number(gift.coinValue ?? 0),
+          count,
+          totalCoinValue,
+          category: gift.category || 'POPULAR',
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    // Sort by count desc, then totalCoinValue desc
+    result.sort((a, b) => b.count - a.count || b.totalCoinValue - a.totalCoinValue);
+    return result;
+  }
 }
+
+
+

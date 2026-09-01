@@ -81,6 +81,13 @@ export class GiftsController {
     return this.inventoryService.getUserInventory(userId);
   }
 
+  @ApiOperation({ summary: 'Get received gifts showcase for a user with item counts' })
+  @ApiResponse({ status: 200, description: 'List of received gifts with count' })
+  @Get('received/:userId')
+  async getUserReceivedGifts(@Param('userId') userId: string) {
+    return this.historyService.getUserReceivedGiftsShowcase(userId);
+  }
+
   @ApiOperation({ summary: 'Get gift transaction details' })
   @ApiResponse({ status: 200, description: 'Gift details' })
   @Get('catalog/:id')

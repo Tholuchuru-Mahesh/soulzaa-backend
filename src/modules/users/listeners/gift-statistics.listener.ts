@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
+import { SocketManager } from 'src/infra/socket/socket.manager';
 import { GIFT_EVENTS, type GiftSentEvent } from 'src/modules/gifts/events/gift.events';
 import { PROFILE_SERVICE, type IProfileService } from '../interfaces/profile.interface';
 
@@ -23,6 +24,7 @@ export class GiftStatisticsListener implements OnModuleInit {
   constructor(
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Inject(PROFILE_SERVICE) private readonly profile: IProfileService,
+    private readonly sockets: SocketManager,
   ) {}
 
   onModuleInit(): void {
@@ -39,6 +41,11 @@ export class GiftStatisticsListener implements OnModuleInit {
         // Sender counter
         this.profile.incrementStatistic(senderId, 'giftsSent', quantity),
       ]);
+
+      // Emit realtime updates cross-namespace so mobile profile & gift showcase sheets auto-refresh
+      this.sockets.emitToUserEverywhere(receiverId, 'user.gifts_updated', event.payload);
+      this.sockets.emitToUserEverywhere(receiverId, 'profile:updated', { userId: receiverId });
+      this.sockets.emitToUserEverywhere(senderId, 'profile:updated', { userId: senderId });
     } catch (err) {
       // Non-fatal — log and continue; a failed counter update must not block
       // the gift transaction which has already been committed.

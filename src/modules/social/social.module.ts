@@ -5,6 +5,7 @@ import { FriendsController } from './controllers/friends.controller';
 import { InvitationsController } from './controllers/invitations.controller';
 import { PresenceController } from './controllers/presence.controller';
 import { RecommendationsController } from './controllers/recommendations.controller';
+import { ShareRedirectController } from './controllers/share-redirect.controller';
 import { SocialShareController } from './controllers/social-share.controller';
 import { SOCIAL_SERVICE } from './interfaces/social.interface';
 import { InteractionListener } from './listeners/interaction.listener';
@@ -45,6 +46,7 @@ import { TrendingHostsStore } from './services/trending-hosts.store';
     InvitationsController,
     RecommendationsController,
     SocialShareController,
+    ShareRedirectController,
   ],
   providers: [
     // repositories
