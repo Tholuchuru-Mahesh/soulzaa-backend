@@ -420,7 +420,7 @@ export class ModerationRepository {
     const [users, profiles] = await Promise.all([
       this.prisma.user.findMany({
         where: { id: { in: ids } },
-        select: { id: true, username: true },
+        select: { id: true, username: true, fullName: true, email: true },
       }),
       this.prisma.userProfile.findMany({
         where: { userId: { in: ids } },
@@ -430,7 +430,22 @@ export class ModerationRepository {
 
     const avatarByUser = new Map(profiles.map((p) => [p.userId, p.avatarKey]));
     return new Map(
-      users.map((u) => [u.id, { username: u.username, avatarKey: avatarByUser.get(u.id) ?? null }]),
+      users.map((u) => {
+        let displayName = u.fullName?.trim() || u.username?.trim();
+        if (!displayName && u.email) {
+          displayName = u.email.split('@')[0];
+        }
+        if (displayName && displayName.includes('@')) {
+          displayName = displayName.split('@')[0];
+        }
+        return [
+          u.id,
+          {
+            username: displayName || null,
+            avatarKey: avatarByUser.get(u.id) ?? null,
+          },
+        ];
+      }),
     );
   }
 
