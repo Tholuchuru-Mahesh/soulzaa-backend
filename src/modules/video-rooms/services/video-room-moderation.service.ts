@@ -1360,6 +1360,7 @@ export class VideoRoomModerationService {
         chatMode: settings.chatMode,
         allowChat: settings.allowChat,
         slowModeSeconds: settings.slowModeSeconds,
+        chatMaxMessageLength: settings.chatMaxMessageLength,
         actorId: actor.id,
         audit: requestMeta,
       }),

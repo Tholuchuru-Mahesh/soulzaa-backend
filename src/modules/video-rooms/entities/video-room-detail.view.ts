@@ -1,4 +1,5 @@
 import type {
+  VideoRoomChatMode,
   VideoRoomStatus,
   VideoRoomStreamingStatus,
   VideoRoomVisibility,
@@ -37,6 +38,29 @@ export interface VideoRoomSettingsView {
    * change the actor just made.
    */
   seatApprovalRequired: boolean;
+
+  /**
+   * VR-9.1a chat policy, projected because the CLIENT cannot behave correctly
+   * without it and must not guess.
+   *
+   * `chatMaxMessageLength` is the room's own ceiling, which can be below the
+   * DTO's 4000-character safety bound; a composer that hardcodes 4000 lets a
+   * user type a message the server will certainly reject. `chatMode` decides
+   * who may speak at all, so a client that does not know it either offers a
+   * composer that cannot work or hides one that can. Both are enforced
+   * server-side by `VideoRoomChatPolicyService` regardless — this is for the
+   * UI, never for authorization.
+   *
+   * `chatMaxAttachments` and `chatRateLimitPerMinute` stay UNPROJECTED: no
+   * client behaviour depends on either (a rate-limited send is discovered from
+   * the 429, not predicted), so advertising them is surface for nothing.
+   *
+   * Like every other writable field here, these ride the
+   * `video_room.settings_updated` broadcast, so a mid-session change reaches
+   * every connected client without a refetch.
+   */
+  chatMode: VideoRoomChatMode;
+  chatMaxMessageLength: number;
 }
 
 /** Client-safe projection of the denormalised statistics row (BigInt → number). */

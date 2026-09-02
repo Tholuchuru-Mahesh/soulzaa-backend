@@ -92,8 +92,7 @@ describe('toSettingsView', () => {
 
     for (const internal of [
       'roomId',
-      'chatMode',
-      'chatMaxMessageLength',
+      // chatMode / chatMaxMessageLength ARE projected now — see the test below.
       'chatMaxAttachments',
       'chatRateLimitPerMinute',
       'metadata',
@@ -112,6 +111,20 @@ describe('toSettingsView', () => {
     ]) {
       expect(view).not.toHaveProperty(internal);
     }
+  });
+
+  // The composer cannot behave correctly without these two: the room's own
+  // message ceiling can be below the DTO's 4000-character bound, and the chat
+  // mode decides whether to offer a composer at all. Withholding them forced
+  // the client to hardcode both — which then went stale the moment an owner
+  // changed either. Still enforced server-side; this is for the UI only.
+  it('projects the chat policy the client has to render', () => {
+    const view = toSettingsView(settingsRow());
+
+    expect(view).toMatchObject({
+      chatMode: expect.any(String),
+      chatMaxMessageLength: expect.any(Number),
+    });
   });
 
   // isRoomMuted is real as of the mute-all wiring; seat counts are real and

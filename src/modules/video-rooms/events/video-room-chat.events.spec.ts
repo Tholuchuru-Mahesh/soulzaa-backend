@@ -43,6 +43,7 @@ describe('video-room chat events', () => {
       chatMode: 'PARTICIPANTS_ONLY',
       allowChat: true,
       slowModeSeconds: 5,
+      chatMaxMessageLength: 300,
       actorId: 'owner-1',
     });
 
@@ -53,6 +54,9 @@ describe('video-room chat events', () => {
       chatMode: 'PARTICIPANTS_ONLY',
       allowChat: true,
       slowModeSeconds: 5,
+      // The room's message ceiling rides this broadcast so a connected client
+      // retunes its composer without waiting for a refetch.
+      chatMaxMessageLength: 300,
       actorId: 'owner-1',
     });
   });

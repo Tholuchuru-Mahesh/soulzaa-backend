@@ -67,7 +67,12 @@ export class VideoRoomChatSettingsService {
     if (
       dto.chatMode !== undefined ||
       dto.allowChat !== undefined ||
-      dto.slowModeSeconds !== undefined
+      dto.slowModeSeconds !== undefined ||
+      // The client tunes its composer from this, so a change has to be
+      // announced. Without this branch a room could lower its message ceiling
+      // and every connected client would keep offering the old one until it
+      // happened to refetch the room.
+      dto.chatMaxMessageLength !== undefined
     ) {
       await this.bus.publish(
         new ChatModeChangedEvent({
@@ -75,6 +80,7 @@ export class VideoRoomChatSettingsService {
           chatMode: settings.chatMode,
           allowChat: settings.allowChat,
           slowModeSeconds: settings.slowModeSeconds,
+          chatMaxMessageLength: settings.chatMaxMessageLength,
           actorId: actor.id,
           audit,
         }),

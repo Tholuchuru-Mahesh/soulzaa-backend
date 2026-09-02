@@ -11,13 +11,30 @@
  * events always persist no matter how large the room.
  */
 export interface SystemMessagePolicy {
-  /** Human-readable template; `{userId}` etc. are substituted by the service. */
+  /**
+   * Human-readable template. `{name}` is substituted by
+   * `VideoRoomSystemMessageService` with the subject's display name, resolved
+   * from the event payload and falling back to the identity cache.
+   *
+   * This comment used to claim `{userId}` etc. were substituted "by the
+   * service" while no substitution code existed anywhere — so every template
+   * below was emitted verbatim. That is why rooms narrated themselves as
+   * "A user joined the room." forever: there was no placeholder to fill and
+   * nothing to fill it with.
+   */
   template: string;
   /** Write a durable row. */
   persist: boolean;
   /** Degrade to broadcast-only above `videoRoomChat.systemMessageBroadcastOnlyAboveViewers`. */
   degradesWithRoomSize: boolean;
 }
+
+/**
+ * Rendered in place of `{name}` when the subject cannot be resolved at all —
+ * a deleted account, or a profile lookup that failed. Deliberately a neutral
+ * word, never an invented name and never a dangling `{name}`.
+ */
+export const SYSTEM_MESSAGE_UNKNOWN_SUBJECT = 'Someone';
 
 export const SYSTEM_MESSAGE_POLICY: Record<string, SystemMessagePolicy> = {
   // ---- Always persist: lifecycle, ownership, moderation, seat decisions ----
@@ -40,24 +57,28 @@ export const SYSTEM_MESSAGE_POLICY: Record<string, SystemMessagePolicy> = {
     degradesWithRoomSize: false,
   },
   SEAT_INVITATION: {
-    template: 'A user was invited to a seat.',
+    template: '{name} was invited to a seat.',
     persist: true,
     degradesWithRoomSize: false,
   },
   PROMOTED: {
-    template: 'A viewer was promoted to the stage.',
+    template: '{name} was promoted to the stage.',
     persist: true,
     degradesWithRoomSize: false,
   },
   DEMOTED: {
-    template: 'A participant was moved to the audience.',
+    template: '{name} was moved to the audience.',
     persist: true,
     degradesWithRoomSize: false,
   },
 
   // ---- Degrade with room size: presence churn ----
-  USER_JOINED: { template: 'A user joined the room.', persist: true, degradesWithRoomSize: true },
-  USER_LEFT: { template: 'A user left the room.', persist: true, degradesWithRoomSize: true },
-  VIEWER_JOINED: { template: 'A viewer joined.', persist: true, degradesWithRoomSize: true },
-  VIEWER_LEFT: { template: 'A viewer left.', persist: true, degradesWithRoomSize: true },
+  USER_JOINED: {
+    template: '{name} joined the room.',
+    persist: true,
+    degradesWithRoomSize: true,
+  },
+  USER_LEFT: { template: '{name} left the room.', persist: true, degradesWithRoomSize: true },
+  VIEWER_JOINED: { template: '{name} joined.', persist: true, degradesWithRoomSize: true },
+  VIEWER_LEFT: { template: '{name} left.', persist: true, degradesWithRoomSize: true },
 };

@@ -13,6 +13,8 @@ export function toSettingsView(settings: VideoRoomSettings | null): VideoRoomSet
   return {
     allowChat: settings.allowChat,
     slowModeSeconds: settings.slowModeSeconds,
+    chatMode: settings.chatMode,
+    chatMaxMessageLength: settings.chatMaxMessageLength,
     allowGifts: settings.allowGifts,
     allowTreasure: settings.allowTreasure,
     allowPk: settings.allowPk,
