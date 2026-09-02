@@ -366,8 +366,11 @@ export class ProfileService implements IProfileService {
       bio?: string;
       gender?: ProfileView['gender'];
       country?: string;
+      countryId?: string;
       state?: string;
+      stateId?: string;
       city?: string;
+      regionId?: string;
       preferredLanguage?: string;
       dateOfBirth?: string;
     },
@@ -408,8 +411,10 @@ export class ProfileService implements IProfileService {
       changed.push('dateOfBirth');
     }
 
-    // Auto-resolve geographic IDs for location scoping
-    if (input.country && this.prisma?.country) {
+    // Explicit or Auto-resolve geographic IDs for location scoping
+    if (input.countryId) {
+      identityData['countryId'] = input.countryId;
+    } else if (input.country && this.prisma?.country) {
       const c = await this.prisma.country.findFirst({
         where: {
           OR: [
@@ -420,7 +425,10 @@ export class ProfileService implements IProfileService {
       });
       if (c) identityData['countryId'] = c.id;
     }
-    if (input.state && this.prisma?.state) {
+
+    if (input.stateId) {
+      identityData['stateId'] = input.stateId;
+    } else if (input.state && this.prisma?.state) {
       const s = await this.prisma.state.findFirst({
         where: {
           OR: [
@@ -434,7 +442,10 @@ export class ProfileService implements IProfileService {
         if (!identityData['countryId']) identityData['countryId'] = s.countryId;
       }
     }
-    if (input.city && this.prisma?.region) {
+
+    if (input.regionId) {
+      identityData['regionId'] = input.regionId;
+    } else if (input.city && this.prisma?.region) {
       const r = await this.prisma.region.findFirst({
         where: {
           OR: [

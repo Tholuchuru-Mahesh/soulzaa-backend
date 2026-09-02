@@ -4,11 +4,10 @@ import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { PUSH_CATEGORIES } from 'src/modules/device/interfaces/push.constants';
 import {
   WEALTH_EVENTS,
+  type WealthBenefitClaimedEvent,
   type WealthDowngradedEvent,
   type WealthLevelUpEvent,
   type WealthMonthlyResetEvent,
-  type WealthRewardAvailableEvent,
-  type WealthRewardClaimedEvent,
 } from 'src/modules/wealth/events/wealth.events';
 import { GUARD_TTL } from '../constants/notification-guard.constants';
 import { NotificationGuard } from '../services/notification-guard.service';
@@ -65,28 +64,15 @@ export class WealthNotificationListener implements OnModuleInit {
       ),
     );
 
-    this.bus.subscribe<WealthRewardAvailableEvent>(WEALTH_EVENTS.REWARD_AVAILABLE, (e) =>
+    this.bus.subscribe<WealthBenefitClaimedEvent>(WEALTH_EVENTS.BENEFIT_CLAIMED, (e) =>
       this.emit(
         e.payload.userId,
-        `wealth:reward_available:${e.payload.userId}:${e.payload.rewardId}`,
-        {
-          type: NotificationType.WEALTH_REWARD_AVAILABLE,
-          title: 'Wealth Level reward available',
-          body: 'A new reward is waiting for you',
-          data: { rewardId: e.payload.rewardId, level: e.payload.level },
-        },
-      ),
-    );
-
-    this.bus.subscribe<WealthRewardClaimedEvent>(WEALTH_EVENTS.REWARD_CLAIMED, (e) =>
-      this.emit(
-        e.payload.userId,
-        `wealth:reward_claimed:${e.payload.userId}:${e.payload.rewardId}`,
+        `wealth:benefit_claimed:${e.payload.userId}:${e.payload.benefitId}`,
         {
           type: NotificationType.WEALTH_REWARD_CLAIMED,
           title: 'Reward claimed',
           body: 'Your Wealth Level reward has been credited',
-          data: { rewardId: e.payload.rewardId, level: e.payload.level },
+          data: { benefitId: e.payload.benefitId, level: e.payload.level },
         },
       ),
     );

@@ -1,17 +1,17 @@
 import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { WealthLevel, WealthLevelBenefit } from '@prisma/client';
+import type { WealthBenefitCategory, WealthLevel, WealthLevelBenefit } from '@prisma/client';
 import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 import { RequirePermissions } from 'src/modules/authorization/decorators/authorization.decorators';
 import {
+  CreateWealthBenefitCategoryDto,
   CreateWealthBenefitDto,
-  CreateWealthRewardDto,
   PaginationQueryDto,
+  UpdateWealthBenefitCategoryDto,
   UpdateWealthBenefitDto,
   UpdateWealthConfigurationDto,
   UpdateWealthDowngradeConfigDto,
-  UpdateWealthRewardDto,
   UpsertWealthLevelDto,
 } from '../dto/wealth.dto';
 import { WealthAdminService } from '../services/wealth-admin.service';
@@ -19,7 +19,7 @@ import { WealthDowngradeConfigService } from '../services/wealth-downgrade-confi
 
 /**
  * Super Admin Wealth Level management. `wealth.manage` (ADMIN or
- * SUPER_ADMIN) covers levels/benefits/rewards; the downgrade policy and
+ * SUPER_ADMIN) covers levels/benefits; the downgrade policy and
  * general module configuration require `wealth.level.downgrade.manage` /
  * `wealth.configuration.manage`, which are granted only to SUPER_ADMIN
  * (see rbac-permissions.constants.ts — deliberately absent from ADMIN's
@@ -36,19 +36,36 @@ export class WealthAdminController {
   ) {}
 
   private async resolveLevelIcon(level: WealthLevel): Promise<WealthLevel> {
-    return { ...level, iconUrl: await this.media.resolve(level.iconUrl) };
+    return {
+      ...level,
+      iconUrl: await this.media.resolve(level.iconUrl),
+      backgroundUrl: await this.media.resolve(level.backgroundUrl),
+    };
   }
 
   private async resolveBenefitIcon(benefit: WealthLevelBenefit): Promise<WealthLevelBenefit> {
     return { ...benefit, iconUrl: await this.media.resolve(benefit.iconUrl) };
   }
 
+  private async resolveCategoryIcon(category: WealthBenefitCategory): Promise<WealthBenefitCategory> {
+    return { ...category, iconUrl: await this.media.resolve(category.iconUrl) };
+  }
+
   @Get('levels')
   @RequirePermissions('wealth.manage')
-  @ApiOperation({ summary: 'List all Wealth Level tiers' })
+  @ApiOperation({ summary: 'List all Wealth Level tiers (including inactive)' })
   async listLevels(): Promise<WealthLevel[]> {
     const levels = await this.admin.listLevels();
     return Promise.all(levels.map((l) => this.resolveLevelIcon(l)));
+  }
+
+  @Get('levels/next-ordinal')
+  @RequirePermissions('wealth.manage')
+  @ApiOperation({
+    summary: 'The next free tier ordinal for "+ Add level" — the client never assigns this itself.',
+  })
+  async nextLevelOrdinal(): Promise<{ level: number }> {
+    return { level: await this.admin.nextLevelOrdinal() };
   }
 
   @Put('levels')
@@ -90,37 +107,33 @@ export class WealthAdminController {
     return this.resolveBenefitIcon(await this.admin.updateBenefit(actorId, id, dto));
   }
 
-  @Get('rewards')
+  @Get('benefit-categories')
   @RequirePermissions('wealth.manage')
-  @ApiOperation({ summary: 'List all Wealth Level rewards' })
-  listRewards() {
-    return this.admin.listRewards();
+  @ApiOperation({ summary: 'List all Wealth Level benefit categories (including inactive)' })
+  async listCategories(): Promise<WealthBenefitCategory[]> {
+    const categories = await this.admin.listCategories();
+    return Promise.all(categories.map((c) => this.resolveCategoryIcon(c)));
   }
 
-  @Post('rewards')
+  @Post('benefit-categories')
   @RequirePermissions('wealth.manage')
-  @ApiOperation({ summary: 'Create a Wealth Level reward' })
-  createReward(@CurrentUser('id') actorId: string, @Body() dto: CreateWealthRewardDto) {
-    return this.admin.createReward(actorId, {
-      ...dto,
-      startAt: dto.startAt ? new Date(dto.startAt) : null,
-      endAt: dto.endAt ? new Date(dto.endAt) : null,
-    });
+  @ApiOperation({ summary: 'Create a Wealth Level benefit category (a display tile grouping multiple rewards)' })
+  async createCategory(
+    @CurrentUser('id') actorId: string,
+    @Body() dto: CreateWealthBenefitCategoryDto,
+  ): Promise<WealthBenefitCategory> {
+    return this.resolveCategoryIcon(await this.admin.createCategory(actorId, dto));
   }
 
-  @Put('rewards/:id')
+  @Put('benefit-categories/:id')
   @RequirePermissions('wealth.manage')
-  @ApiOperation({ summary: 'Update a Wealth Level reward' })
-  updateReward(
+  @ApiOperation({ summary: 'Update a Wealth Level benefit category' })
+  async updateCategory(
     @CurrentUser('id') actorId: string,
     @Param('id') id: string,
-    @Body() dto: UpdateWealthRewardDto,
-  ) {
-    return this.admin.updateReward(actorId, id, {
-      ...dto,
-      startAt: dto.startAt ? new Date(dto.startAt) : undefined,
-      endAt: dto.endAt ? new Date(dto.endAt) : undefined,
-    });
+    @Body() dto: UpdateWealthBenefitCategoryDto,
+  ): Promise<WealthBenefitCategory> {
+    return this.resolveCategoryIcon(await this.admin.updateCategory(actorId, id, dto));
   }
 
   @Get('downgrade-config')

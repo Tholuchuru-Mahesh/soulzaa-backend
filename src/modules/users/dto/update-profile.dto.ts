@@ -41,6 +41,12 @@ export class UpdateProfileDto {
   @Length(2, 64)
   country?: string;
 
+  @ApiPropertyOptional({ example: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' })
+  @IsOptional()
+  @Transform(cleanEmptyString)
+  @IsString()
+  countryId?: string;
+
   @ApiPropertyOptional({ example: 'Telangana' })
   @IsOptional()
   @Transform(cleanEmptyString)
@@ -48,12 +54,24 @@ export class UpdateProfileDto {
   @MaxLength(80)
   state?: string;
 
+  @ApiPropertyOptional({ example: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22' })
+  @IsOptional()
+  @Transform(cleanEmptyString)
+  @IsString()
+  stateId?: string;
+
   @ApiPropertyOptional({ example: 'Hyderabad' })
   @IsOptional()
   @Transform(cleanEmptyString)
   @IsString()
   @MaxLength(80)
   city?: string;
+
+  @ApiPropertyOptional({ example: 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33' })
+  @IsOptional()
+  @Transform(cleanEmptyString)
+  @IsString()
+  regionId?: string;
 
   @ApiPropertyOptional({ example: '1990-01-01' })
   @IsOptional()

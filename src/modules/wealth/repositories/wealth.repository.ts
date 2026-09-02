@@ -1,13 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
-  WealthClaimStatus,
   WealthExpDirection,
   WealthExpSourceType,
   WealthResetRunStatus,
   type WealthBenefitType,
-  type WealthRewardFrequency,
-  type WealthRewardGrantType,
-  type WealthRewardType,
   type Prisma,
 } from '@prisma/client';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
@@ -25,8 +21,19 @@ export class WealthRepository {
     });
   }
 
+  /** All tiers regardless of active status — the Super Admin management view. */
+  async listAllLevels() {
+    return this.prisma.wealthLevel.findMany({ orderBy: { level: 'asc' } });
+  }
+
   async getLevel(level: number) {
     return this.prisma.wealthLevel.findUnique({ where: { level } });
+  }
+
+  /** The next free ordinal for a newly-created tier (0 if none exist yet). */
+  async nextLevelOrdinal(): Promise<number> {
+    const top = await this.prisma.wealthLevel.findFirst({ orderBy: { level: 'desc' } });
+    return top ? top.level + 1 : 0;
   }
 
   async upsertLevel(
@@ -34,9 +41,9 @@ export class WealthRepository {
     data: {
       name: string;
       expThreshold: bigint;
-      displayOrder?: number;
       isActive?: boolean;
       iconUrl?: string | null;
+      backgroundUrl?: string | null;
     },
   ) {
     return this.prisma.wealthLevel.upsert({
@@ -46,14 +53,41 @@ export class WealthRepository {
     });
   }
 
-  async seedLevel(
-    level: number,
-    data: { name: string; expThreshold: bigint; displayOrder: number },
-  ): Promise<boolean> {
-    const exists = await this.prisma.wealthLevel.count({ where: { level } });
-    if (exists > 0) return false;
-    await this.prisma.wealthLevel.create({ data: { level, ...data } });
-    return true;
+  // ---- Benefit categories ----
+
+  /** Active categories for every level — the user-facing read (mirrors `listBenefits`). */
+  async listCategories() {
+    return this.prisma.wealthBenefitCategory.findMany({
+      where: { isActive: true },
+      orderBy: [{ level: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  /** All categories regardless of active status — the Super Admin management view. */
+  async listAllCategories() {
+    return this.prisma.wealthBenefitCategory.findMany({
+      orderBy: [{ level: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async getCategory(id: string) {
+    return this.prisma.wealthBenefitCategory.findUnique({ where: { id } });
+  }
+
+  async createCategory(data: {
+    level: number;
+    name: string;
+    iconUrl?: string | null;
+    isActive?: boolean;
+  }) {
+    return this.prisma.wealthBenefitCategory.create({ data });
+  }
+
+  async updateCategory(
+    id: string,
+    data: Partial<{ name: string; iconUrl: string | null; isActive: boolean }>,
+  ) {
+    return this.prisma.wealthBenefitCategory.update({ where: { id }, data });
   }
 
   // ---- Benefits ----
@@ -71,8 +105,12 @@ export class WealthRepository {
 
   async createBenefit(data: {
     level: number;
+    categoryId?: string | null;
     benefitType: WealthBenefitType;
     config: unknown;
+    cosmeticId?: string | null;
+    coinAmount?: number | null;
+    durationDays?: number | null;
     isActive?: boolean;
     iconUrl?: string | null;
   }) {
@@ -84,8 +122,12 @@ export class WealthRepository {
   async updateBenefit(
     id: string,
     data: Partial<{
+      categoryId: string | null;
       benefitType: WealthBenefitType;
       config: unknown;
+      cosmeticId: string | null;
+      coinAmount: number | null;
+      durationDays: number | null;
       isActive: boolean;
       iconUrl: string | null;
     }>,
@@ -100,93 +142,25 @@ export class WealthRepository {
     return this.prisma.wealthLevelBenefit.findUnique({ where: { id } });
   }
 
-  // ---- Rewards ----
+  // ---- Benefit claims (idempotent one-time grant) ----
 
-  async listRewardsActive() {
-    return this.prisma.wealthLevelReward.findMany({
-      where: { isActive: true },
-      orderBy: { level: 'asc' },
+  async findBenefitClaim(userId: string, benefitId: string) {
+    return this.prisma.wealthBenefitClaim.findUnique({
+      where: { userId_benefitId: { userId, benefitId } },
     });
   }
 
-  async listRewardsForLevel(level: number) {
-    return this.prisma.wealthLevelReward.findMany({ where: { level } });
-  }
-
-  async getReward(id: string) {
-    return this.prisma.wealthLevelReward.findUnique({ where: { id } });
-  }
-
-  async createReward(data: {
-    level: number;
-    rewardType: WealthRewardType;
-    rewardValue: unknown;
-    frequency: WealthRewardFrequency;
-    grantType: WealthRewardGrantType;
-    isActive?: boolean;
-    startAt?: Date | null;
-    endAt?: Date | null;
-  }) {
-    return this.prisma.wealthLevelReward.create({
-      data: { ...data, rewardValue: data.rewardValue as Prisma.InputJsonValue },
-    });
-  }
-
-  async updateReward(
-    id: string,
-    data: Partial<{
-      rewardType: WealthRewardType;
-      rewardValue: unknown;
-      frequency: WealthRewardFrequency;
-      grantType: WealthRewardGrantType;
-      isActive: boolean;
-      startAt: Date | null;
-      endAt: Date | null;
-    }>,
-  ) {
-    return this.prisma.wealthLevelReward.update({
-      where: { id },
-      data: { ...data, rewardValue: data.rewardValue as Prisma.InputJsonValue | undefined },
-    });
-  }
-
-  // ---- Reward claims (idempotent grant/claim) ----
-
-  async findRewardClaim(userId: string, rewardId: string, periodKey: string) {
-    return this.prisma.wealthRewardClaim.findUnique({
-      where: { userId_rewardId_periodKey: { userId, rewardId, periodKey } },
-    });
-  }
-
-  /** Idempotent grant: returns the existing row if already granted for this period. */
-  async grantRewardClaim(userId: string, rewardId: string, periodKey: string) {
-    return this.prisma.wealthRewardClaim.upsert({
-      where: { userId_rewardId_periodKey: { userId, rewardId, periodKey } },
+  /** Idempotent claim: returns the existing row if already claimed. */
+  async createBenefitClaim(userId: string, benefitId: string) {
+    return this.prisma.wealthBenefitClaim.upsert({
+      where: { userId_benefitId: { userId, benefitId } },
       update: {},
-      create: { userId, rewardId, periodKey, status: WealthClaimStatus.GRANTED },
+      create: { userId, benefitId },
     });
   }
 
-  async markClaimed(id: string) {
-    return this.prisma.wealthRewardClaim.update({
-      where: { id },
-      data: { status: WealthClaimStatus.CLAIMED, claimedAt: new Date() },
-    });
-  }
-
-  async listClaims(userId: string, skip: number, take: number) {
-    const where = { userId };
-    const [rows, total] = await Promise.all([
-      this.prisma.wealthRewardClaim.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { grantedAt: 'desc' },
-        include: { reward: true },
-      }),
-      this.prisma.wealthRewardClaim.count({ where }),
-    ]);
-    return [rows, total] as const;
+  async listBenefitClaimsForUser(userId: string) {
+    return this.prisma.wealthBenefitClaim.findMany({ where: { userId } });
   }
 
   // ---- User progress ----

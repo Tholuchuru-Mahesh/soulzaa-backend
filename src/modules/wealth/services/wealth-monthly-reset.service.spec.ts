@@ -4,7 +4,6 @@ import { currentPeriodKey, previousPeriodKey } from '../constants/wealth.constan
 import { WealthRepository } from '../repositories/wealth.repository';
 import { WealthDowngradeConfigService } from './wealth-downgrade-config.service';
 import { WealthMonthlyResetService } from './wealth-monthly-reset.service';
-import { WealthRewardService } from './wealth-reward.service';
 
 const NEW_PERIOD = currentPeriodKey();
 const CLOSING_PERIOD = previousPeriodKey(NEW_PERIOD);
@@ -12,7 +11,6 @@ const CLOSING_PERIOD = previousPeriodKey(NEW_PERIOD);
 describe('WealthMonthlyResetService', () => {
   let repo: Record<string, jest.Mock>;
   let downgradeConfig: Record<string, jest.Mock>;
-  let rewards: Record<string, jest.Mock>;
   let locks: { withLock: jest.Mock };
   let bus: jest.Mocked<IEventBus>;
   let service: WealthMonthlyResetService;
@@ -33,13 +31,11 @@ describe('WealthMonthlyResetService', () => {
     downgradeConfig = {
       getActive: jest.fn().mockResolvedValue({ enabled: true, maxDowngradeLevels: 1, minLevel: 0 }),
     };
-    rewards = { grantAutomaticForPeriod: jest.fn().mockResolvedValue(undefined) };
     locks = { withLock: jest.fn(<T>(_k: string, fn: () => Promise<T>) => fn()) };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     service = new WealthMonthlyResetService(
       repo as unknown as WealthRepository,
       downgradeConfig as unknown as WealthDowngradeConfigService,
-      rewards as unknown as WealthRewardService,
       locks as unknown as LockService,
       bus,
     );
@@ -160,19 +156,6 @@ describe('WealthMonthlyResetService', () => {
         finalLevel: 3,
         downgradedToLevel: 2,
       });
-    });
-
-    it('grants recurring automatic rewards for the new effective level', async () => {
-      repo.listAllProgressUserIds.mockResolvedValue(['u1']);
-      repo.getProgress.mockResolvedValue({
-        currentExp: 0n,
-        currentLevel: 5,
-        periodKey: CLOSING_PERIOD,
-      });
-
-      await service.run(new Date());
-
-      expect(rewards.grantAutomaticForPeriod).toHaveBeenCalledWith('u1', 4, NEW_PERIOD);
     });
   });
 

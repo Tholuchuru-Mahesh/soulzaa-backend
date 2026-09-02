@@ -8,6 +8,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
 } from 'class-validator';
 
@@ -42,11 +43,8 @@ const BENEFIT_TYPES = [
   'FEATURE_ACCESS',
   'RECOGNITION',
   'OTHER',
+  'GOLD_COINS',
 ] as const;
-
-const REWARD_TYPES = ['GOLD_COINS', 'COSMETIC', 'BADGE', 'PROFILE_FRAME', 'OTHER'] as const;
-const REWARD_FREQUENCIES = ['ONE_TIME', 'DAILY', 'WEEKLY', 'MONTHLY'] as const;
-const REWARD_GRANT_TYPES = ['AUTOMATIC', 'CLAIMABLE'] as const;
 
 export class UpsertWealthLevelDto {
   @IsInt()
@@ -62,17 +60,49 @@ export class UpsertWealthLevelDto {
   expThreshold!: number;
 
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  displayOrder?: number;
-
-  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 
   @IsOptional()
   @IsString()
   iconUrl?: string | null;
+
+  @IsOptional()
+  @IsString()
+  backgroundUrl?: string | null;
+}
+
+export class CreateWealthBenefitCategoryDto {
+  @IsInt()
+  @Min(0)
+  level!: number;
+
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  iconUrl?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateWealthBenefitCategoryDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  iconUrl?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }
 
 export class CreateWealthBenefitDto {
@@ -80,11 +110,31 @@ export class CreateWealthBenefitDto {
   @Min(0)
   level!: number;
 
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string | null;
+
   @IsIn(BENEFIT_TYPES)
   benefitType!: (typeof BENEFIT_TYPES)[number];
 
   @IsObject()
   config!: Record<string, unknown>;
+
+  /** Grantable cosmetic-backed types only (PROFILE_FRAME/THEME/PROFILE_THEME/ENTRANCE_ANIMATION/BADGE). */
+  @IsOptional()
+  @IsUUID()
+  cosmeticId?: string | null;
+
+  /** GOLD_COINS type only. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  coinAmount?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  durationDays?: number | null;
 
   @IsOptional()
   @IsBoolean()
@@ -97,6 +147,10 @@ export class CreateWealthBenefitDto {
 
 export class UpdateWealthBenefitDto {
   @IsOptional()
+  @IsUUID()
+  categoryId?: string | null;
+
+  @IsOptional()
   @IsIn(BENEFIT_TYPES)
   benefitType?: (typeof BENEFIT_TYPES)[number];
 
@@ -105,72 +159,26 @@ export class UpdateWealthBenefitDto {
   config?: Record<string, unknown>;
 
   @IsOptional()
+  @IsUUID()
+  cosmeticId?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  coinAmount?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  durationDays?: number | null;
+
+  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 
   @IsOptional()
   @IsString()
   iconUrl?: string | null;
-}
-
-export class CreateWealthRewardDto {
-  @IsInt()
-  @Min(0)
-  level!: number;
-
-  @IsIn(REWARD_TYPES)
-  rewardType!: (typeof REWARD_TYPES)[number];
-
-  @IsObject()
-  rewardValue!: Record<string, unknown>;
-
-  @IsIn(REWARD_FREQUENCIES)
-  frequency!: (typeof REWARD_FREQUENCIES)[number];
-
-  @IsIn(REWARD_GRANT_TYPES)
-  grantType!: (typeof REWARD_GRANT_TYPES)[number];
-
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
-
-  @IsOptional()
-  @IsISO8601()
-  startAt?: string;
-
-  @IsOptional()
-  @IsISO8601()
-  endAt?: string;
-}
-
-export class UpdateWealthRewardDto {
-  @IsOptional()
-  @IsIn(REWARD_TYPES)
-  rewardType?: (typeof REWARD_TYPES)[number];
-
-  @IsOptional()
-  @IsObject()
-  rewardValue?: Record<string, unknown>;
-
-  @IsOptional()
-  @IsIn(REWARD_FREQUENCIES)
-  frequency?: (typeof REWARD_FREQUENCIES)[number];
-
-  @IsOptional()
-  @IsIn(REWARD_GRANT_TYPES)
-  grantType?: (typeof REWARD_GRANT_TYPES)[number];
-
-  @IsOptional()
-  @IsBoolean()
-  isActive?: boolean;
-
-  @IsOptional()
-  @IsISO8601()
-  startAt?: string;
-
-  @IsOptional()
-  @IsISO8601()
-  endAt?: string;
 }
 
 export class UpdateWealthDowngradeConfigDto {

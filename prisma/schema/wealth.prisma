@@ -10,88 +10,116 @@
 // Replaces the legacy `vip.prisma` schema entirely.
 // ============================================================
 
-/// The 13 Wealth Level tiers (Normal User=0 .. Immortal=12).
+/// Wealth Level tiers — a fully Super-Admin-managed ladder, not a fixed set.
+/// `level` is the ordinal (0, 1, 2, ...) assigned when a tier is created and
+/// doubles as its display/progression order — there is no separate ordering
+/// field, since a tier's position in the ladder IS its ordinal.
 model WealthLevel {
-  id           String   @id @default(uuid()) @db.Uuid
-  level        Int      @unique
-  name         String
-  expThreshold BigInt   @default(0)
-  displayOrder Int      @default(0)
-  isActive     Boolean  @default(true)
+  id            String   @id @default(uuid()) @db.Uuid
+  level         Int      @unique
+  name          String
+  expThreshold  BigInt   @default(0)
+  isActive      Boolean  @default(true)
   /// Super-Admin-uploaded badge/icon art for this level (stored S3 key,
   /// resolved to a servable URL in API responses — see MediaUrlResolver).
-  iconUrl      String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  iconUrl       String?
+  /// Super-Admin-uploaded full-screen background art for this level's VIP
+  /// detail view (stored S3 key, resolved the same way as `iconUrl`). Null
+  /// falls back to the client's default premium theme — never a hardcoded
+  /// per-level image.
+  backgroundUrl String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  benefits WealthLevelBenefit[]
-  rewards  WealthLevelReward[]
+  benefits   WealthLevelBenefit[]
+  categories WealthBenefitCategory[]
 
   @@index([isActive])
   @@map("wealth_levels")
 }
 
-/// Per-level cosmetic/visual benefit configuration. Benefits are cumulative:
-/// a user at level N holds every active benefit for levels 0..N.
+/// A named, admin-defined grouping of reward rows for one level — e.g.
+/// "Frames", "Entry Effects", "Themes". Purely a browse-time presentation
+/// layer: the app shows one tile (this category's `iconUrl` + `name`) that
+/// expands to the actual reward rows inside it. The reward/claim/backpack
+/// pipeline (`WealthBenefitService`) never looks at categories — it operates
+/// on `WealthLevelBenefit` rows exactly as it did before this model existed.
+/// `name` is free text (not an enum) so a brand-new category never needs a
+/// code change.
+model WealthBenefitCategory {
+  id        String      @id @default(uuid()) @db.Uuid
+  level     Int
+  levelRef  WealthLevel @relation(fields: [level], references: [level], onDelete: Cascade)
+  name      String
+  /// Super-Admin-uploaded representative icon (stored S3 key, resolved like
+  /// every other icon field in this schema).
+  iconUrl   String?
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  benefits WealthLevelBenefit[]
+
+  @@index([level])
+  @@map("wealth_benefit_categories")
+}
+
+/// Per-level benefit configuration. Benefits are cumulative: a user at level N
+/// holds every active benefit for levels 0..N. A benefit is either a grantable
+/// reward (cosmeticId and/or coinAmount set — FRAME/THEME/ENTRANCE_EFFECT/
+/// BADGE/GOLD_COINS types) that must be claimed into the Backpack before it
+/// can be equipped, or a passive/legacy perk (neither set — every other
+/// `benefitType`) that stays automatically active with no claim step, exactly
+/// as before.
 model WealthLevelBenefit {
-  id          String            @id @default(uuid()) @db.Uuid
-  level       Int
-  levelRef    WealthLevel       @relation(fields: [level], references: [level], onDelete: Cascade)
-  benefitType WealthBenefitType
-  config      Json              @default("{}")
-  isActive    Boolean           @default(true)
+  id           String                 @id @default(uuid()) @db.Uuid
+  level        Int
+  levelRef     WealthLevel            @relation(fields: [level], references: [level], onDelete: Cascade)
+  /// Optional grouping — null means this benefit renders as its own standalone
+  /// tile (today's behavior); set means it's one of the actual rewards inside
+  /// a category tile the user taps to expand. `onDelete: SetNull` so deleting
+  /// a category never deletes the rewards inside it, just ungroups them.
+  categoryId   String?                @db.Uuid
+  category     WealthBenefitCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  benefitType  WealthBenefitType
+  config       Json                   @default("{}")
+  /// Set only for grantable cosmetic benefit types (PROFILE_FRAME, THEME,
+  /// PROFILE_THEME, ENTRANCE_ANIMATION, BADGE) — validated against the live
+  /// Cosmetics catalog at admin-write time (see TreasureAdminService.resolveRewards
+  /// for the pattern this mirrors).
+  cosmeticId   String?                @db.Uuid
+  /// Set only for GOLD_COINS benefit rows.
+  coinAmount   Int?
+  /// TTL in days for the granted cosmetic; null/0 = permanent.
+  durationDays Int?
+  isActive     Boolean                @default(true)
   /// Super-Admin-uploaded icon art for this benefit (stored S3 key, resolved
   /// to a servable URL in API responses — see MediaUrlResolver).
-  iconUrl     String?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  iconUrl      String?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  claims WealthBenefitClaim[]
 
   @@index([level])
   @@index([isActive])
+  @@index([categoryId])
   @@map("wealth_level_benefits")
 }
 
-/// Per-level reward configuration (automatic or claimable, one-time/daily/weekly/monthly).
-model WealthLevelReward {
-  id          String                @id @default(uuid()) @db.Uuid
-  level       Int
-  levelRef    WealthLevel           @relation(fields: [level], references: [level], onDelete: Cascade)
-  rewardType  WealthRewardType
-  rewardValue Json                  @default("{}")
-  frequency   WealthRewardFrequency @default(ONE_TIME)
-  grantType   WealthRewardGrantType @default(AUTOMATIC)
-  isActive    Boolean               @default(true)
-  startAt     DateTime?
-  endAt       DateTime?
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+/// One-time claim of a grantable benefit for a user. The unique constraint is
+/// the sole guard against duplicate grants (double click, retry, concurrent
+/// request) — a benefit is never granted twice to the same user.
+model WealthBenefitClaim {
+  id        String             @id @default(uuid()) @db.Uuid
+  userId    String             @db.Uuid
+  benefitId String             @db.Uuid
+  benefit   WealthLevelBenefit @relation(fields: [benefitId], references: [id], onDelete: Cascade)
+  claimedAt DateTime           @default(now())
 
-  claims WealthRewardClaim[]
-
-  @@index([level])
-  @@index([isActive])
-  @@map("wealth_level_rewards")
-}
-
-/// One grant/claim of a level reward for a user in a given period. The unique
-/// constraint is the sole guard against duplicate grants/claims (double click,
-/// retry, concurrent request) — never granted twice for the same
-/// (userId, rewardId, periodKey).
-model WealthRewardClaim {
-  id        String            @id @default(uuid()) @db.Uuid
-  userId    String            @db.Uuid
-  rewardId  String            @db.Uuid
-  reward    WealthLevelReward @relation(fields: [rewardId], references: [id], onDelete: Cascade)
-  /// Dedupe scope: a calendar date (DAILY), ISO week (WEEKLY), "YYYY-MM" (MONTHLY),
-  /// or the literal "LIFETIME" (ONE_TIME).
-  periodKey String
-  status    WealthClaimStatus @default(GRANTED)
-  grantedAt DateTime          @default(now())
-  claimedAt DateTime?
-
-  @@unique([userId, rewardId, periodKey])
+  @@unique([userId, benefitId])
   @@index([userId])
-  @@map("wealth_reward_claims")
+  @@map("wealth_benefit_claims")
 }
 
 /// Current month's live state — one row per user. `currentLevel` is the
@@ -194,7 +222,7 @@ model WealthConfiguration {
 }
 
 /// Operational audit trail for every Super Admin configuration change
-/// (levels, benefits, rewards, downgrade policy, general configuration).
+/// (levels, benefits, downgrade policy, general configuration).
 model WealthAudit {
   id         String   @id @default(uuid()) @db.Uuid
   actorId    String   @db.Uuid
@@ -242,31 +270,9 @@ enum WealthBenefitType {
   FEATURE_ACCESS
   RECOGNITION
   OTHER
-}
-
-enum WealthRewardType {
+  /// Claimable Gold Coin grant — the only benefit type with no cosmetic
+  /// backing (see WealthLevelBenefit.coinAmount).
   GOLD_COINS
-  COSMETIC
-  BADGE
-  PROFILE_FRAME
-  OTHER
-}
-
-enum WealthRewardFrequency {
-  ONE_TIME
-  DAILY
-  WEEKLY
-  MONTHLY
-}
-
-enum WealthRewardGrantType {
-  AUTOMATIC
-  CLAIMABLE
-}
-
-enum WealthClaimStatus {
-  GRANTED
-  CLAIMED
 }
 
 enum WealthExpDirection {

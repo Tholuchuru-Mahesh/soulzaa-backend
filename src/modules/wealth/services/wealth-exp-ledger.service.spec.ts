@@ -5,7 +5,6 @@ import { currentPeriodKey, previousPeriodKey } from '../constants/wealth.constan
 import { WealthRepository } from '../repositories/wealth.repository';
 import { WealthExpLedgerService } from './wealth-exp-ledger.service';
 import { WealthLevelService } from './wealth-level.service';
-import { WealthRewardService } from './wealth-reward.service';
 
 const NOW_PERIOD = currentPeriodKey();
 const OLD_PERIOD = previousPeriodKey(NOW_PERIOD);
@@ -13,7 +12,6 @@ const OLD_PERIOD = previousPeriodKey(NOW_PERIOD);
 describe('WealthExpLedgerService', () => {
   let repo: Record<string, jest.Mock>;
   let levels: Record<string, jest.Mock>;
-  let rewards: Record<string, jest.Mock>;
   let locks: { withLock: jest.Mock };
   let bus: jest.Mocked<IEventBus>;
   let service: WealthExpLedgerService;
@@ -36,13 +34,11 @@ describe('WealthExpLedgerService', () => {
         return 0;
       }),
     };
-    rewards = { grantAutomaticForCrossedLevels: jest.fn().mockResolvedValue(undefined) };
     locks = { withLock: jest.fn(<T>(_k: string, fn: () => Promise<T>) => fn()) };
     bus = { publish: jest.fn().mockResolvedValue(undefined), subscribe: jest.fn() };
     service = new WealthExpLedgerService(
       repo as unknown as WealthRepository,
       levels as unknown as WealthLevelService,
-      rewards as unknown as WealthRewardService,
       locks as unknown as LockService,
       bus,
     );
@@ -92,7 +88,7 @@ describe('WealthExpLedgerService', () => {
       expect(repo.applyAward).toHaveBeenCalledWith(expect.objectContaining({ amount: 12_000n }));
     });
 
-    it('publishes a level-up event and grants crossed-level rewards only when the level actually increases', async () => {
+    it('publishes a level-up event only when the level actually increases', async () => {
       repo.getProgress.mockResolvedValue({
         currentExp: 8_000n,
         currentLevel: 0,
@@ -108,7 +104,6 @@ describe('WealthExpLedgerService', () => {
 
       // 8,000 + 5,000 = 13,000 → level 1
       expect(res).toEqual({ currentExp: 13_000, currentLevel: 1, leveledUp: true });
-      expect(rewards.grantAutomaticForCrossedLevels).toHaveBeenCalledWith('u1', 0, 1, NOW_PERIOD);
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'wealth.level_up',
@@ -117,7 +112,7 @@ describe('WealthExpLedgerService', () => {
       );
     });
 
-    it('does not publish or grant rewards when EXP increases but the level does not', async () => {
+    it('does not publish when EXP increases but the level does not', async () => {
       repo.getProgress.mockResolvedValue({
         currentExp: 10_000n,
         currentLevel: 1,
@@ -132,7 +127,6 @@ describe('WealthExpLedgerService', () => {
       });
 
       expect(res.leveledUp).toBe(false);
-      expect(rewards.grantAutomaticForCrossedLevels).not.toHaveBeenCalled();
       expect(bus.publish).not.toHaveBeenCalled();
     });
 

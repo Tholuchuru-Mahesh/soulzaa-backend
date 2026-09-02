@@ -37,6 +37,8 @@ export interface RewardItemPayload {
   cosmeticId?: string;
   durationDays?: number;
   expiresAt?: Date | string;
+  /** Overrides the catalog cosmetic's own transferable flag when set. */
+  transferable?: boolean;
   giftId?: string;
   quantity?: number;
   name?: string;
@@ -280,6 +282,7 @@ export class RewardFulfillmentEngine {
             grantKey: `reward:${refType}:${refId}:${userId}:cosmetic:${cosmeticRef}:${timestamp}`,
             durationDays: item.durationDays,
             expiresAt: item.expiresAt ? new Date(item.expiresAt) : null,
+            transferable: item.transferable,
           });
 
           if (grantRes) {

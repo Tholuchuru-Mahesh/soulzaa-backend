@@ -7,7 +7,6 @@ import { currentPeriodKey, wealthLockKey } from '../constants/wealth.constants';
 import { WealthLevelUpEvent } from '../events/wealth.events';
 import { WealthRepository } from '../repositories/wealth.repository';
 import { WealthLevelService } from './wealth-level.service';
-import { WealthRewardService } from './wealth-reward.service';
 
 export interface WealthAwardInput {
   userId: string;
@@ -49,7 +48,6 @@ export class WealthExpLedgerService {
   constructor(
     private readonly repo: WealthRepository,
     private readonly levels: WealthLevelService,
-    private readonly rewards: WealthRewardService,
     private readonly locks: LockService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
@@ -102,12 +100,6 @@ export class WealthExpLedgerService {
 
       const leveledUp = newLevel > oldLevel;
       if (leveledUp) {
-        await this.rewards.grantAutomaticForCrossedLevels(
-          input.userId,
-          oldLevel,
-          newLevel,
-          periodKey,
-        );
         await this.bus.publish(
           new WealthLevelUpEvent({
             userId: input.userId,

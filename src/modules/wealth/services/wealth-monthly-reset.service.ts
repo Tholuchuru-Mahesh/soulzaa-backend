@@ -10,7 +10,6 @@ import { WealthDowngradedEvent, WealthMonthlyResetEvent } from '../events/wealth
 import { WealthRepository } from '../repositories/wealth.repository';
 import { LockService } from 'src/infra/redis/lock.service';
 import { WealthDowngradeConfigService } from './wealth-downgrade-config.service';
-import { WealthRewardService } from './wealth-reward.service';
 
 export interface WealthResetResult {
   periodKey: string;
@@ -28,7 +27,7 @@ export interface WealthResetResult {
  * (a re-run for an already-COMPLETED period is a no-op), and
  * `WealthMonthlyHistory`'s unique (userId, periodKey) constraint guards each
  * user individually — so a crash mid-batch and a safe re-run/retry never
- * double-processes a user or duplicates history/rewards.
+ * double-processes a user or duplicates history.
  */
 @Injectable()
 export class WealthMonthlyResetService {
@@ -37,7 +36,6 @@ export class WealthMonthlyResetService {
   constructor(
     private readonly repo: WealthRepository,
     private readonly downgradeConfig: WealthDowngradeConfigService,
-    private readonly rewards: WealthRewardService,
     private readonly locks: LockService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
   ) {}
@@ -151,7 +149,5 @@ export class WealthMonthlyResetService {
         startingLevel: floor,
       }),
     );
-
-    await this.rewards.grantAutomaticForPeriod(userId, floor, newPeriodKey);
   }
 }

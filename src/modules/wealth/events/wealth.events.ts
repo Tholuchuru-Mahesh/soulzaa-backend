@@ -4,14 +4,13 @@ import { DomainEvent } from 'src/common/events';
  * Wealth Level domain events on the EVENT_BUS. LEVEL_UP is consumed by the
  * audio-rooms socket bridge (badge/effect sync) and notifications;
  * DOWNGRADED/MONTHLY_RESET are emitted only by the monthly reset job;
- * REWARD_AVAILABLE/REWARD_CLAIMED drive the rewards notification + UI badge.
+ * BENEFIT_CLAIMED drives the rewards notification + UI badge.
  */
 export const WEALTH_EVENTS = {
   LEVEL_UP: 'wealth.level_up',
   DOWNGRADED: 'wealth.downgraded',
   MONTHLY_RESET: 'wealth.monthly_reset',
-  REWARD_AVAILABLE: 'wealth.reward_available',
-  REWARD_CLAIMED: 'wealth.reward_claimed',
+  BENEFIT_CLAIMED: 'wealth.benefit_claimed',
 } as const;
 
 export class WealthLevelUpEvent extends DomainEvent<{
@@ -42,18 +41,10 @@ export class WealthMonthlyResetEvent extends DomainEvent<{
   readonly name = WEALTH_EVENTS.MONTHLY_RESET;
 }
 
-export class WealthRewardAvailableEvent extends DomainEvent<{
+export class WealthBenefitClaimedEvent extends DomainEvent<{
   userId: string;
-  rewardId: string;
+  benefitId: string;
   level: number;
 }> {
-  readonly name = WEALTH_EVENTS.REWARD_AVAILABLE;
-}
-
-export class WealthRewardClaimedEvent extends DomainEvent<{
-  userId: string;
-  rewardId: string;
-  level: number;
-}> {
-  readonly name = WEALTH_EVENTS.REWARD_CLAIMED;
+  readonly name = WEALTH_EVENTS.BENEFIT_CLAIMED;
 }
