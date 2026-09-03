@@ -72,6 +72,19 @@ export class RoleService {
       },
     });
 
+    // Synchronize User.roles column for query parity
+    const roleUpper = role.name as any;
+    const targetUser = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+      select: { roles: true },
+    });
+    if (targetUser && !targetUser.roles.includes(roleUpper)) {
+      await this.prisma.user.update({
+        where: { id: dto.userId },
+        data: { roles: { set: Array.from(new Set([...targetUser.roles, roleUpper])) } },
+      });
+    }
+
     await this.cacheService.invalidateUser(dto.userId);
     // Published after the cache is invalidated, so a subscriber that re-reads
     // roles (e.g. the hidden-account sync) sees the assignment it was told about.
@@ -99,12 +112,26 @@ export class RoleService {
   }
 
   async removeRoleFromUser(userId: string, roleId: string) {
+    const role = await this.prisma.role.findUnique({ where: { id: roleId } });
     const res = await this.prisma.userRole.deleteMany({
       where: {
         userId,
         roleId,
       },
     });
+
+    if (role) {
+      const targetUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { roles: true },
+      });
+      if (targetUser && targetUser.roles.includes(role.name as any)) {
+        await this.prisma.user.update({
+          where: { id: userId },
+          data: { roles: targetUser.roles.filter((r) => r !== role.name) },
+        });
+      }
+    }
 
     await this.cacheService.invalidateUser(userId);
     await this.bus.publish(new RoleRevokedEvent({ userId, roleId, actorId: null }));

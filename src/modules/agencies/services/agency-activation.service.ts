@@ -51,12 +51,42 @@ export class AgencyActivationService {
    * activated and must not be shown a bill.
    */
   async getStatus(agencyId: string) {
-    const [row, hasRole] = await Promise.all([
+    let [row, hasRole] = await Promise.all([
       this.prisma.agencyActivation.findUnique({ where: { agencyId } }),
       this.roleResolver.hasRole(agencyId, 'COIN_SELLER'),
     ]);
 
     const amountMinor = row?.amountMinor ?? this.feeMinor();
+
+    // If still marked PENDING in DB, check Razorpay directly (fallback for local dev or missed webhooks)
+    if (!hasRole && row?.status === 'PENDING' && row?.paymentLinkId) {
+      const payments = this.config.get('payments', { infer: true });
+      const keyId = payments?.razorpayKeyId?.trim();
+      const keySecret = payments?.razorpayKeySecret?.trim();
+      if (keyId && keySecret) {
+        try {
+          const res = await fetch(`${RAZORPAY_API}/payment_links/${row.paymentLinkId}`, {
+            headers: {
+              Authorization: `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString('base64')}`,
+            },
+          });
+          if (res.ok) {
+            const linkData = (await res.json()) as any;
+            if (
+              linkData.status === 'paid' ||
+              (typeof linkData.amount_paid === 'number' && linkData.amount_paid >= amountMinor)
+            ) {
+              const paymentId = linkData.payments?.[0]?.payment_id ?? linkData.id;
+              const paidAmount = linkData.amount_paid ?? amountMinor;
+              row = await this.activate(row.id, paymentId, paidAmount);
+              hasRole = true;
+            }
+          }
+        } catch (err) {
+          this.logger.warn(`Could not sync Razorpay payment link ${row.paymentLinkId}: ${err}`);
+        }
+      }
+    }
 
     return {
       activated: hasRole || row?.status === 'ACTIVATED',

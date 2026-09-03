@@ -164,9 +164,10 @@ export class TransactionQueryService {
     ]);
 
     const txIds = txs.map((t) => t.id);
+    const refIds = txs.map((t) => t.referenceId).filter(Boolean) as string[];
 
-    // Fetch related purchase orders, withdrawal requests, and gift transactions in parallel
-    const [purchaseOrders, withdrawalRequests, giftTransactions] = await Promise.all([
+    // Fetch related purchase orders, withdrawal requests, gift transactions, and coin seller transactions in parallel
+    const [purchaseOrders, withdrawalRequests, giftTransactions, coinSellerSales] = await Promise.all([
       this.prisma.purchaseOrder.findMany({
         where: {
           walletTransactionId: { in: txIds },
@@ -185,7 +186,31 @@ export class TransactionQueryService {
           OR: [{ senderWalletTxnId: { in: txIds } }, { receiverWalletTxnId: { in: txIds } }],
         },
       }),
+      this.prisma.coinSellerUserSaleTransaction.findMany({
+        where: {
+          OR: [
+            { buyerWalletTxnId: { in: txIds } },
+            { id: { in: refIds } },
+          ],
+        },
+      }),
     ]);
+
+    // Query seller users for agency details
+    const sellerIds = [...new Set(coinSellerSales.map((cs) => cs.sellerId))];
+    const sellerUsers = sellerIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: sellerIds } },
+          select: { id: true, username: true, fullName: true },
+        })
+      : [];
+    const sellerUserMap = new Map(sellerUsers.map((u) => [u.id, u]));
+
+    const csMap = new Map();
+    for (const cs of coinSellerSales) {
+      if (cs.buyerWalletTxnId) csMap.set(cs.buyerWalletTxnId, cs);
+      if (cs.id) csMap.set(cs.id, cs);
+    }
 
     // Query gifts and user profiles in memory to bypass missing schema relations
     const giftIds = [...new Set(giftTransactions.map((gt) => gt.giftId))];
@@ -225,19 +250,45 @@ export class TransactionQueryService {
         const po = poMap.get(t.id);
         const wr = wrMap.get(t.id);
         const gt = gtMap.get(t.id);
+        const cs = csMap.get(t.id) || (t.referenceId ? csMap.get(t.referenceId) : null);
+
+        const entryForThisWallet =
+          t.ledgerEntries.find((e) => e.walletId === wallet.id) || t.ledgerEntries[0];
+        const reason = entryForThisWallet?.reason || 'UNKNOWN';
+        const type = entryForThisWallet?.type || 'CREDIT';
+        const balanceAfter = entryForThisWallet?.balanceAfter?.toString() ?? '0';
 
         // Construct a rich payment/details block
         let paymentDetails: any = null;
         if (po) {
           paymentDetails = {
+            sourceType: 'RECHARGE',
             priceAmount: po.priceAmount.toString(),
             currency: po.currency,
             provider: po.provider,
             orderNumber: po.orderNumber,
-            packageName: po.package?.name,
+            packageName: po.package?.name || 'Recharge Package',
+          };
+        } else if (cs) {
+          const seller = sellerUserMap.get(cs.sellerId);
+          paymentDetails = {
+            sourceType: 'AGENCY_COIN_SELLER',
+            agencyName: seller?.fullName || seller?.username || 'Agency Coin Seller',
+            sellerUsername: seller?.username,
+            sellerId: cs.sellerId,
+            saleId: cs.id,
+            coinAmount: cs.coinAmount.toString(),
+            createdAt: cs.createdAt,
+          };
+        } else if (reason === 'COIN_SELLER_CREDIT') {
+          paymentDetails = {
+            sourceType: 'AGENCY_COIN_SELLER',
+            agencyName: 'Agency Coin Seller',
+            coinAmount: t.amount.toString(),
           };
         } else if (wr) {
           paymentDetails = {
+            sourceType: 'WITHDRAWAL',
             payoutAmountCoins: wr.netPayoutAmountCoins.toString(),
             payoutMethod: wr.payoutMethod,
             payoutDetails: wr.payoutDetails,
@@ -248,6 +299,7 @@ export class TransactionQueryService {
           const sender = userMap.get(gt.senderId);
           const receiver = userMap.get(gt.receiverId);
           paymentDetails = {
+            sourceType: 'GIFT',
             giftName: gift?.displayName || gift?.name || 'Gift',
             giftThumbnailUrl: (await this.media.resolve(gift?.thumbnailUrl)) || null,
             quantity: gt.quantity,
@@ -258,6 +310,9 @@ export class TransactionQueryService {
 
         return {
           ...t,
+          reason,
+          type,
+          balanceAfter,
           amount: t.amount.toString(),
           paymentDetails,
           ledgerEntries: t.ledgerEntries.map((e) => ({

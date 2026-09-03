@@ -11,22 +11,25 @@ const FIXTURES = [
         username: 'e2e_country_manager',
         email: 'cm@e2e.test',
         role: 'COUNTRY_MANAGER',
-        scope: { type: client_1.ScopeType.COUNTRY, countryCode: 'IN' },
+        scopes: [{ type: client_1.ScopeType.COUNTRY, countryCode: 'IN' }],
         note: 'scoped to India',
     },
     {
         username: 'e2e_official',
         email: 'official@e2e.test',
         role: 'OFFICIAL',
-        scope: { type: client_1.ScopeType.STATE, stateCode: 'KA' },
+        scopes: [{ type: client_1.ScopeType.STATE, stateCode: 'KA' }],
         note: 'scoped to Karnataka',
     },
     {
         username: 'e2e_moderator',
         email: 'moderator@e2e.test',
         role: 'MODERATOR',
-        scope: { type: client_1.ScopeType.REGION, regionCode: 'BLR' },
-        note: 'scoped to Bengaluru',
+        scopes: [
+            { type: client_1.ScopeType.STATE, stateCode: 'KA' },
+            { type: client_1.ScopeType.STATE, stateCode: 'AP' },
+        ],
+        note: 'scoped to Karnataka + Andhra Pradesh',
     },
     { username: 'e2e_member', email: 'member@e2e.test', role: 'USER', note: 'no console access' },
 ];
@@ -34,12 +37,20 @@ async function main() {
     const passwordHash = await (0, bcryptjs_1.hash)(PASSWORD, 10);
     const country = await prisma.country.findUnique({ where: { code: 'IN' } });
     if (!country)
-        throw new Error('Run seed-rbac.ts first — country IN is missing.');
+        throw new Error('Country IN is missing.');
     const state = await prisma.state.findFirst({ where: { countryId: country.id, code: 'KA' } });
-    const region = await prisma.region.findFirst({ where: { stateId: state.id, code: 'BLR' } });
+    const stateAP = await prisma.state.findFirst({ where: { countryId: country.id, code: 'AP' } });
+    const stateTN = await prisma.state.findFirst({ where: { countryId: country.id, code: 'TN' } });
+    const region = await prisma.region.findFirst({ where: { stateId: state ? state.id : '', code: 'BLR' } });
+    const STATE_BY_CODE = {
+        KA: state ? { id: state.id, countryId: country.id } : { id: '', countryId: country.id },
+        AP: stateAP ? { id: stateAP.id, countryId: country.id } : { id: '', countryId: country.id },
+        TN: stateTN ? { id: stateTN.id, countryId: country.id } : { id: '', countryId: country.id },
+    };
+    let displayIdCounter = 90001000;
     const population = [
-        { username: 'e2e_pop_blr', email: 'pop.blr@e2e.test', regionId: region.id, stateId: state.id, countryId: country.id },
-        { username: 'e2e_pop_ka', email: 'pop.ka@e2e.test', regionId: null, stateId: state.id, countryId: country.id },
+        { username: 'e2e_pop_blr', email: 'pop.blr@e2e.test', regionId: region ? region.id : null, stateId: state ? state.id : null, countryId: country.id },
+        { username: 'e2e_pop_ka', email: 'pop.ka@e2e.test', regionId: null, stateId: state ? state.id : null, countryId: country.id },
         { username: 'e2e_pop_in', email: 'pop.in@e2e.test', regionId: null, stateId: null, countryId: country.id },
         { username: 'e2e_pop_nowhere', email: 'pop.none@e2e.test', regionId: null, stateId: null, countryId: null },
     ];
@@ -47,6 +58,7 @@ async function main() {
         await prisma.user.upsert({
             where: { email: person.email },
             create: {
+                displayId: displayIdCounter++,
                 username: person.username,
                 email: person.email,
                 country: 'IN',
@@ -63,17 +75,22 @@ async function main() {
     }
     console.log(`Population seeded: ${population.length}`);
     for (const fixture of FIXTURES) {
+        const primaryScope = fixture.scopes?.[0];
+        const primaryStateId = primaryScope?.stateCode && STATE_BY_CODE[primaryScope.stateCode] ? STATE_BY_CODE[primaryScope.stateCode].id : null;
         const user = await prisma.user.upsert({
             where: { email: fixture.email },
             create: {
+                displayId: displayIdCounter++,
                 username: fixture.username,
                 email: fixture.email,
                 country: 'IN',
                 countryId: country.id,
-                stateId: fixture.scope?.stateCode ? state.id : null,
-                regionId: fixture.scope?.regionCode ? region.id : null,
+                stateId: primaryStateId,
             },
-            update: {},
+            update: {
+                countryId: country.id,
+                stateId: primaryStateId,
+            },
         });
         await prisma.userCredential.upsert({
             where: { userId: user.id },
@@ -90,19 +107,24 @@ async function main() {
             create: { userId: user.id, roleId: role.id },
             update: {},
         });
-        if (fixture.scope) {
-            const existing = await prisma.roleScope.findFirst({ where: { userRoleId: userRole.id } });
-            if (!existing) {
-                await prisma.roleScope.create({
-                    data: {
-                        userRoleId: userRole.id,
-                        scopeType: fixture.scope.type,
-                        countryId: fixture.scope.countryCode ? country.id : null,
-                        stateId: fixture.scope.stateCode ? state.id : null,
-                        regionId: fixture.scope.regionCode ? region.id : null,
-                    },
-                });
-            }
+        for (const scopeEntry of fixture.scopes ?? []) {
+            const existing = await prisma.roleScope.findFirst({
+                where: {
+                    userRoleId: userRole.id,
+                    scopeType: scopeEntry.type,
+                    ...(scopeEntry.stateCode && STATE_BY_CODE[scopeEntry.stateCode] ? { stateId: STATE_BY_CODE[scopeEntry.stateCode].id } : {}),
+                },
+            });
+            if (existing)
+                continue;
+            await prisma.roleScope.create({
+                data: {
+                    userRoleId: userRole.id,
+                    scopeType: scopeEntry.type,
+                    countryId: scopeEntry.countryCode ? country.id : null,
+                    stateId: scopeEntry.stateCode && STATE_BY_CODE[scopeEntry.stateCode] ? STATE_BY_CODE[scopeEntry.stateCode].id : null,
+                },
+            });
         }
         console.log(`  ${fixture.email.padEnd(26)} ${(fixture.role ?? '—').padEnd(16)} ${fixture.note}`);
     }

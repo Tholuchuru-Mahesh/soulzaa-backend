@@ -338,6 +338,20 @@ export class RoleRequestService {
       input.actorId,
     );
 
+    // Sync location and name from role request if present
+    const formData = request.formData as Record<string, any> | null;
+    const updateData: Record<string, any> = {};
+    if (formData?.fullName) updateData.fullName = formData.fullName;
+    if (request.countryId || formData?.countryId) updateData.countryId = request.countryId || formData?.countryId;
+    if (request.stateId || formData?.stateId) updateData.stateId = request.stateId || formData?.stateId;
+    if (request.regionId || formData?.regionId) updateData.regionId = request.regionId || formData?.regionId;
+    if (Object.keys(updateData).length > 0) {
+      await this.prisma.user.update({
+        where: { id: request.subjectUserId },
+        data: updateData,
+      });
+    }
+
     return updated;
   }
 

@@ -83,6 +83,7 @@ export class AgencyTaskService {
       priority: string;
       completedAt: Date | null;
       createdAt: Date;
+      assignedById?: string | null;
     },
   ) {
     const progress = await this.measure(agencyId, task);
@@ -91,17 +92,31 @@ export class AgencyTaskService {
     // being met reads as expired even if nothing has run to update the row.
     const isOverdue = task.status === 'ACTIVE' && task.periodEnd.getTime() < Date.now();
 
+    let assignedByName = 'Official Team';
+    if (task.assignedById) {
+      const assigner = await this.prisma.user.findUnique({
+        where: { id: task.assignedById },
+        select: { fullName: true, username: true },
+      });
+      if (assigner) {
+        assignedByName = assigner.fullName || assigner.username || 'Official Team';
+      }
+    }
+
     return {
       id: task.id,
       title: task.title,
       description: task.description,
       metric: task.metric,
+      targetValue: task.targetValue !== null ? task.targetValue.toString() : null,
       priority: task.priority,
       status: task.status === 'ACTIVE' && isOverdue ? 'EXPIRED' : task.status,
       periodStart: task.periodStart,
       periodEnd: task.periodEnd,
       completedAt: task.completedAt,
       createdAt: task.createdAt,
+      assignedById: task.assignedById ?? null,
+      assignedByName,
       progress,
     };
   }

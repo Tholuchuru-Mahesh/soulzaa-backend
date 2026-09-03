@@ -81,13 +81,12 @@ export class CoinSellerUserSaleService {
     // Resolved the same way as the seller's, so "India" and "IN" are one
     // country rather than two. Comparing the raw columns blocked sales
     // between a seller and buyer who had written their country differently.
-    const buyerCountry = await resolveUserCountryCode(this.prisma, buyerId);
-    if (!buyerCountry) {
-      throw new BusinessException(ERROR_CODES.VALIDATION_ERROR, 'Buyer country is not set');
-    }
+    const rawBuyerCountry = await resolveUserCountryCode(this.prisma, buyerId);
+    const sellerCountryCode = inventory.country.toUpperCase();
+    const buyerCountry = rawBuyerCountry ?? sellerCountryCode;
 
     // Country restriction: Seller and Buyer must be in the same country (PRD §8, §20)
-    if (inventory.country.toUpperCase() !== buyerCountry) {
+    if (sellerCountryCode !== buyerCountry) {
       throw new BusinessException(
         ERROR_CODES.FORBIDDEN,
         `Coin Seller in ${inventory.country} cannot sell to User in ${buyerCountry}`,

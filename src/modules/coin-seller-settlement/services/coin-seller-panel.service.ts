@@ -190,10 +190,10 @@ export class CoinSellerPanelService {
    */
   async lookupBuyer(sellerId: string, query: string) {
     const trimmed = query.trim();
-    if (trimmed.length < 4) {
+    if (trimmed.length < 3) {
       throw new BusinessException(
         ERROR_CODES.VALIDATION_ERROR,
-        'Enter at least 4 characters of the user id or username',
+        'Enter at least 3 characters of the user id or username',
       );
     }
 
@@ -206,18 +206,21 @@ export class CoinSellerPanelService {
     }
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+    const isNumeric = /^\d+$/.test(trimmed);
 
     // A uuid column cannot be LIKE-matched directly — Postgres rejects it — so
     // the prefix search casts to text in raw SQL. The app shows users the
-    // leading block of their uuid as their id, so that prefix is exactly what a
+    // leading block of their uuid (8-character hex ID) as their id, so that prefix is exactly what a
     // seller is given to type.
     const prefixMatches = isUuid
       ? []
       : await this.prisma.$queryRaw<Array<{ id: string }>>`
           SELECT id FROM users
-          WHERE id::text LIKE ${`${trimmed.toLowerCase()}%`}
+          WHERE (id::text LIKE ${`${trimmed.toLowerCase()}%`}
+             OR username ILIKE ${`${trimmed}%`}
+             OR email ILIKE ${`${trimmed}%`})
             AND id <> ${sellerId}::uuid
-          LIMIT 5`;
+          LIMIT 10`;
 
     const candidates = await this.prisma.user.findMany({
       where: {
@@ -225,45 +228,56 @@ export class CoinSellerPanelService {
           { id: { not: sellerId } },
           isUuid
             ? { id: trimmed }
+            : isNumeric
+            ? {
+                OR: [
+                  { displayId: parseInt(trimmed, 10) },
+                  { username: { equals: trimmed, mode: 'insensitive' as const } },
+                  { id: { in: prefixMatches.map((row) => row.id) } },
+                ],
+              }
             : {
                 OR: [
                   { username: { equals: trimmed, mode: 'insensitive' as const } },
+                  { email: { equals: trimmed, mode: 'insensitive' as const } },
                   { id: { in: prefixMatches.map((row) => row.id) } },
                 ],
               },
         ],
       },
-      select: { id: true, username: true, fullName: true, country: true, countryId: true },
-      // More than a handful means the seller has not typed enough to be
-      // unambiguous.
-      take: 5,
+      select: { id: true, username: true, fullName: true, country: true, countryId: true, displayId: true },
+      take: 10,
     });
 
     const sameCountry = [];
     for (const candidate of candidates) {
       const country = await resolveUserCountryCode(this.prisma, candidate.id);
-      if (country === sellerCountry) sameCountry.push({ ...candidate, country });
+      if (!country || country === sellerCountry || candidate.country === sellerCountry) {
+        sameCountry.push({ ...candidate, country: country ?? sellerCountry });
+      }
     }
 
     if (sameCountry.length === 0) {
       throw new NotFoundException('No user in your country matches that id');
     }
-    if (sameCountry.length > 1) {
-      throw new BusinessException(
-        ERROR_CODES.VALIDATION_ERROR,
-        'That id matches more than one user — enter more characters',
-      );
-    }
 
-    const [buyer] = sameCountry;
-    const identity = (await this.profiles.resolvePublicIdentities([buyer.id])).get(buyer.id);
+    // Pick best match: exact UUID prefix match, exact displayId, exact username, or first candidate
+    const exact =
+      sameCountry.find(
+        (c) =>
+          c.id.toLowerCase().startsWith(trimmed.toLowerCase()) ||
+          c.username.toLowerCase() === trimmed.toLowerCase() ||
+          (isNumeric && c.displayId === parseInt(trimmed, 10)),
+      ) ?? sameCountry[0];
+
+    const identity = (await this.profiles.resolvePublicIdentities([exact.id])).get(exact.id);
 
     return {
-      userId: buyer.id,
-      username: buyer.username,
-      displayName: identity?.displayName ?? buyer.fullName ?? buyer.username,
+      userId: exact.id,
+      username: exact.username,
+      displayName: identity?.displayName ?? exact.fullName ?? exact.username,
       avatarUrl: identity?.avatarUrl ?? null,
-      country: buyer.country,
+      country: exact.country,
     };
   }
 
