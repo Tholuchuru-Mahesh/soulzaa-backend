@@ -2,40 +2,68 @@
 
 Recorded 2026-07-24, extended 2026-07-25 through Task 24 of
 `docs/superpowers/plans/2026-07-24-video-room-settings.md`.
+**Revised 2026-09-01**, when the deferred settings controls were built out.
 
 These are **not** VR-17 regressions and were deliberately **not** worked around
 on the client. Each needs a separate backend or client-feature decision.
 
 ---
 
-## Controls deferred because the CLIENT has no screen (not a backend gap)
+## CLOSED 2026-09-01 — the deferred settings controls now ship
 
-The backend routes exist and are enforced; the mobile client simply has no UI
-built for them yet, so the settings surface omits the drill-down rather than
-shipping a dead row. These are future client-feature work:
+Every item in this section was previously omitted from the settings surface
+because the client had no screen for it. Each is now built against the routes
+that already existed:
 
-- **Treasure Configuration** (`POST :id/treasure` + lifecycle) and **PK History**
-  (`GET :id/pk/history`) — `lib/features/treasure_box/presentation/screens` is
-  empty and there is no PK-history view. (Gifts/Treasure/PK page, Task 23.)
-- **Cover image** (`PATCH :id {imageKey}`) — no image-picker + `/storage/presign`
-  upload flow in the video-room feature. (Room Management, Task 21.)
-- **Share Room** — no deep-link builder for a video room. (Room Management.)
-- **Moderation action history / report queue / warn** (`GET :id/moderation/history`,
-  `GET :id/reports`, `POST :id/moderation/warn`) — read/review surfaces with
-  their own UX; the Moderation page ships only the two enforced reversible
-  rosters (block + mute). (Moderation, Task 24.)
-- **Video quality selector** (Auto/Low/Medium/HD) — no client-side quality API
-  wired to the Zego engine; the Video page ships Beauty (enforced) plus two
-  device-local prefs. (Video & Audio, Task 24.)
-- **Room statistics** (gift totals, coin totals, session duration, treasure
-  progress) — the client `VideoRoom` model does not carry them and there is no
-  parsed stats contract, so Room Info shows only the fields the model holds.
+- **Treasure ladder** — `TreasurePage` (create with an optional `poolOverride`,
+  the DRAFT→ACTIVE→PAUSED→CLOSED→ARCHIVED lifecycle, per-box progress, winners).
+  Renders only the transitions the current status accepts, since every other one
+  is a 409.
+- **PK History** — `PkHistoryPage` over `GET :id/pk/history`. Read-only, and
+  terminal-only, which is what the route returns.
+- **Cover image** — Room Management, through the same presign→PUT→`PATCH :id
+  {imageKey}` chain the create screen already used. Commits the object KEY, not
+  a URL: the bucket is presigned, so a URL's signature changes on every read.
+- **Share Room** — needed a NEW backend route (see §5). `roomShare` builds a
+  `room/:id` deep link, which resolves to the AUDIO room screen.
+- **Moderation review** — report queue (with review/dismiss), audit trail, and
+  the warning log, plus the warn action, all on `ModerationPage` drill-downs.
+- **Video quality selector** — `POST :id/media/quality` plus a Zego preset map,
+  and `GET :id/media/state` to seed the caller's own beauty/quality from server
+  truth rather than a widget-local bool that reset on every page pop.
+- **Room statistics** — Room Info reads
+  `GET video-rooms/analytics/room/:roomId`. A 403 renders as a missing section,
+  not an error: the panel is open to everyone but the stats need VIEW_ANALYTICS.
+
+Two contract bugs surfaced while wiring these, both fixed:
+
+- `GET :id/media/state` returns the whole media STAGE, not the caller's row, so
+  the client must find itself in `participants[]`. Parsing the envelope's top
+  level yielded silent all-defaults.
+- The client's `VideoRoomPermission` mirror was missing `REVIEW_REPORTS` (18 of
+  19 values), and its "mirrors all N permissions" pinning test had been updated
+  to match the mirror rather than the server. MODERATOR holds REVIEW_REPORTS and
+  not MANAGE_PARTICIPANTS, so this decided whether the role the report queue
+  exists for could see it.
 
 ---
 
-## 1. No self-vacate-seat endpoint (blocking, decide before Task 22)
+## 1. No self-vacate-seat endpoint — FIXED 2026-09-01
 
-**Status:** open — client action removed rather than faked.
+**Status:** closed. `demote` now skips the MANAGE_PARTICIPANTS assert (and the
+outranks check, as before) when `actor.id === dto.targetUserId`, which is
+option 1 below. Stepping down from your own seat is not a moderation action.
+
+Seat 0 is still refused, for either caller: vacating the owner seat would leave
+the room hosted by nobody, so the owner's exits stay Transfer Ownership and
+Close Room. The client hides "Leave My Seat" on seat 0 rather than offering a
+control that always 409s.
+
+`visibleSectionsFor` gained an `isSeated` escape hatch for the same reason: the
+row lives on the Seats page, which is gated on MANAGE_SEATS, and a plain seated
+participant holds neither permission.
+
+The original analysis follows.
 
 A seated participant has no way to leave their seat and return to the audience.
 
@@ -90,7 +118,9 @@ tooling) relies on the non-existent room-scoped `:id/end`.
 
 ## 3. `allowScreenShare` / `allowRecording` remain unenforceable
 
-**Status:** known, deliberate (recorded in Task 10).
+**Status:** known, deliberate (recorded in Task 10). **Still open after the
+2026-09-01 build-out** — these are the only settings-page controls deliberately
+left out, because they are the only ones with no enforcing route to call.
 
 Both columns exist on `VideoRoomSettings` but have no service method and no
 route, so they were removed from `WRITABLE_SETTINGS_FIELDS`. They are rejected
@@ -133,3 +163,22 @@ review.
   `VideoRoomLifecycleService.create` but the spec still asserted a 409. The test
   now pins the current no-cap behaviour and fails if the cap is reinstated
   without an explicit decision.
+
+---
+
+## 5. Video rooms had no share link (added 2026-09-01)
+
+**Status:** closed, with a new route.
+
+`ShareService.roomShare` formats any id into `soulzaa://room/<id>` +
+`<base>/r/<id>`, which the app resolves to the AUDIO room screen. Sharing a
+video room through it handed the recipient a link to the wrong surface.
+
+Added `videoRoomShare` / `videoRoomQr` (`GET social/video-rooms/:roomId/share`
+and `/qr`) producing `soulzaa://video-room/<id>` + `<base>/vr/<id>`, mirroring
+the client route `/video-room/:id`. `ShareTarget.resourceType` gained
+`'video-room'`. `share.service.spec.ts` pins that the two link shapes can never
+collapse into one.
+
+The client fetches these rather than formatting them: the share base URL and
+deep-link scheme are server config, and a second copy would drift.

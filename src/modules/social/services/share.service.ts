@@ -9,7 +9,7 @@ import {
 /** Backend-owned share/QR content. `payload` is what the client encodes into a
  * QR image; `deepLink` opens the app; `shareUrl` is the web fallback. */
 export interface ShareTarget {
-  resourceType: 'user' | 'room';
+  resourceType: 'user' | 'room' | 'video-room';
   resourceId: string;
   shareUrl: string;
   deepLink: string;
@@ -68,5 +68,29 @@ export class ShareService {
   /** Room QR content is the room share content; the client renders the image. */
   roomQr(roomId: string): ShareTarget {
     return this.roomShare(roomId);
+  }
+
+  /**
+   * Video rooms need their OWN link shape, not `roomShare`'s.
+   *
+   * `roomShare` formats an id into `room/<id>`, which the app resolves to the
+   * audio-room screen — so sharing a video room through it hands the recipient
+   * a link that opens the wrong surface (or nothing). The client route is
+   * `/video-room/:id`, and these links mirror it exactly.
+   */
+  videoRoomShare(roomId: string): ShareTarget {
+    const deepLink = `${this.scheme}video-room/${roomId}`;
+    return {
+      resourceType: 'video-room',
+      resourceId: roomId,
+      shareUrl: `${this.base()}/vr/${roomId}`,
+      deepLink,
+      payload: deepLink,
+    };
+  }
+
+  /** Video-room QR content is its share content; the client renders the image. */
+  videoRoomQr(roomId: string): ShareTarget {
+    return this.videoRoomShare(roomId);
   }
 }

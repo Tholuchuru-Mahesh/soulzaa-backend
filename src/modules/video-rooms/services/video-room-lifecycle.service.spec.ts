@@ -100,6 +100,10 @@ describe('VideoRoomLifecycleService', () => {
         cacheTtlSeconds: 60,
       }),
     };
+    // Reopen applies the declared stage size through this seam; every other
+    // path leaves it untouched.
+    const seatState = { applyDeclaredLayout: jest.fn().mockResolvedValue(undefined) };
+
     service = new VideoRoomLifecycleService(
       repo,
       permissions,
@@ -108,6 +112,7 @@ describe('VideoRoomLifecycleService', () => {
       locks,
       config as any,
       metrics,
+      seatState as any,
       platformBans,
       broadBans,
     );

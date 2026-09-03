@@ -84,6 +84,41 @@ export class VideoRoomSeatStateService {
   }
 
   /**
+   * Materialise a DECLARED stage size onto a room, outside the normal
+   * `configureLayout` path.
+   *
+   * Exists for room creation/reopen, where `configureLayout` cannot be used:
+   * that asserts a LIVE room and MANAGE_SEATS, and during a reopen the room is
+   * only becoming live in the same call. Rooms are one-per-owner, so a
+   * returning host's "create" is a reopen — and without this the stage size
+   * chosen on the create screen was dropped for exactly the people who use it
+   * most.
+   *
+   * Both counts are optional; an omitted one keeps its current value. The
+   * cached snapshot is dropped rather than patched, so the next read rebuilds
+   * from the rows this just wrote and the two cannot disagree.
+   */
+  async applyDeclaredLayout(
+    roomId: string,
+    hostSeatCount: number | undefined,
+    guestSeatCount: number | undefined,
+    actorId: string,
+  ): Promise<void> {
+    const current = await this.seats.getSeatLayout(roomId);
+    if (!current.hasSettings) return;
+
+    const host = hostSeatCount ?? current.hostSeatCount;
+    const guest = guestSeatCount ?? current.guestSeatCount;
+    if (host === current.hostSeatCount && guest === current.guestSeatCount) return;
+
+    const total = 1 + host + guest;
+    await this.seats.setSeatLayout(roomId, host, guest, actorId);
+    await this.seats.createLayout(roomId, buildSeatLayout(host, guest), actorId);
+    await this.seats.deleteSeatsFrom(roomId, total);
+    await this.cache.del(videoRoomSeatStateKey(roomId));
+  }
+
+  /**
    * Merge `patch` onto `base`, bump the monotonic version, and persist. NON-locking —
    * the caller must already hold `videoRoomSeatLockKey(roomId)`.
    */

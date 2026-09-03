@@ -110,10 +110,20 @@ describe('VideoRoomSeatsRepository', () => {
     expect(layout.hasSettings).toBe(false);
   });
 
-  it('setSeatLayout stamps audit on the settings row', async () => {
+  // This test used to assert the OPPOSITE — that `updatedBy` is stamped — and
+  // that assertion is what kept a real bug pinned in place. `VideoRoomSettings`
+  // has `updatedAt` but no `updatedBy`/`createdBy` column, so the stamp put an
+  // unknown field in the `data` object and Prisma rejected the entire call with
+  // a PrismaClientValidationError. It surfaced as a 500 on
+  // `POST :id/seats/layout`, which meant the seat-count control could never be
+  // used at all. The audit trail lives in the events log
+  // (`seat.layout_changed`), which does record the actor.
+  it('setSeatLayout writes ONLY columns the settings model actually has', async () => {
     await repo.setSeatLayout('r1', 6, 2, 'owner');
     const data = prisma.videoRoomSettings.update.mock.calls[0][0].data;
-    expect(data).toMatchObject({ hostSeatCount: 6, guestSeatCount: 2, updatedBy: 'owner' });
+    expect(data).toEqual({ hostSeatCount: 6, guestSeatCount: 2 });
+    expect(data).not.toHaveProperty('updatedBy');
+    expect(data).not.toHaveProperty('createdBy');
   });
 
   it('deleteSeatsFrom removes rows at/after the index (layout shrink)', async () => {

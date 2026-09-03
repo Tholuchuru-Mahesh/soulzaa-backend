@@ -100,6 +100,14 @@ export interface CreateVideoRoomData {
   maxParticipants: number;
   maxViewers: number;
   creationSource: VideoRoomCreationSource;
+  /**
+   * The stage size to materialise, omitted ⇒ the platform default.
+   *
+   * Distinct from [maxParticipants]: this is how many SEATS exist, that is how
+   * many people may be in the room at all.
+   */
+  hostSeatCount?: number;
+  guestSeatCount?: number;
   /** Optional metadata payload (e.g. { accessPolicy }); omitted → column stays null. */
   metadata?: Prisma.InputJsonValue;
 }
@@ -378,10 +386,13 @@ export class VideoRoomsRepository {
    * `VideoRoomSeatStateService.rebuild`.)
    */
   async createRoomTx(data: CreateVideoRoomData): Promise<VideoRoom> {
-    const seatLayout = buildSeatLayout(
-      VIDEO_ROOM_DEFAULT_HOST_SEATS,
-      VIDEO_ROOM_DEFAULT_GUEST_SEATS,
-    );
+    // The REQUESTED stage size, falling back to the platform default. This was
+    // hardcoded to the defaults, so a room created with "4 seats" still got a
+    // 10-seat stage and the settings page showed 10 — the choice made at
+    // creation was collected, sent, and then thrown away.
+    const hostSeatCount = data.hostSeatCount ?? VIDEO_ROOM_DEFAULT_HOST_SEATS;
+    const guestSeatCount = data.guestSeatCount ?? VIDEO_ROOM_DEFAULT_GUEST_SEATS;
+    const seatLayout = buildSeatLayout(hostSeatCount, guestSeatCount);
     return this.prisma.$transaction(async (tx) => {
       const room = await tx.videoRoom.create({
         data: {
@@ -409,8 +420,8 @@ export class VideoRoomsRepository {
       await tx.videoRoomSettings.create({
         data: {
           roomId: room.id,
-          hostSeatCount: VIDEO_ROOM_DEFAULT_HOST_SEATS,
-          guestSeatCount: VIDEO_ROOM_DEFAULT_GUEST_SEATS,
+          hostSeatCount,
+          guestSeatCount,
         },
       });
       await tx.videoRoomSeat.createMany({

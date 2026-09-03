@@ -31,6 +31,7 @@ import { VideoRoomsMetrics } from '../video-rooms.metrics';
 import { VideoRoomEventService } from './video-room-event.service';
 import { VideoRoomPasswordService } from './video-room-password.service';
 import { VideoRoomPermissionService } from './video-room-permission.service';
+import { VideoRoomSeatStateService } from './video-room-seat-state.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
 import { VideoRoomChatRepository } from '../repositories/video-room-chat.repository';
@@ -74,6 +75,7 @@ export class VideoRoomLifecycleService {
     private readonly locks: LockService,
     config: ConfigService,
     private readonly metrics: VideoRoomsMetrics,
+    private readonly seats: VideoRoomSeatStateService,
     @Optional() private readonly platformBans?: PlatformBanService,
     @Optional() private readonly broadBans?: BroadBanService,
     @Optional() private readonly chatRepo?: VideoRoomChatRepository,
@@ -168,6 +170,21 @@ export class VideoRoomLifecycleService {
           topic: dto.description,
           imageKey: dto.imageKey,
         });
+
+        // Rooms are one-per-owner, so "create" for an existing owner is really
+        // "reopen with these details" — and that makes THIS the branch a seat
+        // choice normally travels through, not the create branch below. Without
+        // it the stage size picked on the create screen was silently dropped
+        // for every returning host, which is most of them.
+        if (dto.hostSeatCount !== undefined || dto.guestSeatCount !== undefined) {
+          await this.seats.applyDeclaredLayout(
+            existing.id,
+            dto.hostSeatCount,
+            dto.guestSeatCount,
+            actor.id,
+          );
+        }
+
         await this.repo.trendingBump(existing.id);
         const view = await this.refreshCache(existing.id);
 
@@ -179,7 +196,9 @@ export class VideoRoomLifecycleService {
             metadata: { status: VideoRoomStatus.LIVE, reopened: true },
           });
         } catch (err) {
-          this.logger.warn(`Failed to append log for room ${existing.id}: ${(err as Error).message}`);
+          this.logger.warn(
+            `Failed to append log for room ${existing.id}: ${(err as Error).message}`,
+          );
         }
 
         try {
@@ -189,7 +208,9 @@ export class VideoRoomLifecycleService {
             changed: ['status', 'name', 'imageKey', 'visibility'],
           });
         } catch (err) {
-          this.logger.warn(`Failed to emit RoomUpdated for room ${existing.id}: ${(err as Error).message}`);
+          this.logger.warn(
+            `Failed to emit RoomUpdated for room ${existing.id}: ${(err as Error).message}`,
+          );
         }
 
         try {
@@ -199,10 +220,14 @@ export class VideoRoomLifecycleService {
             actorId: actor.id,
           });
         } catch (err) {
-          this.logger.warn(`Failed to emit RoomStarted for room ${existing.id}: ${(err as Error).message}`);
+          this.logger.warn(
+            `Failed to emit RoomStarted for room ${existing.id}: ${(err as Error).message}`,
+          );
         }
 
-        this.logger.log(`Video room ${existing.id} reactivated/started with new broadcast session by ${actor.id}`);
+        this.logger.log(
+          `Video room ${existing.id} reactivated/started with new broadcast session by ${actor.id}`,
+        );
         return view;
       }
 
@@ -230,6 +255,11 @@ export class VideoRoomLifecycleService {
           this.config.maxViewersCap,
         ),
         creationSource: VideoRoomCreationSource.APP,
+        // The stage size the creator chose. Undefined ⇒ the repository's
+        // platform default; passing it through is what makes the Seats page
+        // show the capacity the room was actually created with.
+        hostSeatCount: dto.hostSeatCount,
+        guestSeatCount: dto.guestSeatCount,
         ...(this.metadataFor(dto.accessPolicy) ?? {}),
       };
 
@@ -286,21 +316,18 @@ export class VideoRoomLifecycleService {
     assign('tags', dto.tags);
     assign('visibility', dto.visibility);
     assign('isDiscoverable', dto.isDiscoverable);
+    // An EXPLICIT update is rejected when it exceeds the cap, not silently
+    // clamped. Clamping is right for create (an absent value takes the
+    // default), but on an update the caller typed a number and watched a
+    // different one come back with no explanation — "I set 50 and it became
+    // 20". A 400 naming the ceiling is something the UI can actually show.
     if (dto.maxParticipants !== undefined) {
-      assign(
-        'maxParticipants',
-        this.clamp(
-          dto.maxParticipants,
-          this.config.defaultMaxParticipants,
-          this.config.maxParticipantsCap,
-        ),
-      );
+      this.assertWithinCap(dto.maxParticipants, this.config.maxParticipantsCap, 'maxParticipants');
+      assign('maxParticipants', dto.maxParticipants);
     }
     if (dto.maxViewers !== undefined) {
-      assign(
-        'maxViewers',
-        this.clamp(dto.maxViewers, this.config.defaultMaxViewers, this.config.maxViewersCap),
-      );
+      this.assertWithinCap(dto.maxViewers, this.config.maxViewersCap, 'maxViewers');
+      assign('maxViewers', dto.maxViewers);
     }
     if (dto.accessPolicy !== undefined) {
       const meta = this.metadataFor(dto.accessPolicy);
@@ -579,6 +606,17 @@ export class VideoRoomLifecycleService {
       return { metadata: { accessPolicy: policy } };
     }
     return null;
+  }
+
+  /** Reject an explicit over-cap value with a message naming the ceiling. */
+  private assertWithinCap(requested: number, cap: number, field: string): void {
+    if (requested > cap) {
+      throw new BusinessException(
+        ERROR_CODES.VALIDATION_ERROR,
+        `${field} cannot exceed ${cap}.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   private clamp(requested: number | undefined, fallback: number, cap: number): number {
