@@ -36,7 +36,12 @@ import { WithdrawalApprovalService } from 'src/modules/withdrawals/services/with
 import { WithdrawalConfigurationService } from 'src/modules/withdrawals/services/withdrawal-configuration.service';
 import { WithdrawalHistoryService } from 'src/modules/withdrawals/services/withdrawal-history.service';
 import { WithdrawalService } from 'src/modules/withdrawals/services/withdrawal.service';
-import type { LiveHistoryEntryView } from '../interfaces/live-history.interface';
+import type {
+  LiveHistoryEntryView,
+  LiveHistoryDetailView,
+  LiveHistoryTopGifterView,
+  LiveHistoryGiftBreakdownView,
+} from '../interfaces/live-history.interface';
 import type { TopFanView } from '../interfaces/top-fan.interface';
 import { peakConcurrent } from '../utils/concurrency.util';
 
@@ -148,67 +153,119 @@ export class CreatorCenterService {
     page: number,
     limit: number,
     skip: number,
+    roomId?: string,
+    roomType?: string,
   ): Promise<Paginated<LiveHistoryEntryView>> {
     let audioSessions: LiveSessionView[] = [];
-    try {
-      const audioResult = await this.rooms.listMyLiveSessions(userId, 0, 100);
-      audioSessions = [...audioResult.rows];
-    } catch {
-      audioSessions = [];
-    }
-
-    if (this.prisma) {
+    if (!roomId && roomType !== 'VIDEO') {
       try {
-        const directAudioRooms = await this.prisma.audioRoom.findMany({
-          where: { ownerId: userId, deletedAt: null },
-          orderBy: { createdAt: 'desc' },
-          take: 100,
-        });
-        const existingRoomIds = new Set(audioSessions.map((s) => s.roomId));
-        for (const ar of directAudioRooms) {
-          if (!existingRoomIds.has(ar.id)) {
-            audioSessions.push({
-              id: ar.id,
-              roomId: ar.id,
-              startedAt: ar.createdAt,
-              endedAt: ar.endedAt,
-              durationSeconds: ar.endedAt
-                ? Math.max(0, Math.floor((ar.endedAt.getTime() - ar.createdAt.getTime()) / 1000))
-                : null,
-              status: ar.status === 'LIVE' ? 'LIVE' : 'ENDED',
-            });
-          }
-        }
+        const audioResult = await this.rooms.listMyLiveSessions(userId, 0, 100);
+        audioSessions = [...audioResult.rows];
       } catch {
-        // continue with existing audioSessions
+        audioSessions = [];
+      }
+
+      if (this.prisma) {
+        try {
+          const directAudioRooms = await this.prisma.audioRoom.findMany({
+            where: { ownerId: userId, deletedAt: null },
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+          });
+          const existingRoomIds = new Set(audioSessions.map((s) => s.roomId));
+          for (const ar of directAudioRooms) {
+            if (!existingRoomIds.has(ar.id)) {
+              audioSessions.push({
+                id: ar.id,
+                roomId: ar.id,
+                startedAt: ar.createdAt,
+                endedAt: ar.endedAt,
+                durationSeconds: ar.endedAt
+                  ? Math.max(0, Math.floor((ar.endedAt.getTime() - ar.createdAt.getTime()) / 1000))
+                  : null,
+                status: ar.status === 'LIVE' ? 'LIVE' : 'ENDED',
+              });
+            }
+          }
+        } catch {
+          // continue with existing audioSessions
+        }
       }
     }
 
     let videoSessions: (LiveSessionView & { isVideo?: boolean })[] = [];
     if (this.prisma) {
       try {
-        const videoRooms = await this.prisma.videoRoom.findMany({
+        const seenSessionIds = new Set<string>();
+
+        // 1. Query VideoBroadcastSession table (each session represents a separate broadcast)
+        const broadcastSessions = await (this.prisma as any).videoBroadcastSession.findMany({
           where: {
             OR: [
-              { ownerId: userId },
-              { createdBy: userId },
+              { hostId: userId },
+              { room: { ownerId: userId } },
             ],
-            deletedAt: null,
+            ...(roomId ? { roomId } : {}),
           },
-          orderBy: { createdAt: 'desc' },
-          take: 100,
-        });
-        videoSessions = videoRooms.map((vr) => ({
-          id: vr.id,
-          roomId: vr.id,
-          startedAt: vr.createdAt,
-          endedAt: vr.endedAt,
-          durationSeconds: vr.endedAt
-            ? Math.max(0, Math.floor((vr.endedAt.getTime() - vr.createdAt.getTime()) / 1000))
-            : null,
-          status: vr.status === 'LIVE' ? 'LIVE' : 'ENDED',
-          isVideo: true,
-        }));
+          include: { room: true },
+          orderBy: { startedAt: 'desc' },
+          take: 200,
+        }).catch(() => []);
+
+        for (const bs of broadcastSessions) {
+          if (!seenSessionIds.has(bs.id)) {
+            seenSessionIds.add(bs.id);
+            const duration = bs.durationSeconds || (bs.endedAt
+              ? Math.max(0, Math.floor((bs.endedAt.getTime() - bs.startedAt.getTime()) / 1000))
+              : (bs.status === 'LIVE' ? Math.max(0, Math.floor((Date.now() - bs.startedAt.getTime()) / 1000)) : null));
+            videoSessions.push({
+              id: bs.id,
+              roomId: bs.roomId,
+              startedAt: bs.startedAt,
+              endedAt: bs.endedAt,
+              durationSeconds: duration,
+              status: bs.status === 'LIVE' ? 'LIVE' : 'ENDED',
+              isVideo: true,
+              name: bs.title || bs.room?.name,
+              imageKey: bs.imageKey || bs.room?.imageKey,
+            } as any);
+          }
+        }
+
+        // 2. Fallback: If no broadcastSessions found (e.g. rooms created before broadcast migration), load from VideoRoom
+        if (videoSessions.length === 0) {
+          const videoRooms = await this.prisma.videoRoom.findMany({
+            where: {
+              ...(roomId ? { id: roomId } : {
+                OR: [
+                  { ownerId: userId },
+                  { createdBy: userId },
+                ],
+              }),
+              deletedAt: null,
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 100,
+          });
+
+          for (const vr of videoRooms) {
+            if (!seenSessionIds.has(vr.id)) {
+              seenSessionIds.add(vr.id);
+              const duration = vr.endedAt
+                ? Math.max(0, Math.floor((vr.endedAt.getTime() - vr.createdAt.getTime()) / 1000))
+                : (vr.status === 'LIVE' ? Math.max(0, Math.floor((Date.now() - vr.createdAt.getTime()) / 1000)) : null);
+              videoSessions.push({
+                id: vr.id,
+                roomId: vr.id,
+                startedAt: vr.createdAt,
+                endedAt: vr.endedAt,
+                durationSeconds: duration,
+                status: vr.status === 'LIVE' ? 'LIVE' : 'ENDED',
+                isVideo: true,
+              });
+            }
+          }
+        }
       } catch {
         videoSessions = [];
       }
@@ -225,24 +282,76 @@ export class CreatorCenterService {
     return buildPaginated(items, total, page, limit);
   }
 
-  async getLiveHistoryDetail(userId: string, sessionId: string): Promise<LiveHistoryEntryView> {
-    let session: (LiveSessionView & { isVideo?: boolean }) | null = await this.rooms.getMyLiveSession(userId, sessionId);
+  async getLiveHistoryDetail(userId: string, sessionId: string): Promise<LiveHistoryDetailView> {
+    let session: (LiveSessionView & { isVideo?: boolean }) | null = await this.rooms.getMyLiveSession(userId, sessionId).catch(() => null);
     if (!session && this.prisma) {
-      const vr = await this.prisma.videoRoom.findFirst({
-        where: { id: sessionId, ownerId: userId, deletedAt: null },
-      });
-      if (vr) {
+      // 1. Check VideoBroadcastSession by unique sessionId
+      const bs = await (this.prisma as any).videoBroadcastSession.findUnique({
+        where: { id: sessionId },
+        include: { room: true },
+      }).catch(() => null);
+
+      if (bs) {
         session = {
-          id: vr.id,
-          roomId: vr.id,
-          startedAt: vr.createdAt,
-          endedAt: vr.endedAt,
-          durationSeconds: vr.endedAt
-            ? Math.max(0, Math.floor((vr.endedAt.getTime() - vr.createdAt.getTime()) / 1000))
-            : null,
-          status: vr.status === 'LIVE' ? 'LIVE' : 'ENDED',
+          id: bs.id,
+          roomId: bs.roomId,
+          startedAt: bs.startedAt,
+          endedAt: bs.endedAt,
+          durationSeconds: bs.durationSeconds || (bs.endedAt
+            ? Math.max(0, Math.floor((bs.endedAt.getTime() - bs.startedAt.getTime()) / 1000))
+            : (bs.status === 'LIVE' ? Math.max(0, Math.floor((Date.now() - bs.startedAt.getTime()) / 1000)) : null)),
+          status: bs.status === 'LIVE' ? 'LIVE' : 'ENDED',
           isVideo: true,
-        };
+          name: bs.title || bs.room?.name,
+          imageKey: bs.imageKey || bs.room?.imageKey,
+        } as any;
+      } else {
+        // Fallback: Check VideoRoom by ID
+        const vr = await this.prisma.videoRoom.findFirst({
+          where: {
+            id: sessionId,
+            OR: [
+              { ownerId: userId },
+              { createdBy: userId },
+            ],
+            deletedAt: null,
+          },
+        });
+        if (vr) {
+          session = {
+            id: vr.id,
+            roomId: vr.id,
+            startedAt: vr.createdAt,
+            endedAt: vr.endedAt,
+            durationSeconds: vr.endedAt
+              ? Math.max(0, Math.floor((vr.endedAt.getTime() - vr.createdAt.getTime()) / 1000))
+              : (vr.status === 'LIVE' ? Math.max(0, Math.floor((Date.now() - vr.createdAt.getTime()) / 1000)) : null),
+            status: vr.status === 'LIVE' ? 'LIVE' : 'ENDED',
+            isVideo: true,
+          };
+        } else {
+          const vMember = await this.prisma.videoRoomMember.findFirst({
+            where: { roomId: sessionId, userId },
+          }).catch(() => null);
+          if (vMember) {
+            const r = await this.prisma.videoRoom.findUnique({
+              where: { id: sessionId },
+            }).catch(() => null);
+            if (r && !r.deletedAt) {
+              session = {
+                id: vMember.roomId,
+                roomId: vMember.roomId,
+                startedAt: vMember.joinedAt ?? r.createdAt,
+                endedAt: vMember.leftAt ?? r.endedAt,
+                durationSeconds: vMember.leftAt
+                  ? Math.max(0, Math.floor((vMember.leftAt.getTime() - vMember.joinedAt.getTime()) / 1000))
+                  : (r.status === 'LIVE' ? Math.max(0, Math.floor((Date.now() - (vMember.joinedAt ?? r.createdAt).getTime()) / 1000)) : null),
+                status: r.status === 'LIVE' ? 'LIVE' : 'ENDED',
+                isVideo: true,
+              };
+            }
+          }
+        }
       }
     }
 
@@ -253,8 +362,247 @@ export class CreatorCenterService {
         HttpStatus.NOT_FOUND,
       );
     }
-    const [entry] = await this.enrichSessions(userId, [session]);
-    return entry;
+
+    const windowEnd = session.endedAt ?? (
+      session.status === 'LIVE'
+        ? new Date()
+        : new Date(session.startedAt.getTime() + (session.durationSeconds || 0) * 1000)
+    );
+    const isVideo = session.isVideo || false;
+
+    // 1. Fetch Room Info
+    let roomName: string | null = null;
+    let roomImageUrl: string | null = null;
+    let roomType: 'VIDEO' | 'AUDIO' = isVideo ? 'VIDEO' : 'AUDIO';
+
+    if (isVideo && this.prisma) {
+      const vRoom = await this.prisma.videoRoom.findUnique({
+        where: { id: session.roomId },
+      }).catch(() => null);
+      if (vRoom) {
+        roomName = (session as any).name || vRoom.name;
+        const targetImageKey = (session as any).imageKey || vRoom.imageKey;
+        roomImageUrl = this.media && targetImageKey
+          ? await this.media.resolve(targetImageKey).catch(() => null)
+          : null;
+      }
+    } else {
+      const aRoom = await this.rooms.getRoom(session.roomId).catch(() => null);
+      if (aRoom) {
+        roomName = aRoom.name;
+        roomImageUrl = aRoom.imageUrl;
+        roomType = 'AUDIO';
+      }
+    }
+
+    // 2. Fetch Gift Transactions strictly within this room's context and [session.startedAt, windowEnd]
+    let giftTxns: any[] = [];
+    if (this.prisma) {
+      giftTxns = await this.prisma.giftTransaction.findMany({
+        where: {
+          status: 'COMPLETED',
+          contextId: session.roomId,
+          contextType: isVideo ? 'VIDEO_ROOM' : 'AUDIO_ROOM',
+          createdAt: {
+            gte: session.startedAt,
+            lte: windowEnd,
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+    }
+
+    const totalGiftsCount = giftTxns.reduce((acc, t) => acc + (t.quantity || 1), 0);
+    const giftValueCoins = giftTxns.reduce((acc, t) => acc + Number(t.totalCoinValue || 0), 0);
+    const creatorEarnings = giftTxns.reduce(
+      (acc, t) => acc + Number(t.creatorEarnings ?? t.totalCoinValue ?? 0),
+      0,
+    );
+    const uniqueGiftersCount = new Set(giftTxns.map((t) => t.senderId)).size;
+
+    // Top Gifters aggregation
+    const senderCoinsMap = new Map<string, number>();
+    for (const t of giftTxns) {
+      senderCoinsMap.set(
+        t.senderId,
+        (senderCoinsMap.get(t.senderId) || 0) + Number(t.totalCoinValue || 0),
+      );
+    }
+    const sortedSenders = Array.from(senderCoinsMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+
+    const topSenderIds = sortedSenders.map(([id]) => id);
+    const senderUsers = this.prisma && topSenderIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: topSenderIds } },
+          select: { id: true, username: true, fullName: true },
+        }).catch(() => [])
+      : [];
+    const senderProfiles = this.prisma && topSenderIds.length > 0
+      ? await this.prisma.userProfile.findMany({
+          where: { userId: { in: topSenderIds } },
+          select: { userId: true, avatarKey: true },
+        }).catch(() => [])
+      : [];
+    const senderProfileMap = new Map(senderProfiles.map((p) => [p.userId, p]));
+    const senderUserMap = new Map(senderUsers.map((u) => [u.id, u]));
+
+    const topGifters: LiveHistoryTopGifterView[] = await Promise.all(
+      sortedSenders.map(async ([senderId, coins], idx) => {
+        const u = senderUserMap.get(senderId);
+        const p = senderProfileMap.get(senderId);
+        const avatarUrl = this.media && p?.avatarKey
+          ? await this.media.resolve(p.avatarKey).catch(() => null)
+          : null;
+        return {
+          userId: senderId,
+          username: u?.username || 'user',
+          name: u?.fullName || u?.username || 'User',
+          avatarUrl,
+          rank: idx + 1,
+          coins,
+        };
+      }),
+    );
+
+    // Gift Breakdown aggregation
+    const giftMap = new Map<string, { quantity: number; coins: number }>();
+    for (const t of giftTxns) {
+      const cur = giftMap.get(t.giftId) || { quantity: 0, coins: 0 };
+      cur.quantity += t.quantity || 1;
+      cur.coins += Number(t.totalCoinValue || 0);
+      giftMap.set(t.giftId, cur);
+    }
+    const giftIds = Array.from(giftMap.keys());
+    const catalogGifts = this.prisma && giftIds.length > 0
+      ? await this.prisma.gift.findMany({
+          where: { id: { in: giftIds } },
+          select: { id: true, name: true, displayName: true, thumbnailUrl: true, animationUrl: true },
+        }).catch(() => [])
+      : [];
+    const catalogMap = new Map(catalogGifts.map((g) => [g.id, g]));
+
+    const giftBreakdown: LiveHistoryGiftBreakdownView[] = Array.from(giftMap.entries())
+      .map(([giftId, data]) => {
+        const g = catalogMap.get(giftId);
+        return {
+          giftId,
+          name: g?.displayName || g?.name || 'Gift',
+          iconUrl: g?.thumbnailUrl || g?.animationUrl || null,
+          quantity: data.quantity,
+          coins: data.coins,
+        };
+      })
+      .sort((a, b) => b.coins - a.coins);
+
+    // 3. Fetch Viewers Analytics
+    const [visitorRows, newFollowers, videoStats] = await Promise.all([
+      this.analytics.getVisitorsInRange(session.roomId, session.startedAt, windowEnd).catch(() => []),
+      this.social.countNewFollowers(userId, session.startedAt, windowEnd).catch(() => 0),
+      isVideo && this.prisma
+        ? this.prisma.videoRoomStatistics.findUnique({ where: { roomId: session.roomId } }).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
+    let visits = visitorRows.length;
+    let uniqueViewers = visitorRows.length > 0
+      ? new Set(visitorRows.map((v) => v.userId)).size
+      : 0;
+    let peak = peakConcurrent(visitorRows, session.startedAt, windowEnd);
+
+    if (this.prisma) {
+      if (isVideo) {
+        const sessionMembers = await this.prisma.videoRoomMember.findMany({
+          where: {
+            roomId: session.roomId,
+            OR: [
+              { joinedAt: { gte: session.startedAt, lte: windowEnd } },
+              {
+                joinedAt: { lte: windowEnd },
+                OR: [
+                  { leftAt: null },
+                  { leftAt: { gte: session.startedAt } },
+                ],
+              },
+            ],
+          },
+          select: { userId: true },
+        }).catch(() => []);
+
+        const activePresences = session.status === 'LIVE'
+          ? await this.prisma.videoRoomPresence.count({ where: { roomId: session.roomId } }).catch(() => 0)
+          : 0;
+
+        const timeScopedCount = sessionMembers.length;
+        const timeScopedUnique = new Set(sessionMembers.map((m) => m.userId)).size;
+
+        visits = Math.max(visits, timeScopedCount, activePresences);
+        uniqueViewers = Math.max(uniqueViewers, timeScopedUnique, activePresences);
+        peak = Math.max(peak, activePresences, uniqueViewers);
+      } else {
+        const sessionAudioMembers = await this.prisma.roomMember.findMany({
+          where: {
+            roomId: session.roomId,
+            OR: [
+              { joinedAt: { gte: session.startedAt, lte: windowEnd } },
+              {
+                joinedAt: { lte: windowEnd },
+                OR: [
+                  { leftAt: null },
+                  { leftAt: { gte: session.startedAt } },
+                ],
+              },
+            ],
+          },
+          select: { userId: true },
+        }).catch(() => []);
+
+        const timeScopedCount = sessionAudioMembers.length;
+        const timeScopedUnique = new Set(sessionAudioMembers.map((m) => m.userId)).size;
+
+        visits = Math.max(visits, timeScopedCount);
+        uniqueViewers = Math.max(uniqueViewers, timeScopedUnique);
+        peak = Math.max(peak, uniqueViewers);
+      }
+    }
+
+    const durationSeconds = session.status === 'LIVE'
+      ? Math.max(0, Math.floor((Date.now() - session.startedAt.getTime()) / 1000))
+      : (session.durationSeconds ?? (session.endedAt ? Math.max(0, Math.floor((session.endedAt.getTime() - session.startedAt.getTime()) / 1000)) : 0));
+
+    const avgViewers = peak > 0 ? Math.max(1, Math.round((uniqueViewers + peak) / 2)) : uniqueViewers;
+
+    return {
+      session: {
+        sessionId: session.id,
+        roomId: session.roomId,
+        roomName,
+        roomImageUrl,
+        roomType,
+        status: session.status,
+        endReason: 'HOST_ENDED',
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+        durationSeconds,
+      },
+      viewerAnalytics: {
+        totalUniqueViewers: uniqueViewers,
+        peakConcurrentViewers: peak,
+        avgViewers,
+        totalVisits: visits,
+        newFollowers,
+        totalLikes: 0,
+      },
+      giftAnalytics: {
+        totalGifts: totalGiftsCount,
+        giftValueCoins,
+        uniqueGifters: uniqueGiftersCount,
+        creatorEarnings,
+        topGifters,
+        giftBreakdown,
+      },
+    };
   }
 
   getPkHistory(userId: string, page: number, limit: number, skip: number, filter: PkHistoryFilter) {
@@ -286,7 +634,9 @@ export class CreatorCenterService {
         if (r) {
           roomCache.set(roomId, { ...r, roomType: 'AUDIO' });
         } else if (this.prisma) {
-          const vRoom = await this.prisma.videoRoom.findUnique({ where: { id: roomId } }).catch(() => null);
+          const vRoom = await this.prisma.videoRoom.findUnique({
+            where: { id: roomId },
+          }).catch(() => null);
           if (vRoom) {
             const resolvedImageUrl = this.media
               ? await this.media.resolve(vRoom.imageKey).catch(() => null)
@@ -294,7 +644,7 @@ export class CreatorCenterService {
             roomCache.set(roomId, {
               id: vRoom.id,
               name: vRoom.name,
-              imageUrl: resolvedImageUrl,
+              imageUrl: resolvedImageUrl || null,
               ownerId: vRoom.ownerId,
               roomType: 'VIDEO',
             } as any);
@@ -310,7 +660,11 @@ export class CreatorCenterService {
 
     return Promise.all(
       sessions.map(async (session) => {
-        const windowEnd = session.endedAt ?? new Date();
+        const windowEnd = session.endedAt ?? (
+          session.status === 'LIVE'
+            ? new Date()
+            : new Date(session.startedAt.getTime() + (session.durationSeconds || 0) * 1000)
+        );
         const room = await roomFor(session.roomId);
         const isVideo = session.isVideo || room?.roomType === 'VIDEO';
 
@@ -330,44 +684,93 @@ export class CreatorCenterService {
         ]);
 
         let effectiveCoins = giftCoinsAmount;
-        if (effectiveCoins === 0n && this.prisma) {
+        let totalGiftsCount = 0;
+        let creatorEarningsVal = 0;
+
+        if (this.prisma) {
           const directGifts = await this.prisma.giftTransaction.aggregate({
             where: {
-              contextId: session.roomId,
-              contextType: isVideo ? GiftContextType.VIDEO_ROOM : GiftContextType.AUDIO_ROOM,
               status: 'COMPLETED',
+              contextId: session.roomId,
+              contextType: isVideo ? 'VIDEO_ROOM' : 'AUDIO_ROOM',
+              createdAt: {
+                gte: session.startedAt,
+                lte: windowEnd,
+              },
             },
-            _sum: { totalCoinValue: true },
+            _sum: { totalCoinValue: true, quantity: true, creatorEarnings: true },
           }).catch(() => null);
+
           if (directGifts?._sum?.totalCoinValue) {
             effectiveCoins = directGifts._sum.totalCoinValue;
-          } else if (videoStats?.totalGiftCoins) {
-            effectiveCoins = videoStats.totalGiftCoins;
+          } else {
+            effectiveCoins = 0n;
           }
+          totalGiftsCount = directGifts?._sum?.quantity || 0;
+          creatorEarningsVal = Number(directGifts?._sum?.creatorEarnings || effectiveCoins);
         }
 
         const totalCoins = effectiveCoins.toString();
-        let visitorsCount = videoStats?.totalJoins
-          ? Number(videoStats.totalJoins)
-          : visitorRows.length;
+        const giftValueNum = Number(effectiveCoins);
+        let visitorsCount = visitorRows.length;
         let uniqueVisitorsCount = visitorRows.length > 0
           ? new Set(visitorRows.map((v) => v.userId)).size
-          : visitorsCount;
-        let peak = videoStats?.peakParticipants || videoStats?.peakViewers
-          ? Math.max(videoStats.peakParticipants, videoStats.peakViewers)
-          : peakConcurrent(visitorRows, session.startedAt, windowEnd);
+          : 0;
+        let peak = peakConcurrent(visitorRows, session.startedAt, windowEnd);
 
-        if (this.prisma && visitorsCount === 0) {
+        if (this.prisma) {
           if (isVideo) {
-            const count = await this.prisma.videoRoomMember.count({ where: { roomId: session.roomId } }).catch(() => 0);
-            visitorsCount = count;
-            uniqueVisitorsCount = count;
-            peak = Math.max(peak, count);
+            const sessionMembers = await this.prisma.videoRoomMember.findMany({
+              where: {
+                roomId: session.roomId,
+                OR: [
+                  { joinedAt: { gte: session.startedAt, lte: windowEnd } },
+                  {
+                    joinedAt: { lte: windowEnd },
+                    OR: [
+                      { leftAt: null },
+                      { leftAt: { gte: session.startedAt } },
+                    ],
+                  },
+                ],
+              },
+              select: { userId: true },
+            }).catch(() => []);
+
+            const activePresences = session.status === 'LIVE'
+              ? await this.prisma.videoRoomPresence.count({ where: { roomId: session.roomId } }).catch(() => 0)
+              : 0;
+
+            const timeScopedCount = sessionMembers.length;
+            const timeScopedUnique = new Set(sessionMembers.map((m) => m.userId)).size;
+
+            visitorsCount = Math.max(visitorsCount, timeScopedCount, activePresences);
+            uniqueVisitorsCount = Math.max(uniqueVisitorsCount, timeScopedUnique, activePresences);
+            peak = Math.max(peak, activePresences, uniqueVisitorsCount);
           } else {
-            const count = await this.prisma.roomMember.count({ where: { roomId: session.roomId } }).catch(() => 0);
-            visitorsCount = count;
-            uniqueVisitorsCount = count;
-            peak = Math.max(peak, count);
+            const sessionAudioMembers = await this.prisma.roomMember.findMany({
+              where: {
+                roomId: session.roomId,
+                OR: [
+                  { joinedAt: { gte: session.startedAt, lte: windowEnd } },
+                  {
+                    joinedAt: { lte: windowEnd },
+                    OR: [
+                      { leftAt: null },
+                      { leftAt: { gte: session.startedAt } },
+                    ],
+                  },
+                ],
+              },
+              select: { userId: true },
+            }).catch(() => []);
+
+            const timeScopedCount = sessionAudioMembers.length;
+            const timeScopedUnique = new Set(sessionAudioMembers.map((m) => m.userId)).size;
+
+            visitorsCount = Math.max(visitorsCount, timeScopedCount);
+            uniqueVisitorsCount = Math.max(uniqueVisitorsCount, timeScopedUnique);
+            peak = Math.max(peak, uniqueVisitorsCount);
           }
         }
 
@@ -375,19 +778,29 @@ export class CreatorCenterService {
           ? Math.max(0, Math.floor((Date.now() - session.startedAt.getTime()) / 1000))
           : (session.durationSeconds ?? (session.endedAt ? Math.max(0, Math.floor((session.endedAt.getTime() - session.startedAt.getTime()) / 1000)) : 0));
 
+        const sessionName = (session as any).name || room?.name || null;
+        let sessionImageUrl = room?.imageUrl ?? null;
+        if ((session as any).imageKey && this.media) {
+          sessionImageUrl = (await this.media.resolve((session as any).imageKey).catch(() => null)) || sessionImageUrl;
+        }
+
         return {
           sessionId: session.id,
           roomId: session.roomId,
-          roomName: room?.name ?? null,
-          roomImageUrl: room?.imageUrl ?? null,
+          roomName: sessionName,
+          roomImageUrl: sessionImageUrl,
           roomType: (isVideo ? 'VIDEO' : 'AUDIO') as 'VIDEO' | 'AUDIO',
           startedAt: session.startedAt,
           endedAt: session.endedAt,
           durationSeconds,
           status: session.status,
+          endReason: 'HOST_ENDED',
           visitors: visitorsCount,
           uniqueVisitors: uniqueVisitorsCount,
           peakParticipants: peak,
+          totalGifts: totalGiftsCount,
+          giftValue: giftValueNum,
+          creatorEarnings: creatorEarningsVal,
           giftCoins: totalCoins,
           newFollowers,
         };

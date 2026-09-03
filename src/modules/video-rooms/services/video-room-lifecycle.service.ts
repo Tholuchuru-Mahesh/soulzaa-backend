@@ -33,6 +33,8 @@ import { VideoRoomPasswordService } from './video-room-password.service';
 import { VideoRoomPermissionService } from './video-room-permission.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
+import { VideoRoomChatRepository } from '../repositories/video-room-chat.repository';
+import { VideoRoomChatCacheService } from './video-room-chat-cache.service';
 
 /** The extended access policies that are persisted in metadata (not base visibility). */
 const METADATA_ACCESS_POLICIES: ReadonlySet<VideoRoomAccessPolicy> = new Set([
@@ -74,6 +76,8 @@ export class VideoRoomLifecycleService {
     private readonly metrics: VideoRoomsMetrics,
     @Optional() private readonly platformBans?: PlatformBanService,
     @Optional() private readonly broadBans?: BroadBanService,
+    @Optional() private readonly chatRepo?: VideoRoomChatRepository,
+    @Optional() private readonly chatCache?: VideoRoomChatCacheService,
   ) {
     this.config = loadVideoRoomConfig(config);
   }
@@ -159,6 +163,11 @@ export class VideoRoomLifecycleService {
         }
 
         await this.repo.updateRoom(existing.id, updateData, actor.id);
+        await this.repo.createBroadcastSession(existing.id, actor.id, {
+          title: dto.name,
+          topic: dto.description,
+          imageKey: dto.imageKey,
+        });
         await this.repo.trendingBump(existing.id);
         const view = await this.refreshCache(existing.id);
 
@@ -193,7 +202,7 @@ export class VideoRoomLifecycleService {
           this.logger.warn(`Failed to emit RoomStarted for room ${existing.id}: ${(err as Error).message}`);
         }
 
-        this.logger.log(`Video room ${existing.id} reactivated/started by ${actor.id}`);
+        this.logger.log(`Video room ${existing.id} reactivated/started with new broadcast session by ${actor.id}`);
         return view;
       }
 
@@ -225,6 +234,11 @@ export class VideoRoomLifecycleService {
       };
 
       const room = await this.repo.createRoomTx(data);
+      await this.repo.createBroadcastSession(room.id, actor.id, {
+        title: dto.name,
+        topic: dto.description,
+        imageKey: dto.imageKey,
+      });
       await this.repo.trendingBump(room.id);
       const view = await this.refreshCache(room.id);
       await this.events.emitRoomCreated({
@@ -389,6 +403,11 @@ export class VideoRoomLifecycleService {
     await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_ROOM);
     this.assertTransition(room.status, VideoRoomStatus.LIVE);
     await this.repo.updateRoom(roomId, { status: VideoRoomStatus.LIVE, endedAt: null }, actor.id);
+    await this.repo.createBroadcastSession(roomId, actor.id, {
+      title: room.name,
+      topic: room.description,
+      imageKey: room.imageKey,
+    });
     await this.repo.trendingBump(roomId);
     await this.repo.appendLog({
       roomId,
@@ -397,18 +416,26 @@ export class VideoRoomLifecycleService {
       metadata: { status: VideoRoomStatus.LIVE },
     });
     const view = await this.refreshCache(roomId);
+    if (this.chatRepo) {
+      await this.chatRepo.softDeleteRoomMessages(roomId, actor.id);
+    }
+    if (this.chatCache) {
+      await this.chatCache.invalidateRecent(roomId);
+      await this.chatCache.setPins(roomId, []);
+    }
     await this.events.emitRoomUpdated({ roomId, actorId: actor.id, changed: ['status'] });
     await this.events.emitRoomStarted({ roomId, ownerId: room.ownerId, actorId: actor.id });
     return view;
   }
 
-  /** Close a room: -> ENDED. Owner-only (CLOSE_ROOM). Clears live runtime. */
+  /** Close a room: -> ENDED. Owner-only (CLOSE_ROOM). Clears live runtime & ends broadcast session. */
   async close(actor: RoomActor, roomId: string): Promise<VideoRoomDetailView> {
     const room = await this.getRoomOrThrow(roomId);
     await this.permissions.assertPermission(actor, room, VideoRoomPermission.CLOSE_ROOM);
     this.assertTransition(room.status, VideoRoomStatus.ENDED);
 
     const durationSeconds = Math.max(0, Math.floor((Date.now() - room.createdAt.getTime()) / 1000));
+    await this.repo.endActiveBroadcastSession(roomId, 'HOST_ENDED');
     await this.repo.updateRoom(
       roomId,
       { status: VideoRoomStatus.ENDED, endedAt: new Date() },
@@ -416,6 +443,13 @@ export class VideoRoomLifecycleService {
     );
     await this.repo.trendingRemove(roomId);
     await this.repo.clearCachedSnapshot(roomId);
+    if (this.chatRepo) {
+      await this.chatRepo.softDeleteRoomMessages(roomId, actor.id);
+    }
+    if (this.chatCache) {
+      await this.chatCache.invalidateRecent(roomId);
+      await this.chatCache.setPins(roomId, []);
+    }
     await this.repo.appendLog({
       roomId,
       actorId: actor.id,

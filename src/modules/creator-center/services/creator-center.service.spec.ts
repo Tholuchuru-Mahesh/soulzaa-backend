@@ -139,7 +139,7 @@ describe('CreatorCenterService', () => {
 
       const entry = await service.getLiveHistoryDetail(OWNER_ID, 'session-1');
 
-      expect(entry.sessionId).toBe('session-1');
+      expect(entry.session.sessionId).toBe('session-1');
       expect(rooms.getMyLiveSession).toHaveBeenCalledWith(OWNER_ID, 'session-1');
     });
   });

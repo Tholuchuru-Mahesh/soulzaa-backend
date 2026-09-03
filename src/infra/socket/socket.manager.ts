@@ -346,11 +346,14 @@ export class SocketManager {
       userId: user?.id,
       username: user?.username ?? user?.name ?? 'User',
       name: user?.name,
+      displayName: user?.name ?? user?.username ?? 'User',
       avatarUrl: user?.avatarUrl,
       joinedAt: new Date().toISOString(),
     };
     client.to(roomId).emit('video_room:member_joined', payload);
+    client.to(roomId).emit('video_room.user_joined', payload);
     client.to(roomId).emit('room:member_joined', payload);
+    client.to(roomId).emit('room.joined', payload);
 
     // Publish domain events for progression / task evaluation.
     // Only for a room that actually exists in the database — a socket-only
@@ -361,12 +364,26 @@ export class SocketManager {
       try {
         await this.bus.publish({
           name: namespace === '/video-room' ? 'video_room.joined' : 'audio_room.joined',
-          payload: { roomId, userId: user.id, namespace },
+          payload: {
+            roomId,
+            userId: user.id,
+            username: user?.username ?? user?.name ?? 'User',
+            name: user?.name,
+            avatarUrl: user?.avatarUrl,
+            namespace,
+          },
           timestamp: new Date(),
         } as any);
         await this.bus.publish({
           name: 'room.joined',
-          payload: { roomId, userId: user.id, namespace },
+          payload: {
+            roomId,
+            userId: user.id,
+            username: user?.username ?? user?.name ?? 'User',
+            name: user?.name,
+            avatarUrl: user?.avatarUrl,
+            namespace,
+          },
           timestamp: new Date(),
         } as any);
       } catch {
@@ -483,15 +500,27 @@ export class SocketManager {
       roomId,
       userId: user?.id,
       username: user?.username ?? user?.name ?? 'User',
+      name: user?.name,
+      displayName: user?.name ?? user?.username ?? 'User',
+      avatarUrl: user?.avatarUrl,
+      leftAt: new Date().toISOString(),
     };
     client.to(roomId).emit('video_room:member_left', payload);
+    client.to(roomId).emit('video_room.user_left', payload);
     client.to(roomId).emit('room:member_left', payload);
+    client.to(roomId).emit('room.left', payload);
 
     if (isPersistedRoomId(roomId)) {
       try {
         await this.bus.publish({
           name: 'audio_room.left',
-          payload: { roomId, userId: user.id },
+          payload: {
+            roomId,
+            userId: user.id,
+            username: user?.username ?? user?.name ?? 'User',
+            name: user?.name,
+            avatarUrl: user?.avatarUrl,
+          },
           timestamp: new Date(),
         } as any);
       } catch {

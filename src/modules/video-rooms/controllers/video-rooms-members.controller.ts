@@ -130,10 +130,17 @@ export class VideoRoomMembersController {
   @ApiOperation({ summary: 'Session heartbeat (slides TTL; reports activity)' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Heartbeat accepted (alive=true/false).' })
   async heartbeat(
-    @Param('id', ParseUuidPipe) _roomId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
     @Body() dto: VideoRoomHeartbeatDto,
   ): Promise<{ alive: boolean }> {
-    const alive = await this.sessions.heartbeat(dto.socketId, { inBackground: dto.inBackground });
+    let alive = await this.sessions.heartbeat(dto.socketId, { inBackground: dto.inBackground });
+    if (!alive && user?.id) {
+      const userSession = await this.members.getMySession(user.id, roomId);
+      if (userSession) {
+        alive = true;
+      }
+    }
     return { alive };
   }
 

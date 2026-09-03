@@ -40,7 +40,7 @@ export const SYSTEM_MESSAGE_POLICY: Record<string, SystemMessagePolicy> = {
   // ---- Always persist: lifecycle, ownership, moderation, seat decisions ----
   ROOM_LOCKED: { template: 'The room was locked.', persist: true, degradesWithRoomSize: false },
   ROOM_UNLOCKED: { template: 'The room was unlocked.', persist: true, degradesWithRoomSize: false },
-  ROOM_CLOSED: { template: 'The room has ended.', persist: true, degradesWithRoomSize: false },
+  ROOM_CLOSED: { template: 'The room has ended.', persist: false, degradesWithRoomSize: false },
   OWNER_CHANGED: {
     template: 'Room ownership was transferred.',
     persist: true,

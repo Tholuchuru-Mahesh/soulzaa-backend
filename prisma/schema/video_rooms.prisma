@@ -41,6 +41,8 @@ model VideoRoom {
   tags            String[]                 @default([])
   themeId         String?                  @db.Uuid
 
+  broadcastSessions VideoBroadcastSession[]
+
   @@index([status])
   @@index([ownerId])
   @@index([categoryId])

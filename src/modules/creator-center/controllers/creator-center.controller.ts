@@ -14,6 +14,7 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
+import { LiveHistoryQueryDto } from '../dto/live-history-query.dto';
 import { PkHistoryQueryDto } from '../dto/pk-history-query.dto';
 import { RequestSettlementDto } from '../dto/request-settlement.dto';
 import { TopFansQueryDto } from '../dto/top-fans-query.dto';
@@ -37,8 +38,18 @@ export class CreatorCenterController {
 
   @Get('live-history')
   @ApiOperation({ summary: "List the caller's own past broadcast sessions" })
-  liveHistory(@CurrentUser() user: AuthenticatedUser, @Query() query: PaginationQueryDto) {
-    return this.creatorCenter.getLiveHistory(user.id, query.page, query.limit, query.skip);
+  liveHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: LiveHistoryQueryDto,
+  ) {
+    return this.creatorCenter.getLiveHistory(
+      user.id,
+      query.page,
+      query.limit,
+      query.skip,
+      query.roomId,
+      query.roomType,
+    );
   }
 
   @Get('live-history/:sessionId')

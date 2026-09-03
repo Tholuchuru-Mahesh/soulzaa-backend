@@ -59,7 +59,7 @@ describe('VideoRoomMembersController', () => {
   });
 
   it('heartbeat delegates to the session service and returns { alive }', async () => {
-    const res = await controller.heartbeat(ROOM, { socketId: 's1', inBackground: true });
+    const res = await controller.heartbeat(USER, ROOM, { socketId: 's1', inBackground: true });
     expect(sessions.heartbeat).toHaveBeenCalledWith('s1', { inBackground: true });
     expect(res).toEqual({ alive: true });
   });

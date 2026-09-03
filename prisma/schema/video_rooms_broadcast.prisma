@@ -1,0 +1,42 @@
+/// Ephemeral Broadcast Session for a persistent Video Room (VR-Lifecycle).
+/// Each time the host starts a live broadcast, a new session is created with a unique
+/// `sessionId`. When the broadcast ends, this session is marked ENDED with its isolated
+/// duration, viewer metrics, and gift earnings, leaving the permanent VideoRoom intact.
+model VideoBroadcastSession {
+  id              String                      @id @default(uuid()) @db.Uuid
+  roomId          String                      @db.Uuid
+  hostId          String                      @db.Uuid
+  title           String?
+  topic           String?
+  category        String?
+  imageKey        String?
+  status          VideoBroadcastSessionStatus @default(LIVE)
+  startedAt       DateTime                    @default(now())
+  endedAt         DateTime?
+  endReason       String?
+  durationSeconds Int                         @default(0)
+  totalViewers    Int                         @default(0)
+  peakViewers     Int                         @default(0)
+  uniqueViewers   Int                         @default(0)
+  totalGifts      Int                         @default(0)
+  totalGiftCoins  BigInt                      @default(0)
+  creatorEarnings BigInt                      @default(0)
+  metadata        Json?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  room            VideoRoom                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, status])
+  @@index([hostId, createdAt])
+  @@index([roomId, startedAt])
+  @@index([status])
+  @@map("video_broadcast_sessions")
+}
+
+/// Lifecycle status of an ephemeral broadcast session
+enum VideoBroadcastSessionStatus {
+  LIVE
+  ENDED
+  TERMINATED
+}

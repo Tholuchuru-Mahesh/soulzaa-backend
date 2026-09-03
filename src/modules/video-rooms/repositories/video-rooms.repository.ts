@@ -759,4 +759,136 @@ export class VideoRoomsRepository {
   async clearCachedSnapshot(roomId: string): Promise<void> {
     await this.cache.del(videoRoomCacheKey(roomId));
   }
+
+  // ---- Broadcast Session Lifecycle ----
+
+  /**
+   * Create a new ephemeral broadcast session for a video room or return existing active one.
+   */
+  async createBroadcastSession(
+    roomId: string,
+    hostId: string,
+    sessionData?: {
+      title?: string | null;
+      topic?: string | null;
+      category?: string | null;
+      imageKey?: string | null;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<any> {
+    const client = tx ?? this.prisma;
+    const existing = await (client as any).videoBroadcastSession.findFirst({
+      where: { roomId, status: 'LIVE' },
+      orderBy: { startedAt: 'desc' },
+    });
+    if (existing) {
+      if (sessionData && (sessionData.title || sessionData.topic || sessionData.category || sessionData.imageKey)) {
+        await (client as any).videoBroadcastSession.update({
+          where: { id: existing.id },
+          data: {
+            ...(sessionData.title ? { title: sessionData.title } : {}),
+            ...(sessionData.topic ? { topic: sessionData.topic } : {}),
+            ...(sessionData.category ? { category: sessionData.category } : {}),
+            ...(sessionData.imageKey ? { imageKey: sessionData.imageKey } : {}),
+          },
+        }).catch(() => null);
+      }
+      return existing;
+    }
+    return (client as any).videoBroadcastSession.create({
+      data: {
+        roomId,
+        hostId,
+        title: sessionData?.title ?? null,
+        topic: sessionData?.topic ?? null,
+        category: sessionData?.category ?? null,
+        imageKey: sessionData?.imageKey ?? null,
+        status: 'LIVE',
+        startedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Get the active broadcast session for a video room.
+   */
+  async getActiveBroadcastSession(roomId: string): Promise<any | null> {
+    return (this.prisma as any).videoBroadcastSession.findFirst({
+      where: { roomId, status: 'LIVE' },
+      orderBy: { startedAt: 'desc' },
+    });
+  }
+
+  /**
+   * End the active broadcast session for a video room and record its duration & metrics.
+   */
+  async endActiveBroadcastSession(
+    roomId: string,
+    endReason: string,
+    stats?: {
+      totalViewers?: number;
+      peakViewers?: number;
+      uniqueViewers?: number;
+      totalGifts?: number;
+      totalGiftCoins?: bigint;
+      creatorEarnings?: bigint;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<any | null> {
+    const client = tx ?? this.prisma;
+    const active = await (client as any).videoBroadcastSession.findFirst({
+      where: { roomId, status: 'LIVE' },
+      orderBy: { startedAt: 'desc' },
+    });
+    if (!active) {
+      return null;
+    }
+
+    const endedAt = new Date();
+    const durationSeconds = Math.max(
+      0,
+      Math.floor((endedAt.getTime() - active.startedAt.getTime()) / 1000),
+    );
+
+    const endedSession = await (client as any).videoBroadcastSession.update({
+      where: { id: active.id },
+      data: {
+        status: 'ENDED',
+        endedAt,
+        endReason,
+        durationSeconds,
+        ...(stats?.totalViewers !== undefined ? { totalViewers: stats.totalViewers } : {}),
+        ...(stats?.peakViewers !== undefined ? { peakViewers: stats.peakViewers } : {}),
+        ...(stats?.uniqueViewers !== undefined ? { uniqueViewers: stats.uniqueViewers } : {}),
+        ...(stats?.totalGifts !== undefined ? { totalGifts: stats.totalGifts } : {}),
+        ...(stats?.totalGiftCoins !== undefined ? { totalGiftCoins: stats.totalGiftCoins } : {}),
+        ...(stats?.creatorEarnings !== undefined ? { creatorEarnings: stats.creatorEarnings } : {}),
+      },
+    });
+
+    await client.videoRoomStatistics.upsert({
+      where: { roomId },
+      create: {
+        roomId,
+        totalDurationSeconds: BigInt(durationSeconds),
+        lastActivityAt: endedAt,
+      },
+      update: {
+        totalDurationSeconds: { increment: BigInt(durationSeconds) },
+        lastActivityAt: endedAt,
+      },
+    }).catch(() => null);
+
+    return endedSession;
+  }
+
+  /**
+   * Find a broadcast session by its unique sessionId.
+   */
+  async findBroadcastSessionById(sessionId: string): Promise<any | null> {
+    return (this.prisma as any).videoBroadcastSession.findUnique({
+      where: { id: sessionId },
+      include: { room: true },
+    });
+  }
 }
