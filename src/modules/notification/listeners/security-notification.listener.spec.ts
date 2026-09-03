@@ -49,35 +49,17 @@ describe('SecurityNotificationListener', () => {
       },
     });
 
-  it('writes a durable row for a suspicious login', async () => {
+  it('does not dispatch in-app notification for suspicious login', async () => {
     await suspicious();
 
-    expect(notifications.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: USER,
-        type: NotificationType.SECURITY_NEW_LOGIN,
-        entityType: 'device',
-        entityId: 'dev-1',
-      }),
-    );
+    expect(notifications.create).not.toHaveBeenCalled();
   });
 
-  // DeviceService already enqueues the SECURITY push with excludeDeviceId, and
-  // does it outside PushPolicy on purpose. Pushing again here would double-alert
-  // on every suspicious login.
-  it('does NOT push — DeviceService already sends the alert', async () => {
+  // Push was already removed from here, and is also disabled in DeviceService.
+  it('does NOT push on suspicious login', async () => {
     await suspicious();
 
     expect(notifications.notify).not.toHaveBeenCalled();
-  });
-
-  it('keeps the reason, ip and country on the row', async () => {
-    await suspicious();
-
-    const input = notifications.create.mock.calls[0][0] as {
-      data: { reason: string; ip: string | null; country: string | null };
-    };
-    expect(input.data).toEqual({ reason: 'new_device', ip: '1.2.3.4', country: 'IN' });
   });
 
   // Every login is not a security event. The device module already decides what
@@ -87,51 +69,17 @@ describe('SecurityNotificationListener', () => {
     expect([...handlers.keys()]).not.toContain(AUTH_EVENTS.USER_LOGGED_IN);
   });
 
-  it('dedupes repeated detections for the same device', async () => {
-    await suspicious();
-
-    expect(guard.once).toHaveBeenCalledWith(
-      `login:${USER}:dev-1`,
-      expect.any(Number),
-      expect.any(Function),
-    );
-  });
-
   describe('password changed', () => {
     const changed = (viaReset = false) =>
       handlers.get(AUTH_EVENTS.USER_PASSWORD_CHANGED)!({
         payload: { userId: USER, viaReset },
       });
 
-    it('both writes and pushes — nothing else covers it', async () => {
+    it('does not dispatch in-app or push notifications on password changed', async () => {
       await changed();
 
-      expect(notifications.create).toHaveBeenCalledWith(
-        expect.objectContaining({ type: NotificationType.SECURITY_PASSWORD_CHANGED }),
-      );
-      expect(notifications.notify).toHaveBeenCalledWith(
-        USER,
-        expect.objectContaining({ category: PUSH_CATEGORIES.SECURITY }),
-      );
-    });
-
-    it('records whether the change came from the reset flow', async () => {
-      await changed(true);
-
-      expect(notifications.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ viaReset: true }) }),
-      );
-    });
-
-    // SECURITY maps to null in CATEGORY_SWITCH and is never suppressed. Sending
-    // no redactedBody keeps the real text, which is correct here: "your password
-    // changed" is not a secret from the account's owner, and hiding it from the
-    // lock screen would hide it from the person who needs to see it.
-    it('does not redact the body', async () => {
-      await changed();
-
-      const intent = notifications.notify.mock.calls[0][1] as { redactedBody?: string };
-      expect(intent.redactedBody).toBeUndefined();
+      expect(notifications.create).not.toHaveBeenCalled();
+      expect(notifications.notify).not.toHaveBeenCalled();
     });
   });
 });

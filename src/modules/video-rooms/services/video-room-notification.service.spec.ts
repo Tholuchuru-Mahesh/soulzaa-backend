@@ -59,18 +59,18 @@ const svcOf = (d: ReturnType<typeof makeDeps>) =>
   );
 
 describe('VideoRoomNotificationService', () => {
-  it('TARGET seat approval: creates in-app + push for the target', async () => {
+  it('TARGET mention: creates in-app + push for the target', async () => {
     const d = makeDeps();
-    await svcOf(d).dispatch(K.SEAT_APPROVAL, {
+    await svcOf(d).dispatch(K.MENTION, {
       roomId: 'r1',
       targetUserIds: ['t1'],
-      title: 'Approved',
-      body: 'You may take a seat',
+      title: 'Mentioned',
+      body: 'You were mentioned in a room',
     });
     expect(d.notifications.create).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 't1',
-        type: 'SEAT_APPROVED',
+        type: 'MENTION',
         entityType: 'VIDEO_ROOM',
         entityId: 'r1',
       }),
@@ -81,10 +81,22 @@ describe('VideoRoomNotificationService', () => {
     );
   });
 
+  it('disabled video room kind (e.g. SEAT_APPROVAL) does not create in-app or push notifications', async () => {
+    const d = makeDeps();
+    await svcOf(d).dispatch(K.SEAT_APPROVAL, {
+      roomId: 'r1',
+      targetUserIds: ['t1'],
+      title: 'Approved',
+      body: 'You may take a seat',
+    });
+    expect(d.notifications.create).not.toHaveBeenCalled();
+    expect(d.notifications.notify).not.toHaveBeenCalled();
+  });
+
   it('suppresses when the recipient muted the room', async () => {
     const d = makeDeps();
     d.mute.isMuted.mockResolvedValue(true);
-    await svcOf(d).dispatch(K.SEAT_APPROVAL, {
+    await svcOf(d).dispatch(K.MENTION, {
       roomId: 'r1',
       targetUserIds: ['t1'],
       title: 'x',
@@ -97,8 +109,8 @@ describe('VideoRoomNotificationService', () => {
 
   it('suppresses when the preference toggle is off', async () => {
     const d = makeDeps();
-    d.notifications.preferences.mockResolvedValue({ ...allOn(), seatEvents: false });
-    await svcOf(d).dispatch(K.SEAT_APPROVAL, {
+    d.notifications.preferences.mockResolvedValue({ ...allOn(), roomEvents: false });
+    await svcOf(d).dispatch(K.MENTION, {
       roomId: 'r1',
       targetUserIds: ['t1'],
       title: 'x',
@@ -172,11 +184,11 @@ describe('VideoRoomNotificationService', () => {
 
   it('an inApp-only kind (push:false) creates but does not push', async () => {
     const d = makeDeps();
-    await svcOf(d).dispatch(K.SEAT_REJECTION, {
+    await svcOf(d).dispatch(K.PK_ACCEPTED, {
       roomId: 'r1',
       targetUserIds: ['t1'],
-      title: 'Declined',
-      body: 'Your request was declined',
+      title: 'PK Accepted',
+      body: 'Your PK challenge was accepted',
     });
     expect(d.notifications.create).toHaveBeenCalledTimes(1);
     expect(d.notifications.notify).not.toHaveBeenCalled();
@@ -185,15 +197,15 @@ describe('VideoRoomNotificationService', () => {
   it('does not count a push the global policy suppressed (notify returns false)', async () => {
     const d = makeDeps();
     d.notifications.notify.mockResolvedValue(false);
-    await svcOf(d).dispatch(K.SEAT_APPROVAL, {
+    await svcOf(d).dispatch(K.MENTION, {
       roomId: 'r1',
       targetUserIds: ['t1'],
       title: 'x',
       body: 'y',
     });
     expect(d.notifications.notify).toHaveBeenCalled();
-    expect(d.metrics.incNotificationDispatched).toHaveBeenCalledWith(K.SEAT_APPROVAL, 'inApp');
-    expect(d.metrics.incNotificationDispatched).not.toHaveBeenCalledWith(K.SEAT_APPROVAL, 'push');
+    expect(d.metrics.incNotificationDispatched).toHaveBeenCalledWith(K.MENTION, 'inApp');
+    expect(d.metrics.incNotificationDispatched).not.toHaveBeenCalledWith(K.MENTION, 'push');
   });
 
   it('isolates a per-recipient failure so the rest of the batch still delivers', async () => {

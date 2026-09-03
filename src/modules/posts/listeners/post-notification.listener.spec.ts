@@ -1,6 +1,5 @@
-import { NotificationType } from '@prisma/client';
 import { PostNotificationListener } from './post-notification.listener';
-import { POST_EVENTS, PostLikedEvent } from '../events/post.events';
+import { POST_EVENTS, PostCommentedEvent, PostLikedEvent } from '../events/post.events';
 
 describe('PostNotificationListener', () => {
   function build() {
@@ -21,31 +20,32 @@ describe('PostNotificationListener', () => {
     return { listener, bus, notifications, profile, prisma, handlers };
   }
 
-  it('notifies the post author when someone else likes their post', async () => {
-    const { notifications, profile, prisma, handlers } = build();
-    prisma.post.findUnique.mockResolvedValue({ id: 'p1', authorId: 'author1' });
-    profile.getCards.mockResolvedValue([
-      { id: 'liker1', username: 'bob', fullName: 'Bob', avatarUrl: null },
-    ]);
+  it('does not dispatch in-app or push notifications when a post is liked', async () => {
+    const { notifications, handlers } = build();
 
     await handlers.get(POST_EVENTS.LIKED)!(new PostLikedEvent({ postId: 'p1', userId: 'liker1' }));
 
-    expect(notifications.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: 'author1',
-        type: NotificationType.POST_LIKED,
-        actorId: 'liker1',
-      }),
-    );
-    expect(notifications.notify).toHaveBeenCalled();
+    expect(notifications.create).not.toHaveBeenCalled();
+    expect(notifications.notify).not.toHaveBeenCalled();
   });
 
-  it('does not notify when the author likes their own post', async () => {
-    const { notifications, prisma, handlers } = build();
-    prisma.post.findUnique.mockResolvedValue({ id: 'p1', authorId: 'author1' });
+  it('does not dispatch in-app or push notifications when the author likes their own post', async () => {
+    const { notifications, handlers } = build();
 
     await handlers.get(POST_EVENTS.LIKED)!(new PostLikedEvent({ postId: 'p1', userId: 'author1' }));
 
     expect(notifications.create).not.toHaveBeenCalled();
+    expect(notifications.notify).not.toHaveBeenCalled();
+  });
+
+  it('does not dispatch in-app or push notifications when a post is commented on', async () => {
+    const { notifications, handlers } = build();
+
+    await handlers.get(POST_EVENTS.COMMENTED)!(
+      new PostCommentedEvent({ postId: 'p1', authorId: 'author1', commentId: 'c1' }),
+    );
+
+    expect(notifications.create).not.toHaveBeenCalled();
+    expect(notifications.notify).not.toHaveBeenCalled();
   });
 });

@@ -52,43 +52,11 @@ export class SecurityNotificationListener implements OnModuleInit {
     );
   }
 
-  private async onSuspiciousLogin(e: SuspiciousLoginDetectedEvent): Promise<void> {
-    const { userId, deviceId, reason, ip, country } = e.payload;
-
-    await this.guard.once(`login:${userId}:${deviceId}`, GUARD_TTL.LOGIN, async () => {
-      // Row only. The push is DeviceService's job — see the class doc.
-      await this.notifications.create({
-        userId,
-        type: NotificationType.SECURITY_NEW_LOGIN,
-        entityType: 'device',
-        entityId: deviceId,
-        data: { reason, ip, country },
-      });
-    });
+  private async onSuspiciousLogin(_e: SuspiciousLoginDetectedEvent): Promise<void> {
+    // Disabled: neither in-app row nor push notification is dispatched for suspicious login.
   }
 
-  private async onPasswordChanged(e: UserPasswordChangedEvent): Promise<void> {
-    const { userId, viaReset } = e.payload;
-
-    await this.notifications.create({
-      userId,
-      type: NotificationType.SECURITY_PASSWORD_CHANGED,
-      entityType: 'account',
-      entityId: null,
-      data: { viaReset },
-    });
-
-    // This one does push: nothing else notifies on a password change. SECURITY
-    // maps to `null` in CATEGORY_SWITCH and is therefore never suppressed —
-    // correct, because an attacker who just changed the password must not be
-    // able to hide that from the owner. No rate-limit check, and no redaction,
-    // for the same reason: this is the message that must always get through.
-    await this.notifications.notify(userId, {
-      category: PUSH_CATEGORIES.SECURITY,
-      title: 'Password changed',
-      body: "Your account password was changed. If this wasn't you, secure your account now.",
-      badge: 'unread',
-      data: { type: 'security_password_changed' },
-    });
+  private async onPasswordChanged(_e: UserPasswordChangedEvent): Promise<void> {
+    // Disabled: neither in-app row nor push notification is dispatched for password change.
   }
 }

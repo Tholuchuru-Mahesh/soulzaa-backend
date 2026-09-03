@@ -133,22 +133,7 @@ export class DeviceService implements IDeviceService {
       }),
     );
 
-    if (this.alertsEnabled) {
-      // The one push that skips the preference gate. A break-in alert the intruder
-      // could have silenced from inside the account is not an alert — so this is
-      // built here, resolved, rather than going through PushPolicy like everything
-      // else. SECURITY rides the default channel and always makes a sound.
-      const job: UserPushJob = {
-        userId,
-        excludeDeviceId: device.id,
-        category: PUSH_CATEGORIES.SECURITY,
-        channelId: PUSH_CHANNELS.DEFAULT,
-        title: 'New login detected',
-        body: `A new sign-in from ${info.deviceName ?? info.platform}${info.country ? ` (${info.country})` : ''}. If this wasn't you, secure your account.`,
-        data: { type: 'login_alert', deviceId: device.id },
-      };
-      await this.pushQueue.add(DEVICE_JOBS.LOGIN_ALERT, job);
-    }
+    // Push notification for new login disabled per requirement.
     return true;
   }
 

@@ -49,60 +49,20 @@ describe('GameNotificationListener', () => {
       },
     });
 
-  it('tells the winner they won and the loser they lost', async () => {
+  it('does not dispatch in-app or push notifications when game settles', async () => {
     await settle();
 
-    expect(notifications.create).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: WINNER, type: NotificationType.GAME_WON }),
-    );
-    expect(notifications.create).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: LOSER, type: NotificationType.GAME_LOST }),
-    );
-    expect(notifications.create).toHaveBeenCalledTimes(2);
+    expect(notifications.create).not.toHaveBeenCalled();
+    expect(notifications.notify).not.toHaveBeenCalled();
   });
 
-  it('puts the payout amount on the winner notification only', async () => {
-    await settle();
-
-    const winnerCall = notifications.create.mock.calls.find(
-      (c) => (c[0] as { userId: string }).userId === WINNER,
-    )!;
-    const loserCall = notifications.create.mock.calls.find(
-      (c) => (c[0] as { userId: string }).userId === LOSER,
-    )!;
-
-    expect((winnerCall[0] as { data: { amount: number } }).data.amount).toBe(200);
-    expect((loserCall[0] as { data: { amount: number } }).data.amount).toBe(0);
-  });
-
-  it('pushes on the GAME category', async () => {
-    await settle();
-
-    expect(notifications.notify).toHaveBeenCalledWith(
-      WINNER,
-      expect.objectContaining({ category: PUSH_CATEGORIES.GAME }),
-    );
-  });
-
-  it('notifies every matched player when a match is found', async () => {
+  it('does not dispatch in-app or push notifications when a match is found', async () => {
     await handlers.get(GAME_EVENTS.MATCH_FOUND)!({
       payload: { matchId: 'm-1', gameCode: 'LUDO', stake: 100, players: [WINNER, LOSER] },
     });
 
-    expect(notifications.create).toHaveBeenCalledTimes(2);
-    expect(notifications.create).toHaveBeenCalledWith(
-      expect.objectContaining({ type: NotificationType.GAME_MATCH_FOUND }),
-    );
-  });
-
-  it('dedupes settlement per session and per user', async () => {
-    await settle({ participants: [WINNER], winners: [WINNER], payouts: [] });
-
-    expect(guard.once).toHaveBeenCalledWith(
-      `game:sess-1:${WINNER}`,
-      expect.any(Number),
-      expect.any(Function),
-    );
+    expect(notifications.create).not.toHaveBeenCalled();
+    expect(notifications.notify).not.toHaveBeenCalled();
   });
 
   // In-session churn is socket traffic — the player is already looking at the
@@ -120,8 +80,7 @@ describe('GameNotificationListener', () => {
   it('handles a settlement with no winners without crashing', async () => {
     await settle({ winners: [], payouts: [] });
 
-    expect(notifications.create).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: WINNER, type: NotificationType.GAME_LOST }),
-    );
+    expect(notifications.create).not.toHaveBeenCalled();
+    expect(notifications.notify).not.toHaveBeenCalled();
   });
 });

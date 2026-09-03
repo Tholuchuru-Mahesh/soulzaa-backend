@@ -37,65 +37,13 @@ export class GameNotificationListener implements OnModuleInit {
     this.bus.subscribe<GameSettledEvent>(GAME_EVENTS.SETTLED, (e) => this.onSettled(e));
   }
 
-  private async onMatchFound(e: GameMatchFoundEvent): Promise<void> {
-    const { matchId, gameCode, stake, players } = e.payload;
-
-    await Promise.all(
-      players.map((userId) =>
-        this.guard.once(`game-match:${matchId}:${userId}`, GUARD_TTL.GAME_SESSION, async () => {
-          await this.notifications.create({
-            userId,
-            type: NotificationType.GAME_MATCH_FOUND,
-            entityType: 'game_match',
-            entityId: matchId,
-            data: { gameCode, stake },
-          });
-
-          await this.notifications.notify(userId, {
-            category: PUSH_CATEGORIES.GAME,
-            title: 'Match found',
-            body: `Your ${gameCode} match is ready — tap to join`,
-            threadId: `game_${userId}`,
-            badge: 'unread',
-            data: { type: 'game_match_found', matchId, gameCode: String(gameCode) },
-          });
-        }),
-      ),
-    );
+  // Notifications for games (Match found, Game won, Game lost) disabled per requirement.
+  // In-game real-time socket events during active gameplay remain intact.
+  private async onMatchFound(_e: GameMatchFoundEvent): Promise<void> {
+    // Disabled: neither in-app nor push notification is dispatched for match found.
   }
 
-  private async onSettled(e: GameSettledEvent): Promise<void> {
-    const { sessionId, gameCode, winners, participants, payouts } = e.payload;
-
-    const won = new Set(winners);
-    const payoutFor = new Map(payouts.map((p) => [p.userId, p.amount]));
-
-    await Promise.all(
-      participants.map((userId) =>
-        this.guard.once(`game:${sessionId}:${userId}`, GUARD_TTL.GAME_SESSION, async () => {
-          const isWinner = won.has(userId);
-          const amount = payoutFor.get(userId) ?? 0;
-
-          await this.notifications.create({
-            userId,
-            type: isWinner ? NotificationType.GAME_WON : NotificationType.GAME_LOST,
-            entityType: 'game_session',
-            entityId: sessionId,
-            data: { gameCode, amount, won: isWinner },
-          });
-
-          await this.notifications.notify(userId, {
-            category: PUSH_CATEGORIES.GAME,
-            title: isWinner ? 'You won!' : 'Game over',
-            body: isWinner
-              ? `You won ${amount} coins in ${gameCode}`
-              : `Better luck next time in ${gameCode}`,
-            threadId: `game_${userId}`,
-            badge: 'unread',
-            data: { type: 'game_settled', sessionId, gameCode: String(gameCode) },
-          });
-        }),
-      ),
-    );
+  private async onSettled(_e: GameSettledEvent): Promise<void> {
+    // Disabled: neither in-app nor push notification is dispatched for game settlement (won/lost).
   }
 }
