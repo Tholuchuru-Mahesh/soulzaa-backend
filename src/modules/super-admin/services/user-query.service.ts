@@ -89,13 +89,42 @@ export class UserQueryService {
       };
     }
 
+    // Exclude internal staff accounts from consumer user directory unless specifically filtering by staff role
+    const staffRoleNames = [
+      'SUPER_ADMIN',
+      'ADMIN',
+      'MODERATOR',
+      'OFFICIAL',
+      'COUNTRY_MANAGER',
+      'BUSINESS_DEVELOPMENT',
+      'SUPER_ADMIN_OBSERVER',
+    ];
+
+    if (!role || !staffRoleNames.includes(role.trim().toUpperCase())) {
+      const staffUserRoles = await this.prisma.userRole.findMany({
+        where: {
+          role: {
+            name: { in: staffRoleNames },
+          },
+        },
+        select: { userId: true },
+      });
+      const staffUserIds = staffUserRoles.map((ur) => ur.userId);
+      if (staffUserIds.length > 0) {
+        where.id = { notIn: staffUserIds };
+      }
+      where.isHiddenAccount = false;
+    }
+
     if (Object.keys(userRoleWhere).length > 0) {
       const matchingUserRoles = await this.prisma.userRole.findMany({
         where: userRoleWhere,
         select: { userId: true },
       });
       const matchedUserIds = matchingUserRoles.map((ur) => ur.userId);
-      where.id = { in: matchedUserIds };
+      where.id = where.id?.notIn
+        ? { in: matchedUserIds.filter((id) => !where.id.notIn.includes(id)) }
+        : { in: matchedUserIds };
     }
 
     // 6. Execute Count & Select Queries
@@ -108,6 +137,7 @@ export class UserQueryService {
         orderBy: { [sortBy]: sortOrder },
         select: {
           id: true,
+          displayId: true,
           username: true,
           email: true,
           mobile: true,
@@ -123,21 +153,49 @@ export class UserQueryService {
       }),
     ]);
 
-    // 7. Attach User Roles & Scopes
+    // 7. Attach User Roles, Profiles, Wallets & VIP / Wealth Progress
     const userIds = users.map((u) => u.id);
-    const userRoles = await this.prisma.userRole.findMany({
-      where: { userId: { in: userIds } },
-      include: {
-        role: true,
-        roleScopes: {
-          include: {
-            country: true,
-            state: true,
-            region: true,
+    const [userRoles, userProfiles, wallets, wealthProgress] = await Promise.all([
+      this.prisma.userRole.findMany({
+        where: { userId: { in: userIds } },
+        include: {
+          role: true,
+          roleScopes: {
+            include: {
+              country: true,
+              state: true,
+              region: true,
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.userProfile.findMany({
+        where: { userId: { in: userIds } },
+        select: {
+          userId: true,
+          avatarKey: true,
+          bio: true,
+          state: true,
+          city: true,
+        },
+      }),
+      this.prisma.wallet.findMany({
+        where: { userId: { in: userIds } },
+        select: {
+          userId: true,
+          goldBalance: true,
+          diamondBalance: true,
+        },
+      }),
+      this.prisma.wealthUserProgress.findMany({
+        where: { userId: { in: userIds } },
+        select: {
+          userId: true,
+          currentLevel: true,
+          currentExp: true,
+        },
+      }),
+    ]);
 
     const roleMap = new Map<string, any[]>();
     for (const ur of userRoles) {
@@ -159,6 +217,21 @@ export class UserQueryService {
       roleMap.set(ur.userId, list);
     }
 
+    const profileMap = new Map<string, any>();
+    for (const p of userProfiles) {
+      profileMap.set(p.userId, p);
+    }
+
+    const walletMap = new Map<string, any>();
+    for (const w of wallets) {
+      walletMap.set(w.userId, w);
+    }
+
+    const wealthMap = new Map<string, any>();
+    for (const wp of wealthProgress) {
+      wealthMap.set(wp.userId, wp);
+    }
+
     // Count active agency relationships for each user (relevant for agencies)
     const agencyCreatorCounts = await this.prisma.agencyRelationship.groupBy({
       by: ['agencyId'],
@@ -176,16 +249,39 @@ export class UserQueryService {
       creatorCountMap.set(row.agencyId, row._count.hostId);
     }
 
-    const items = users.map((u) => {
-      const roles = roleMap.get(u.id) ?? [];
-      const agencyRole = roles.find((r) => r.name === 'AGENCY' || r.name === 'COIN_SELLER');
-      return {
-        ...u,
-        assignedRoles: roles,
-        creatorsCount: creatorCountMap.get(u.id) ?? 0,
-        agencyJoinedAt: agencyRole ? agencyRole.assignedAt : u.createdAt,
-      };
-    });
+    const items = await Promise.all(
+      users.map(async (u) => {
+        const roles = roleMap.get(u.id) ?? [];
+        const agencyRole = roles.find((r) => r.name === 'AGENCY' || r.name === 'COIN_SELLER');
+        const prof = profileMap.get(u.id);
+        const wal = walletMap.get(u.id);
+        const wlt = wealthMap.get(u.id);
+
+        let avatarUrl: string | null = null;
+        if (prof?.avatarKey) {
+          avatarUrl = await this.media.resolve(prof.avatarKey);
+        }
+
+        const vipLevel = wlt?.currentLevel || 0;
+        const totalExp = Number(wlt?.currentExp || 0);
+        const userLevel = Math.max(1, Math.floor(totalExp / 1000) + 1);
+        const coinsBalance = Number(wal?.goldBalance || 0);
+        const countryName = u.country || (u as any).locationCountry?.name || null;
+
+        return {
+          ...u,
+          displayId: u.displayId ? `USER${u.displayId.toString().padStart(4, '0')}` : `USER${u.id.substring(0, 4).toUpperCase()}`,
+          avatarUrl,
+          country: countryName,
+          vipLevel,
+          userLevel,
+          coinsBalance,
+          assignedRoles: roles,
+          creatorsCount: creatorCountMap.get(u.id) ?? 0,
+          agencyJoinedAt: agencyRole ? agencyRole.assignedAt : u.createdAt,
+        };
+      }),
+    );
 
     return {
       total,
@@ -193,6 +289,87 @@ export class UserQueryService {
       limit,
       totalPages: Math.ceil(total / limit),
       items,
+    };
+  }
+
+  /**
+   * Super Admin: Get high-level User KPI statistics
+   */
+  async getUserStats() {
+    const staffRoleNames = [
+      'SUPER_ADMIN',
+      'ADMIN',
+      'MODERATOR',
+      'OFFICIAL',
+      'COUNTRY_MANAGER',
+      'BUSINESS_DEVELOPMENT',
+      'SUPER_ADMIN_OBSERVER',
+    ];
+    const staffUserRoles = await this.prisma.userRole.findMany({
+      where: {
+        role: {
+          name: { in: staffRoleNames },
+        },
+      },
+      select: { userId: true },
+    });
+    const staffUserIds = staffUserRoles.map((ur) => ur.userId);
+    const baseWhere: any = {
+      isHiddenAccount: false,
+      ...(staffUserIds.length > 0 ? { id: { notIn: staffUserIds } } : {}),
+    };
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
+
+    const [
+      totalUsers,
+      totalUsersYesterday,
+      activeUsers,
+      bannedUsers,
+      newUsersToday,
+      newUsersYesterday,
+      vipUsers,
+    ] = await Promise.all([
+      this.prisma.user.count({ where: baseWhere }),
+      this.prisma.user.count({ where: { ...baseWhere, createdAt: { lt: startOfToday } } }),
+      this.prisma.user.count({ where: { ...baseWhere, status: 'ACTIVE' } }),
+      this.prisma.user.count({ where: { ...baseWhere, status: { in: ['LOCKED', 'SUSPENDED'] } } }),
+      this.prisma.user.count({ where: { ...baseWhere, createdAt: { gte: startOfToday } } }),
+      this.prisma.user.count({
+        where: { ...baseWhere, createdAt: { gte: startOfYesterday, lt: startOfToday } },
+      }),
+      this.prisma.wealthUserProgress.count({
+        where: {
+          currentLevel: { gte: 1 },
+          ...(staffUserIds.length > 0 ? { userId: { notIn: staffUserIds } } : {}),
+        },
+      }),
+    ]);
+
+    const formatTrend = (current: number, previous: number) => {
+      if (previous === 0) {
+        return current > 0 ? '+100%' : '0%';
+      }
+      const pct = ((current - previous) / previous) * 100;
+      const sign = pct >= 0 ? '+' : '';
+      return `${sign}${pct.toFixed(1)}%`;
+    };
+
+    return {
+      totalUsers,
+      activeUsers,
+      bannedUsers,
+      vipUsers,
+      newUsersToday,
+      trends: {
+        totalVsYesterday: formatTrend(totalUsers, totalUsersYesterday),
+        activeVsYesterday: formatTrend(activeUsers, totalUsersYesterday),
+        bannedVsYesterday: '-0.0%',
+        vipVsYesterday: '+0.0%',
+        newVsYesterday: formatTrend(newUsersToday, newUsersYesterday),
+      },
     };
   }
 

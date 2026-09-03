@@ -1,4 +1,4 @@
-import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CallType, NotificationType } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
@@ -41,6 +41,8 @@ import {
  */
 @Injectable()
 export class CallsPushListener implements OnModuleInit {
+  private readonly logger = new Logger(CallsPushListener.name);
+
   /** Ring pushes are worthless once the ring window has closed — expire them there. */
   private readonly ringTtlSeconds: number;
 
@@ -55,9 +57,44 @@ export class CallsPushListener implements OnModuleInit {
   }
 
   onModuleInit(): void {
-    this.bus.subscribe<CallInitiatedEvent>(CALL_EVENTS.INITIATED, (e) => this.onIncoming(e));
-    this.bus.subscribe<CallMissedEvent>(CALL_EVENTS.MISSED, (e) => this.onMissed(e));
-    this.bus.subscribe<CallCancelledEvent>(CALL_EVENTS.CANCELLED, (e) => this.onCancelled(e));
+    this.bus.subscribe<CallInitiatedEvent>(
+      CALL_EVENTS.INITIATED,
+      this.safe<CallInitiatedEvent>('onIncoming', (e) => this.onIncoming(e)),
+    );
+    this.bus.subscribe<CallMissedEvent>(
+      CALL_EVENTS.MISSED,
+      this.safe<CallMissedEvent>('onMissed', (e) => this.onMissed(e)),
+    );
+    this.bus.subscribe<CallCancelledEvent>(
+      CALL_EVENTS.CANCELLED,
+      this.safe<CallCancelledEvent>('onCancelled', (e) => this.onCancelled(e)),
+    );
+  }
+
+  /**
+   * Isolates a handler from the publisher that triggered it.
+   *
+   * `InMemoryEventBus.publish()` awaits every subscriber via `emitAsync`, so
+   * an *unwrapped* handler that throws would propagate its rejection all the
+   * way back into whichever `CallsService` method published the event
+   * (`initiate`, `cancel`, the ring-timeout reaper, ...) — failing an
+   * already-committed state transition (the `Call` row is written before the
+   * event is published) over a notification, which can be retried, degraded,
+   * or simply missed without the call itself being wrong. A ringing phone is
+   * a delivery best-effort; a call record is not. See `DeviceService
+   * .pushToUser`'s own doc comment for the same rule applied one layer down.
+   */
+  private safe<E>(
+    label: string,
+    handler: (event: E) => Promise<void>,
+  ): (event: E) => Promise<void> {
+    return async (event: E) => {
+      try {
+        await handler(event);
+      } catch (err) {
+        this.logger.warn(`${label} failed, call state unaffected: ${(err as Error).message}`);
+      }
+    };
   }
 
   private async onIncoming(e: CallInitiatedEvent): Promise<void> {

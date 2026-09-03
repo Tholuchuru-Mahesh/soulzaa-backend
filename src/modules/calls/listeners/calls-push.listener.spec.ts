@@ -89,4 +89,36 @@ describe('CallsPushListener', () => {
     // to answer — see the listener's own doc comment.
     expect(notifications.create).not.toHaveBeenCalled();
   });
+
+  // `InMemoryEventBus.publish()` awaits every subscriber via `emitAsync` — an
+  // unwrapped handler that throws would propagate back into whichever
+  // `CallsService` method published the event (initiate, cancel, the
+  // ring-timeout reaper, ...), failing an already-committed call state
+  // transition over a notification. These three lock in that a push failure
+  // can never do that, for every event this listener handles.
+  describe('a failing push never fails the call event that triggered it', () => {
+    const payload = { calleeId: CALLEE, callId: CALL_ID, views: { [CALLEE]: viewFor(CALLEE, CALLER) } };
+
+    it('INITIATED: notify() rejecting resolves the handler anyway', async () => {
+      notifications.notify.mockRejectedValueOnce(new Error('FCM unreachable'));
+      await expect(handlers[CALL_EVENTS.INITIATED]({ payload })).resolves.toBeUndefined();
+    });
+
+    it('MISSED: notify() rejecting resolves the handler anyway, after create() already ran', async () => {
+      notifications.notify.mockRejectedValueOnce(new Error('FCM unreachable'));
+      await expect(handlers[CALL_EVENTS.MISSED]({ payload })).resolves.toBeUndefined();
+      // The durable notification-centre row is unaffected by the push failing.
+      expect(notifications.create).toHaveBeenCalled();
+    });
+
+    it('MISSED: create() rejecting also resolves the handler, not just notify()', async () => {
+      notifications.create.mockRejectedValueOnce(new Error('db blip'));
+      await expect(handlers[CALL_EVENTS.MISSED]({ payload })).resolves.toBeUndefined();
+    });
+
+    it('CANCELLED: notify() rejecting resolves the handler anyway', async () => {
+      notifications.notify.mockRejectedValueOnce(new Error('FCM unreachable'));
+      await expect(handlers[CALL_EVENTS.CANCELLED]({ payload })).resolves.toBeUndefined();
+    });
+  });
 });

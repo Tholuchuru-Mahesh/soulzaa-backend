@@ -99,6 +99,10 @@ export class UserManagementService {
     return this.queryService.getCreatorStats();
   }
 
+  async getUserStats() {
+    return this.queryService.getUserStats();
+  }
+
   async searchCreators(filter: any) {
     return this.queryService.searchCreators(filter);
   }
