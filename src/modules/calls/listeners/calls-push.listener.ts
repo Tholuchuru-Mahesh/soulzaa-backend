@@ -76,6 +76,10 @@ export class CallsPushListener implements OnModuleInit {
       ttlSeconds: this.ringTtlSeconds,
       collapseKey: this.collapseKey(callId),
       threadId: this.collapseKey(callId),
+      // An iOS device that registered a VoIP token rings even backgrounded,
+      // locked, or killed — the one push type Apple delivers unconditionally.
+      // See ApnsVoipPushProvider.
+      preferVoipOnIos: true,
       data: {
         type: 'call_incoming',
         callId,
@@ -121,6 +125,9 @@ export class CallsPushListener implements OnModuleInit {
       collapseKey: this.collapseKey(callId),
       threadId: this.collapseKey(callId),
       badge: 'unread',
+      // Dismisses a still-ringing native CallKit screen on an iOS device that
+      // was mid-ring when the window closed — see ApnsVoipPushProvider.
+      preferVoipOnIos: true,
       data: { type: 'call_missed', callId, callType: calleeView.type, callerId: call.callerId },
     });
   }
@@ -147,6 +154,8 @@ export class CallsPushListener implements OnModuleInit {
       ttlSeconds: 60,
       collapseKey: this.collapseKey(callId),
       threadId: this.collapseKey(callId),
+      // Dismisses a still-ringing native CallKit screen — see ApnsVoipPushProvider.
+      preferVoipOnIos: true,
       data: { type: 'call_cancelled', callId },
     });
   }

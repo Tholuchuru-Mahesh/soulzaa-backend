@@ -96,6 +96,8 @@ export interface PushIntent {
   threadId?: string;
   /** `'unread'` resolves to the user's current unread-notification count. */
   badge?: 'unread' | number;
+  /** See `PushMessage.preferVoipOnIos` — threaded straight through by `PushPolicy`. */
+  preferVoipOnIos?: boolean;
 }
 
 export interface INotificationService {

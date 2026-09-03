@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PushTokenInvalidError, type PushMessage } from '../../interfaces/push-provider.interface';
+import {
+  PushTokenInvalidError,
+  type IPushProvider,
+  type PushMessage,
+} from '../../interfaces/push-provider.interface';
 import { DeviceRepository } from '../../repositories/device.repository';
 import { PushProviderRegistry } from './push-provider.registry';
 
@@ -31,8 +35,22 @@ export class PushDispatcher {
     private readonly devices: DeviceRepository,
   ) {}
 
-  async sendToTokens(tokens: string[], message: PushMessage): Promise<PushFanoutResult> {
-    const provider = this.registry.resolve();
+  /**
+   * @param provider Bypass `PushProviderRegistry`'s configured default —
+   * used for a VoIP push, which is never a *general* transport choice, only
+   * the one specific delivery a call-lifecycle push demands for an iOS
+   * device that registered a VoIP token (see `PushProcessor`).
+   * @param tokenKind Which column a dead token retires from. VoIP tokens live
+   * in a separate column from the ordinary push token, so retiring one must
+   * not be attempted against the other — a dead VoIP token the retire step
+   * mistook for an ordinary one would simply match no rows and linger forever.
+   */
+  async sendToTokens(
+    tokens: string[],
+    message: PushMessage,
+    provider: IPushProvider = this.registry.resolve(),
+    tokenKind: 'push' | 'voip' = 'push',
+  ): Promise<PushFanoutResult> {
     const dead: string[] = [];
     let delivered = 0;
     let failed = 0;
@@ -54,18 +72,23 @@ export class PushDispatcher {
       }),
     );
 
-    const retired = dead.length ? await this.retire(dead) : 0;
+    const retired = dead.length ? await this.retire(dead, tokenKind) : 0;
     return { delivered, failed, retired };
   }
 
   /** Clear dead tokens from the registry. Never fails the push that found them. */
-  private async retire(tokens: string[]): Promise<number> {
+  private async retire(tokens: string[], tokenKind: 'push' | 'voip'): Promise<number> {
     try {
-      const cleared = await this.devices.clearPushTokens(tokens);
-      this.logger.log(`retired ${cleared} dead push token(s): ${tokens.map(redact).join(', ')}`);
+      const cleared =
+        tokenKind === 'voip'
+          ? await this.devices.clearVoipPushTokens(tokens)
+          : await this.devices.clearPushTokens(tokens);
+      this.logger.log(
+        `retired ${cleared} dead ${tokenKind} token(s): ${tokens.map(redact).join(', ')}`,
+      );
       return cleared;
     } catch (err) {
-      this.logger.warn(`failed to retire dead push tokens: ${(err as Error).message}`);
+      this.logger.warn(`failed to retire dead ${tokenKind} tokens: ${(err as Error).message}`);
       return 0;
     }
   }

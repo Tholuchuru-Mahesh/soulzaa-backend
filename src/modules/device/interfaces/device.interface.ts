@@ -72,7 +72,12 @@ export interface IDeviceService {
   untrustDevice(userId: string, deviceId: string): Promise<void>;
   verifyDevice(userId: string, deviceId: string): Promise<void>;
   removeDevice(userId: string, deviceId: string): Promise<void>;
-  updatePushToken(userId: string, deviceId: string, pushToken: string | null): Promise<void>;
+  updatePushToken(
+    userId: string,
+    deviceId: string,
+    pushToken: string | null,
+    tokenType?: 'fcm' | 'voip',
+  ): Promise<void>;
   renameDevice(userId: string, deviceId: string, name: string): Promise<void>;
 
   /**

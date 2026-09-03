@@ -70,4 +70,16 @@ export class UpdatePushTokenDto {
   @IsString()
   @MaxLength(512)
   pushToken?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Which token this is. 'voip' is the PushKit token iOS issues for a " +
+      "backgrounded/killed-app incoming-call ring (see ApnsVoipPushProvider); " +
+      "omit for the ordinary push token every other notification uses.",
+    enum: ['fcm', 'voip'],
+    default: 'fcm',
+  })
+  @IsOptional()
+  @IsEnum(['fcm', 'voip'])
+  tokenType?: 'fcm' | 'voip';
 }

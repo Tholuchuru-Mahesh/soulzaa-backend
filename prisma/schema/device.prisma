@@ -8,6 +8,13 @@ model UserDevice {
   deviceIdentifier String
   platform         DevicePlatform
   pushToken        String?
+  /// PushKit VoIP token (iOS only) — the *only* push type Apple delivers to a
+  /// force-quit app, and the one an incoming call's push must use to raise a
+  /// real CallKit ring screen when this device is backgrounded, locked, or
+  /// killed. Distinct from `pushToken` (APNs "alert" token, via FCM) because
+  /// iOS issues them separately and they are delivered through entirely
+  /// different transports — see `ApnsVoipPushProvider`.
+  voipPushToken    String?
   lastActiveAt     DateTime       @default(now()) @map("lastSeenAt")
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt

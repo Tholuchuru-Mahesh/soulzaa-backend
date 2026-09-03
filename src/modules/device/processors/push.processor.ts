@@ -1,4 +1,5 @@
 import { Processor } from '@nestjs/bullmq';
+import { DevicePlatform } from '@prisma/client';
 import { Job } from 'bullmq';
 import { QUEUE_CONCURRENCY } from 'src/infra/queue/queue.constants';
 import { BaseQueueWorker } from 'src/infra/queue/workers/base-queue.worker';
@@ -6,7 +7,8 @@ import { QueueSupport } from 'src/infra/queue/workers/queue-support.service';
 import { DEVICE_QUEUES } from '../device.constants';
 import type { PushMessage } from '../interfaces/push-provider.interface';
 import { DeviceRepository } from '../repositories/device.repository';
-import { PushDispatcher } from '../services/push/push.dispatcher';
+import { ApnsVoipPushProvider } from '../services/push/providers/apns-voip-push.provider';
+import { PushDispatcher, type PushFanoutResult } from '../services/push/push.dispatcher';
 
 /**
  * A push addressed to a user rather than a token — the queue's only job shape.
@@ -43,19 +45,49 @@ export class PushProcessor extends BaseQueueWorker {
     support: QueueSupport,
     private readonly devices: DeviceRepository,
     private readonly dispatcher: PushDispatcher,
+    private readonly apnsVoip: ApnsVoipPushProvider,
   ) {
     super(DEVICE_QUEUES.PUSH, support);
   }
 
   async handle(job: Job<UserPushJob>): Promise<unknown> {
     const { userId, excludeDeviceId, ...message } = job.data;
-    const targets = await this.devices.pushTokensForUser(userId, excludeDeviceId);
-    if (targets.length === 0) return { targets: 0, delivered: 0, failed: 0, retired: 0 };
+    const rows = await this.devices.deliveryTargetsForUser(userId, excludeDeviceId);
+    if (rows.length === 0) return { targets: 0, delivered: 0, failed: 0, retired: 0 };
 
-    const result = await this.dispatcher.sendToTokens(
-      targets.map((t) => t.pushToken),
-      message,
-    );
-    return { targets: targets.length, ...result };
+    // Per-device routing, not per-message: an iOS device with a VoIP token
+    // rings even backgrounded/killed via PushKit; every other device (Android,
+    // an iOS device with no VoIP token yet, or any non-call push) keeps using
+    // the normal alert path unchanged. See `PushMessage.preferVoipOnIos`.
+    const voipTargets: string[] = [];
+    const alertTargets: string[] = [];
+    for (const row of rows) {
+      if (
+        message.preferVoipOnIos &&
+        row.platform === DevicePlatform.IOS &&
+        row.voipPushToken &&
+        this.apnsVoip.isConfigured()
+      ) {
+        voipTargets.push(row.voipPushToken);
+      } else if (row.pushToken) {
+        alertTargets.push(row.pushToken);
+      }
+    }
+
+    const [alertResult, voipResult] = await Promise.all([
+      alertTargets.length
+        ? this.dispatcher.sendToTokens(alertTargets, message)
+        : Promise.resolve<PushFanoutResult>({ delivered: 0, failed: 0, retired: 0 }),
+      voipTargets.length
+        ? this.dispatcher.sendToTokens(voipTargets, message, this.apnsVoip, 'voip')
+        : Promise.resolve<PushFanoutResult>({ delivered: 0, failed: 0, retired: 0 }),
+    ]);
+
+    return {
+      targets: rows.length,
+      delivered: alertResult.delivered + voipResult.delivered,
+      failed: alertResult.failed + voipResult.failed,
+      retired: alertResult.retired + voipResult.retired,
+    };
   }
 }

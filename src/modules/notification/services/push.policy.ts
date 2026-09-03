@@ -78,6 +78,7 @@ export class PushPolicy {
       }),
       badge,
       sound: prefs.sound,
+      preferVoipOnIos: intent.preferVoipOnIos,
     };
   }
 

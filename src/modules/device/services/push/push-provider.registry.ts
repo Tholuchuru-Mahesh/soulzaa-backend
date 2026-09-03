@@ -13,8 +13,16 @@ import { FcmPushProvider } from './providers/fcm-push.provider';
  */
 @Injectable()
 export class PushProviderRegistry {
-  private readonly providers: Record<PushProviderName, IPushProvider>;
-  private readonly selected: PushProviderName;
+  /**
+   * Only the three providers `PUSH_PROVIDER` may select — deliberately
+   * narrower than the full {@link PushProviderName} union. `apns-voip` is not
+   * a general-purpose transport a deployment picks as its default; it is the
+   * one specific delivery a call-lifecycle push demands for an iOS device
+   * with a registered VoIP token, selected directly by `PushProcessor`
+   * regardless of this setting — see `ApnsVoipPushProvider`.
+   */
+  private readonly providers: Record<Exclude<PushProviderName, 'apns-voip'>, IPushProvider>;
+  private readonly selected: Exclude<PushProviderName, 'apns-voip'>;
 
   constructor(
     config: ConfigService,

@@ -61,6 +61,7 @@
     "@opentelemetry/resources": "^2.9.0",
     "@opentelemetry/sdk-node": "^0.220.0",
     "@opentelemetry/semantic-conventions": "^1.41.1",
+    "@parse/node-apn": "^8.1.0",
     "@prisma/client": "^6.19.3",
     "@prisma/instrumentation": "^6.19.3",
     "@socket.io/redis-adapter": "^8.3.0",

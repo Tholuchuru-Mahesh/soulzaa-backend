@@ -2,7 +2,7 @@ import type { PushCategory } from './push.constants';
 
 export const PUSH_PROVIDER = Symbol('PUSH_PROVIDER');
 
-export type PushProviderName = 'console' | 'fcm' | 'apns';
+export type PushProviderName = 'console' | 'fcm' | 'apns' | 'apns-voip';
 
 /**
  * Delivery urgency. `high` wakes a dozing device immediately (FCM high priority);
@@ -62,6 +62,16 @@ export interface PushMessage {
   badge?: number;
   /** iOS alert sound. Android's sound belongs to `channelId` and cannot be set here. */
   sound?: boolean;
+  /**
+   * Route an iOS device with a registered VoIP token through the PushKit/APNs-voip
+   * transport instead of the normal alert path — the only delivery Apple honours
+   * to a force-quit app, and the one that carries the CallKit-reporting
+   * obligation. Set only on the handful of call-lifecycle pushes a backgrounded
+   * device must act on immediately (incoming/missed/cancelled); every other push
+   * category leaves this unset and keeps using the normal alert push, even on
+   * iOS devices that also happen to have a VoIP token registered.
+   */
+  preferVoipOnIos?: boolean;
 }
 
 /**

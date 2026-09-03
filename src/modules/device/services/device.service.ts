@@ -211,9 +211,18 @@ export class DeviceService implements IDeviceService {
     await this.bus.publish(new DeviceRemovedEvent({ userId, deviceId }));
   }
 
-  async updatePushToken(userId: string, deviceId: string, pushToken: string | null): Promise<void> {
+  async updatePushToken(
+    userId: string,
+    deviceId: string,
+    pushToken: string | null,
+    tokenType: 'fcm' | 'voip' = 'fcm',
+  ): Promise<void> {
     await this.assertOwned(userId, deviceId);
-    await this.repo.updatePushToken(deviceId, pushToken);
+    if (tokenType === 'voip') {
+      await this.repo.updateVoipPushToken(deviceId, pushToken);
+    } else {
+      await this.repo.updatePushToken(deviceId, pushToken);
+    }
     await this.repo.recordEvent({ userId, deviceId, event: DeviceEventType.PUSH_TOKEN_UPDATED });
   }
 

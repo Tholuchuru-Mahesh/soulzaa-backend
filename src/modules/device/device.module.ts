@@ -9,6 +9,7 @@ import { DeviceService } from './services/device.service';
 import { PushDispatcher } from './services/push/push.dispatcher';
 import { PushProviderRegistry } from './services/push/push-provider.registry';
 import { ApnsPushProvider } from './services/push/providers/apns-push.provider';
+import { ApnsVoipPushProvider } from './services/push/providers/apns-voip-push.provider';
 import { ConsolePushProvider } from './services/push/providers/console-push.provider';
 import { FcmPushProvider } from './services/push/providers/fcm-push.provider';
 
@@ -21,7 +22,8 @@ import { StaffIpAllowlistService } from './services/staff-ip-allowlist.service';
  * Device Management domain — the device registry, trust ledger and audit trail
  * (user_devices / trusted_devices / device_history), registration + suspicious-
  * login detection, verification/naming/removal, push-token management, and
- * multi-provider push delivery (FCM/APNS/console) over a dedicated BullMQ queue.
+ * multi-provider push delivery (FCM/APNS/console, plus a dedicated APNs-VoIP
+ * path for backgrounded/killed-app incoming calls) over a dedicated BullMQ queue.
  *
  * @Global so the session module resolves DEVICE_SERVICE by the interface token
  * without importing this module. Registers its own `push` queue off the shared
@@ -39,6 +41,7 @@ import { StaffIpAllowlistService } from './services/staff-ip-allowlist.service';
     ConsolePushProvider,
     FcmPushProvider,
     ApnsPushProvider,
+    ApnsVoipPushProvider,
     PushProcessor,
     ModeratorDeviceBindingService,
     StaffIpAllowlistService,

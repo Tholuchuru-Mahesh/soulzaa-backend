@@ -49,7 +49,12 @@ export class DeviceController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Update or clear a device push token' })
   async updatePushToken(@CurrentUser('id') userId: string, @Body() dto: UpdatePushTokenDto) {
-    await this.devices.updatePushToken(userId, dto.deviceId, dto.pushToken ?? null);
+    await this.devices.updatePushToken(
+      userId,
+      dto.deviceId,
+      dto.pushToken ?? null,
+      dto.tokenType,
+    );
     return { updated: true };
   }
 

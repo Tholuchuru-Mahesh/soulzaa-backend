@@ -8,6 +8,14 @@ export interface DevicePushToken {
   pushToken: string;
 }
 
+/** One device's delivery capability — see `deliveryTargetsForUser`. */
+export interface DeviceDeliveryTarget {
+  deviceId: string;
+  platform: DevicePlatform;
+  pushToken: string | null;
+  voipPushToken: string | null;
+}
+
 /**
  * Prisma access for the device module: the device registry (user_devices), the
  * trust ledger (trusted_devices) and the audit trail (device_history). Owned by
@@ -81,6 +89,38 @@ export class DeviceRepository {
     return rows.map((r) => ({ deviceId: r.id, pushToken: r.pushToken! }));
   }
 
+  /**
+   * Every active device's delivery capability, for a producer that needs to
+   * route per-device (a call: iOS devices with a VoIP token ring even when
+   * backgrounded/killed; everything else — including iOS devices with no VoIP
+   * token yet — falls back to the normal alert push). Rows with neither token
+   * are still returned, not filtered out — a device the caller cannot reach at
+   * all is information, not something to silently drop.
+   */
+  async deliveryTargetsForUser(
+    userId: string,
+    excludeDeviceId?: string,
+  ): Promise<DeviceDeliveryTarget[]> {
+    const rows = await this.prisma.userDevice.findMany({
+      where: {
+        userId,
+        deletedAt: null,
+        ...(excludeDeviceId ? { id: { not: excludeDeviceId } } : {}),
+      },
+      select: { id: true, platform: true, pushToken: true, voipPushToken: true },
+    });
+    return rows.map((r) => ({
+      deviceId: r.id,
+      platform: r.platform,
+      pushToken: r.pushToken,
+      voipPushToken: r.voipPushToken,
+    }));
+  }
+
+  updateVoipPushToken(id: string, voipPushToken: string | null): Promise<UserDevice> {
+    return this.prisma.userDevice.update({ where: { id }, data: { voipPushToken } });
+  }
+
   setTrust(id: string, trusted: boolean): Promise<UserDevice> {
     return this.prisma.userDevice.update({
       where: { id },
@@ -113,6 +153,16 @@ export class DeviceRepository {
     const { count } = await this.prisma.userDevice.updateMany({
       where: { pushToken: { in: tokens } },
       data: { pushToken: null },
+    });
+    return count;
+  }
+
+  /** Same as {@link clearPushTokens}, for the separate VoIP token column. */
+  async clearVoipPushTokens(tokens: string[]): Promise<number> {
+    if (tokens.length === 0) return 0;
+    const { count } = await this.prisma.userDevice.updateMany({
+      where: { voipPushToken: { in: tokens } },
+      data: { voipPushToken: null },
     });
     return count;
   }
