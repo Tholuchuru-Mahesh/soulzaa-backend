@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { GiftCategory, GiftContextType, GiftType } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { IEventBus } from 'src/common/events';
@@ -69,7 +70,7 @@ function dto(overrides: Partial<SendGiftDto> = {}): SendGiftDto {
 
 describe('GiftService', () => {
   let repo: Record<string, jest.Mock>;
-  let catalog: { getGift: jest.Mock; getGiftById: jest.Mock };
+  let catalog: { getGift: jest.Mock; getGiftById: jest.Mock; listGifts: jest.Mock };
   let leaderboards: { record: jest.Mock };
   let config: { get: jest.Mock };
   let queue: { enqueue: jest.Mock };
@@ -105,6 +106,7 @@ describe('GiftService', () => {
     catalog = {
       getGift: jest.fn().mockResolvedValue(gift()),
       getGiftById: jest.fn().mockResolvedValue(gift()),
+      listGifts: jest.fn().mockResolvedValue([gift()]),
     };
     leaderboards = { record: jest.fn().mockResolvedValue(undefined) };
     config = { get: jest.fn().mockReturnValue(GIFT_CFG) };
@@ -613,6 +615,70 @@ describe('GiftService', () => {
       expect(wallet.credit).not.toHaveBeenCalledWith(
         expect.objectContaining({ userId: SENDER.id, reason: 'GIFT_REFUND' }),
       );
+    });
+  });
+
+  // GIFTS_SERVICE surface: getGift / isGiftEnabled / listActiveGifts. These are
+  // the interface methods `GiftService` was missing entirely — any real
+  // GIFTS_SERVICE consumer (e.g. VideoRoomGiftLockService.enable()) calling
+  // `isGiftEnabled`/`getGift` on the injected instance would throw
+  // `TypeError: ... is not a function` at runtime despite passing
+  // type-checking, because `useClass: GiftService` is not structurally
+  // verified against `IGiftsService` by TypeScript.
+  describe('getGift', () => {
+    it('returns the gift when the catalog finds it', async () => {
+      const found = gift({ id: 'gift-42' });
+      catalog.getGiftById.mockResolvedValue(found);
+
+      const result = await service.getGift('gift-42');
+
+      expect(result).toBe(found);
+      expect(catalog.getGiftById).toHaveBeenCalledWith('gift-42');
+    });
+
+    it('returns null when the catalog throws NotFoundException', async () => {
+      catalog.getGiftById.mockRejectedValue(new NotFoundException("Gift 'missing' not found"));
+
+      const result = await service.getGift('missing');
+
+      expect(result).toBeNull();
+    });
+
+    it('re-throws any error other than NotFoundException', async () => {
+      catalog.getGiftById.mockRejectedValue(new Error('db down'));
+
+      await expect(service.getGift('gift-1')).rejects.toThrow('db down');
+    });
+  });
+
+  describe('isGiftEnabled', () => {
+    it('returns true when the gift exists and is enabled', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ enabled: true }));
+      await expect(service.isGiftEnabled('gift-1')).resolves.toBe(true);
+    });
+
+    it('returns false when the gift exists but is disabled', async () => {
+      catalog.getGiftById.mockResolvedValue(gift({ enabled: false }));
+      await expect(service.isGiftEnabled('gift-1')).resolves.toBe(false);
+    });
+
+    it('returns false when the gift does not exist', async () => {
+      catalog.getGiftById.mockRejectedValue(new NotFoundException("Gift 'missing' not found"));
+      await expect(service.isGiftEnabled('missing')).resolves.toBe(false);
+    });
+  });
+
+  describe('listActiveGifts', () => {
+    it('delegates to catalog.listGifts filtered to enabled gifts and returns its result', async () => {
+      const active = [gift({ id: 'gift-1' }), gift({ id: 'gift-2' })];
+      catalog.listGifts.mockResolvedValue(active);
+
+      const result = await service.listActiveGifts();
+
+      expect(catalog.listGifts).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled: true }),
+      );
+      expect(result).toBe(active);
     });
   });
 });

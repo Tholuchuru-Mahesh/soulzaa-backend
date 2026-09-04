@@ -1,5 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Gift,
@@ -47,7 +47,11 @@ import {
 import { GiftContextRegistry } from './gift-context.registry';
 import { GiftLeaderboardService } from './gift-leaderboard.service';
 import { LeaderboardPeriod } from '../constants/gifts.constants';
-import type { TopFanEntry } from '../interfaces/gifts.service.interface';
+import {
+  type IGiftsService,
+  type TopFanEntry,
+} from '../interfaces/gifts.service.interface';
+import type { GiftQueryDto } from '../dto/gift-catalog.dto';
 
 /**
  * A multi-receiver send. Same shape as SendGiftDto but with `receiverIds` in
@@ -79,7 +83,7 @@ interface GiftConfig {
 import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
 
 @Injectable()
-export class GiftService {
+export class GiftService implements IGiftsService {
   private readonly logger = new Logger(GiftService.name);
 
   constructor(
@@ -97,6 +101,27 @@ export class GiftService {
     private readonly registry: GiftContextRegistry,
     @Inject(PLATFORM_CONFIG) private readonly platformConfig: IPlatformConfiguration,
   ) {}
+
+  /** GIFTS_SERVICE surface: a catalog gift by id, or null if missing. */
+  async getGift(giftId: string): Promise<Gift | null> {
+    try {
+      return await this.catalog.getGiftById(giftId);
+    } catch (err) {
+      if (err instanceof NotFoundException) return null;
+      throw err;
+    }
+  }
+
+  /** GIFTS_SERVICE surface: true when the gift exists and is enabled. */
+  async isGiftEnabled(giftId: string): Promise<boolean> {
+    const gift = await this.getGift(giftId);
+    return gift ? gift.enabled : false;
+  }
+
+  /** GIFTS_SERVICE surface: all enabled catalog gifts (ordered for display). */
+  async listActiveGifts(): Promise<Gift[]> {
+    return this.catalog.listGifts({ enabled: true } as GiftQueryDto);
+  }
 
   /** GIFTS_SERVICE surface: total gift coins received in a context within a window. */
   getContextCoinsInRange(
