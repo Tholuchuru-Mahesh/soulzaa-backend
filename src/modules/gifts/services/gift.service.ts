@@ -453,40 +453,43 @@ export class GiftService {
               tx,
             );
           }
-          rows.push(
-            await this.repo.createTransaction(
-              {
-                id: isBatch ? randomUUID() : txnId,
-                senderId,
-                receiverId,
-                giftId: gift.id,
-                giftType: gift.type,
-                contextType: dto.contextType,
-                contextId: dto.contextId,
-                quantity: dto.quantity,
-                comboTier,
-                unitCoinValue: unit,
-                totalCoinValue: perReceiver,
-                creatorEarnings,
-                cashbackAmount: BigInt(availableBalanceCredited),
-                appliedEarningsPct: rules.earningsPercent,
-                appliedCashbackPct: rules.cashbackPercent,
-                luckyMultiplier: lucky.multiplier,
-                isLuckyWin: lucky.win,
-                senderExp,
-                receiverExp,
-                idempotencyKey: ledgerKeyFor(receiverId),
-                senderWalletTxnId: debit.transactionId,
-                receiverWalletTxnId: creditTxnId,
-                metadata: {
-                  giftName: gift.name,
-                  batchId,
-                  acceptedAmount: effects.acceptedAmount,
-                  refundAmount: effects.refundAmount,
-                } as Prisma.InputJsonValue,
-              },
-              tx,
-            ),
+          const createdRow = await this.repo.createTransaction(
+            {
+              id: isBatch ? randomUUID() : txnId,
+              senderId,
+              receiverId,
+              giftId: gift.id,
+              giftType: gift.type,
+              contextType: dto.contextType,
+              contextId: dto.contextId,
+              quantity: dto.quantity,
+              comboTier,
+              unitCoinValue: unit,
+              totalCoinValue: perReceiver,
+              creatorEarnings,
+              cashbackAmount: BigInt(availableBalanceCredited),
+              appliedEarningsPct: rules.earningsPercent,
+              appliedCashbackPct: rules.cashbackPercent,
+              luckyMultiplier: lucky.multiplier,
+              isLuckyWin: lucky.win,
+              senderExp,
+              receiverExp,
+              idempotencyKey: ledgerKeyFor(receiverId),
+              senderWalletTxnId: debit.transactionId,
+              receiverWalletTxnId: creditTxnId,
+              metadata: {
+                giftName: gift.name,
+                batchId,
+                acceptedAmount: effects.acceptedAmount,
+                refundAmount: effects.refundAmount,
+              } as Prisma.InputJsonValue,
+            },
+            tx,
+          );
+          rows.push(createdRow);
+
+          this.logger.log(
+            `[Gift Settle] Txn: ${createdRow.id}, Context: ${dto.contextType}:${dto.contextId}, Sender: ${senderId}, Wallet credited recipient: ${receiverId}, Earnings (Gems): ${earningsNum}, Cashback (Gold): ${availableBalanceCredited}, Total Coin Value: ${perReceiverNum}`,
           );
 
           if (gift.type === GiftType.PROFILE_FRAME) {

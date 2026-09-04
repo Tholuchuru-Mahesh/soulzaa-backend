@@ -178,6 +178,10 @@ export class VideoRoomPkScoringService {
           scoredAmount: scored,
           multiplierBps,
         });
+
+        this.logger.log(
+          `[PK Scoring] Battle: ${battle.id}, Room: ${input.roomId}, Sender: ${input.senderId}, PK score recipient/team: ${participant.userId} (Side: ${participant.side}, Team: ${participant.teamId}), Score Added: ${scored}`,
+        );
       }
 
       const teams = await this.repo.listTeams(battle.id, tx);

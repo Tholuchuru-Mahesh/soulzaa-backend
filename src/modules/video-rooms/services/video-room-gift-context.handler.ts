@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GiftContextType, Prisma, VideoRoomMemberRole, VideoRoomStatus } from '@prisma/client';
 import { EVENT_BUS, type DomainEvent, type IEventBus } from 'src/common/events';
@@ -16,6 +16,7 @@ import { loadVideoRoomGiftConfig } from '../config/video-room-gift.config';
 import { VIDEO_ROOM_TREASURE_QUEUE_JOB } from '../constants/video-room-treasure.constants';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
+import { VideoRoomPkRepository } from '../repositories/video-room-pk.repository';
 import type { PkScoringResult } from './video-room-pk-scoring.service';
 import { VideoRoomPkScoringService } from './video-room-pk-scoring.service';
 import { VideoRoomTreasureProgressService } from './video-room-treasure-progress.service';
@@ -57,6 +58,7 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
     private readonly queue: QueueService,
     private readonly pkScoring: VideoRoomPkScoringService,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
+    @Optional() private readonly pkRepo?: VideoRoomPkRepository,
   ) {}
 
   onModuleInit(): void {
@@ -125,22 +127,40 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
     this.assertCountryAllowed(sender.country);
 
     const allowViewerGifts = this.viewerGiftsAllowed(settings?.metadata);
+    const activeBattle = this.pkRepo ? await this.pkRepo.findLive(roomId).catch(() => null) : null;
+
     for (const receiverId of receiverIds) {
       const receiver = await this.rooms.getMember(roomId, receiverId);
-      if (!receiver?.isActive) {
+
+      // Check if receiver is a participant in active PK battle in this room
+      let isPkParticipant = false;
+      if (activeBattle && this.pkRepo) {
+        const pkParticipants = await this.pkRepo
+          .findParticipantsByUserIds(activeBattle.id, [receiverId])
+          .catch(() => []);
+        if (pkParticipants.length > 0) {
+          isPkParticipant = true;
+        }
+      }
+
+      if (!receiver?.isActive && !isPkParticipant) {
         throw new BusinessException(
           ERROR_CODES.GIFT_RECEIVER_INVALID,
           'A recipient is not in this room.',
           HttpStatus.BAD_REQUEST,
         );
       }
-      if (!allowViewerGifts && receiver.role === VideoRoomMemberRole.VIEWER) {
+      if (!allowViewerGifts && receiver?.role === VideoRoomMemberRole.VIEWER && !isPkParticipant) {
         throw new BusinessException(
           ERROR_CODES.GIFT_RECEIVER_INVALID,
           'This room does not allow gifting viewers.',
           HttpStatus.BAD_REQUEST,
         );
       }
+
+      this.logger.log(
+        `[Gift Validation] Room: ${roomId}, Sender: ${senderId}, Gift requested recipient: ${receiverId}, Validated recipient: ${receiverId}, isPkParticipant: ${isPkParticipant}`,
+      );
     }
   }
 
