@@ -128,6 +128,10 @@ export class VideoRoomAnalyticsQueryService {
   }
 
   async getGiftAnalytics(actor: RoomActor, query?: QueryAnalyticsDto): Promise<GiftAnalyticsDto> {
+    if (!actor.roles?.includes('ADMIN' as any) && !actor.roles?.includes('SUPER_ADMIN' as any)) {
+      throw new AnalyticsException('Access denied to view gift analytics', 403 as any);
+    }
+
     const cached = await this.cacheService.getCachedAnalytics<GiftAnalyticsDto>(
       'summary_gift',
       query?.period || VideoRoomAnalyticsPeriod.TODAY,
@@ -152,7 +156,11 @@ export class VideoRoomAnalyticsQueryService {
     return dto;
   }
 
-  async getPKAnalytics(_actor: RoomActor, _query?: QueryAnalyticsDto): Promise<PKAnalyticsDto> {
+  async getPKAnalytics(actor: RoomActor, _query?: QueryAnalyticsDto): Promise<PKAnalyticsDto> {
+    if (!actor.roles?.includes('ADMIN' as any) && !actor.roles?.includes('SUPER_ADMIN' as any)) {
+      throw new AnalyticsException('Access denied to view PK analytics', 403 as any);
+    }
+
     const dto: PKAnalyticsDto = {
       battlesStarted: 10,
       battlesCompleted: 9,
@@ -165,9 +173,13 @@ export class VideoRoomAnalyticsQueryService {
   }
 
   async getTreasureAnalytics(
-    _actor: RoomActor,
+    actor: RoomActor,
     _query?: QueryAnalyticsDto,
   ): Promise<TreasureAnalyticsDto> {
+    if (!actor.roles?.includes('ADMIN' as any) && !actor.roles?.includes('SUPER_ADMIN' as any)) {
+      throw new AnalyticsException('Access denied to view treasure analytics', 403 as any);
+    }
+
     const dto: TreasureAnalyticsDto = {
       boxesCreated: 5,
       treasureUnlocks: 45,
@@ -177,7 +189,11 @@ export class VideoRoomAnalyticsQueryService {
     return dto;
   }
 
-  async getEngagementAnalytics(_actor: RoomActor, _query?: QueryAnalyticsDto) {
+  async getEngagementAnalytics(actor: RoomActor, _query?: QueryAnalyticsDto) {
+    if (!actor.roles?.includes('ADMIN' as any) && !actor.roles?.includes('SUPER_ADMIN' as any)) {
+      throw new AnalyticsException('Access denied to view engagement analytics', 403 as any);
+    }
+
     const live = await this.cacheService.getLiveActiveMetrics();
     return {
       activeRooms: live.activeRooms,
@@ -190,7 +206,11 @@ export class VideoRoomAnalyticsQueryService {
     };
   }
 
-  async getAnalyticsHistory(_actor: RoomActor, query?: QueryAnalyticsDto) {
+  async getAnalyticsHistory(actor: RoomActor, query?: QueryAnalyticsDto) {
+    if (!actor.roles?.includes('ADMIN' as any) && !actor.roles?.includes('SUPER_ADMIN' as any)) {
+      throw new AnalyticsException('Access denied to view analytics history', 403 as any);
+    }
+
     const snapshots = await this.repository.getAnalyticsSnapshots(
       'video_room',
       undefined,
