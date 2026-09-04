@@ -86,6 +86,9 @@ export interface IRoomSessionManager {
   /** End every live session a user holds in a given room. Returns the ended records. */
   endUserRoomSessions(roomId: string, userId: string): Promise<VideoRoomSessionRecord[]>;
 
+  /** End every live session in a room (room-wide teardown). Returns the ended records. */
+  endAllRoomSessions(roomId: string): Promise<VideoRoomSessionRecord[]>;
+
   /** Stamp a session's presence state (e.g. the disconnect fast-path → DISCONNECTED). */
   markPresence(
     socketId: string,

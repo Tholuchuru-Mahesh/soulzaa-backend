@@ -31,7 +31,10 @@ import { VideoRoomsMetrics } from '../video-rooms.metrics';
 import { VideoRoomEventService } from './video-room-event.service';
 import { VideoRoomPasswordService } from './video-room-password.service';
 import { VideoRoomPermissionService } from './video-room-permission.service';
+import { VideoRoomPresenceService } from './video-room-presence.service';
 import { VideoRoomSeatStateService } from './video-room-seat-state.service';
+import { VideoRoomSessionService } from './video-room-session.service';
+import { VideoRoomStateService } from './video-room-state.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
 import { VideoRoomChatRepository } from '../repositories/video-room-chat.repository';
@@ -76,6 +79,9 @@ export class VideoRoomLifecycleService {
     config: ConfigService,
     private readonly metrics: VideoRoomsMetrics,
     private readonly seats: VideoRoomSeatStateService,
+    private readonly presence: VideoRoomPresenceService,
+    private readonly sessions: VideoRoomSessionService,
+    private readonly state: VideoRoomStateService,
     @Optional() private readonly platformBans?: PlatformBanService,
     @Optional() private readonly broadBans?: BroadBanService,
     @Optional() private readonly chatRepo?: VideoRoomChatRepository,
@@ -168,6 +174,27 @@ export class VideoRoomLifecycleService {
         }
 
         await this.repo.updateRoom(existing.id, updateData, actor.id);
+
+        // Going LIVE from a non-LIVE state always starts from a clean slate —
+        // regardless of *why* the room's live runtime still has stale
+        // members/sessions/viewer counts sitting in it (a prior close() that
+        // predates this cleanup, a crash that skipped close() entirely, a
+        // manual DB/test-data write). Trusting "close() already cleaned up"
+        // is what let 20 long-dead members reappear the moment this same
+        // owner started a new broadcast. Guarded on the PREVIOUS status (not
+        // run when the room was already LIVE) so a redundant "start" tap on a
+        // genuinely-live room never evicts the real viewers currently in it.
+        if (existing.status !== VideoRoomStatus.LIVE) {
+          await this.resetLiveRuntime(existing.id, actor.id);
+          if (this.chatRepo) {
+            await this.chatRepo.softDeleteRoomMessages(existing.id, actor.id);
+          }
+          if (this.chatCache) {
+            await this.chatCache.invalidateRecent(existing.id);
+            await this.chatCache.setPins(existing.id, []);
+          }
+        }
+
         await this.repo.createBroadcastSession(existing.id, actor.id, {
           title: dto.name,
           topic: dto.description,
@@ -463,6 +490,7 @@ export class VideoRoomLifecycleService {
       metadata: { status: VideoRoomStatus.LIVE },
     });
     const view = await this.refreshCache(roomId);
+    await this.resetLiveRuntime(roomId, actor.id);
     if (this.chatRepo) {
       await this.chatRepo.softDeleteRoomMessages(roomId, actor.id);
     }
@@ -497,6 +525,15 @@ export class VideoRoomLifecycleService {
       await this.chatCache.invalidateRecent(roomId);
       await this.chatCache.setPins(roomId, []);
     }
+
+    // Rooms are permanent and reused for the owner's next broadcast (see
+    // `create()` above), so — unlike a one-shot resource — nothing else ever
+    // deletes this room's live runtime state. Without tearing it down here,
+    // every member/viewer who was still connected when the host force-ended
+    // the room stays "active" in Redis/Postgres and reappears as a stale
+    // roster/count/session the next time this same roomId goes live.
+    await this.resetLiveRuntime(roomId, actor.id);
+
     await this.repo.appendLog({
       roomId,
       actorId: actor.id,
@@ -510,6 +547,22 @@ export class VideoRoomLifecycleService {
       durationSeconds,
     });
     return this.buildDetail(roomId);
+  }
+
+  /**
+   * Tear down a room's live runtime — presence sets, socket sessions, active
+   * member rows, and the cached counter snapshot. Called both when a room ends
+   * AND whenever it goes (or goes back) LIVE: trusting that whatever put the
+   * room in its current state already cleaned up after itself is exactly what
+   * let stale members/viewers reappear the moment a room was reused — a crash
+   * that skipped `close()`, or data written directly against the DB, leaves
+   * this room-permanent/reusable model with no other guaranteed cleanup point.
+   */
+  private async resetLiveRuntime(roomId: string, actorId: string): Promise<void> {
+    await this.presence.clearRoom(roomId);
+    await this.sessions.endAllRoomSessions(roomId);
+    await this.repo.deactivateAllMembers(roomId, actorId);
+    await this.state.clear(roomId);
   }
 
   /** Reopen a closed room: ENDED -> OFFLINE (re-editable, ready to activate). */

@@ -51,6 +51,9 @@ describe('VideoRoomLifecycleService', () => {
   let metrics: any;
   let platformBans: any;
   let broadBans: any;
+  let presence: any;
+  let sessions: any;
+  let state: any;
   let service: VideoRoomLifecycleService;
 
   beforeEach(() => {
@@ -72,6 +75,9 @@ describe('VideoRoomLifecycleService', () => {
       clearCachedSnapshot: jest.fn().mockResolvedValue(undefined),
       trendingBump: jest.fn().mockResolvedValue(undefined),
       trendingRemove: jest.fn().mockResolvedValue(undefined),
+      deactivateAllMembers: jest.fn().mockResolvedValue(undefined),
+      endActiveBroadcastSession: jest.fn().mockResolvedValue(undefined),
+      createBroadcastSession: jest.fn().mockResolvedValue(undefined),
     };
     permissions = {
       assertPermission: jest.fn().mockResolvedValue(undefined),
@@ -90,6 +96,9 @@ describe('VideoRoomLifecycleService', () => {
     metrics = { incCreated: jest.fn(), incDeleted: jest.fn(), incLocked: jest.fn() };
     platformBans = { assertNotGloballyBanned: jest.fn().mockResolvedValue(undefined) };
     broadBans = { assertNotBroadBanned: jest.fn().mockResolvedValue(undefined) };
+    presence = { clearRoom: jest.fn().mockResolvedValue(undefined) };
+    sessions = { endAllRoomSessions: jest.fn().mockResolvedValue([]) };
+    state = { clear: jest.fn().mockResolvedValue(undefined) };
     const config = {
       get: jest.fn().mockReturnValue({
         maxRoomsPerOwner: 1,
@@ -113,6 +122,9 @@ describe('VideoRoomLifecycleService', () => {
       config as any,
       metrics,
       seatState as any,
+      presence,
+      sessions,
+      state,
       platformBans,
       broadBans,
     );
@@ -167,6 +179,26 @@ describe('VideoRoomLifecycleService', () => {
     it('clamps maxParticipants to the configured hard cap', async () => {
       await service.create(actor, { name: 'x', maxParticipants: 9999 } as any);
       expect(repo.createRoomTx.mock.calls[0][0].maxParticipants).toBe(20);
+    });
+
+    it('reactivating an existing owned room resets live runtime and clears chat, so a returning host never inherits a stale roster', async () => {
+      repo.findByOwnerId.mockResolvedValue([fullRoom({ id: 'r1', status: VideoRoomStatus.ENDED })]);
+      await service.create(actor, { name: 'x' } as any);
+      expect(repo.createRoomTx).not.toHaveBeenCalled();
+      expect(repo.updateRoom.mock.calls[0][1]).toMatchObject({ status: VideoRoomStatus.LIVE });
+      expect(presence.clearRoom).toHaveBeenCalledWith('r1');
+      expect(sessions.endAllRoomSessions).toHaveBeenCalledWith('r1');
+      expect(repo.deactivateAllMembers).toHaveBeenCalledWith('r1', actor.id);
+      expect(state.clear).toHaveBeenCalledWith('r1');
+    });
+
+    it('does NOT reset live runtime when the owner "creates" a room that is already LIVE, so real active viewers are never evicted by a redundant start tap', async () => {
+      repo.findByOwnerId.mockResolvedValue([fullRoom({ id: 'r1', status: VideoRoomStatus.LIVE })]);
+      await service.create(actor, { name: 'x' } as any);
+      expect(presence.clearRoom).not.toHaveBeenCalled();
+      expect(sessions.endAllRoomSessions).not.toHaveBeenCalled();
+      expect(repo.deactivateAllMembers).not.toHaveBeenCalled();
+      expect(state.clear).not.toHaveBeenCalled();
     });
 
     it('rejects room creation when the actor has an active Broad-ban creation restriction', async () => {
@@ -243,6 +275,14 @@ describe('VideoRoomLifecycleService', () => {
       expect(repo.trendingBump).toHaveBeenCalledWith('r1');
     });
 
+    it('activate resets live runtime so a room re-armed after a non-close exit starts clean', async () => {
+      await service.activate(actor, 'r1');
+      expect(presence.clearRoom).toHaveBeenCalledWith('r1');
+      expect(sessions.endAllRoomSessions).toHaveBeenCalledWith('r1');
+      expect(repo.deactivateAllMembers).toHaveBeenCalledWith('r1', actor.id);
+      expect(state.clear).toHaveBeenCalledWith('r1');
+    });
+
     it('activate rejects an illegal transition (from ENDED)', async () => {
       repo.findById.mockResolvedValue(fullRoom({ status: VideoRoomStatus.ENDED }));
       await expect(service.activate(actor, 'r1')).rejects.toMatchObject({
@@ -269,6 +309,15 @@ describe('VideoRoomLifecycleService', () => {
       expect(repo.updateRoom.mock.calls[0][1]).toMatchObject({ status: VideoRoomStatus.ENDED });
       expect(repo.trendingRemove).toHaveBeenCalledWith('r1');
       expect(events.emitRoomClosed).toHaveBeenCalled();
+    });
+
+    it('close tears down live presence, sessions, member roster, and state so a reused room starts fresh', async () => {
+      repo.findById.mockResolvedValue(fullRoom({ status: VideoRoomStatus.LIVE }));
+      await service.close(actor, 'r1');
+      expect(presence.clearRoom).toHaveBeenCalledWith('r1');
+      expect(sessions.endAllRoomSessions).toHaveBeenCalledWith('r1');
+      expect(repo.deactivateAllMembers).toHaveBeenCalledWith('r1', actor.id);
+      expect(state.clear).toHaveBeenCalledWith('r1');
     });
 
     it('reopen moves ENDED -> OFFLINE', async () => {

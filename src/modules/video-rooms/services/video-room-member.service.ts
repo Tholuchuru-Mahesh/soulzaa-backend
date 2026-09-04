@@ -603,6 +603,17 @@ export class VideoRoomMemberService {
         await this.chatCache.invalidateRecent(roomId);
         await this.chatCache.setPins(roomId, []);
       }
+
+      // The member who triggered this already left cleanly, but hosts/seat
+      // holders/moderators aren't reflected in the viewer count that gated
+      // this call, so their presence rows (and any stray sessions/state
+      // snapshot) can still be sitting around. Clear the room's whole live
+      // runtime so the next broadcast doesn't inherit a stale roster/count.
+      await this.presence.clearRoom(roomId);
+      await this.sessions.endAllRoomSessions(roomId);
+      await this.repo.deactivateAllMembers(roomId, VIDEO_ROOM_SYSTEM_ACTOR_ID);
+      await this.state.clear(roomId);
+
       await this.repo.appendLog({
         roomId,
         actorId: VIDEO_ROOM_SYSTEM_ACTOR_ID,

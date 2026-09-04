@@ -161,11 +161,47 @@ export class VideoRoomSessionService implements IRoomSessionManager {
   async endUserRoomSessions(roomId: string, userId: string): Promise<VideoRoomSessionRecord[]> {
     const socketIds = await this.listUserSessions(userId);
     const ended: VideoRoomSessionRecord[] = [];
+    const expiredSocketIds: string[] = [];
     for (const socketId of socketIds) {
       const record = await this.getSession(socketId);
-      if (record?.roomId !== roomId) continue;
+      if (!record) {
+        // The per-connection record already expired via TTL, so this bare id
+        // is dead weight left in the user's reverse index — prune it here
+        // rather than leaving it to accumulate forever (SET members don't
+        // expire on their own).
+        expiredSocketIds.push(socketId);
+        continue;
+      }
+      if (record.roomId !== roomId) continue;
       const done = await this.end(socketId);
       if (done) ended.push(done);
+    }
+    if (expiredSocketIds.length > 0) {
+      await this.redis.srem(videoRoomUserSessionsKey(userId), ...expiredSocketIds);
+    }
+    return ended;
+  }
+
+  /**
+   * End every live socket session in a room (room-wide teardown: "end for
+   * everyone"). Reuses `end()` per socket so each ended socket's user reverse
+   * index and durable presence mirror are cleaned up the same way a normal
+   * leave would. `end()` itself is a no-op whenever a socket's per-connection
+   * record has already expired via TTL (the client dropped without a clean
+   * leave) — but the bare socketId it left behind in THIS room's session set
+   * doesn't expire on its own (Redis SET members have no individual TTL), so
+   * without the unconditional SREM below, that id sits in the set forever and
+   * the room's next broadcast starts with phantom "still connected" sessions.
+   */
+  async endAllRoomSessions(roomId: string): Promise<VideoRoomSessionRecord[]> {
+    const socketIds = await this.listRoomSessions(roomId);
+    const ended: VideoRoomSessionRecord[] = [];
+    for (const socketId of socketIds) {
+      const done = await this.end(socketId);
+      if (done) ended.push(done);
+    }
+    if (socketIds.length > 0) {
+      await this.redis.srem(videoRoomSessionsKey(roomId), ...socketIds);
     }
     return ended;
   }

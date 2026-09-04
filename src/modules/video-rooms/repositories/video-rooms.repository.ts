@@ -620,6 +620,25 @@ export class VideoRoomsRepository {
   }
 
   /**
+   * Deactivate every still-active member of a room in one shot (room-wide
+   * teardown: "end for everyone"). Without this, members who were connected
+   * when the host force-ends the room never go through the per-user leave
+   * path, so their rows stay `isActive: true` and the room appears to still
+   * have its old roster/count on the next session.
+   */
+  async deactivateAllMembers(roomId: string, actorId: string): Promise<void> {
+    await this.prisma.videoRoomMember.updateMany({
+      where: { roomId, isActive: true },
+      data: {
+        isActive: false,
+        memberStatus: VideoRoomMemberStatus.LEFT,
+        leftAt: new Date(),
+        ...auditUpdate(actorId),
+      },
+    });
+  }
+
+  /**
    * Move a room to a new owner (VR-7 ownership transfer / recovery). `ownerId` is
    * the single source of truth for ownership — there is no owner grant row — so
    * this one write is what makes the handover authoritative.
