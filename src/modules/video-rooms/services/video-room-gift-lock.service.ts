@@ -53,6 +53,7 @@ export class VideoRoomGiftLockService {
       metadata: { giftId },
     });
     await this.bus.publish(new GiftLockEnabledEvent({ roomId, actorId: actor.id, giftId }));
+    await this.repo.clearCachedSnapshot(roomId);
     return this.query.getDetail(roomId);
   }
 
@@ -71,6 +72,7 @@ export class VideoRoomGiftLockService {
       action: VideoRoomLogAction.GIFT_LOCK_DISABLED,
     });
     await this.bus.publish(new GiftLockDisabledEvent({ roomId, actorId: actor.id }));
+    await this.repo.clearCachedSnapshot(roomId);
     return this.query.getDetail(roomId);
   }
 

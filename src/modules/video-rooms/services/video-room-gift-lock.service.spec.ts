@@ -17,6 +17,7 @@ describe('VideoRoomGiftLockService', () => {
       findById: jest.fn().mockResolvedValue({ id: 'room-1', ownerId: 'owner-1' }),
       updateRoom: jest.fn().mockResolvedValue(undefined),
       appendLog: jest.fn().mockResolvedValue(undefined),
+      clearCachedSnapshot: jest.fn().mockResolvedValue(undefined),
     };
     permissions = { assertPermission: jest.fn().mockResolvedValue(undefined) };
     gifts = { isGiftEnabled: jest.fn().mockResolvedValue(true) };
@@ -70,6 +71,11 @@ describe('VideoRoomGiftLockService', () => {
         }),
       );
     });
+
+    it('clears the cached detail snapshot before returning the fresh view', async () => {
+      await service.enable(actor, 'room-1', 'gift-1');
+      expect(repo.clearCachedSnapshot).toHaveBeenCalledWith('room-1');
+    });
   });
 
   describe('disable', () => {
@@ -88,6 +94,11 @@ describe('VideoRoomGiftLockService', () => {
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'video_room.gift_lock_disabled' }),
       );
+    });
+
+    it('clears the cached detail snapshot before returning the fresh view', async () => {
+      await service.disable(actor, 'room-1');
+      expect(repo.clearCachedSnapshot).toHaveBeenCalledWith('room-1');
     });
   });
 });
