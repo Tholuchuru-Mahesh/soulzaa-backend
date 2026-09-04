@@ -215,6 +215,7 @@ import { VideoRoomIdentityCacheListener } from './listeners/video-room-identity-
 import { VideoRoomEntryAccessRepository } from './repositories/video-room-entry-access.repository';
 import { VideoRoomGiftLockAccessRepository } from './repositories/video-room-gift-lock-access.repository';
 import { VideoRoomEntryPaymentService } from './services/video-room-entry-payment.service';
+import { VideoRoomGiftLockService } from './services/video-room-gift-lock.service';
 
 import { WorkforceScopeModule } from 'src/modules/mobile-workforce/workforce-scope.module';
 import { ModerationApprovalModule } from 'src/modules/moderation-approval/moderation-approval.module';
@@ -344,6 +345,8 @@ import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-
     VideoRoomEntryAccessRepository,
     VideoRoomGiftLockAccessRepository,
     VideoRoomEntryPaymentService,
+    // Gift-lock: owner enable/disable of a designated required-gift entry gate.
+    VideoRoomGiftLockService,
     // VR-17 settings (per-field permission-gated PATCH :id/settings; dual event
     // publish to the room-settings and chat-policy surfaces — see the service).
     VideoRoomSettingsService,

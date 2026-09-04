@@ -17,6 +17,7 @@ import { Public } from 'src/common/decorators/public.decorator';
 import type { AuthenticatedUser } from 'src/common/interfaces/authenticated-user';
 import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import { CreateVideoRoomDto } from '../dto/create-video-room.dto';
+import { GiftLockVideoRoomDto } from '../dto/gift-lock-video-room.dto';
 import { ListVideoRoomsDto } from '../dto/list-video-rooms.dto';
 import { LockVideoRoomDto } from '../dto/lock-video-room.dto';
 import { PayEntryFeeDto } from '../dto/pay-entry-fee.dto';
@@ -25,6 +26,7 @@ import { UpdateVideoRoomSettingsDto } from '../dto/update-video-room-settings.dt
 import { UpdateVideoRoomDto } from '../dto/update-video-room.dto';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { VideoRoomEntryPaymentService } from '../services/video-room-entry-payment.service';
+import { VideoRoomGiftLockService } from '../services/video-room-gift-lock.service';
 import { VideoRoomLifecycleService } from '../services/video-room-lifecycle.service';
 import { VideoRoomQueryService } from '../services/video-room-query.service';
 import { VideoRoomSettingsService } from '../services/video-room-settings.service';
@@ -43,6 +45,7 @@ export class VideoRoomsController {
     private readonly query: VideoRoomQueryService,
     private readonly settings: VideoRoomSettingsService,
     private readonly entryPayment: VideoRoomEntryPaymentService,
+    private readonly giftLock: VideoRoomGiftLockService,
   ) {}
 
   private actor(user?: AuthenticatedUser): RoomActor {
@@ -197,6 +200,26 @@ export class VideoRoomsController {
   @ApiOperation({ summary: 'Unlock a room (clears the password)' })
   unlock(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.lifecycle.unlock(this.actor(user), id);
+  }
+
+  @Post(':id/gift-lock')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Enable gift-lock: require a specific gift to enter' })
+  enableGiftLock(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: GiftLockVideoRoomDto,
+  ) {
+    return this.giftLock.enable(this.actor(user), id, dto.giftId);
+  }
+
+  @Post(':id/gift-lock/disable')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Disable gift-lock' })
+  disableGiftLock(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
+    return this.giftLock.disable(this.actor(user), id);
   }
 
   @Post(':id/restore')

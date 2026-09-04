@@ -131,6 +131,8 @@ export interface UpdateVideoRoomData {
   maxViewers?: number;
   paidEntryEnabled?: boolean;
   defaultEntryFee?: bigint | number | null;
+  giftLockEnabled?: boolean;
+  requiredEntryGiftId?: string | null;
   status?: VideoRoomStatus;
   streamingStatus?: VideoRoomStreamingStatus;
   endedAt?: Date | null;

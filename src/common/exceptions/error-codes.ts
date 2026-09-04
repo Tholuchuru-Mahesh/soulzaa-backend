@@ -166,6 +166,8 @@ export const ERROR_CODES = {
   VIDEO_ROOM_ENDED: 'VIDEO_ROOM_ENDED',
   /** Room password missing/incorrect on a locked room (400). */
   VIDEO_ROOM_PASSWORD_INVALID: 'VIDEO_ROOM_PASSWORD_INVALID',
+  /** Join blocked: room requires sending its designated entry gift first (402). */
+  VIDEO_ROOM_GIFT_REQUIRED: 'VIDEO_ROOM_GIFT_REQUIRED',
   /** User is on the room's block-list (403). */
   VIDEO_ROOM_BLOCKED: 'VIDEO_ROOM_BLOCKED',
   /** Action requires an active membership the caller does not have (403). */

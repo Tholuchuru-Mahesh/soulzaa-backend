@@ -8,6 +8,7 @@ describe('VideoRoomsController', () => {
   let lifecycle: any;
   let query: any;
   let settings: any;
+  let giftLock: any;
   let controller: VideoRoomsController;
 
   beforeEach(() => {
@@ -38,7 +39,17 @@ describe('VideoRoomsController', () => {
     const entryPayment = {
       payEntryFee: jest.fn().mockResolvedValue({ id: 'tx1' }),
     };
-    controller = new VideoRoomsController(lifecycle, query, settings, entryPayment as any);
+    giftLock = {
+      enable: jest.fn().mockResolvedValue({ id: 'r1' }),
+      disable: jest.fn().mockResolvedValue({ id: 'r1' }),
+    };
+    controller = new VideoRoomsController(
+      lifecycle,
+      query,
+      settings,
+      entryPayment as any,
+      giftLock as any,
+    );
   });
 
   it('create delegates with the mapped actor + dto', async () => {
@@ -107,6 +118,13 @@ describe('VideoRoomsController', () => {
   it('lock forwards actor + id + body', async () => {
     await controller.lock(user, 'r1', { password: 'pw' } as any);
     expect(lifecycle.lock).toHaveBeenCalledWith(expectedActor, 'r1', { password: 'pw' });
+  });
+
+  it('enableGiftLock / disableGiftLock forward actor + id (+ dto for enable)', async () => {
+    await controller.enableGiftLock(user, 'r1', { giftId: 'gift-1' } as any);
+    await controller.disableGiftLock(user, 'r1');
+    expect(giftLock.enable).toHaveBeenCalledWith(expectedActor, 'r1', 'gift-1');
+    expect(giftLock.disable).toHaveBeenCalledWith(expectedActor, 'r1');
   });
 
   describe('VR-17 PATCH :id/settings', () => {

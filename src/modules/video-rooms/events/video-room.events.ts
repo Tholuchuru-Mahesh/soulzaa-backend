@@ -23,6 +23,8 @@ export const VIDEO_ROOM_EVENTS = {
   SETTINGS_UPDATED: 'video_room.settings_updated',
   DELETED: 'video_room.deleted',
   LOCKED: 'video_room.locked',
+  GIFT_LOCK_ENABLED: 'video_room.gift_lock_enabled',
+  GIFT_LOCK_DISABLED: 'video_room.gift_lock_disabled',
   RESTORED: 'video_room.restored',
   CLOSED: 'video_room.closed',
   USER_JOINED: 'video_room.user_joined',
@@ -119,6 +121,23 @@ export class RoomLockedEvent extends DomainEvent<{
   isLocked: boolean;
 }> {
   readonly name = VIDEO_ROOM_EVENTS.LOCKED;
+}
+
+/** A room's gift-lock was enabled with the given required gift (new lock feature). */
+export class GiftLockEnabledEvent extends DomainEvent<{
+  roomId: string;
+  actorId: string;
+  giftId: string;
+}> {
+  readonly name = VIDEO_ROOM_EVENTS.GIFT_LOCK_ENABLED;
+}
+
+/** A room's gift-lock was disabled. */
+export class GiftLockDisabledEvent extends DomainEvent<{
+  roomId: string;
+  actorId: string;
+}> {
+  readonly name = VIDEO_ROOM_EVENTS.GIFT_LOCK_DISABLED;
 }
 
 /** A soft-deleted room was restored (VR-2). */
