@@ -102,6 +102,13 @@ export interface ICallsService {
   /** Answer. Idempotent for the accepting device; a no-op for a call already accepted by it. */
   accept(userId: string, callId: string): Promise<CallSessionView>;
 
+  /**
+   * The callee's device confirms it actually rendered this ring — narrows how
+   * long an undelivered ring can block the callee's own outgoing calls. Callee
+   * only; silently a no-op once the call is no longer RINGING.
+   */
+  markDelivered(userId: string, callId: string): Promise<void>;
+
   /** Decline. Callee only. */
   reject(userId: string, callId: string): Promise<CallView>;
 

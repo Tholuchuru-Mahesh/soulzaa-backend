@@ -46,6 +46,32 @@ export class CallRepository {
     });
   }
 
+  /**
+   * The call that would legitimately block `userId` from placing a *new* one —
+   * every live call they are the caller of, plus every live call they are the
+   * callee of that they have actually been rung for.
+   *
+   * Deliberately narrower than `findLiveForUser`: an undelivered RINGING row —
+   * the push/socket never reached this device — has not made this user busy in
+   * any sense they would recognize, so it must not be the reason their own
+   * outgoing call fails with "You are already in a call". Nothing else reads
+   * this: the callee's own `active()` recovery call and a third party's busy
+   * check when calling them both still need `findLiveForUser` unchanged, since
+   * an undelivered ring is still very much a real, pending call server-side.
+   */
+  findBlockingCallFor(userId: string): Promise<Call | null> {
+    return this.prisma.call.findFirst({
+      where: {
+        OR: [
+          { callerId: userId, status: { in: LIVE } },
+          { calleeId: userId, status: { in: [CallStatus.ACCEPTED, CallStatus.CONNECTED] } },
+          { calleeId: userId, status: CallStatus.RINGING, deliveredAt: { not: null } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   /** Resolve a previous attempt with the same idempotency key. */
   findByClientId(callerId: string, clientId: string): Promise<Call | null> {
     return this.prisma.call.findUnique({
@@ -157,6 +183,19 @@ export class CallRepository {
   /** Attach the DM thread once one exists (opened lazily on the first connected call). */
   async setConversation(id: string, conversationId: string): Promise<void> {
     await this.prisma.call.update({ where: { id }, data: { conversationId } });
+  }
+
+  /**
+   * Record that the callee's device actually rendered this ring. Idempotent and
+   * silent by design: a duplicate signal (the live socket *and* the background
+   * push both confirming) or one that arrives after the call already moved on
+   * is a no-op, not an error — this is a delivery receipt, not a transition.
+   */
+  async markDelivered(id: string): Promise<void> {
+    await this.prisma.call.updateMany({
+      where: { id, status: CallStatus.RINGING, deliveredAt: null },
+      data: { deliveredAt: new Date() },
+    });
   }
 
   // ---- History ----

@@ -96,7 +96,7 @@ describe('DeviceService', () => {
       );
     });
 
-    it('flags a new device as suspicious when the user already has others, and pushes an alert', async () => {
+    it('flags a new device as suspicious when the user already has others, and records it without a push alert', async () => {
       repo.getByIdentifier.mockResolvedValue(null); // first-seen
       repo.upsert.mockResolvedValue(device({ id: 'd2', deviceIdentifier: 'dev-b' }));
       repo.listActive.mockResolvedValue([
@@ -112,7 +112,9 @@ describe('DeviceService', () => {
       expect(bus.publish).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'device.suspicious_login' }),
       );
-      expect(pushQueue.add).toHaveBeenCalled();
+      // Push notification for new login disabled per requirement — see
+      // DeviceService.maybeFlagSuspicious's own comment.
+      expect(pushQueue.add).not.toHaveBeenCalled();
     });
 
     it('flags a country change on a known device as suspicious', async () => {

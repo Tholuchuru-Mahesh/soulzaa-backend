@@ -49,9 +49,9 @@ describe('VR-15 notification integration', () => {
     return { svc, created, pushed, notifications, mute, rooms, queue };
   }
 
-  it('seat approval reaches in-app + push for the target', async () => {
+  it('a mention reaches in-app + push for the target', async () => {
     const t = build();
-    await t.svc.dispatch(K.SEAT_APPROVAL, {
+    await t.svc.dispatch(K.MENTION, {
       roomId: 'r1',
       targetUserIds: ['t1'],
       title: 'a',
@@ -59,6 +59,18 @@ describe('VR-15 notification integration', () => {
     });
     expect(t.created).toHaveLength(1);
     expect(t.pushed).toHaveLength(1);
+  });
+
+  it('seat approval — disabled per requirement — reaches neither in-app nor push', async () => {
+    const t = build();
+    await t.svc.dispatch(K.SEAT_APPROVAL, {
+      roomId: 'r1',
+      targetUserIds: ['t1'],
+      title: 'a',
+      body: 'b',
+    });
+    expect(t.created).toHaveLength(0);
+    expect(t.pushed).toHaveLength(0);
   });
 
   it('announcement reaches every room member', async () => {

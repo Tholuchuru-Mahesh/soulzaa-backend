@@ -127,7 +127,10 @@ export class CallsService implements ICallsService {
     // The caller must not already be in a call. This is a distinct failure from the
     // callee being busy — it is the caller's own device that is confused (a stale
     // screen, a call it never hung up), and telling them "they're busy" would be a lie.
-    const callerLive = await this.calls.findLiveForUser(callerId);
+    // `findBlockingCallFor`, not `findLiveForUser`: an inbound ring this same user
+    // never actually saw (undelivered) must not be the reason their own outgoing
+    // call fails — see the repository doc comment.
+    const callerLive = await this.calls.findBlockingCallFor(callerId);
     if (callerLive) {
       throw new BusinessException(
         ERROR_CODES.CALL_ALREADY_ACTIVE,
@@ -269,6 +272,20 @@ export class CallsService implements ICallsService {
         }),
       ),
     );
+  }
+
+  /**
+   * The callee's device confirms it actually rendered this ring — the native
+   * incoming-call screen came up, or the live socket delivered the event.
+   * Callee only. Silently a no-op once the call has moved past RINGING, or if
+   * it was already confirmed — this is a delivery receipt, not a transition,
+   * and the client may legitimately call it from more than one place (the live
+   * socket handler, the background push handler) for the same ring.
+   */
+  async markDelivered(userId: string, callId: string): Promise<void> {
+    const call = await this.require(callId, userId);
+    this.assertCallee(call, userId);
+    await this.calls.markDelivered(callId);
   }
 
   // ============================ In the call ============================

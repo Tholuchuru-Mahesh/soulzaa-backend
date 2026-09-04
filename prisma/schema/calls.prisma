@@ -26,6 +26,14 @@ model Call {
   /// the call MISSED if it is still RINGING — the deadline is persisted rather
   /// than left to the job alone so a lost job cannot strand a call ringing forever.
   ringingExpiresAt DateTime
+  /// When the callee's own device confirmed it actually rendered the ring — the
+  /// native incoming-call screen came up, or the live socket delivered the event.
+  /// Null the whole time a RINGING call has only been written to this row and
+  /// never confirmed reaching anywhere. Exists so `findBlockingCallFor` can tell
+  /// an acknowledged ring apart from an undelivered one: a callee who never saw
+  /// any UI for a call must not be blocked from placing their own by a "busy"
+  /// row they never knew existed.
+  deliveredAt      DateTime?
   acceptedAt       DateTime?
   connectedAt      DateTime?
   endedAt          DateTime?

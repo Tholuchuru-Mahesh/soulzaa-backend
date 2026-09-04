@@ -36,6 +36,7 @@ describe('RoleRequestService', () => {
   const prisma = {
     roleRequest: { findUnique: jest.fn(), count: jest.fn(), findMany: jest.fn() },
     role: { findFirst: jest.fn() },
+    user: { update: jest.fn().mockResolvedValue({}) },
     $transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const routing = {

@@ -77,11 +77,13 @@ describe('CallsService', () => {
     repo = {
       findById: jest.fn(),
       findLiveForUser: jest.fn().mockResolvedValue(null),
+      findBlockingCallFor: jest.fn().mockResolvedValue(null),
       findByClientId: jest.fn().mockResolvedValue(null),
       create: jest.fn(),
       createBusy: jest.fn(),
       markAccepted: jest.fn().mockResolvedValue(true),
       markConnected: jest.fn().mockResolvedValue(true),
+      markDelivered: jest.fn().mockResolvedValue(undefined),
       terminate: jest.fn().mockResolvedValue(true),
       setConversation: jest.fn(),
       page: jest.fn(),
@@ -235,13 +237,35 @@ describe('CallsService', () => {
     });
 
     it('refuses when the caller is already in a call (not the same as the callee being busy)', async () => {
-      repo.findLiveForUser.mockImplementation(async (id: string) =>
+      repo.findBlockingCallFor.mockImplementation(async (id: string) =>
         id === CALLER ? (call({ id: 'my-other-call' }) as never) : null,
       );
       await expect(
         service.initiate(CALLER, { calleeId: CALLEE, type: CallType.VOICE, clientId: 'c' }),
       ).rejects.toMatchObject({ errorCode: 'CALL_ALREADY_ACTIVE' });
     });
+
+    it(
+      'does not refuse on an undelivered ring the caller was never shown — the self-block ' +
+        'check must consult findBlockingCallFor, not the broader findLiveForUser',
+      async () => {
+        // The old, too-broad check would see this and block; the callee-recovery
+        // and third-party-busy checks still legitimately use findLiveForUser
+        // elsewhere, so it staying non-null here is deliberate.
+        repo.findLiveForUser.mockImplementation(async (id: string) =>
+          id === CALLER ? (call({ id: 'my-other-call' }) as never) : null,
+        );
+        repo.create.mockResolvedValue(call() as never);
+
+        const session = await service.initiate(CALLER, {
+          calleeId: CALLEE,
+          type: CallType.VOICE,
+          clientId: 'c',
+        });
+
+        expect(session.call.status).toBe(CallStatus.RINGING);
+      },
+    );
 
     it('is idempotent on clientId — a double-tap resolves to the one call', async () => {
       repo.findByClientId.mockResolvedValue(call() as never);
@@ -272,6 +296,22 @@ describe('CallsService', () => {
       await expect(
         service.initiate(CALLER, { calleeId: CALLEE, type: CallType.VOICE, clientId: 'c' }),
       ).rejects.toMatchObject({ errorCode: 'VOICE_NOT_CONFIGURED' });
+    });
+  });
+
+  describe('markDelivered', () => {
+    it('persists the callee’s confirmation that a ringing call actually reached them', async () => {
+      repo.findById.mockResolvedValue(call() as never);
+      await service.markDelivered(CALLEE, CALL_ID);
+      expect(repo.markDelivered).toHaveBeenCalledWith(CALL_ID);
+    });
+
+    it('only the callee may confirm delivery of their own ring', async () => {
+      repo.findById.mockResolvedValue(call() as never);
+      await expect(service.markDelivered(CALLER, CALL_ID)).rejects.toMatchObject({
+        errorCode: 'CALL_NOT_PARTICIPANT',
+      });
+      expect(repo.markDelivered).not.toHaveBeenCalled();
     });
   });
 

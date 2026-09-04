@@ -87,6 +87,19 @@ export class CallsController {
     return this.calls.accept(userId, id);
   }
 
+  @Post(':id/delivered')
+  @HttpCode(HttpStatus.OK)
+  @NotGuest()
+  @ApiOperation({
+    summary:
+      'Callee confirms the ring actually reached this device — the native incoming-call ' +
+      'screen came up, or the live socket delivered the event. Narrows how long an ' +
+      'undelivered ring can block the callee’s own outgoing calls.',
+  })
+  markDelivered(@CurrentUser('id') userId: string, @Param('id', ParseUuidPipe) id: string) {
+    return this.calls.markDelivered(userId, id);
+  }
+
   @Post(':id/reject')
   @HttpCode(HttpStatus.OK)
   @NotGuest()

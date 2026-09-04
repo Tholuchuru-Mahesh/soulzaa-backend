@@ -61,7 +61,11 @@ describe('Super Admin Phase 2B: User & Role Management Services', () => {
     },
     coinSellerRelationship: { findFirst: jest.fn().mockResolvedValue(null) },
     userSession: { findFirst: jest.fn().mockResolvedValue(null) },
-    wallet: { findUnique: jest.fn().mockResolvedValue(null) },
+    // searchUsers fans out over profile/wallet/wealth data in its own Promise.all
+    // (see user-query.service.ts), so those models need findMany stubs too.
+    userProfile: { findMany: jest.fn().mockResolvedValue([]) },
+    wallet: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+    wealthUserProgress: { findMany: jest.fn().mockResolvedValue([]) },
     walletTransaction: { findMany: jest.fn().mockResolvedValue([]) },
     purchaseOrder: { findMany: jest.fn().mockResolvedValue([]) },
     giftTransaction: { findMany: jest.fn().mockResolvedValue([]) },
