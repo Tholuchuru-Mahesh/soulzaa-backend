@@ -32,6 +32,7 @@ model VideoBroadcastSession {
 
   room            VideoRoom                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
   entryAccesses   VideoRoomEntryAccess[]
+  giftLockAccesses VideoRoomGiftLockAccess[]
 
   @@index([roomId, status])
   @@index([hostId, createdAt])

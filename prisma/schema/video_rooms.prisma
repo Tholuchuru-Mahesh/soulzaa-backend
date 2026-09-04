@@ -42,9 +42,12 @@ model VideoRoom {
   themeId         String?                  @db.Uuid
   paidEntryEnabled Boolean                 @default(false)
   defaultEntryFee  BigInt?
+  giftLockEnabled  Boolean @default(false)
+  requiredEntryGiftId String? @db.Uuid
 
   broadcastSessions VideoBroadcastSession[]
   entryAccesses     VideoRoomEntryAccess[]
+  giftLockAccesses VideoRoomGiftLockAccess[]
 
   @@index([status])
   @@index([ownerId])
@@ -289,4 +292,6 @@ enum VideoRoomLogAction {
   PK_ENDED
   PK_RECOVERED
   PK_REWARD_DISTRIBUTED
+  GIFT_LOCK_ENABLED
+  GIFT_LOCK_DISABLED
 }

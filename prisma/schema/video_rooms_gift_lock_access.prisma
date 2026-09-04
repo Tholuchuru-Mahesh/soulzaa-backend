@@ -1,0 +1,28 @@
+/// Session-scoped Gift-Lock entry entitlement for Video Rooms, mirroring
+/// VideoRoomEntryAccess's shape for paid entry. A successful send of the
+/// room's required entry gift grants access to the CURRENT broadcast session
+/// only; when the session ends, the entitlement stays bound to it and does
+/// not carry into the next one.
+model VideoRoomGiftLockAccess {
+  id                String                        @id @default(uuid()) @db.Uuid
+  userId            String                        @db.Uuid
+  roomId            String                        @db.Uuid
+  sessionId         String                        @db.Uuid
+  giftId            String                        @db.Uuid
+  giftTransactionId String                        @db.Uuid
+  status            VideoRoomGiftLockAccessStatus @default(GRANTED)
+  grantedAt         DateTime                      @default(now())
+  createdAt         DateTime                      @default(now())
+
+  room    VideoRoom             @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  session VideoBroadcastSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sessionId])
+  @@index([roomId, sessionId])
+  @@map("video_room_gift_lock_accesses")
+}
+
+enum VideoRoomGiftLockAccessStatus {
+  GRANTED
+  REVOKED
+}
