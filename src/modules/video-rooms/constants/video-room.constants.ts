@@ -321,7 +321,7 @@ export function videoRoomAnalyticsCacheKey(
 // ============================================================
 
 /** Default multi-seat video stage layout (VideoRoomSettings defaults mirror these). */
-export const VIDEO_ROOM_DEFAULT_HOST_SEATS = 9;
+export const VIDEO_ROOM_DEFAULT_HOST_SEATS = 3;
 export const VIDEO_ROOM_DEFAULT_GUEST_SEATS = 0;
 /** Hard cap on total seats a room may configure (owner + hosts + guests). */
 export const VIDEO_ROOM_MAX_SEATS = 20;
