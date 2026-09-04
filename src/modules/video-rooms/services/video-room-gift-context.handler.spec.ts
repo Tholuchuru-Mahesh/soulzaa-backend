@@ -44,7 +44,7 @@ describe('VideoRoomGiftContextHandler', () => {
   let pkScoring: Record<string, jest.Mock>;
   let queue: { enqueue: jest.Mock };
   let bus: { publish: jest.Mock };
-  let giftLockAccessRepo: { grantAccess: jest.Mock };
+  let giftLockAccessRepo: { grantAccess: jest.Mock; hasGrantedAccess: jest.Mock };
   let handler: VideoRoomGiftContextHandler;
 
   const setGiftConfig = (overrides: Record<string, unknown> = {}) => {
@@ -100,7 +100,10 @@ describe('VideoRoomGiftContextHandler', () => {
     };
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
     bus = { publish: jest.fn().mockResolvedValue(undefined) };
-    giftLockAccessRepo = { grantAccess: jest.fn().mockResolvedValue({ id: 'access-1' }) };
+    giftLockAccessRepo = {
+      grantAccess: jest.fn().mockResolvedValue({ id: 'access-1' }),
+      hasGrantedAccess: jest.fn().mockResolvedValue(false),
+    };
     setGiftConfig();
     handler = new VideoRoomGiftContextHandler(
       rooms as never,
@@ -602,7 +605,10 @@ describe('VideoRoomGiftContextHandler — gift-lock grant', () => {
       findById: jest.fn(),
       getActiveBroadcastSession: jest.fn(),
     };
-    giftLockAccessRepo = { grantAccess: jest.fn().mockResolvedValue({ id: 'access-1' }) };
+    giftLockAccessRepo = {
+      grantAccess: jest.fn().mockResolvedValue({ id: 'access-1' }),
+      hasGrantedAccess: jest.fn().mockResolvedValue(false),
+    };
     tx = {};
 
     // Construct with the handler's other existing collaborators as no-op
@@ -704,6 +710,35 @@ describe('VideoRoomGiftContextHandler — gift-lock grant', () => {
       gift: { id: 'gift-required' },
       transactionId: 'txn-1',
     });
+    expect(giftLockAccessRepo.grantAccess).not.toHaveBeenCalled();
+  });
+
+  // Regression coverage: `grantAccess` targets the same `(userId, sessionId)`
+  // unique key on every qualifying send. Without this check, a repeat send
+  // would attempt a second INSERT on that key inside the caller's Postgres
+  // transaction — a unique-constraint violation there aborts the whole
+  // transaction, and the try/catch around this method cannot un-abort it, so
+  // the receiver's wallet credit later in the same transaction would fail
+  // too. Checking `hasGrantedAccess` first keeps a repeat send a true no-op.
+  it('does nothing when access was already granted for this sender and session', async () => {
+    rooms.findById.mockResolvedValue({
+      id: 'room-1',
+      ownerId: 'owner-1',
+      giftLockEnabled: true,
+      requiredEntryGiftId: 'gift-required',
+    });
+    rooms.getActiveBroadcastSession.mockResolvedValue({ id: 'session-1' });
+    giftLockAccessRepo.hasGrantedAccess.mockResolvedValue(true);
+
+    await (handler as any).grantGiftLockAccessIfApplicable(tx, {
+      contextId: 'room-1',
+      senderId: 'sender-1',
+      receiverIds: ['owner-1'],
+      gift: { id: 'gift-required' },
+      transactionId: 'txn-1',
+    });
+
+    expect(giftLockAccessRepo.hasGrantedAccess).toHaveBeenCalledWith('sender-1', 'session-1', tx);
     expect(giftLockAccessRepo.grantAccess).not.toHaveBeenCalled();
   });
 });

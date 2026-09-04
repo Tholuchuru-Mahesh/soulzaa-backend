@@ -383,6 +383,24 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
       const activeSession = await this.rooms.getActiveBroadcastSession(ctx.contextId);
       if (!activeSession) return;
 
+      // A repeat qualifying gift within the same broadcast session must be a
+      // no-op, not a second INSERT: `grantAccess` targets the same
+      // `@@unique([userId, sessionId])` key every time, and a unique-constraint
+      // violation here would abort the enclosing Postgres transaction (this
+      // runs inside gift.service.ts's `$transaction`) — the catch below only
+      // stops the JS exception from propagating, it cannot un-abort the
+      // connection, so every later statement in the same transaction (the
+      // receiver wallet credit included) would fail too. Checking first keeps
+      // this a true no-op on the expected repeat-send path; the try/catch
+      // remains a backstop only for the narrower true-concurrency race of two
+      // simultaneous first-time sends from the same sender.
+      const alreadyGranted = await this.giftLockAccessRepo.hasGrantedAccess(
+        ctx.senderId,
+        activeSession.id,
+        tx,
+      );
+      if (alreadyGranted) return;
+
       await this.giftLockAccessRepo.grantAccess(
         {
           userId: ctx.senderId,

@@ -257,7 +257,10 @@ describe('VR-10 gift engine (integration)', () => {
       // No room in this fixture has gift-lock enabled, so this collaborator
       // is never actually invoked — a no-op stand-in keeps the constructor
       // call shape in sync with the real handler.
-      { grantAccess: jest.fn().mockResolvedValue(undefined) } as never,
+      {
+        grantAccess: jest.fn().mockResolvedValue(undefined),
+        hasGrantedAccess: jest.fn().mockResolvedValue(false),
+      } as never,
       bus as never,
     ).onModuleInit();
 
