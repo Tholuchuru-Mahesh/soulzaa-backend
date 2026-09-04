@@ -73,6 +73,7 @@ export const VIDEO_ROOM_SOCKET_EVENTS = {
   SEAT_SWITCHED: 'video_room.seat_switched',
   SEAT_TRANSFERRED: 'video_room.seat_transferred',
   SEAT_UPDATED: 'video_room.seat_updated',
+  SPEAKER_REMOVED: 'video_room.speaker_removed',
   // ---- VR-5 media engine (client-facing) ----
   MEDIA_JOINED: 'video_room.media_joined',
   MEDIA_LEFT: 'video_room.media_left',

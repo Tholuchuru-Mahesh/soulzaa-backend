@@ -8,6 +8,10 @@ import {
   type RoomDeletedEvent,
   type UserLeftEvent,
 } from '../events/video-room.events';
+import {
+  VIDEO_ROOM_SEAT_EVENTS,
+  type SeatLeftEvent,
+} from '../events/video-room-seat.events';
 import { VideoRoomMediaService } from '../services/video-room-media.service';
 import { VideoRoomMediaStateService } from '../services/video-room-media-state.service';
 import { VideoRoomEventsRepository } from '../repositories/video-room-events.repository';
@@ -17,6 +21,7 @@ import { VideoRoomEventsRepository } from '../repositories/video-room-events.rep
  * no dependency back into lifecycle, mirroring VideoRoomSeatLifecycleListener. On room
  * CLOSED/DELETED: persist the live media stage as a PRE_SHUTDOWN snapshot, then drop the
  * live Redis snapshot. On USER_LEFT: end that user's media session.
+ * On SEAT_LEFT: demote the vacated occupant to subscriber so camera/mic publishing stops.
  */
 @Injectable()
 export class VideoRoomMediaLifecycleListener implements OnModuleInit {
@@ -39,6 +44,13 @@ export class VideoRoomMediaLifecycleListener implements OnModuleInit {
         { id: e.payload.userId, roles: [] } as RoomActor,
         e.payload.roomId,
       );
+    });
+    this.bus.subscribe<SeatLeftEvent>(VIDEO_ROOM_SEAT_EVENTS.LEFT, async (e) => {
+      try {
+        await this.media.demoteToSubscriber(e.payload.roomId, e.payload.userId, 'system');
+      } catch {
+        // Idempotent / best-effort — demoteToSubscriber handles unseated/non-publishing cleanly.
+      }
     });
   }
 

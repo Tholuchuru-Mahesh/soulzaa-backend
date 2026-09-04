@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Ip,
   Param,
+  ParseIntPipe,
   Patch,
   Post,
 } from '@nestjs/common';
@@ -29,6 +30,7 @@ import {
   CreateVideoRoomInvitationDto,
   LockSeatsDto,
   RejectSeatInvitationDto,
+  RemoveSpeakerFromSeatDto,
   ReserveSeatDto,
   SwitchSeatDto,
   TransferSeatDto,
@@ -518,6 +520,57 @@ export class VideoRoomSeatsController {
       dto.fromSeatIndex,
       dto.force ?? false,
       ip,
+    );
+  }
+
+  // ---- Speaker removal (VR-4 / Feature 2) ----
+
+  @Post(':id/seats/:seatIndex/remove')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove a speaker from a specific seat (owner/admin; MANAGE_PARTICIPANTS)' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Speaker removed from seat; returns to audience.' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Missing permission / cannot outrank target / owner seat.' })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Room not live / not on seat.' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Room or session not found.' })
+  removeSpeakerFromIndexedSeat(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('seatIndex', ParseIntPipe) seatIndex: number,
+    @Body() dto: RemoveSpeakerFromSeatDto,
+    @Ip() ip: string,
+  ) {
+    return this.seats.removeFromSeat(
+      this.actor(user),
+      id,
+      dto.speakerId,
+      ip,
+      seatIndex,
+      dto.sessionId,
+    );
+  }
+
+  @Post(':id/seats/remove')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove a speaker from their seat (owner/admin; MANAGE_PARTICIPANTS)' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Speaker removed from seat; returns to audience.' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Missing permission / cannot outrank target / owner seat.' })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Room not live / not on seat.' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Room or session not found.' })
+  removeSpeakerFromSeat(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: RemoveSpeakerFromSeatDto,
+    @Ip() ip: string,
+  ) {
+    return this.seats.removeFromSeat(
+      this.actor(user),
+      id,
+      dto.speakerId,
+      ip,
+      dto.seatIndex,
+      dto.sessionId,
     );
   }
 }

@@ -86,9 +86,17 @@ export class VideoRoomSeatSocketListener implements OnModuleInit {
     this.bus.subscribe<SeatTakenEvent>(VIDEO_ROOM_SEAT_EVENTS.TAKEN, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.SEAT_UPDATED, e.payload),
     );
-    this.bus.subscribe<SeatLeftEvent>(VIDEO_ROOM_SEAT_EVENTS.LEFT, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.SEAT_UPDATED, e.payload),
-    );
+    this.bus.subscribe<SeatLeftEvent>(VIDEO_ROOM_SEAT_EVENTS.LEFT, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.SEAT_UPDATED, e.payload);
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.SPEAKER_REMOVED, {
+        roomId: e.payload.roomId,
+        seatIndex: e.payload.seatIndex,
+        seatId: e.payload.seatIndex,
+        speakerId: e.payload.userId,
+        userId: e.payload.userId,
+        version: e.payload.version,
+      });
+    });
     this.bus.subscribe<SeatUpdatedEvent>(VIDEO_ROOM_SEAT_EVENTS.UPDATED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.SEAT_UPDATED, e.payload),
     );

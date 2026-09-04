@@ -152,3 +152,21 @@ export class TransferSeatDto {
   @IsBoolean()
   force?: boolean;
 }
+
+/** Remove a speaker from a seat (owner/admin). Speaker returns to audience. */
+export class RemoveSpeakerFromSeatDto {
+  @ApiProperty({ description: 'The speaker user ID to remove from seat.' })
+  @IsUUID()
+  speakerId!: string;
+
+  @ApiPropertyOptional({ minimum: 0, description: 'The seat index occupied by the speaker.' })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  seatIndex?: number;
+
+  @ApiPropertyOptional({ description: 'The current active broadcast session ID.' })
+  @IsOptional()
+  @IsUUID()
+  sessionId?: string;
+}

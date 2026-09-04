@@ -555,24 +555,78 @@ export class VideoRoomSeatService {
     });
   }
 
-  /** Remove a user from their seat (owner/admin; must outrank the target). */
+  /** Remove a user/speaker from their seat (owner/admin; must outrank the target). */
   async removeFromSeat(
     actor: RoomActor,
     roomId: string,
     userId: string,
     ip?: string,
+    seatIndex?: number,
+    sessionId?: string,
   ): Promise<SeatStageView> {
     const room = await this.requireLiveRoom(roomId);
-    await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_PARTICIPANTS);
-    await this.permissions.assertOutranks(room, actor.id, userId);
-    return this.mutateStage(roomId, async (base) => {
-      const seat = base.seats.find((s) => s.occupantUserId === userId);
-      if (!seat) {
+
+    // Validate broadcast session if specified, or ensure active broadcast session is live
+    if (sessionId) {
+      const session = await this.rooms.findBroadcastSessionById(sessionId);
+      if (!session || session.roomId !== roomId) {
         throw new BusinessException(
-          ERROR_CODES.NOT_ON_SEAT,
-          'That user is not on a seat.',
+          ERROR_CODES.NOT_FOUND,
+          'Broadcast session not found for this room.',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      if (session.status !== 'LIVE') {
+        throw new BusinessException(
+          ERROR_CODES.ROOM_ENDED,
+          'Broadcast session is not live.',
           HttpStatus.CONFLICT,
         );
+      }
+    } else {
+      const activeSession = await this.rooms.getActiveBroadcastSession(roomId);
+      if (!activeSession || activeSession.status !== 'LIVE') {
+        throw new BusinessException(
+          ERROR_CODES.ROOM_ENDED,
+          'No active broadcast session is live for this room.',
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
+
+    // Owner seat cannot be vacated via speaker removal
+    if (userId === room.ownerId || (seatIndex !== undefined && isOwnerSeat(seatIndex))) {
+      throw new BusinessException(
+        ERROR_CODES.SEAT_TYPE_FORBIDDEN,
+        'The owner seat cannot be vacated via speaker removal.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_PARTICIPANTS);
+    await this.permissions.assertOutranks(room, actor.id, userId);
+    await this.assertActiveMember(roomId, userId);
+
+    return this.mutateStage(roomId, async (base) => {
+      let seat: SeatEntrySnapshot | undefined;
+      if (seatIndex !== undefined && seatIndex !== null) {
+        seat = base.seats.find((s) => s.seatIndex === seatIndex);
+        if (!seat || seat.occupantUserId !== userId) {
+          throw new BusinessException(
+            ERROR_CODES.NOT_ON_SEAT,
+            `That user is not occupying seat ${seatIndex}.`,
+            HttpStatus.CONFLICT,
+          );
+        }
+      } else {
+        seat = base.seats.find((s) => s.occupantUserId === userId);
+        if (!seat) {
+          throw new BusinessException(
+            ERROR_CODES.NOT_ON_SEAT,
+            'That user is not on a seat.',
+            HttpStatus.CONFLICT,
+          );
+        }
       }
       return this.applyVacate(roomId, base, seat, userId, actor.id, 'seat.removed', ip);
     });

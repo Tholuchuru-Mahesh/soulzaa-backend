@@ -62,6 +62,12 @@ describe('VideoRoomSeatService (core)', () => {
         findById: jest
           .fn()
           .mockResolvedValue({ id: 'r', ownerId: 'owner', status: VideoRoomStatus.LIVE }),
+        getActiveBroadcastSession: jest
+          .fn()
+          .mockResolvedValue({ id: 's1', roomId: 'r', status: 'LIVE' }),
+        findBroadcastSessionById: jest
+          .fn()
+          .mockResolvedValue({ id: 's1', roomId: 'r', status: 'LIVE' }),
         getMember: jest.fn().mockResolvedValue({ isActive: true }),
       },
       permissions: { assertPermission: jest.fn(), assertOutranks: jest.fn() },
@@ -468,6 +474,38 @@ describe('VideoRoomSeatService (core)', () => {
         expect.objectContaining({ seatStatus: VideoRoomSeatStatus.EMPTY, occupantUserId: null }),
         'owner',
       );
+    });
+
+    it('removeFromSeat throws if broadcast session is not live', async () => {
+      deps.rooms.getActiveBroadcastSession.mockResolvedValueOnce(null);
+      await expect(svc.removeFromSeat(actor('owner'), 'r', 'target')).rejects.toThrow(
+        /No active broadcast session is live/,
+      );
+    });
+
+    it('removeFromSeat throws if specified sessionId is not live', async () => {
+      deps.rooms.findBroadcastSessionById.mockResolvedValueOnce({ id: 's2', roomId: 'r', status: 'ENDED' });
+      await expect(
+        svc.removeFromSeat(actor('owner'), 'r', 'target', undefined, 1, 's2'),
+      ).rejects.toThrow(/Broadcast session is not live/);
+    });
+
+    it('removeFromSeat forbids vacating owner seat', async () => {
+      await expect(
+        svc.removeFromSeat(actor('owner'), 'r', 'owner', undefined, 0),
+      ).rejects.toThrow(/owner seat cannot be vacated/);
+    });
+
+    it('removeFromSeat throws if seat index is specified and target is not on that seat', async () => {
+      deps.seatState.getSnapshot.mockResolvedValue(
+        snapshot([
+          { ...emptySeat(1), status: VideoRoomSeatStatus.OCCUPIED, occupantUserId: 'someone-else' },
+          { ...emptySeat(2), status: VideoRoomSeatStatus.OCCUPIED, occupantUserId: 'target' },
+        ]),
+      );
+      await expect(
+        svc.removeFromSeat(actor('owner'), 'r', 'target', undefined, 1),
+      ).rejects.toThrow(/That user is not occupying seat 1/);
     });
   });
 });
