@@ -8,6 +8,7 @@ import { PaymentsModule } from 'src/modules/payments/payments.module';
 import { PlatformConfigurationModule } from 'src/modules/platform-configuration/platform-configuration.module';
 import { TreasuryModule } from 'src/modules/treasury/treasury.module';
 import { WalletModule } from 'src/modules/wallet/wallet.module';
+import { SuperAdminAgencyProfileController } from './controllers/super-admin-agency-profile.controller';
 import { SuperAdminConfigurationController } from './controllers/super-admin-configuration.controller';
 import { SuperAdminGiftController } from './controllers/super-admin-gift.controller';
 import { SuperAdminOrganizationController } from './controllers/super-admin-organization.controller';
@@ -17,6 +18,7 @@ import { SuperAdminUserController } from './controllers/super-admin-user.control
 import { SuperAdminWalletController } from './controllers/super-admin-wallet.controller';
 import { SuperAdminWorkforceController } from './controllers/super-admin-workforce.controller';
 import { AccountLifecycleService } from './services/account-lifecycle.service';
+import { AgencyProfileService } from './services/agency-profile.service';
 import { CountryManagerAssignmentService } from './services/country-manager-assignment.service';
 import { OperationalStatusService } from './services/operational-status.service';
 import { ReportingHierarchyService } from './services/reporting-hierarchy.service';
@@ -49,6 +51,7 @@ import { WorkloadService } from './services/workload.service';
     SuperAdminWalletController,
     SuperAdminPurchaseController,
     SuperAdminGiftController,
+    SuperAdminAgencyProfileController,
   ],
   providers: [
     CountryManagerAssignmentService,
@@ -62,6 +65,7 @@ import { WorkloadService } from './services/workload.service';
     WorkloadService,
     OperationalStatusService,
     WorkforceManagementService,
+    AgencyProfileService,
   ],
   exports: [
     CountryManagerAssignmentService,
@@ -75,6 +79,7 @@ import { WorkloadService } from './services/workload.service';
     WorkloadService,
     OperationalStatusService,
     WorkforceManagementService,
+    AgencyProfileService,
   ],
 })
 export class SuperAdminModule {}
