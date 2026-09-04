@@ -4,20 +4,12 @@ import {
   AdminListRoomsQueryDto,
   BanUserAdminDto,
   DisableChatAdminDto,
-  LockRoomAdminDto,
   MuteUserAdminDto,
   RemoveParticipantAdminDto,
   ReviewReportAdminDto,
 } from './video-room-admin.dto';
 
 describe('VideoRoomAdminDto Validation', () => {
-  it('should validate valid LockRoomAdminDto', async () => {
-    const dto = new LockRoomAdminDto();
-    dto.isLocked = true;
-    const errors = await validate(dto);
-    expect(errors.length).toBe(0);
-  });
-
   it('should validate valid DisableChatAdminDto', async () => {
     const dto = new DisableChatAdminDto();
     dto.isChatDisabled = true;

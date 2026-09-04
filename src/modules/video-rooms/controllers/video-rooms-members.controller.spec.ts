@@ -23,7 +23,7 @@ describe('VideoRoomMembersController', () => {
     controller = new VideoRoomMembersController(members, sessions);
   });
 
-  it('join delegates with actor, password, and join context (socket/device/ip/sid)', async () => {
+  it('join delegates with actor and join context (socket/device/ip/sid)', async () => {
     await controller.join(
       USER,
       ROOM,
@@ -33,7 +33,7 @@ describe('VideoRoomMembersController', () => {
     expect(members.join).toHaveBeenCalledWith(
       { id: 'u1', roles: [] },
       ROOM,
-      { password: 'pw' },
+      {},
       { socketId: 's1', deviceId: 'd1', platform: 'IOS', ip: '1.2.3.4', sid: 'sid1' },
     );
   });

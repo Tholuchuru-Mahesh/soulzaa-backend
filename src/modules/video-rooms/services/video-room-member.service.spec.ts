@@ -23,8 +23,6 @@ function liveRoom(over: Record<string, unknown> = {}) {
     id: ROOM,
     status: 'LIVE',
     ownerId: OWNER,
-    isLocked: false,
-    passwordHash: null,
     maxViewers: 500,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     ...over,
@@ -34,7 +32,6 @@ function liveRoom(over: Record<string, unknown> = {}) {
 describe('VideoRoomMemberService.join', () => {
   let repo: any;
   let moderation: any;
-  let passwords: any;
   let state: any;
   let sessions: any;
   let presence: any;
@@ -72,7 +69,6 @@ describe('VideoRoomMemberService.join', () => {
       getActiveBroadcastSession: jest.fn().mockResolvedValue(null),
     };
     moderation = { isActivelyBlocked: jest.fn().mockResolvedValue(false) };
-    passwords = { verify: jest.fn().mockResolvedValue(false) };
     state = {
       applyUpdate: jest.fn().mockResolvedValue(undefined),
       getSnapshot: jest.fn().mockResolvedValue({
@@ -139,7 +135,6 @@ describe('VideoRoomMemberService.join', () => {
     service = new VideoRoomMemberService(
       repo,
       moderation,
-      passwords,
       state,
       sessions,
       presence,
@@ -187,29 +182,6 @@ describe('VideoRoomMemberService.join', () => {
       service.join(actor('mod-1', [PlatformRole.MODERATOR]), ROOM, {}, ctx),
     ).resolves.toBeDefined();
     expect(moderation.isActivelyBlocked).not.toHaveBeenCalled();
-  });
-
-  it('throws VIDEO_ROOM_PASSWORD_INVALID on a locked room with a wrong password', async () => {
-    repo.findById.mockResolvedValue(liveRoom({ isLocked: true, passwordHash: 'h' }));
-    passwords.verify.mockResolvedValue(false);
-    await expectCode(
-      service.join(actor(), ROOM, { password: 'nope' }, ctx),
-      ERROR_CODES.VIDEO_ROOM_PASSWORD_INVALID,
-    );
-  });
-
-  // VR-15 — a held ROOM invitation bypasses the private-room password gate.
-  it('lets a user with an active ROOM invitation join a locked room without a password', async () => {
-    repo.findById.mockResolvedValue(liveRoom({ isLocked: true, passwordHash: 'h' }));
-    seats.hasActiveRoomInvitation.mockResolvedValue(true);
-    await expect(service.join(actor(), ROOM, {}, ctx)).resolves.toBeDefined();
-    expect(seats.hasActiveRoomInvitation).toHaveBeenCalledWith(ROOM, 'u1');
-  });
-
-  it('still throws VIDEO_ROOM_PASSWORD_INVALID for a no-password join without a room invitation', async () => {
-    repo.findById.mockResolvedValue(liveRoom({ isLocked: true, passwordHash: 'h' }));
-    seats.hasActiveRoomInvitation.mockResolvedValue(false);
-    await expectCode(service.join(actor(), ROOM, {}, ctx), ERROR_CODES.VIDEO_ROOM_PASSWORD_INVALID);
   });
 
   describe('join — gift-lock gate', () => {
@@ -307,8 +279,8 @@ describe('VideoRoomMemberService.join', () => {
     );
   });
 
-  it('lets the owner bypass the password gate on a locked room', async () => {
-    repo.findById.mockResolvedValue(liveRoom({ isLocked: true, passwordHash: 'h' }));
+  it('lets the owner join their own room', async () => {
+    repo.findById.mockResolvedValue(liveRoom());
     await expect(service.join(actor(OWNER), ROOM, {}, ctx)).resolves.toBeDefined();
     expect(repo.upsertActiveMember).toHaveBeenCalledWith(
       expect.objectContaining({ role: VideoRoomMemberRole.OWNER }),
@@ -397,7 +369,6 @@ describe('VideoRoomMemberService.join', () => {
       recordingService = new VideoRoomMemberService(
         repo,
         moderation,
-        passwords,
         state,
         sessions,
         presence,

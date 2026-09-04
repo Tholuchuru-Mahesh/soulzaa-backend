@@ -75,13 +75,8 @@ describe('VideoRoomViewerService', () => {
     member.join.mockResolvedValue({ counts: { viewers: 9 } });
     audience.audienceCount.mockResolvedValue(7);
     const actor = { id: 'u1', roles: [] };
-    const out = await svc.joinAsViewer(actor, 'r1', { password: undefined }, { socketId: 's1' });
-    expect(member.join).toHaveBeenCalledWith(
-      actor,
-      'r1',
-      { password: undefined },
-      { socketId: 's1' },
-    );
+    const out = await svc.joinAsViewer(actor, 'r1', {}, { socketId: 's1' });
+    expect(member.join).toHaveBeenCalledWith(actor, 'r1', {}, { socketId: 's1' });
     expect(audience.audienceCount).toHaveBeenCalledWith('r1');
     expect(events.emitViewerJoined).toHaveBeenCalledWith({
       roomId: 'r1',

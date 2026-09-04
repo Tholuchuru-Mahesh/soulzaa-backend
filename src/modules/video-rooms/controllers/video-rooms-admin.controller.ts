@@ -23,7 +23,6 @@ import {
   AdminListRoomsQueryDto,
   BanUserAdminDto,
   DisableChatAdminDto,
-  LockRoomAdminDto,
   MuteUserAdminDto,
   RemoveParticipantAdminDto,
   ReviewReportAdminDto,
@@ -94,17 +93,6 @@ export class VideoRoomsAdminController {
   async end(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     await this.adminService.end(this.actor(user), id);
     return { ended: true };
-  }
-
-  @Post(':id/lock')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Lock or unlock a video room' })
-  async lock(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id', ParseUuidPipe) id: string,
-    @Body() dto: LockRoomAdminDto,
-  ) {
-    return this.adminService.setLock(this.actor(user), id, dto.isLocked);
   }
 
   @Post(':id/remove-owner')
@@ -604,7 +592,7 @@ export class VideoRoomsAdminController {
         language: room.language || 'English',
         country: owner?.country || 'N/A',
         status: room.status,
-        isLocked: room.isLocked,
+        isLocked: room.giftLockEnabled,
         isSlowMode: (settings?.slowModeSeconds || 0) > 0,
         slowModeSeconds: settings?.slowModeSeconds || 0,
       },

@@ -1,6 +1,5 @@
 export * from './create-video-room.dto';
 export * from './update-video-room.dto';
-export * from './lock-video-room.dto';
 export * from './list-video-rooms.dto';
 export * from './search-video-rooms.dto';
 export * from './update-video-room-settings.dto';

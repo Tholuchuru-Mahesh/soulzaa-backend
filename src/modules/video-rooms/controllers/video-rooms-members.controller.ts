@@ -71,12 +71,7 @@ export class VideoRoomMembersController {
     @Body() dto: JoinVideoRoomDto,
     @Ip() ip: string,
   ) {
-    return this.members.join(
-      this.actor(user),
-      roomId,
-      { password: dto.password },
-      this.joinContext(dto, user, ip),
-    );
+    return this.members.join(this.actor(user), roomId, {}, this.joinContext(dto, user, ip));
   }
 
   @Post(':id/leave')

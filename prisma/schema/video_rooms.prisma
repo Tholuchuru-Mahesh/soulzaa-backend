@@ -1,5 +1,4 @@
-/// The canonical video room row. `passwordHash` set ⇒ the room is
-/// password-protected (only meaningful while `isLocked`). `imageKey` is an
+/// The canonical video room row. `imageKey` is an
 /// S3 object key (cover image); the client resolves a URL. `maxParticipants`
 /// caps seat holders (multi-seat video), `maxViewers` caps the audience.
 /// `zegoRoomId` is the ZEGOCLOUD room handle — nullable so the migration
@@ -18,8 +17,6 @@ model VideoRoom {
   categoryId      String?                  @db.Uuid
   language        String?
   visibility      VideoRoomVisibility      @default(PUBLIC)
-  isLocked        Boolean                  @default(false)
-  passwordHash    String?
   isDiscoverable  Boolean                  @default(true)
   maxParticipants Int
   maxViewers      Int

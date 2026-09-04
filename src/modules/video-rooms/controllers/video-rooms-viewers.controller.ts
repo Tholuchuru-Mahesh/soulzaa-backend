@@ -79,12 +79,7 @@ export class VideoRoomViewersController {
     @Body() dto: JoinViewerDto,
     @Ip() ip: string,
   ) {
-    return this.viewer.joinAsViewer(
-      this.actor(user),
-      roomId,
-      { password: dto.password },
-      this.joinContext(dto, user, ip),
-    );
+    return this.viewer.joinAsViewer(this.actor(user), roomId, {}, this.joinContext(dto, user, ip));
   }
 
   @Post(':id/viewer/leave')

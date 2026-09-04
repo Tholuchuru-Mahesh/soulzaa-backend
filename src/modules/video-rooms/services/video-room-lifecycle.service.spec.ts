@@ -23,8 +23,6 @@ function fullRoom(overrides: Record<string, unknown> = {}) {
     country: null,
     tags: [],
     visibility: VideoRoomVisibility.PUBLIC,
-    isLocked: false,
-    passwordHash: null,
     isDiscoverable: true,
     isVerified: false,
     maxParticipants: 12,
@@ -46,7 +44,6 @@ describe('VideoRoomLifecycleService', () => {
   let repo: any;
   let permissions: any;
   let events: any;
-  let passwords: any;
   let locks: any;
   let metrics: any;
   let platformBans: any;
@@ -88,13 +85,11 @@ describe('VideoRoomLifecycleService', () => {
       emitRoomUpdated: jest.fn().mockResolvedValue(undefined),
       emitRoomClosed: jest.fn().mockResolvedValue(undefined),
       emitRoomDeleted: jest.fn().mockResolvedValue(undefined),
-      emitRoomLocked: jest.fn().mockResolvedValue(undefined),
       emitRoomRestored: jest.fn().mockResolvedValue(undefined),
       emitRoomStarted: jest.fn().mockResolvedValue(undefined),
     };
-    passwords = { hash: jest.fn().mockResolvedValue('HASH') };
     locks = { withLock: jest.fn((_key: string, fn: () => unknown) => fn()) };
-    metrics = { incCreated: jest.fn(), incDeleted: jest.fn(), incLocked: jest.fn() };
+    metrics = { incCreated: jest.fn(), incDeleted: jest.fn() };
     platformBans = { assertNotGloballyBanned: jest.fn().mockResolvedValue(undefined) };
     broadBans = { assertNotBroadBanned: jest.fn().mockResolvedValue(undefined) };
     presence = { clearRoom: jest.fn().mockResolvedValue(undefined) };
@@ -119,7 +114,6 @@ describe('VideoRoomLifecycleService', () => {
       repo,
       permissions,
       events,
-      passwords,
       locks,
       config as any,
       metrics,
@@ -154,20 +148,6 @@ describe('VideoRoomLifecycleService', () => {
       expect(events.emitRoomCreated).toHaveBeenCalled();
       expect(metrics.incCreated).toHaveBeenCalled();
       expect(view.id).toBe('r1');
-    });
-
-    it('hashes a supplied password and locks the room', async () => {
-      await service.create(actor, { name: 'x', password: 'secret' } as any);
-      expect(passwords.hash).toHaveBeenCalledWith('secret');
-      const data = repo.createRoomTx.mock.calls[0][0];
-      expect(data.isLocked).toBe(true);
-      expect(data.passwordHash).toBe('HASH');
-    });
-
-    it('rejects PASSWORD access policy without a password', async () => {
-      await expect(
-        service.create(actor, { name: 'x', accessPolicy: VideoRoomAccessPolicy.PASSWORD } as any),
-      ).rejects.toMatchObject({ errorCode: ERROR_CODES.VIDEO_ROOM_CONFIG_INVALID });
     });
 
     it('stores an extended access policy in metadata', async () => {
@@ -263,40 +243,6 @@ describe('VideoRoomLifecycleService', () => {
       expect(repo.updateRoom).toHaveBeenCalled();
       const payload = events.emitRoomUpdated.mock.calls[0][0];
       expect(payload.changed).toEqual(expect.arrayContaining(['name', 'description']));
-    });
-  });
-
-  describe('lock / unlock', () => {
-    it('locks with a password and emits locked + counts the metric', async () => {
-      await service.lock(actor, 'r1', { password: 'pw' } as any);
-      expect(permissions.assertPermission).toHaveBeenCalledWith(
-        actor,
-        expect.anything(),
-        VideoRoomPermission.LOCK_ROOM,
-      );
-      const data = repo.updateRoom.mock.calls[0][1];
-      expect(data).toMatchObject({ isLocked: true, passwordHash: 'HASH' });
-      expect(events.emitRoomLocked).toHaveBeenCalledWith(
-        expect.objectContaining({ isLocked: true }),
-      );
-      expect(metrics.incLocked).toHaveBeenCalled();
-    });
-
-    it('rejects locking an already-locked room with no new password', async () => {
-      repo.findById.mockResolvedValue(fullRoom({ isLocked: true, passwordHash: 'OLD' }));
-      await expect(service.lock(actor, 'r1', {} as any)).rejects.toMatchObject({
-        errorCode: ERROR_CODES.VIDEO_ROOM_ALREADY_LOCKED,
-      });
-    });
-
-    it('unlock clears the lock + password and emits locked(false)', async () => {
-      repo.findById.mockResolvedValue(fullRoom({ isLocked: true, passwordHash: 'OLD' }));
-      await service.unlock(actor, 'r1');
-      const data = repo.updateRoom.mock.calls[0][1];
-      expect(data).toMatchObject({ isLocked: false, passwordHash: null });
-      expect(events.emitRoomLocked).toHaveBeenCalledWith(
-        expect.objectContaining({ isLocked: false }),
-      );
     });
   });
 

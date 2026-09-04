@@ -83,8 +83,9 @@ export interface VideoRoomStatisticsView {
 /**
  * The complete client-safe room detail (VR-2). Extends the list `VideoRoomView`
  * fields with the projected `lifecycleState` + `accessPolicy`, the streaming
- * status, and the bundled settings + statistics. Never exposes `passwordHash`,
- * audit, or soft-delete columns.
+ * status, and the bundled settings + statistics. Never exposes audit or
+ * soft-delete columns. `isLocked` mirrors `giftLockEnabled` (the password-lock
+ * feature it originally reflected was removed).
  */
 export interface VideoRoomDetailView {
   id: string;

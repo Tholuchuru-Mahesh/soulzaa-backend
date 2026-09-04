@@ -11,7 +11,7 @@ import {
 function row(
   overrides: Partial<{
     status: VideoRoomStatus;
-    isLocked: boolean;
+    giftLockEnabled: boolean;
     streamingStatus: VideoRoomStreamingStatus;
     deletedAt: Date | null;
     visibility: VideoRoomVisibility;
@@ -20,7 +20,7 @@ function row(
 ) {
   return {
     status: VideoRoomStatus.OFFLINE,
-    isLocked: false,
+    giftLockEnabled: false,
     streamingStatus: VideoRoomStreamingStatus.IDLE,
     deletedAt: null,
     visibility: VideoRoomVisibility.PUBLIC,
@@ -58,10 +58,10 @@ describe('projectLifecycleState', () => {
     ).toBe(VideoRoomLifecycleState.PAUSED);
   });
 
-  it('projects a live+locked room as LOCKED', () => {
-    expect(projectLifecycleState(row({ status: VideoRoomStatus.LIVE, isLocked: true }))).toBe(
-      VideoRoomLifecycleState.LOCKED,
-    );
+  it('projects a live+gift-locked room as LOCKED', () => {
+    expect(
+      projectLifecycleState(row({ status: VideoRoomStatus.LIVE, giftLockEnabled: true })),
+    ).toBe(VideoRoomLifecycleState.LOCKED);
   });
 
   it('projects a live room as ACTIVE', () => {
@@ -114,8 +114,11 @@ describe('deriveAccessPolicy', () => {
     ).toBe(VideoRoomAccessPolicy.VIP_ONLY);
   });
 
-  it('derives PASSWORD when locked with no explicit policy', () => {
-    expect(deriveAccessPolicy(row({ isLocked: true }))).toBe(VideoRoomAccessPolicy.PASSWORD);
+  it('derives PUBLIC/PRIVATE from visibility alone, ignoring gift-lock', () => {
+    expect(deriveAccessPolicy(row({ giftLockEnabled: true }))).toBe(VideoRoomAccessPolicy.PUBLIC);
+    expect(
+      deriveAccessPolicy(row({ giftLockEnabled: true, visibility: VideoRoomVisibility.PRIVATE })),
+    ).toBe(VideoRoomAccessPolicy.PRIVATE);
   });
 
   it('derives PRIVATE from a private room', () => {

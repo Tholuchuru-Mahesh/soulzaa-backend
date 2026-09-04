@@ -1,14 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { VideoRoomReportStatus, VideoRoomStatus } from '@prisma/client';
-import { Type } from 'class-transformer';
 import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
-
-export class LockRoomAdminDto {
-  @ApiProperty({ description: 'Lock or unlock status for the video room' })
-  @IsBoolean()
-  isLocked!: boolean;
-}
 
 export class DisableChatAdminDto {
   @ApiProperty({ description: 'Disable or enable chat mode in the video room' })
@@ -74,12 +67,6 @@ export class AdminListRoomsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsUUID()
   ownerId?: string;
-
-  @ApiPropertyOptional({ description: 'Filter by locked state' })
-  @IsOptional()
-  @Type(() => Boolean)
-  @IsBoolean()
-  isLocked?: boolean;
 
   @ApiPropertyOptional({ description: 'Search term for room name' })
   @IsOptional()

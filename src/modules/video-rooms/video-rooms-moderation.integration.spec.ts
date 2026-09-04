@@ -78,14 +78,12 @@ import { VideoRoomSessionService } from './services/video-room-session.service';
 const ROOM = 'room-1';
 const OWNER = 'owner-1';
 
-/** A room shape satisfying both `VideoRoomModerationService.requireRoom` (id/ownerId) and `VideoRoomMemberService.join` (status/isLocked/passwordHash/maxViewers). */
+/** A room shape satisfying both `VideoRoomModerationService.requireRoom` (id/ownerId) and `VideoRoomMemberService.join` (status/maxViewers). */
 function liveRoom(over: Record<string, unknown> = {}) {
   return {
     id: ROOM,
     ownerId: OWNER,
     status: 'LIVE',
-    isLocked: false,
-    passwordHash: null,
     maxViewers: 500,
     ...over,
   };
@@ -279,7 +277,6 @@ describe('VR-16 moderation engine (behavior)', () => {
     memberService = new VideoRoomMemberService(
       rooms as never,
       moderationRepo,
-      { verify: jest.fn().mockResolvedValue(false) } as never,
       {
         applyUpdate: jest.fn().mockResolvedValue(undefined),
         getSnapshot: jest.fn().mockResolvedValue({

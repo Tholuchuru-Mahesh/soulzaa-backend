@@ -31,7 +31,6 @@ export const VIDEO_ROOM_SOCKET_EVENTS = {
   SETTINGS_UPDATED: 'video_room.settings_updated',
   DELETED: 'video_room.deleted',
   CLOSED: 'video_room.closed',
-  LOCKED: 'video_room.locked',
   GIFT_LOCK_ENABLED: 'video_room.gift_lock_enabled',
   GIFT_LOCK_DISABLED: 'video_room.gift_lock_disabled',
   OWNERSHIP_TRANSFERRED: 'video_room.ownership_transferred',
@@ -146,9 +145,6 @@ export const VIDEO_ROOM_PASSWORD_MIN = 4;
 export const VIDEO_ROOM_PASSWORD_MAX = 64;
 export const VIDEO_ROOM_MIN_PARTICIPANTS = 2;
 export const VIDEO_ROOM_MIN_VIEWERS = 0;
-
-/** bcrypt cost factor for room passwords (independent of account password rounds). */
-export const VIDEO_ROOM_PASSWORD_SALT_ROUNDS = 10;
 
 // ---- Redis keys (single-key ops → Cluster-safe; hash-tag the room/socket id) ----
 

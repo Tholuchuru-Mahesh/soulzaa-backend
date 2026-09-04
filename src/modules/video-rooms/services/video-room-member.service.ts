@@ -33,7 +33,6 @@ import { VideoRoomsMetrics } from '../video-rooms.metrics';
 import { derivePresenceState } from './video-room-presence-state';
 import { VideoRoomEventService } from './video-room-event.service';
 import { VideoRoomIdentityCache } from './video-room-identity-cache.service';
-import { VideoRoomPasswordService } from './video-room-password.service';
 import { VideoRoomPresenceService } from './video-room-presence.service';
 import { VideoRoomQueryService } from './video-room-query.service';
 import { VideoRoomSessionService } from './video-room-session.service';
@@ -90,7 +89,6 @@ export class VideoRoomMemberService {
   constructor(
     private readonly repo: VideoRoomsRepository,
     private readonly moderation: VideoRoomModerationRepository,
-    private readonly passwords: VideoRoomPasswordService,
     private readonly state: VideoRoomStateService,
     private readonly sessions: VideoRoomSessionService,
     private readonly presence: VideoRoomPresenceService,
@@ -123,7 +121,7 @@ export class VideoRoomMemberService {
   async join(
     actor: RoomActor,
     roomId: string,
-    dto: { password?: string },
+    dto: Record<string, never>,
     ctx: JoinContext,
   ): Promise<RoomSyncPayload> {
     return this.locks.withLock(videoRoomJoinLockKey(roomId), async () => {
@@ -157,22 +155,6 @@ export class VideoRoomMemberService {
             'You are blocked from this room.',
             HttpStatus.FORBIDDEN,
           );
-        }
-      }
-
-      if (room.isLocked && room.passwordHash && !alreadyMember && !privileged) {
-        const invited = await this.seats.hasActiveRoomInvitation(roomId, actor.id);
-        if (!invited) {
-          const ok = dto.password
-            ? await this.passwords.verify(dto.password, room.passwordHash)
-            : false;
-          if (!ok) {
-            throw this.err(
-              ERROR_CODES.VIDEO_ROOM_PASSWORD_INVALID,
-              'Incorrect room password.',
-              HttpStatus.BAD_REQUEST,
-            );
-          }
         }
       }
 
@@ -298,7 +280,7 @@ export class VideoRoomMemberService {
       const liveCount = await this.presence.viewerCount(roomId);
       await this.state.applyUpdate(roomId, (cur) => ({
         status: room.status,
-        isLocked: room.isLocked,
+        isLocked: room.giftLockEnabled,
         viewerCount: liveCount,
         onlineCount: Math.max(0, liveCount - cur.reconnectingCount),
       }));

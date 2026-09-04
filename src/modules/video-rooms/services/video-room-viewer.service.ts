@@ -50,7 +50,7 @@ export class VideoRoomViewerService {
   async joinAsViewer(
     actor: RoomActor,
     roomId: string,
-    dto: { password?: string },
+    dto: Record<string, never>,
     ctx: JoinContext,
   ): Promise<RoomSyncPayload> {
     const payload = await this.members.join(actor, roomId, dto, ctx);

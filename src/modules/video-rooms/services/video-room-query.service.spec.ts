@@ -21,7 +21,6 @@ function fullRoom(overrides: Record<string, unknown> = {}) {
     country: null,
     tags: [],
     visibility: VideoRoomVisibility.PUBLIC,
-    isLocked: false,
     isDiscoverable: true,
     isVerified: false,
     maxParticipants: 12,
@@ -83,13 +82,13 @@ describe('VideoRoomQueryService', () => {
 
     it('maps + caches a found room with projected lifecycleState + accessPolicy', async () => {
       repo.findDetail.mockResolvedValue({
-        room: fullRoom({ status: VideoRoomStatus.LIVE, isLocked: true }),
+        room: fullRoom({ status: VideoRoomStatus.LIVE, giftLockEnabled: true }),
         settings: null,
         statistics: null,
       });
       const view = await service.getDetail('r1');
       expect(view.lifecycleState).toBe(VideoRoomLifecycleState.LOCKED);
-      expect(view.accessPolicy).toBe(VideoRoomAccessPolicy.PASSWORD);
+      expect(view.accessPolicy).toBe(VideoRoomAccessPolicy.PUBLIC);
       expect(repo.setCachedSnapshot).toHaveBeenCalledWith('r1', view, 60);
     });
 

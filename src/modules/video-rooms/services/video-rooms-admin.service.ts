@@ -47,7 +47,7 @@ export class VideoRoomsAdminService {
       take: 1000,
     });
     const liveRooms = allRooms.filter((r) => r.status === VideoRoomStatus.LIVE).length;
-    const lockedRooms = allRooms.filter((r) => r.isLocked).length;
+    const lockedRooms = allRooms.filter((r) => r.giftLockEnabled).length;
     const endedRooms = allRooms.filter((r) => r.status === VideoRoomStatus.ENDED).length;
 
     const snapshots = await this.analyticsProjectionRepository.getAnalyticsSnapshots(
@@ -84,7 +84,6 @@ export class VideoRoomsAdminService {
       take: query.limit,
       status: query.status,
       ownerId: query.ownerId,
-      isLocked: query.isLocked,
       search: query.search,
     });
   }
@@ -132,25 +131,6 @@ export class VideoRoomsAdminService {
       roomId,
       actorId: actor.id,
     });
-  }
-
-  async setLock(actor: RoomActor, roomId: string, isLocked: boolean) {
-    const updated = await this.roomsRepository.updateRoom(roomId, { isLocked }, actor.id);
-    await this.adminRepository.createRoomLog({
-      roomId,
-      action: isLocked ? 'ADMIN_LOCK_ROOM' : 'ADMIN_UNLOCK_ROOM',
-      actorId: actor.id,
-      details: { isLocked },
-    });
-
-    await this.eventService.emitRoomLocked({ roomId, isLocked, actorId: actor.id });
-    this.sockets.emitToNamespaceRoom(VIDEO_ROOM_NAMESPACE, roomId, 'admin:room_locked', {
-      roomId,
-      isLocked,
-      actorId: actor.id,
-    });
-
-    return updated;
   }
 
   async removeOwner(actor: RoomActor, roomId: string): Promise<void> {

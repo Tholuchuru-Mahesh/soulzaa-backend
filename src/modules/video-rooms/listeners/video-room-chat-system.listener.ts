@@ -21,9 +21,9 @@ const SEAT_RESOLUTION_KINDS: Record<string, string> = {
  * Unmapped cases emit nothing at all, which is always safer than emitting the
  * wrong thing.
  *
- * 11 distinct bus events are subscribed; two of them (LOCKED, REQUEST_RESOLVED)
- * each fan out to more than one message kind depending on their payload, which is
- * how 11 subscriptions cover all 13 `SYSTEM_MESSAGE_POLICY` kinds.
+ * 10 distinct bus events are subscribed; REQUEST_RESOLVED fans out to more than
+ * one message kind depending on its payload, which is how 10 subscriptions cover
+ * all 11 `SYSTEM_MESSAGE_POLICY` kinds.
  */
 @Injectable()
 export class VideoRoomChatSystemListener implements OnModuleInit {
@@ -44,13 +44,6 @@ export class VideoRoomChatSystemListener implements OnModuleInit {
     this.simple(VIDEO_ROOM_EVENTS.CLOSED, 'ROOM_CLOSED');
     this.simple(VIDEO_ROOM_ROLE_EVENTS.OWNERSHIP_TRANSFERRED, 'OWNER_CHANGED');
     this.simple(VIDEO_ROOM_SEAT_EVENTS.INVITATION_SENT, 'SEAT_INVITATION');
-
-    // One bus event carries both lock states — split it, or the room is told
-    // the opposite of what happened.
-    this.bus.subscribe(VIDEO_ROOM_EVENTS.LOCKED, (event) => {
-      const payload = event.payload as { roomId: string; isLocked: boolean };
-      this.dispatch(payload.isLocked ? 'ROOM_LOCKED' : 'ROOM_UNLOCKED', payload.roomId, payload);
-    });
 
     this.bus.subscribe(VIDEO_ROOM_SEAT_EVENTS.REQUEST_RESOLVED, (event) => {
       const payload = event.payload as { roomId: string; status: string } & Record<string, unknown>;

@@ -22,7 +22,6 @@ export const VIDEO_ROOM_EVENTS = {
   UPDATED: 'video_room.updated',
   SETTINGS_UPDATED: 'video_room.settings_updated',
   DELETED: 'video_room.deleted',
-  LOCKED: 'video_room.locked',
   GIFT_LOCK_ENABLED: 'video_room.gift_lock_enabled',
   GIFT_LOCK_DISABLED: 'video_room.gift_lock_disabled',
   RESTORED: 'video_room.restored',
@@ -112,15 +111,6 @@ export class RoomDeletedEvent extends DomainEvent<{
   ownerId: string;
 }> {
   readonly name = VIDEO_ROOM_EVENTS.DELETED;
-}
-
-/** A room's lock state changed (VR-2). `isLocked` is the new value. */
-export class RoomLockedEvent extends DomainEvent<{
-  roomId: string;
-  actorId: string;
-  isLocked: boolean;
-}> {
-  readonly name = VIDEO_ROOM_EVENTS.LOCKED;
 }
 
 /** A room's gift-lock was enabled with the given required gift (new lock feature). */

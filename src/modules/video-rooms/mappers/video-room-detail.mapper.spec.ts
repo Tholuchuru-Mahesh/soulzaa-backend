@@ -164,7 +164,6 @@ function detailRoom(overrides: Record<string, unknown> = {}) {
     country: null,
     tags: [],
     visibility: VideoRoomVisibility.PUBLIC,
-    isLocked: false,
     isDiscoverable: true,
     isVerified: false,
     maxParticipants: 12,

@@ -32,13 +32,13 @@ describe('VideoRoomsAdminService', () => {
       findById: jest.fn().mockResolvedValue({ id: 'room-1', ownerId: 'owner-1' }),
       softDelete: jest.fn().mockResolvedValue(undefined),
       updateStatus: jest.fn().mockResolvedValue(undefined),
-      updateRoom: jest.fn().mockResolvedValue({ id: 'room-1', isLocked: true }),
+      updateRoom: jest.fn().mockResolvedValue({ id: 'room-1' }),
       updateSettings: jest.fn().mockResolvedValue({ roomId: 'room-1', isChatMuted: true }),
     };
 
     adminRepoMock = {
       listRooms: jest.fn().mockResolvedValue({
-        items: [{ id: 'room-1', status: VideoRoomStatus.LIVE, isLocked: false }],
+        items: [{ id: 'room-1', status: VideoRoomStatus.LIVE, giftLockEnabled: false }],
         total: 1,
       }),
       getRoomDetail: jest.fn().mockResolvedValue({ id: 'room-1' }),
@@ -58,7 +58,6 @@ describe('VideoRoomsAdminService', () => {
 
     eventServiceMock = {
       emitRoomClosed: jest.fn().mockResolvedValue(undefined),
-      emitRoomLocked: jest.fn().mockResolvedValue(undefined),
       emitRoomDeleted: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -134,13 +133,5 @@ describe('VideoRoomsAdminService', () => {
     expect(roomsRepoMock.updateStatus).toHaveBeenCalled();
     expect(eventServiceMock.emitRoomClosed).toHaveBeenCalled();
     expect(socketsMock.emitToNamespaceRoom).toHaveBeenCalled();
-  });
-
-  it('should lock room and emit event and socket message', async () => {
-    const res = await service.setLock(actor, 'room-1', true);
-    expect(roomsRepoMock.updateRoom).toHaveBeenCalledWith('room-1', { isLocked: true }, 'admin-1');
-    expect(eventServiceMock.emitRoomLocked).toHaveBeenCalled();
-    expect(socketsMock.emitToNamespaceRoom).toHaveBeenCalled();
-    expect(res).toBeDefined();
   });
 });

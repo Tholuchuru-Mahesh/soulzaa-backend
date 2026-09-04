@@ -7,7 +7,6 @@ export interface AdminListRoomsParams {
   take?: number;
   status?: VideoRoomStatus;
   ownerId?: string;
-  isLocked?: boolean;
   search?: string;
 }
 
@@ -23,7 +22,6 @@ export class VideoRoomsAdminRepository {
       deletedAt: null,
       ...(params.status ? { status: params.status } : {}),
       ...(params.ownerId ? { ownerId: params.ownerId } : {}),
-      ...(params.isLocked !== undefined ? { isLocked: params.isLocked } : {}),
       ...(params.search
         ? {
             name: { contains: params.search, mode: 'insensitive' as const },

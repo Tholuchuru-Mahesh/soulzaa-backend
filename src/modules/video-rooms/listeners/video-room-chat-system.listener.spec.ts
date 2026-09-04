@@ -21,11 +21,11 @@ describe('VideoRoomChatSystemListener', () => {
     listener.onModuleInit();
   });
 
-  it('subscribes to the 11 domain events backing the 13 system-message kinds', () => {
-    // LOCKED and REQUEST_RESOLVED are each a single subscription that fans out
-    // to more than one kind depending on their payload (see the other tests
-    // below), so 11 bus subscriptions cover all 13 SYSTEM_MESSAGE_POLICY kinds.
-    expect(bus.subscribe).toHaveBeenCalledTimes(11);
+  it('subscribes to the 10 domain events backing the 11 system-message kinds', () => {
+    // REQUEST_RESOLVED is a single subscription that fans out to more than one
+    // kind depending on its payload (see the other tests below), so 10 bus
+    // subscriptions cover all 11 SYSTEM_MESSAGE_POLICY kinds.
+    expect(bus.subscribe).toHaveBeenCalledTimes(10);
   });
 
   it('maps a viewer join to VIEWER_JOINED', () => {
@@ -42,17 +42,6 @@ describe('VideoRoomChatSystemListener', () => {
       'r1',
       expect.objectContaining({ newOwnerId: 'u9' }),
     );
-  });
-
-  it('splits the lock event into LOCKED and UNLOCKED by its flag', () => {
-    // One bus event carries both states; emitting "locked" for an unlock
-    // would tell the room the opposite of what happened.
-    handlers['video_room.locked']({ payload: { roomId: 'r1', isLocked: false } });
-    expect(system.emit).toHaveBeenCalledWith('ROOM_UNLOCKED', 'r1', expect.any(Object));
-
-    system.emit.mockClear();
-    handlers['video_room.locked']({ payload: { roomId: 'r1', isLocked: true } });
-    expect(system.emit).toHaveBeenCalledWith('ROOM_LOCKED', 'r1', expect.any(Object));
   });
 
   it('emits nothing for a seat resolution it has no mapping for', () => {

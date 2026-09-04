@@ -2,7 +2,6 @@ export * from './video-rooms.service';
 export * from './video-room-lifecycle.service';
 export * from './video-room-query.service';
 export * from './video-room-permission.service';
-export * from './video-room-password.service';
 export * from './video-room-state.service';
 export * from './video-room-session.service';
 export * from './video-room-presence.service';

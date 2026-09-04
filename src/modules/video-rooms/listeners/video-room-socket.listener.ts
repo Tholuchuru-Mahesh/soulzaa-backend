@@ -12,7 +12,6 @@ import {
   type RoomClosedEvent,
   type RoomCreatedEvent,
   type RoomDeletedEvent,
-  type RoomLockedEvent,
   type RoomRestoredEvent,
   type RoomSettingsUpdatedEvent,
   type RoomSynchronizedEvent,
@@ -72,9 +71,6 @@ export class VideoRoomSocketListener implements OnModuleInit {
     );
     this.bus.subscribe<RoomSettingsUpdatedEvent>(VIDEO_ROOM_EVENTS.SETTINGS_UPDATED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.SETTINGS_UPDATED, e.payload),
-    );
-    this.bus.subscribe<RoomLockedEvent>(VIDEO_ROOM_EVENTS.LOCKED, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.LOCKED, e.payload),
     );
     this.bus.subscribe<GiftLockEnabledEvent>(VIDEO_ROOM_EVENTS.GIFT_LOCK_ENABLED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.GIFT_LOCK_ENABLED, e.payload),

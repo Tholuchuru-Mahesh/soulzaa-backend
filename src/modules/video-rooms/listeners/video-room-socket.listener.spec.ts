@@ -87,18 +87,6 @@ describe('VideoRoomSocketListener', () => {
     );
   });
 
-  it('relays RoomLocked to the locked client event', () => {
-    handlers[VIDEO_ROOM_EVENTS.LOCKED]({
-      payload: { roomId: 'r1', actorId: 'a1', isLocked: true },
-    });
-    expect(sockets.emitToNamespaceRoom).toHaveBeenCalledWith(
-      '/video-room',
-      'r1',
-      VIDEO_ROOM_SOCKET_EVENTS.LOCKED,
-      { roomId: 'r1', actorId: 'a1', isLocked: true },
-    );
-  });
-
   it('relays GiftLockEnabledEvent to video_room.gift_lock_enabled', () => {
     handlers[VIDEO_ROOM_EVENTS.GIFT_LOCK_ENABLED]({
       payload: { roomId: 'room-1', actorId: 'owner-1', giftId: 'gift-1' },

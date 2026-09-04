@@ -19,7 +19,6 @@ import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import { CreateVideoRoomDto } from '../dto/create-video-room.dto';
 import { GiftLockVideoRoomDto } from '../dto/gift-lock-video-room.dto';
 import { ListVideoRoomsDto } from '../dto/list-video-rooms.dto';
-import { LockVideoRoomDto } from '../dto/lock-video-room.dto';
 import { PayEntryFeeDto } from '../dto/pay-entry-fee.dto';
 import { SearchVideoRoomsDto } from '../dto/search-video-rooms.dto';
 import { UpdateVideoRoomSettingsDto } from '../dto/update-video-room-settings.dto';
@@ -180,26 +179,6 @@ export class VideoRoomsController {
   @ApiOperation({ summary: 'Reopen a closed room (ENDED → CREATED)' })
   reopen(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.lifecycle.reopen(this.actor(user), id);
-  }
-
-  @Post(':id/lock')
-  @NotGuest()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Lock a room / set-or-change its password' })
-  lock(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id', ParseUuidPipe) id: string,
-    @Body() dto: LockVideoRoomDto,
-  ) {
-    return this.lifecycle.lock(this.actor(user), id, dto);
-  }
-
-  @Post(':id/unlock')
-  @NotGuest()
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Unlock a room (clears the password)' })
-  unlock(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
-    return this.lifecycle.unlock(this.actor(user), id);
   }
 
   @Post(':id/gift-lock')

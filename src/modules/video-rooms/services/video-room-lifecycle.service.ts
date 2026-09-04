@@ -18,7 +18,6 @@ import { VideoRoomAccessPolicy, isValidStatusTransition } from '../constants/vid
 import { VideoRoomPermission } from '../constants/video-room-permissions';
 import { videoRoomCreateLockKey } from '../constants/video-room.constants';
 import type { CreateVideoRoomDto } from '../dto/create-video-room.dto';
-import type { LockVideoRoomDto } from '../dto/lock-video-room.dto';
 import type { UpdateVideoRoomDto } from '../dto/update-video-room.dto';
 import type { VideoRoomDetailView } from '../entities/video-room-detail.view';
 import type { RoomActor } from '../interfaces/room-actor.interface';
@@ -30,7 +29,6 @@ import {
 } from '../repositories/video-rooms.repository';
 import { VideoRoomsMetrics } from '../video-rooms.metrics';
 import { VideoRoomEventService } from './video-room-event.service';
-import { VideoRoomPasswordService } from './video-room-password.service';
 import { VideoRoomPermissionService } from './video-room-permission.service';
 import { VideoRoomPresenceService } from './video-room-presence.service';
 import { VideoRoomSeatStateService } from './video-room-seat-state.service';
@@ -43,18 +41,11 @@ import { VideoRoomChatCacheService } from './video-room-chat-cache.service';
 
 /** The extended access policies that are persisted in metadata (not base visibility). */
 const METADATA_ACCESS_POLICIES: ReadonlySet<VideoRoomAccessPolicy> = new Set([
-  VideoRoomAccessPolicy.PASSWORD,
   VideoRoomAccessPolicy.INVITE_ONLY,
   VideoRoomAccessPolicy.FOLLOWERS_ONLY,
   VideoRoomAccessPolicy.FRIENDS_ONLY,
   VideoRoomAccessPolicy.VIP_ONLY,
 ]);
-
-/** The lock fields a lock/update change touches. */
-interface LockPatch {
-  isLocked?: boolean;
-  passwordHash?: string | null;
-}
 
 /**
  * The write side of the video-room lifecycle (VR-2, CQRS-ready): create, update,
@@ -75,7 +66,6 @@ export class VideoRoomLifecycleService {
     private readonly repo: VideoRoomsRepository,
     private readonly permissions: VideoRoomPermissionService,
     private readonly events: VideoRoomEventService,
-    private readonly passwords: VideoRoomPasswordService,
     private readonly locks: LockService,
     config: ConfigService,
     private readonly metrics: VideoRoomsMetrics,
@@ -115,17 +105,6 @@ export class VideoRoomLifecycleService {
       //   );
       // }
 
-      const wantsPassword =
-        dto.accessPolicy === VideoRoomAccessPolicy.PASSWORD || dto.password !== undefined;
-      if (wantsPassword && !dto.password) {
-        throw new BusinessException(
-          ERROR_CODES.VIDEO_ROOM_CONFIG_INVALID,
-          'A password is required to create a password-protected room.',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-      const passwordHash = dto.password ? await this.passwords.hash(dto.password) : null;
-
       const isUuid = (id?: string | null): boolean =>
         typeof id === 'string' &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -149,8 +128,6 @@ export class VideoRoomLifecycleService {
           country: dto.country ?? existing.country,
           tags: dto.tags ?? existing.tags ?? [],
           visibility: dto.visibility ?? VideoRoomVisibility.PUBLIC,
-          isLocked: passwordHash !== null,
-          passwordHash: passwordHash ?? (wantsPassword ? existing.passwordHash : null),
           isDiscoverable: dto.isDiscoverable ?? true,
           paidEntryEnabled: paidEntry.paidEntryEnabled,
           defaultEntryFee: paidEntry.defaultEntryFee,
@@ -276,8 +253,6 @@ export class VideoRoomLifecycleService {
         country: dto.country ?? null,
         tags: dto.tags ?? [],
         visibility: dto.visibility ?? VideoRoomVisibility.PUBLIC,
-        isLocked: passwordHash !== null,
-        passwordHash,
         isDiscoverable: dto.isDiscoverable ?? true,
         paidEntryEnabled: newPaidEntry.paidEntryEnabled,
         defaultEntryFee: newPaidEntry.defaultEntryFee,
@@ -376,14 +351,6 @@ export class VideoRoomLifecycleService {
       }
     }
 
-    // Lock can also be toggled through PATCH; delegate to the same rules as lock().
-    const lockPatch = await this.computeLockPatch(room, dto.isLocked, dto.password);
-    const lockChanged = lockPatch.isLocked !== undefined;
-    if (lockChanged) {
-      Object.assign(data, lockPatch);
-      changed.push('isLocked');
-    }
-
     if (
       dto.paidEntryEnabled !== undefined ||
       dto.entryFee !== undefined ||
@@ -403,18 +370,6 @@ export class VideoRoomLifecycleService {
         action: VideoRoomLogAction.IMAGE_UPDATED,
       });
     }
-    if (lockChanged) {
-      await this.repo.appendLog({
-        roomId,
-        actorId: actor.id,
-        action: lockPatch.isLocked ? VideoRoomLogAction.LOCKED : VideoRoomLogAction.UNLOCKED,
-      });
-      await this.events.emitRoomLocked({
-        roomId,
-        actorId: actor.id,
-        isLocked: !!lockPatch.isLocked,
-      });
-    }
     await this.repo.appendLog({
       roomId,
       actorId: actor.id,
@@ -423,42 +378,6 @@ export class VideoRoomLifecycleService {
     });
     const view = await this.refreshCache(roomId);
     await this.events.emitRoomUpdated({ roomId, actorId: actor.id, changed });
-    return view;
-  }
-
-  // ---- Lock / unlock ----
-
-  async lock(
-    actor: RoomActor,
-    roomId: string,
-    dto: LockVideoRoomDto,
-  ): Promise<VideoRoomDetailView> {
-    const room = await this.getRoomOrThrow(roomId);
-    await this.permissions.assertPermission(actor, room, VideoRoomPermission.LOCK_ROOM);
-
-    if (room.isLocked && !dto.password) {
-      throw new BusinessException(
-        ERROR_CODES.VIDEO_ROOM_ALREADY_LOCKED,
-        'This room is already locked.',
-        HttpStatus.CONFLICT,
-      );
-    }
-    const patch = await this.computeLockPatch(room, true, dto.password);
-    await this.repo.updateRoom(roomId, patch, actor.id);
-    await this.repo.appendLog({ roomId, actorId: actor.id, action: VideoRoomLogAction.LOCKED });
-    const view = await this.refreshCache(roomId);
-    await this.events.emitRoomLocked({ roomId, actorId: actor.id, isLocked: true });
-    this.metrics.incLocked();
-    return view;
-  }
-
-  async unlock(actor: RoomActor, roomId: string): Promise<VideoRoomDetailView> {
-    const room = await this.getRoomOrThrow(roomId);
-    await this.permissions.assertPermission(actor, room, VideoRoomPermission.LOCK_ROOM);
-    await this.repo.updateRoom(roomId, { isLocked: false, passwordHash: null }, actor.id);
-    await this.repo.appendLog({ roomId, actorId: actor.id, action: VideoRoomLogAction.UNLOCKED });
-    const view = await this.refreshCache(roomId);
-    await this.events.emitRoomLocked({ roomId, actorId: actor.id, isLocked: false });
     return view;
   }
 
@@ -649,28 +568,6 @@ export class VideoRoomLifecycleService {
         HttpStatus.CONFLICT,
       );
     }
-  }
-
-  /**
-   * Resolve the lock fields for an update/lock. Returns `{}` (no change) when
-   * neither `isLocked` nor `password` is supplied. Locking requires a password —
-   * a new one, or an existing hash on the room.
-   */
-  private async computeLockPatch(
-    room: VideoRoom,
-    isLocked: boolean | undefined,
-    password: string | undefined,
-  ): Promise<LockPatch> {
-    if (isLocked === undefined && password === undefined) return {};
-    if (isLocked === false) return { isLocked: false, passwordHash: null };
-    // isLocked true (explicitly, or implied by supplying a password).
-    if (password) return { isLocked: true, passwordHash: await this.passwords.hash(password) };
-    if (room.passwordHash) return { isLocked: true };
-    throw new BusinessException(
-      ERROR_CODES.VIDEO_ROOM_CONFIG_INVALID,
-      'A password is required to lock this room.',
-      HttpStatus.BAD_REQUEST,
-    );
   }
 
   /** Extended access policies persist in metadata; base PUBLIC/PRIVATE do not. */

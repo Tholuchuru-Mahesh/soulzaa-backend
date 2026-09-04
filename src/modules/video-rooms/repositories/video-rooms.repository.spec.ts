@@ -38,8 +38,6 @@ function createData(overrides: Partial<CreateVideoRoomData> = {}): CreateVideoRo
     country: null,
     tags: [],
     visibility: VideoRoomVisibility.PUBLIC,
-    isLocked: false,
-    passwordHash: null,
     isDiscoverable: true,
     maxParticipants: 12,
     maxViewers: 500,

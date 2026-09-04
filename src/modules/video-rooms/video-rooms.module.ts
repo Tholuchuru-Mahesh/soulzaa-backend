@@ -130,7 +130,6 @@ import { VideoRoomMediaStateService } from './services/video-room-media-state.se
 import { VideoRoomMediaService } from './services/video-room-media.service';
 import { VideoRoomMemberService } from './services/video-room-member.service';
 import { VideoRoomMentionResolver } from './services/video-room-mention-resolver.service';
-import { VideoRoomPasswordService } from './services/video-room-password.service';
 import { VideoRoomPermissionService } from './services/video-room-permission.service';
 import { VideoRoomPresenceService } from './services/video-room-presence.service';
 import { VideoRoomPkInvitationService } from './services/video-room-pk-invitation.service';
@@ -333,11 +332,10 @@ import { ModeratorWarningModule } from 'src/modules/moderator-warning/moderator-
     VideoRoomReferenceRepository,
     VideoRoomReferenceSeederService,
     VideoRoomsService,
-    // VR-2 lifecycle (CQRS-ready command + query split, RBAC gate, password hashing).
+    // VR-2 lifecycle (CQRS-ready command + query split, RBAC gate).
     VideoRoomLifecycleService,
     VideoRoomQueryService,
     VideoRoomPermissionService,
-    VideoRoomPasswordService,
     VideoRoomStateService,
     VideoRoomSessionService,
     VideoRoomPresenceService,

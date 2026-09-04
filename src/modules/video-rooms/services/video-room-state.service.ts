@@ -79,7 +79,7 @@ export class VideoRoomStateService implements IRoomStateManager {
       onlineCount: 0,
       reconnectingCount: 0,
       idleCount: 0,
-      isLocked: room.isLocked,
+      isLocked: room.giftLockEnabled,
       updatedAt: new Date().toISOString(),
     };
     await this.cache.set(videoRoomStateKey(roomId), snapshot, this.stateTtl);

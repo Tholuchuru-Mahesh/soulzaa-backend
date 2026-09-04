@@ -83,7 +83,7 @@ export interface SearchRoomsParams {
   ownerId?: string;
 }
 
-/** New-room persistence input (already validated + password-hashed by the service). */
+/** New-room persistence input (already validated by the service). */
 export interface CreateVideoRoomData {
   ownerId: string;
   name: string;
@@ -94,8 +94,6 @@ export interface CreateVideoRoomData {
   country: string | null;
   tags: string[];
   visibility: VideoRoomVisibility;
-  isLocked: boolean;
-  passwordHash: string | null;
   isDiscoverable: boolean;
   maxParticipants: number;
   maxViewers: number;
@@ -124,8 +122,6 @@ export interface UpdateVideoRoomData {
   country?: string | null;
   tags?: string[];
   visibility?: VideoRoomVisibility;
-  isLocked?: boolean;
-  passwordHash?: string | null;
   isDiscoverable?: boolean;
   maxParticipants?: number;
   maxViewers?: number;
@@ -451,8 +447,6 @@ export class VideoRoomsRepository {
           country: data.country,
           tags: data.tags,
           visibility: data.visibility,
-          isLocked: data.isLocked,
-          passwordHash: data.passwordHash,
           isDiscoverable: data.isDiscoverable,
           paidEntryEnabled: data.paidEntryEnabled ?? false,
           defaultEntryFee:

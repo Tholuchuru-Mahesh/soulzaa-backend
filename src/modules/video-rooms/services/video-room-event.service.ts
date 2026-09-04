@@ -8,7 +8,6 @@ import {
   RoomClosedEvent,
   RoomCreatedEvent,
   RoomDeletedEvent,
-  RoomLockedEvent,
   RoomRestoredEvent,
   RoomStartedEvent,
   RoomSynchronizedEvent,
@@ -55,10 +54,6 @@ export class VideoRoomEventService {
 
   emitRoomDeleted(payload: RoomDeletedEvent['payload']): Promise<void> {
     return this.bus.publish(new RoomDeletedEvent(payload));
-  }
-
-  emitRoomLocked(payload: RoomLockedEvent['payload']): Promise<void> {
-    return this.bus.publish(new RoomLockedEvent(payload));
   }
 
   emitRoomRestored(payload: RoomRestoredEvent['payload']): Promise<void> {

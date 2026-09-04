@@ -19,8 +19,6 @@ describe('VideoRoomsController', () => {
       activate: jest.fn().mockResolvedValue({ id: 'r1' }),
       close: jest.fn().mockResolvedValue({ id: 'r1' }),
       reopen: jest.fn().mockResolvedValue({ id: 'r1' }),
-      lock: jest.fn().mockResolvedValue({ id: 'r1' }),
-      unlock: jest.fn().mockResolvedValue({ id: 'r1' }),
       restore: jest.fn().mockResolvedValue({ id: 'r1' }),
     };
     query = {
@@ -102,22 +100,15 @@ describe('VideoRoomsController', () => {
     expect(res).toEqual({ deleted: true });
   });
 
-  it('activate / close / reopen / unlock / restore forward actor + id', async () => {
+  it('activate / close / reopen / restore forward actor + id', async () => {
     await controller.activate(user, 'r1');
     await controller.close(user, 'r1');
     await controller.reopen(user, 'r1');
-    await controller.unlock(user, 'r1');
     await controller.restore(user, 'r1');
     expect(lifecycle.activate).toHaveBeenCalledWith(expectedActor, 'r1');
     expect(lifecycle.close).toHaveBeenCalledWith(expectedActor, 'r1');
     expect(lifecycle.reopen).toHaveBeenCalledWith(expectedActor, 'r1');
-    expect(lifecycle.unlock).toHaveBeenCalledWith(expectedActor, 'r1');
     expect(lifecycle.restore).toHaveBeenCalledWith(expectedActor, 'r1');
-  });
-
-  it('lock forwards actor + id + body', async () => {
-    await controller.lock(user, 'r1', { password: 'pw' } as any);
-    expect(lifecycle.lock).toHaveBeenCalledWith(expectedActor, 'r1', { password: 'pw' });
   });
 
   it('enableGiftLock / disableGiftLock forward actor + id (+ dto for enable)', async () => {

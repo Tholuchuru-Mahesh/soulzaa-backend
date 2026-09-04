@@ -2,8 +2,10 @@ import type { VideoRoomStatus, VideoRoomVisibility } from '@prisma/client';
 
 /**
  * The client-safe projection of a video room. Excludes internal columns
- * (passwordHash, audit fields, soft-delete). Returned by read endpoints in later
+ * (audit fields, soft-delete). Returned by read endpoints in later
  * phases; defined in VR-0 so the API shape is stable from the start.
+ * `isLocked` reflects `giftLockEnabled` (the password-lock feature it
+ * originally mirrored was removed).
  */
 export interface VideoRoomView {
   id: string;

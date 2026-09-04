@@ -69,7 +69,7 @@ export class VideoRoomSystemMessageService {
    *
    * A subject that cannot be resolved yields the neutral word rather than a
    * dangling `{name}` or an invented identity. Templates with no placeholder
-   * (`ROOM_LOCKED`, `ROOM_CLOSED`, …) skip all of this — including the lookup.
+   * (`ROOM_CLOSED`, `OWNER_CHANGED`, …) skip all of this — including the lookup.
    */
   private async render(template: string, data: Record<string, unknown>): Promise<string> {
     if (!template.includes('{name}')) return template;

@@ -56,7 +56,7 @@ describe('VideoRoomStateService', () => {
 
   it('applyUpdate restores from the durable record when no snapshot is cached', async () => {
     cache.get.mockResolvedValue(null);
-    repo.findById.mockResolvedValue({ id: 'r1', status: 'LIVE', isLocked: true });
+    repo.findById.mockResolvedValue({ id: 'r1', status: 'LIVE', giftLockEnabled: true });
 
     const next = await service.applyUpdate('r1', () => ({ participantCount: 5 }));
 
@@ -74,7 +74,7 @@ describe('VideoRoomStateService', () => {
   });
 
   it('restore rebuilds a versioned snapshot from the durable room row', async () => {
-    repo.findById.mockResolvedValue({ id: 'r1', status: 'OFFLINE', isLocked: false });
+    repo.findById.mockResolvedValue({ id: 'r1', status: 'OFFLINE', giftLockEnabled: false });
 
     const snap = await service.restore('r1');
 

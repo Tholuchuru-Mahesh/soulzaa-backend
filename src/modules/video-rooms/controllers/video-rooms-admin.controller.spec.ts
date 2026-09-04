@@ -23,7 +23,6 @@ describe('VideoRoomsAdminController', () => {
       getRoomDetail: jest.fn().mockResolvedValue({ id: 'room-1' }),
       remove: jest.fn().mockResolvedValue(undefined),
       end: jest.fn().mockResolvedValue(undefined),
-      setLock: jest.fn().mockResolvedValue({ id: 'room-1', isLocked: true }),
       removeOwner: jest.fn().mockResolvedValue(undefined),
       removeParticipant: jest.fn().mockResolvedValue(undefined),
       disableChat: jest.fn().mockResolvedValue(undefined),
@@ -98,14 +97,6 @@ describe('VideoRoomsAdminController', () => {
     const res = await controller.end(user, '123e4567-e89b-12d3-a456-426614174000');
     expect(adminServiceMock.end).toHaveBeenCalled();
     expect(res.ended).toBe(true);
-  });
-
-  it('should lock room', async () => {
-    const res = await controller.lock(user, '123e4567-e89b-12d3-a456-426614174000', {
-      isLocked: true,
-    });
-    expect(adminServiceMock.setLock).toHaveBeenCalled();
-    expect(res).toBeDefined();
   });
 
   it('should ban user', async () => {
