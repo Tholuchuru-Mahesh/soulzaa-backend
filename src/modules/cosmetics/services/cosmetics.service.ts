@@ -67,11 +67,14 @@ export class CosmeticsService implements ICosmeticsService {
   async listActive(type?: CosmeticType): Promise<Cosmetic[]> {
     const cosmetics = await this.repo.listActive(type);
     return Promise.all(
-      cosmetics.map(async (c) => ({
-        ...c,
-        mediaUrl: await this.media.resolve(c.mediaUrl),
-        thumbnailUrl: await this.media.resolve(c.thumbnailUrl),
-      })),
+      cosmetics.map(async (raw) => {
+        const c = await this.ensureFrameTransparent(raw);
+        return {
+          ...c,
+          mediaUrl: await this.media.resolve(c.mediaUrl),
+          thumbnailUrl: await this.media.resolve(c.thumbnailUrl),
+        };
+      }),
     );
   }
 
@@ -368,11 +371,14 @@ export class CosmeticsService implements ICosmeticsService {
       enabled: q.enabled,
     });
     const resolvedRows = await Promise.all(
-      rows.map(async (c) => ({
-        ...c,
-        mediaUrl: await this.media.resolve(c.mediaUrl),
-        thumbnailUrl: await this.media.resolve(c.thumbnailUrl),
-      })),
+      rows.map(async (raw) => {
+        const c = await this.ensureFrameTransparent(raw);
+        return {
+          ...c,
+          mediaUrl: await this.media.resolve(c.mediaUrl),
+          thumbnailUrl: await this.media.resolve(c.thumbnailUrl),
+        };
+      }),
     );
     return buildPaginated(resolvedRows, total, q.page, q.limit);
   }
@@ -485,39 +491,115 @@ export class CosmeticsService implements ICosmeticsService {
     return { deleted: true };
   }
 
+  private extractS3Key(urlOrKey: string): string {
+    if (!urlOrKey) return '';
+    let clean = urlOrKey.trim();
+    const queryIndex = clean.indexOf('?');
+    if (queryIndex !== -1) {
+      clean = clean.substring(0, queryIndex);
+    }
+    clean = clean.replace(/^https?:\/\/[^/]+(?:\/api)?\/storage\/download\//i, '');
+    clean = clean.replace(/^(?:\/api)?\/storage\/download\//i, '');
+    clean = clean.replace(/^https?:\/\/[^/]+\//i, '');
+    const bucket = process.env.S3_BUCKET || 'soulzaa-media';
+    if (clean.startsWith(`${bucket}/`)) {
+      clean = clean.substring(bucket.length + 1);
+    } else if (clean.startsWith(`/${bucket}/`)) {
+      clean = clean.substring(bucket.length + 2);
+    }
+    return clean.replace(/^\/+/, '');
+  }
+
   private async processFrameMedia(
     mediaUrl: string,
     thumbnailUrl?: string | null,
   ): Promise<{ mediaUrl: string; thumbnailUrl?: string | null }> {
     try {
-      const key = mediaUrl
-        .replace(/^https?:\/\/[^/]+\//, '')
-        .replace(/^\/api\/storage\/download\//, '');
-      const head = await this.s3.headObject(key);
-      if (!head.exists) return { mediaUrl, thumbnailUrl };
+      if (!mediaUrl) return { mediaUrl, thumbnailUrl };
 
-      const buffer = await this.s3.getObjectBuffer(key);
-      if (!buffer || buffer.length === 0) return { mediaUrl, thumbnailUrl };
+      const cleanKey = this.extractS3Key(mediaUrl);
+      let buffer: Buffer | null = null;
+      let contentType = 'image/png';
 
-      const result = await this.frameProcessor.processFrame(
-        buffer,
-        head.contentType ?? 'image/png',
-      );
-      if (!result.isProcessed) return { mediaUrl, thumbnailUrl };
+      const head: { exists: boolean; size: number; contentType?: string } =
+        await this.s3
+          .headObject(cleanKey)
+          .catch(() => ({ exists: false, size: 0, contentType: undefined }));
+      if (head.exists) {
+        buffer = await this.s3.getObjectBuffer(cleanKey);
+        contentType = head.contentType ?? 'image/png';
+      } else if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
+        try {
+          const res = await fetch(mediaUrl);
+          if (res.ok) {
+            const arr = await res.arrayBuffer();
+            buffer = Buffer.from(arr);
+            contentType = res.headers.get('content-type') || 'image/png';
+          }
+        } catch (fetchErr: any) {
+          this.logger.warn(`Could not fetch frame media via HTTP fallback: ${fetchErr?.message}`);
+        }
+      }
+
+      if (!buffer || buffer.length === 0) {
+        this.logger.warn(`Frame media buffer empty or not found for key "${cleanKey}" / "${mediaUrl}"`);
+        return { mediaUrl, thumbnailUrl };
+      }
+
+      const result = await this.frameProcessor.processFrame(buffer, contentType);
+      if (!result.isProcessed) {
+        return { mediaUrl, thumbnailUrl };
+      }
 
       const ext = result.mimeType.includes('svg') ? 'svg' : 'png';
-      const processedKey = `${key.replace(/\.[^/.]+$/, '')}_transparent.${ext}`;
+      const targetBaseKey =
+        cleanKey && !cleanKey.includes('://')
+          ? cleanKey
+          : `cosmetic-assets/frame_${Date.now()}`;
+      const processedKey = `${targetBaseKey.replace(/\.[^/.]+$/, '')}_transparent.${ext}`;
 
       await this.s3.putObject(processedKey, result.buffer, result.mimeType);
+      this.logger.log(`Successfully processed and saved transparent frame to ${processedKey}`);
 
       return {
         mediaUrl: processedKey,
-        thumbnailUrl: thumbnailUrl ?? processedKey,
+        thumbnailUrl:
+          thumbnailUrl && thumbnailUrl !== mediaUrl
+            ? thumbnailUrl
+            : processedKey,
       };
     } catch (err: any) {
       this.logger.error(`Failed to process frame background: ${err?.message ?? err}`);
       return { mediaUrl, thumbnailUrl };
     }
+  }
+
+  private async ensureFrameTransparent(c: Cosmetic): Promise<Cosmetic> {
+    if (
+      c.type === 'FRAME' &&
+      c.mediaUrl &&
+      !c.mediaUrl.includes('_transparent.') &&
+      !c.mediaUrl.startsWith('default_pink') &&
+      !c.mediaUrl.startsWith('neon_') &&
+      !c.mediaUrl.startsWith('royal_')
+    ) {
+      try {
+        const processed = await this.processFrameMedia(c.mediaUrl, c.thumbnailUrl);
+        if (processed.mediaUrl && processed.mediaUrl !== c.mediaUrl) {
+          const updated = await this.prisma.cosmetic.update({
+            where: { id: c.id },
+            data: {
+              mediaUrl: processed.mediaUrl,
+              thumbnailUrl: processed.thumbnailUrl,
+            },
+          });
+          return updated;
+        }
+      } catch (err: any) {
+        this.logger.warn(`Could not backfill transparent frame for ${c.id}: ${err?.message}`);
+      }
+    }
+    return c;
   }
 
   async equipCosmetic(userId: string, cosmeticId: string): Promise<void> {

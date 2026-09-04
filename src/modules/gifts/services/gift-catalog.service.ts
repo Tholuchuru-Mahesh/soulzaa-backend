@@ -1,6 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { MediaUrlResolver } from 'src/infra/storage/media-url.resolver';
+import { FrameProcessorService } from 'src/infra/storage/frame-processor.service';
+import { S3Service } from 'src/infra/storage/s3.service';
 import {
   CreateGiftCategoryDto,
   CreateGiftDto,
@@ -11,10 +13,14 @@ import { GiftAuditService } from './gift-audit.service';
 
 @Injectable()
 export class GiftCatalogService {
+  private readonly logger = new Logger(GiftCatalogService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: GiftAuditService,
     private readonly media: MediaUrlResolver,
+    private readonly frameProcessor: FrameProcessorService,
+    private readonly s3: S3Service,
   ) {}
 
   /**
@@ -110,6 +116,81 @@ export class GiftCatalogService {
     return this.getGiftById(id);
   }
 
+  private extractS3Key(urlOrKey: string): string {
+    if (!urlOrKey) return '';
+    let clean = urlOrKey.trim();
+    const queryIndex = clean.indexOf('?');
+    if (queryIndex !== -1) {
+      clean = clean.substring(0, queryIndex);
+    }
+    clean = clean.replace(/^https?:\/\/[^/]+(?:\/api)?\/storage\/download\//i, '');
+    clean = clean.replace(/^(?:\/api)?\/storage\/download\//i, '');
+    clean = clean.replace(/^https?:\/\/[^/]+\//i, '');
+    const bucket = process.env.S3_BUCKET || 'soulzaa-media';
+    if (clean.startsWith(`${bucket}/`)) {
+      clean = clean.substring(bucket.length + 1);
+    } else if (clean.startsWith(`/${bucket}/`)) {
+      clean = clean.substring(bucket.length + 2);
+    }
+    return clean.replace(/^\/+/, '');
+  }
+
+  private async processFrameMedia(
+    mediaUrl: string,
+  ): Promise<string> {
+    try {
+      if (!mediaUrl) return mediaUrl;
+
+      const cleanKey = this.extractS3Key(mediaUrl);
+      let buffer: Buffer | null = null;
+      let contentType = 'image/png';
+
+      const head: { exists: boolean; size: number; contentType?: string } =
+        await this.s3
+          .headObject(cleanKey)
+          .catch(() => ({ exists: false, size: 0, contentType: undefined }));
+      if (head.exists) {
+        buffer = await this.s3.getObjectBuffer(cleanKey);
+        contentType = head.contentType ?? 'image/png';
+      } else if (mediaUrl.startsWith('http://') || mediaUrl.startsWith('https://')) {
+        try {
+          const res = await fetch(mediaUrl);
+          if (res.ok) {
+            const arr = await res.arrayBuffer();
+            buffer = Buffer.from(arr);
+            contentType = res.headers.get('content-type') || 'image/png';
+          }
+        } catch (fetchErr: any) {
+          this.logger.warn(`Could not fetch gift frame media via HTTP fallback: ${fetchErr?.message}`);
+        }
+      }
+
+      if (!buffer || buffer.length === 0) {
+        return mediaUrl;
+      }
+
+      const result = await this.frameProcessor.processFrame(buffer, contentType);
+      if (!result.isProcessed) {
+        return mediaUrl;
+      }
+
+      const ext = result.mimeType.includes('svg') ? 'svg' : 'png';
+      const targetBaseKey =
+        cleanKey && !cleanKey.includes('://')
+          ? cleanKey
+          : `gift-assets/frame_${Date.now()}`;
+      const processedKey = `${targetBaseKey.replace(/\.[^/.]+$/, '')}_transparent.${ext}`;
+
+      await this.s3.putObject(processedKey, result.buffer, result.mimeType);
+      this.logger.log(`Successfully processed transparent gift frame to ${processedKey}`);
+
+      return processedKey;
+    } catch (err: any) {
+      this.logger.error(`Failed to process gift frame background: ${err?.message ?? err}`);
+      return mediaUrl;
+    }
+  }
+
   /**
    * Create a new catalog gift
    */
@@ -121,6 +202,11 @@ export class GiftCatalogService {
       throw new BadRequestException(`Gift code '${dto.code}' already exists`);
     }
 
+    let finalThumbnail = dto.thumbnailUrl;
+    if (dto.type === 'PROFILE_FRAME' && finalThumbnail) {
+      finalThumbnail = await this.processFrameMedia(finalThumbnail);
+    }
+
     const gift = await this.prisma.gift.create({
       data: {
         code: dto.code,
@@ -130,7 +216,7 @@ export class GiftCatalogService {
         category: dto.category,
         type: dto.type,
         coinValue: dto.coinValue,
-        thumbnailUrl: dto.thumbnailUrl,
+        thumbnailUrl: finalThumbnail,
         animationUrl: dto.animationUrl,
         lottieUrl: dto.lottieUrl,
         svgaUrl: dto.svgaUrl,
@@ -163,6 +249,13 @@ export class GiftCatalogService {
   async updateGift(id: string, dto: UpdateGiftDto, actorId?: string) {
     const gift = await this.getGiftById(id);
 
+    let finalThumbnail = dto.thumbnailUrl;
+    const isFrame = dto.type === 'PROFILE_FRAME' || gift.type === 'PROFILE_FRAME';
+
+    if (isFrame && finalThumbnail) {
+      finalThumbnail = await this.processFrameMedia(finalThumbnail);
+    }
+
     const updated = await this.prisma.gift.update({
       where: { id: gift.id },
       data: {
@@ -172,7 +265,7 @@ export class GiftCatalogService {
         description: dto.description,
         displayName: dto.displayName,
         coinValue: dto.coinValue,
-        thumbnailUrl: dto.thumbnailUrl,
+        thumbnailUrl: finalThumbnail !== undefined ? finalThumbnail : gift.thumbnailUrl,
         animationUrl: dto.animationUrl,
         lottieUrl: dto.lottieUrl,
         svgaUrl: dto.svgaUrl,
