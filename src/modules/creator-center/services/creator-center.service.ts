@@ -304,6 +304,11 @@ export class CreatorCenterService {
           isVideo: true,
           name: bs.title || bs.room?.name,
           imageKey: bs.imageKey || bs.room?.imageKey,
+          paidEntryEnabled: bs.paidEntryEnabled ?? false,
+          entryFee: bs.entryFee ? Number(bs.entryFee) : 0,
+          paidEntrants: bs.totalPaidEntrants ?? 0,
+          entryRevenue: bs.totalEntryRevenue ? Number(bs.totalEntryRevenue) : 0,
+          entryCreatorEarnings: bs.entryCreatorEarnings ? Number(bs.entryCreatorEarnings) : 0,
         } as any;
       } else {
         // Fallback: Check VideoRoom by ID
@@ -585,6 +590,11 @@ export class CreatorCenterService {
         startedAt: session.startedAt,
         endedAt: session.endedAt,
         durationSeconds,
+        paidEntryEnabled: (session as any).paidEntryEnabled ?? false,
+        entryFee: (session as any).entryFee ?? 0,
+        paidEntrants: (session as any).paidEntrants ?? 0,
+        entryRevenue: (session as any).entryRevenue ?? 0,
+        entryCreatorEarnings: (session as any).entryCreatorEarnings ?? 0,
       },
       viewerAnalytics: {
         totalUniqueViewers: uniqueViewers,
@@ -784,6 +794,30 @@ export class CreatorCenterService {
           sessionImageUrl = (await this.media.resolve((session as any).imageKey).catch(() => null)) || sessionImageUrl;
         }
 
+        let entryFeeVal = 0;
+        let paidEntrantsVal = 0;
+        let entryRevenueVal = 0;
+        let entryCreatorEarningsVal = 0;
+
+        if (isVideo && this.prisma) {
+          const bsRow = await (this.prisma as any).videoBroadcastSession.findUnique({
+            where: { id: session.id },
+            select: {
+              entryFee: true,
+              totalPaidEntrants: true,
+              totalEntryRevenue: true,
+              entryCreatorEarnings: true,
+            },
+          }).catch(() => null);
+
+          if (bsRow) {
+            entryFeeVal = bsRow.entryFee ? Number(bsRow.entryFee) : 0;
+            paidEntrantsVal = bsRow.totalPaidEntrants ?? 0;
+            entryRevenueVal = bsRow.totalEntryRevenue ? Number(bsRow.totalEntryRevenue) : 0;
+            entryCreatorEarningsVal = bsRow.entryCreatorEarnings ? Number(bsRow.entryCreatorEarnings) : 0;
+          }
+        }
+
         return {
           sessionId: session.id,
           roomId: session.roomId,
@@ -803,6 +837,10 @@ export class CreatorCenterService {
           creatorEarnings: creatorEarningsVal,
           giftCoins: totalCoins,
           newFollowers,
+          entryFee: entryFeeVal,
+          paidEntrants: paidEntrantsVal,
+          entryRevenue: entryRevenueVal,
+          entryCreatorEarnings: entryCreatorEarningsVal,
         };
       }),
     );

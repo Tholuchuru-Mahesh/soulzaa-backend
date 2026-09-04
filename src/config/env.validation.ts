@@ -305,6 +305,10 @@ export const envSchema = z.object({
   // Viewer-mode audience source (VR-6): 'durable' (member-is-viewer, default) or
   // 'ephemeral' (Redis-only, broadcast-scale — future implementation).
   VIDEO_ROOM_VIEWER_PRESENCE_MODE: z.enum(['durable', 'ephemeral']).default('durable'),
+  // Paid Entry bounds & creator revenue share
+  VIDEO_ROOM_MIN_ENTRY_FEE: z.coerce.number().int().positive().default(1),
+  VIDEO_ROOM_MAX_ENTRY_FEE: z.coerce.number().int().positive().default(1_000_000),
+  VIDEO_ROOM_ENTRY_CREATOR_PERCENTAGE: z.coerce.number().int().min(0).max(100).default(100),
 
   // ---- Video Room media engine (VR-5) ----
   VIDEO_ROOM_MEDIA_HEARTBEAT_TTL_SECONDS: z.coerce.number().int().positive().default(30),

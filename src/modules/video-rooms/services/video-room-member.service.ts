@@ -22,6 +22,7 @@ import { ConnectionType } from '../enums';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import type { VideoRoomSessionRecord } from '../interfaces/room-session-manager.interface';
 import { toVideoRoomMemberView, toVideoRoomSessionView } from '../mappers/video-room-member.mapper';
+import { VideoRoomEntryAccessRepository } from '../repositories/video-room-entry-access.repository';
 import { VideoRoomEventsRepository } from '../repositories/video-room-events.repository';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
 import { VideoRoomReportRepository } from '../repositories/video-room-report.repository';
@@ -100,6 +101,7 @@ export class VideoRoomMemberService {
     config: ConfigService,
     private readonly seats: VideoRoomSeatsRepository,
     private readonly identities: VideoRoomIdentityCache,
+    private readonly entryAccessRepo: VideoRoomEntryAccessRepository,
     @Optional() private readonly performanceStats?: ModeratorPerformanceService,
     @Optional() private readonly investigationRecording?: InvestigationRecordingService,
     @Optional() private readonly reportRepo?: VideoRoomReportRepository,
@@ -167,6 +169,29 @@ export class VideoRoomMemberService {
               ERROR_CODES.VIDEO_ROOM_PASSWORD_INVALID,
               'Incorrect room password.',
               HttpStatus.BAD_REQUEST,
+            );
+          }
+        }
+      }
+
+      // Paid Entry access check for non-privileged, non-moderator members
+      if (!privileged && !isModerator) {
+        const activeSession = await this.repo.getActiveBroadcastSession(roomId);
+        if (
+          activeSession &&
+          activeSession.paidEntryEnabled &&
+          activeSession.entryFee &&
+          activeSession.entryFee > 0n
+        ) {
+          const hasGrantedAccess = await this.entryAccessRepo.hasGrantedAccess(
+            actor.id,
+            activeSession.id,
+          );
+          if (!hasGrantedAccess) {
+            throw this.err(
+              ERROR_CODES.INSUFFICIENT_BALANCE,
+              `This broadcast session requires an entry fee of ${activeSession.entryFee} Gold Coins. Please pay the entry fee before joining.`,
+              HttpStatus.PAYMENT_REQUIRED,
             );
           }
         }

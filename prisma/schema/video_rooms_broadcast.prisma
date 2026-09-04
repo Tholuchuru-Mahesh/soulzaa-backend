@@ -19,13 +19,19 @@ model VideoBroadcastSession {
   peakViewers     Int                         @default(0)
   uniqueViewers   Int                         @default(0)
   totalGifts      Int                         @default(0)
-  totalGiftCoins  BigInt                      @default(0)
-  creatorEarnings BigInt                      @default(0)
-  metadata        Json?
-  createdAt       DateTime                    @default(now())
-  updatedAt       DateTime                    @updatedAt
+  totalGiftCoins        BigInt                      @default(0)
+  creatorEarnings       BigInt                      @default(0)
+  paidEntryEnabled      Boolean                     @default(false)
+  entryFee              BigInt?
+  totalPaidEntrants     Int                         @default(0)
+  totalEntryRevenue     BigInt                      @default(0)
+  entryCreatorEarnings  BigInt                      @default(0)
+  metadata              Json?
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
 
   room            VideoRoom                   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  entryAccesses   VideoRoomEntryAccess[]
 
   @@index([roomId, status])
   @@index([hostId, createdAt])

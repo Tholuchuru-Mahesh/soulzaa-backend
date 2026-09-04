@@ -77,7 +77,7 @@ export class WalletEarningsQueryDto {
 export class HostEarningsDto {
   @ApiProperty() totalEarned!: number;
   @ApiProperty() settlementReady!: number;
-  @ApiProperty({ type: Object }) bySource!: { gifts: number; treasure: number; pk: number };
+  @ApiProperty({ type: Object }) bySource!: { gifts: number; treasure: number; pk: number; entryFee?: number };
 }
 
 /** Admin-triggered reconciliation for one user. */

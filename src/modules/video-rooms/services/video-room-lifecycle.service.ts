@@ -127,6 +127,7 @@ export class VideoRoomLifecycleService {
       const ownedRooms = await this.repo.findByOwnerId(actor.id);
       const existing = ownedRooms.length > 0 ? ownedRooms[0] : null;
       if (existing) {
+        const paidEntry = this.resolvePaidEntry(dto, existing);
         const updateData: UpdateVideoRoomData = {
           name: dto.name,
           description: dto.description ?? null,
@@ -143,6 +144,8 @@ export class VideoRoomLifecycleService {
           isLocked: passwordHash !== null,
           passwordHash: passwordHash ?? (wantsPassword ? existing.passwordHash : null),
           isDiscoverable: dto.isDiscoverable ?? true,
+          paidEntryEnabled: paidEntry.paidEntryEnabled,
+          defaultEntryFee: paidEntry.defaultEntryFee,
           status: VideoRoomStatus.LIVE,
           streamingStatus: VideoRoomStreamingStatus.IDLE,
           endedAt: null,
@@ -169,6 +172,8 @@ export class VideoRoomLifecycleService {
           title: dto.name,
           topic: dto.description,
           imageKey: dto.imageKey,
+          paidEntryEnabled: paidEntry.paidEntryEnabled,
+          entryFee: paidEntry.defaultEntryFee,
         });
 
         // Rooms are one-per-owner, so "create" for an existing owner is really
@@ -205,7 +210,7 @@ export class VideoRoomLifecycleService {
           await this.events.emitRoomUpdated({
             roomId: existing.id,
             actorId: actor.id,
-            changed: ['status', 'name', 'imageKey', 'visibility'],
+            changed: ['status', 'name', 'imageKey', 'visibility', 'paidEntryEnabled'],
           });
         } catch (err) {
           this.logger.warn(
@@ -231,6 +236,7 @@ export class VideoRoomLifecycleService {
         return view;
       }
 
+      const newPaidEntry = this.resolvePaidEntry(dto, null);
       const data: CreateVideoRoomData = {
         ownerId: actor.id,
         name: dto.name,
@@ -244,6 +250,8 @@ export class VideoRoomLifecycleService {
         isLocked: passwordHash !== null,
         passwordHash,
         isDiscoverable: dto.isDiscoverable ?? true,
+        paidEntryEnabled: newPaidEntry.paidEntryEnabled,
+        defaultEntryFee: newPaidEntry.defaultEntryFee,
         maxParticipants: this.clamp(
           dto.maxParticipants,
           this.config.defaultMaxParticipants,
@@ -268,6 +276,8 @@ export class VideoRoomLifecycleService {
         title: dto.name,
         topic: dto.description,
         imageKey: dto.imageKey,
+        paidEntryEnabled: newPaidEntry.paidEntryEnabled,
+        entryFee: newPaidEntry.defaultEntryFee,
       });
       await this.repo.trendingBump(room.id);
       const view = await this.refreshCache(room.id);
@@ -343,6 +353,16 @@ export class VideoRoomLifecycleService {
     if (lockChanged) {
       Object.assign(data, lockPatch);
       changed.push('isLocked');
+    }
+
+    if (
+      dto.paidEntryEnabled !== undefined ||
+      dto.entryFee !== undefined ||
+      dto.defaultEntryFee !== undefined
+    ) {
+      const paidEntry = this.resolvePaidEntry(dto, room);
+      assign('paidEntryEnabled', paidEntry.paidEntryEnabled);
+      assign('defaultEntryFee', paidEntry.defaultEntryFee);
     }
 
     await this.repo.updateRoom(roomId, data, actor.id);
@@ -642,5 +662,57 @@ export class VideoRoomLifecycleService {
       );
     }
     return toVideoRoomDetailView(detail);
+  }
+
+  private resolvePaidEntry(
+    dto: { paidEntryEnabled?: boolean; entryFee?: number; defaultEntryFee?: number },
+    existing?: any,
+  ): { paidEntryEnabled: boolean; defaultEntryFee: bigint | null } {
+    const rawPaidEnabled = dto.paidEntryEnabled !== undefined
+      ? dto.paidEntryEnabled
+      : existing?.paidEntryEnabled ?? false;
+
+    const rawFee = dto.entryFee ?? dto.defaultEntryFee;
+    let finalFee: bigint | null = null;
+
+    if (rawPaidEnabled) {
+      const candidateFee = rawFee !== undefined
+        ? rawFee
+        : existing?.defaultEntryFee !== undefined && existing?.defaultEntryFee !== null
+          ? Number(existing.defaultEntryFee)
+          : null;
+
+      if (candidateFee === null || candidateFee === undefined) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_CONFIG_INVALID,
+          `An entry fee between ${this.config.minEntryFee} and ${this.config.maxEntryFee} Gold Coins is required when Paid Entry is enabled.`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      if (
+        !Number.isInteger(candidateFee) ||
+        candidateFee < this.config.minEntryFee ||
+        candidateFee > this.config.maxEntryFee
+      ) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_CONFIG_INVALID,
+          `Entry fee must be an integer between ${this.config.minEntryFee} and ${this.config.maxEntryFee} Gold Coins.`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+      finalFee = BigInt(candidateFee);
+    } else {
+      if (rawFee !== undefined && rawFee !== null) {
+        finalFee = BigInt(rawFee);
+      } else if (existing?.defaultEntryFee !== undefined && existing?.defaultEntryFee !== null) {
+        finalFee = BigInt(existing.defaultEntryFee);
+      }
+    }
+
+    return {
+      paidEntryEnabled: rawPaidEnabled,
+      defaultEntryFee: finalFee,
+    };
   }
 }

@@ -29,7 +29,6 @@ describe('VideoRoomPkValidationService', () => {
   let config: { get: jest.Mock };
   let members: Record<string, { isActive: boolean; role: VideoRoomMemberRole } | null>;
   let online: Record<string, boolean>;
-  let participantOnline: Record<string, boolean>;
   let mediaConnected: Record<string, boolean>;
   let service: VideoRoomPkValidationService;
 
@@ -49,7 +48,6 @@ describe('VideoRoomPkValidationService', () => {
       u2: { isActive: true, role: VideoRoomMemberRole.PARTICIPANT },
     };
     online = { u1: true, u2: true };
-    participantOnline = {};
     mediaConnected = { u1: true, u2: true };
 
     rooms = {
@@ -81,11 +79,8 @@ describe('VideoRoomPkValidationService', () => {
     });
     permissions = { assertPermission: jest.fn().mockResolvedValue(undefined) };
     presence = {
-      isHost: jest.fn((_roomId: string, userId: string) =>
+      isInRoom: jest.fn((_roomId: string, userId: string) =>
         Promise.resolve(online[userId] ?? false),
-      ),
-      isParticipant: jest.fn((_roomId: string, userId: string) =>
-        Promise.resolve(participantOnline[userId] ?? false),
       ),
     };
     mediaState = {
@@ -154,7 +149,7 @@ describe('VideoRoomPkValidationService', () => {
     await expect(service.assertCanCreate(ACTOR, ROOM_ID, DTO)).rejects.toThrow('forbidden');
     // Gate ordering: no participant reads should happen before authorization passes.
     expect(rooms.getMember).not.toHaveBeenCalled();
-    expect(presence.isHost).not.toHaveBeenCalled();
+    expect(presence.isInRoom).not.toHaveBeenCalled();
     expect(mediaState.getSnapshot).not.toHaveBeenCalled();
     expect(pkRepo.findCurrent).not.toHaveBeenCalled();
   });
@@ -184,13 +179,18 @@ describe('VideoRoomPkValidationService', () => {
     ).toThrow(PKBattleException);
   });
 
-  it('refuses a VIEWER as a participant', async () => {
-    // A VIEWER has no seat and no stream, so it can never be a PK side.
+  it('does not refuse on role alone — seat-taking never updates VideoRoomMember.role', async () => {
+    // `VideoRoomSeatService.seatUser`/`applyOccupy` update the live seat
+    // snapshot and the `videoRoomSeat` row, but never touch
+    // `VideoRoomMember.role` — a real co-host who has been on stage the whole
+    // session still reads back as VIEWER here. Rejecting on that stale role
+    // would refuse every genuine speaker, which is exactly the bug this
+    // covers: gate 8 must pass a VIEWER-role member who is otherwise active,
+    // online (gate 9), and streaming (gate 10).
     members.u2 = { isActive: true, role: VideoRoomMemberRole.VIEWER };
-    await expect(service.assertCanCreate(ACTOR, ROOM_ID, DTO)).rejects.toBeInstanceOf(
-      PKBattleException,
-    );
-    expect(presence.isHost).not.toHaveBeenCalled();
+    await expect(service.assertCanCreate(ACTOR, ROOM_ID, DTO)).resolves.toMatchObject({
+      id: ROOM_ID,
+    });
   });
 
   it('refuses an inactive member as a participant', async () => {
@@ -209,27 +209,17 @@ describe('VideoRoomPkValidationService', () => {
     expect(mediaState.getSnapshot).not.toHaveBeenCalled();
   });
 
-  it('accepts a PARTICIPANT-role contestant tracked only in the participants set', async () => {
-    // Regression for the gate 8/gate 9 contradiction: gate 8 admits PARTICIPANT
-    // role, but hosts and seat-holding participants live in separate Redis
-    // sets. u2 is absent from the hosts set (isHost -> false) and present only
-    // in the participants set (isParticipant -> true) — gate 9 must still pass.
-    online.u2 = false;
-    participantOnline.u2 = true;
+  it('accepts a participant tracked by the generic cross-room presence set', async () => {
+    // Regression: gate 9 used to check `VideoRoomPresenceService`'s
+    // role-scoped host/participant Redis sets, which nothing in the video-room
+    // join or seat flow ever populates (`addHost`/`addParticipant` are never
+    // called) — so that check refused every participant, host included. Gate
+    // 9 now reads the generic `PresenceService.isInRoom`, which `BaseGateway`
+    // populates on every socket connect regardless of room role.
+    online.u2 = true;
     await expect(service.assertCanCreate(ACTOR, ROOM_ID, DTO)).resolves.toMatchObject({
       id: ROOM_ID,
     });
-  });
-
-  it('refuses a participant absent from both the hosts and participants sets', async () => {
-    // Guards against the fix becoming overly permissive: being tracked in
-    // neither Redis set must still fail gate 9.
-    online.u2 = false;
-    participantOnline.u2 = false;
-    await expect(service.assertCanCreate(ACTOR, ROOM_ID, DTO)).rejects.toBeInstanceOf(
-      PKBattleException,
-    );
-    expect(mediaState.getSnapshot).not.toHaveBeenCalled();
   });
 
   it('refuses a participant with no active media', async () => {

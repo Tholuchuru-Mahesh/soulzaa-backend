@@ -99,6 +99,9 @@ export interface VideoRoomDetailView {
   visibility: VideoRoomVisibility;
   accessPolicy: VideoRoomAccessPolicy;
   isLocked: boolean;
+  paidEntryEnabled: boolean;
+  defaultEntryFee: number | null;
+  entryFee?: number | null;
   isDiscoverable: boolean;
   isVerified: boolean;
   maxParticipants: number;

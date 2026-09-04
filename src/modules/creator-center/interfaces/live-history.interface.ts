@@ -23,6 +23,10 @@ export interface LiveHistoryEntryView {
   giftCoins: string;
   newFollowers: number;
   roomType: 'VIDEO' | 'AUDIO';
+  entryFee?: number;
+  paidEntrants?: number;
+  entryRevenue?: number;
+  entryCreatorEarnings?: number;
 }
 
 export interface LiveHistoryTopGifterView {
@@ -54,6 +58,11 @@ export interface LiveHistoryDetailView {
     startedAt: Date;
     endedAt: Date | null;
     durationSeconds: number;
+    paidEntryEnabled?: boolean;
+    entryFee?: number;
+    paidEntrants?: number;
+    entryRevenue?: number;
+    entryCreatorEarnings?: number;
   };
   viewerAnalytics: {
     totalUniqueViewers: number;

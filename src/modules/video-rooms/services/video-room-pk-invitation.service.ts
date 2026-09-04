@@ -73,8 +73,11 @@ export class VideoRoomPkInvitationService {
   async send(battle: PkBattleRef, invitees: PkInviteeInput[], inviterId: string): Promise<void> {
     const { invitationTtlSeconds } = loadVideoRoomPkConfig(this.config);
 
-    for (const raw of invitees) {
-      const { userId, side } = normalizeInvitee(raw);
+    const targetInvitees = invitees
+      .map(normalizeInvitee)
+      .filter((i) => i.userId !== inviterId);
+
+    for (const { userId, side } of targetInvitees) {
       const expiresAt = new Date(Date.now() + invitationTtlSeconds * 1000);
 
       const invitation = await this.repo.create(

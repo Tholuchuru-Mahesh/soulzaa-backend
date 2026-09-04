@@ -208,6 +208,7 @@ enum TransactionType {
   TRANSFER
   GAME_ENTRY
   GAME_REWARD
+  ENTRY_FEE
 }
 
 /// Why a ledger entry was written (drives reporting/reconciliation).
@@ -283,4 +284,10 @@ enum WalletTxnReason {
   GAME_COIN_WIN
   /// Game Coins refunded when a casual game is cancelled.
   GAME_COIN_REFUND
+  /// Gold Coins debited for entering a paid Video Room broadcast session.
+  VIDEO_ROOM_ENTRY_FEE
+  /// Gold Coins refunded if system failed to grant video room entry.
+  VIDEO_ROOM_ENTRY_REFUND
+  /// Diamond/Soul Gems credited to host from video room entry fee.
+  VIDEO_ROOM_ENTRY_EARNING
 }

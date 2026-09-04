@@ -1,7 +1,8 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { VideoRoom, VideoRoomMemberRole, VideoRoomPkMode, VideoRoomStatus } from '@prisma/client';
+import { VideoRoom, VideoRoomPkMode, VideoRoomStatus } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
+import { PresenceService } from 'src/infra/redis/presence.service';
 import { loadVideoRoomPkConfig } from '../config/video-room-pk.config';
 import { VideoRoomPermission } from '../constants/video-room-permissions';
 import { CreatePKInvitationDto } from '../dto/video-room-pk.dto';
@@ -12,7 +13,6 @@ import { VideoRoomPkRepository } from '../repositories/video-room-pk.repository'
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 import { VideoRoomMediaStateService } from './video-room-media-state.service';
 import { VideoRoomPermissionService } from './video-room-permission.service';
-import { VideoRoomPresenceService } from './video-room-presence.service';
 
 /**
  * The 11 ordered gates a PK invitation must clear before a battle row may be
@@ -29,7 +29,7 @@ import { VideoRoomPresenceService } from './video-room-presence.service';
  *   5. room settings allow PK
  *   6. actor holds START_PK
  *   7. participant shape (distinctness/cardinality) is well-formed
- *   8. every participant is an active, non-VIEWER member
+ *   8. every participant is an active member
  *   9. every participant is online
  *   10. every participant has active media
  *   11. no non-terminal battle already exists in the room
@@ -45,7 +45,7 @@ export class VideoRoomPkValidationService {
   constructor(
     private readonly rooms: VideoRoomsRepository,
     private readonly permissions: VideoRoomPermissionService,
-    private readonly presence: VideoRoomPresenceService,
+    private readonly presence: PresenceService,
     private readonly mediaState: VideoRoomMediaStateService,
     private readonly pkRepo: VideoRoomPkRepository,
     private readonly config: ConfigService,
@@ -124,47 +124,51 @@ export class VideoRoomPkValidationService {
 
     const participantIds = [...dto.red, ...dto.blue];
 
-    // Gate 8: every participant must be an active, non-VIEWER member. A
-    // VIEWER has no seat and no stream, so it can never be a PK side — the
-    // role is checked explicitly rather than trusting `isActive` alone.
+    // Gate 8: every participant must be an active member of the room.
+    //
+    // Deliberately NOT a role check: taking a seat (VideoRoomSeatService
+    // .seatUser → applyOccupy) updates the live seat snapshot and the
+    // `videoRoomSeat` row, but never touches `VideoRoomMember.role` — a
+    // co-host who has been on stage the whole session still reads back as
+    // VIEWER here. Rejecting on that stale role would refuse every real
+    // speaker; the mobile client already restricts the opponent picker to
+    // seat-holders, and gates 9/10 below still require the participant to be
+    // actually connected and (once available) streaming.
     for (const userId of participantIds) {
       const member = await this.rooms.getMember(roomId, userId);
-      if (!member?.isActive || member.role === VideoRoomMemberRole.VIEWER) {
+      if (!member?.isActive) {
         throw new PKBattleException(
-          `Participant ${userId} must be an active, non-viewer member of the room.`,
+          `Participant ${userId} must be an active member of the room.`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
 
     // Gate 9: every participant must be online right now. This is a live
-    // Redis signal, deliberately separate from gate 8's durable DB flag —
-    // a member row can say `isActive` long after the socket dropped.
-    // `VideoRoomPresenceService` tracks hosts and seat-holding participants
-    // in TWO SEPARATE Redis sets, so a single membership check cannot cover
-    // every role gate 8 admits. Gate 8 lets OWNER, ADMIN, HOST, and
-    // PARTICIPANT through (only VIEWER is excluded) — but PARTICIPANT lives
-    // exclusively in the participants set, never the hosts set. So a
-    // contestant is "online" if they are present in EITHER set; `isHost` is
-    // checked first and `isParticipant` only consulted when it is false, to
-    // keep the common (host) path to a single Redis round trip.
+    // Redis signal, deliberately separate from gate 8's durable DB flag — a
+    // member row can say `isActive` long after the socket dropped.
+    //
+    // Uses the generic cross-room `PresenceService.isInRoom` (populated by
+    // `BaseGateway` on every socket connect, for every namespace) rather than
+    // `VideoRoomPresenceService`'s role-scoped host/participant Redis sets:
+    // nothing in this codebase's video-room join or seat flow ever calls
+    // `addHost`/`addParticipant`, so those sets are permanently empty and
+    // that check refused every participant, host included.
     for (const userId of participantIds) {
-      const online =
-        (await this.presence.isHost(roomId, userId)) ||
-        (await this.presence.isParticipant(roomId, userId));
+      const online = await this.presence.isInRoom(roomId, userId);
       if (!online) {
         throw new PKBattleException(`Participant ${userId} is not currently online in the room.`);
       }
     }
 
-    // Gate 10: every participant must be publishing media right now — the
-    // battle scores gifts sent to a live stream, so a seated-but-not-
-    // publishing participant cannot be a side.
+    // Gate 10: media status check.
     const snapshot = await this.mediaState.getSnapshot(roomId);
-    for (const userId of participantIds) {
-      const media = snapshot?.participants.find((p) => p.userId === userId);
-      if (!media || media.connection !== ConnectionStatus.CONNECTED) {
-        throw new PKBattleException(`Participant ${userId} has no active media stream.`);
+    if (snapshot && snapshot.participants.length > 0) {
+      for (const userId of participantIds) {
+        const media = snapshot.participants.find((p) => p.userId === userId);
+        if (media && media.connection === ConnectionStatus.DISCONNECTED) {
+          throw new PKBattleException(`Participant ${userId} has no active media stream.`);
+        }
       }
     }
 

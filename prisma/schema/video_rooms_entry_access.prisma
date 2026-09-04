@@ -1,0 +1,31 @@
+/// Session-scoped Paid Entry Access entitlement for Video Rooms.
+/// A successful entry fee payment grants access to the CURRENT broadcast session.
+/// When the broadcast session ends, this entitlement remains bound to this session only.
+model VideoRoomEntryAccess {
+  id              String                       @id @default(uuid()) @db.Uuid
+  userId          String                       @db.Uuid
+  roomId          String                       @db.Uuid
+  sessionId       String                       @db.Uuid
+  transactionId   String?                      @db.Uuid
+  amountPaid      BigInt                       @default(0)
+  creatorEarnings BigInt                       @default(0)
+  status          VideoRoomEntryAccessStatus   @default(GRANTED)
+  grantedAt       DateTime                     @default(now())
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  room            VideoRoom                    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  session         VideoBroadcastSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sessionId])
+  @@index([roomId, sessionId])
+  @@index([userId, roomId])
+  @@index([status])
+  @@map("video_room_entry_accesses")
+}
+
+enum VideoRoomEntryAccessStatus {
+  GRANTED
+  REVOKED
+  REFUNDED
+}

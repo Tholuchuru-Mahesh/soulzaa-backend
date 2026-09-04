@@ -28,7 +28,7 @@ export class WalletReadService {
 
   async getEarnings(userId: string, roomType?: GiftContextType): Promise<HostEarningsDto> {
     const effectiveRoomType = roomType ?? GiftContextType.AUDIO_ROOM;
-    const [giftAgg, goldSums, balances] = await Promise.all([
+    const [giftAgg, goldSums, entrySums, balances] = await Promise.all([
       this.prisma.giftTransaction.aggregate({
         where: {
           receiverId: userId,
@@ -42,6 +42,13 @@ export class WalletReadService {
         [WalletTxnReason.TREASURE_BOX, WalletTxnReason.PK_REWARD],
         WalletCurrency.GOLD,
       ),
+      effectiveRoomType === GiftContextType.VIDEO_ROOM
+        ? this.repo.sumByReason(
+            userId,
+            ['VIDEO_ROOM_ENTRY_EARNING' as WalletTxnReason],
+            WalletCurrency.DIAMOND,
+          )
+        : Promise.resolve([]),
       this.wallet.getBalance(userId),
     ]);
     const gifts = Number(giftAgg._sum.creatorEarnings ?? 0n);
@@ -51,12 +58,14 @@ export class WalletReadService {
     ): number => Number(rows.find((s) => s.reason === reason)?.total ?? 0n);
     const treasure = sumOf(goldSums, WalletTxnReason.TREASURE_BOX);
     const pk = sumOf(goldSums, WalletTxnReason.PK_REWARD);
+    const entryFee = Number(entrySums[0]?.total ?? 0n);
+
     return {
       // totalEarned is the authoritative lifetime earnings total (matches Creator Earnings Lifetime).
-      totalEarned: gifts + treasure + pk,
-      // Only the DIAMOND wallet (gift diamonds) is withdrawable / settlement-ready.
+      totalEarned: gifts + treasure + pk + entryFee,
+      // Only the DIAMOND wallet (gift diamonds / earnings) is withdrawable / settlement-ready.
       settlementReady: balances.diamond,
-      bySource: { gifts, treasure, pk },
+      bySource: { gifts, treasure, pk, entryFee },
     };
   }
 

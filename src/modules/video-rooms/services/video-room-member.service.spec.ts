@@ -137,7 +137,7 @@ describe('VideoRoomMemberService.join', () => {
       configMock(),
       seats as never,
       identities as never,
-      undefined,
+      { isAccessGranted: jest.fn().mockResolvedValue(true) } as never,
       undefined,
       undefined,
       platformAudit as never,
@@ -307,7 +307,7 @@ describe('VideoRoomMemberService.join', () => {
         configMock(),
         seats as never,
         identities as never,
-        undefined,
+        { isAccessGranted: jest.fn().mockResolvedValue(true) } as never,
         investigationRecording as any,
         reportRepo as any,
       );

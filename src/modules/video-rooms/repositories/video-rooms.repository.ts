@@ -108,6 +108,8 @@ export interface CreateVideoRoomData {
    */
   hostSeatCount?: number;
   guestSeatCount?: number;
+  paidEntryEnabled?: boolean;
+  defaultEntryFee?: bigint | number | null;
   /** Optional metadata payload (e.g. { accessPolicy }); omitted → column stays null. */
   metadata?: Prisma.InputJsonValue;
 }
@@ -127,6 +129,8 @@ export interface UpdateVideoRoomData {
   isDiscoverable?: boolean;
   maxParticipants?: number;
   maxViewers?: number;
+  paidEntryEnabled?: boolean;
+  defaultEntryFee?: bigint | number | null;
   status?: VideoRoomStatus;
   streamingStatus?: VideoRoomStreamingStatus;
   endedAt?: Date | null;
@@ -408,6 +412,11 @@ export class VideoRoomsRepository {
           isLocked: data.isLocked,
           passwordHash: data.passwordHash,
           isDiscoverable: data.isDiscoverable,
+          paidEntryEnabled: data.paidEntryEnabled ?? false,
+          defaultEntryFee:
+            data.defaultEntryFee !== undefined && data.defaultEntryFee !== null
+              ? BigInt(data.defaultEntryFee)
+              : null,
           maxParticipants: data.maxParticipants,
           maxViewers: data.maxViewers,
           creationSource: data.creationSource,
@@ -784,6 +793,8 @@ export class VideoRoomsRepository {
       topic?: string | null;
       category?: string | null;
       imageKey?: string | null;
+      paidEntryEnabled?: boolean;
+      entryFee?: bigint | number | null;
     },
     tx?: Prisma.TransactionClient,
   ): Promise<any> {
@@ -806,6 +817,23 @@ export class VideoRoomsRepository {
       }
       return existing;
     }
+
+    let paidEntryEnabled = sessionData?.paidEntryEnabled;
+    let entryFee: bigint | null | undefined = sessionData?.entryFee !== undefined && sessionData?.entryFee !== null
+      ? BigInt(sessionData.entryFee)
+      : undefined;
+
+    if (paidEntryEnabled === undefined || entryFee === undefined) {
+      const room = await (client as any).videoRoom.findUnique({
+        where: { id: roomId },
+        select: { paidEntryEnabled: true, defaultEntryFee: true },
+      });
+      if (room) {
+        paidEntryEnabled = paidEntryEnabled ?? room.paidEntryEnabled ?? false;
+        entryFee = entryFee ?? (room.defaultEntryFee ? BigInt(room.defaultEntryFee) : null);
+      }
+    }
+
     return (client as any).videoBroadcastSession.create({
       data: {
         roomId,
@@ -814,6 +842,11 @@ export class VideoRoomsRepository {
         topic: sessionData?.topic ?? null,
         category: sessionData?.category ?? null,
         imageKey: sessionData?.imageKey ?? null,
+        paidEntryEnabled: paidEntryEnabled ?? false,
+        entryFee: entryFee ?? null,
+        totalPaidEntrants: 0,
+        totalEntryRevenue: BigInt(0),
+        entryCreatorEarnings: BigInt(0),
         status: 'LIVE',
         startedAt: new Date(),
       },

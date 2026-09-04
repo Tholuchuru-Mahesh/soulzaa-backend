@@ -35,7 +35,10 @@ describe('VideoRoomsController', () => {
     settings = {
       update: jest.fn().mockResolvedValue({ roomId: 'r1' }),
     };
-    controller = new VideoRoomsController(lifecycle, query, settings);
+    const entryPayment = {
+      payEntryFee: jest.fn().mockResolvedValue({ id: 'tx1' }),
+    };
+    controller = new VideoRoomsController(lifecycle, query, settings, entryPayment as any);
   });
 
   it('create delegates with the mapped actor + dto', async () => {

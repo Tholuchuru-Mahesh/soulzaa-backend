@@ -396,8 +396,7 @@ describe('VR-12 PK integration', () => {
     });
     const permissions = { assertPermission: jest.fn().mockResolvedValue(undefined) };
     const presence = {
-      isHost: jest.fn().mockResolvedValue(true),
-      isParticipant: jest.fn().mockResolvedValue(true),
+      isInRoom: jest.fn().mockResolvedValue(true),
     };
     const mediaState = {
       getSnapshot: jest.fn().mockResolvedValue({
@@ -548,9 +547,14 @@ describe('VR-12 PK integration', () => {
    */
   async function toCountdown(h: ReturnType<typeof build>, durationSeconds = 300) {
     const battle = await h.pk.invite(OWNER, ROOM, h.inviteDto(durationSeconds) as never);
-    await h.pk.accept(OWNER, ROOM, {} as never);
-    await h.pk.accept(OPPONENT, ROOM, {} as never);
-    return h.pk.start(OWNER, ROOM, {} as never).then((started) => ({ ...started, id: battle.id! }));
+    // `invite()` excludes the host from its own invitee list (VR-12: the host
+    // consents by creating the battle, not by accepting it), so OWNER never
+    // has a pending invitation here — only OPPONENT does. OPPONENT's accept
+    // is also the LAST outstanding one for a 1v1, so it drives
+    // ACCEPTED → COUNTDOWN itself (`VideoRoomPkService.accept`); there is no
+    // separate `start()` call left in this flow.
+    const started = await h.pk.accept(OPPONENT, ROOM, {} as never);
+    return { ...started, id: battle.id! };
   }
 
   /** invite → accept → start → countdown-job, leaving the battle LIVE. */
@@ -575,9 +579,10 @@ describe('VR-12 PK integration', () => {
     const h = build();
     const battle = await h.pk.invite(OWNER, ROOM, h.inviteDto() as never);
     expect(battle.active).toBe(true);
-    await h.pk.accept(OWNER, ROOM, {} as never);
+    // Only OPPONENT was invited — OWNER consents by creating the battle, not
+    // by accepting it — and that single accept already drives ACCEPTED →
+    // COUNTDOWN (`VideoRoomPkService.accept`), so no separate `start()` call.
     await h.pk.accept(OPPONENT, ROOM, {} as never);
-    await h.pk.start(OWNER, ROOM, {} as never);
     await h.jobs.handleStart({ roomId: ROOM, battleId: battle.id!, resumeSeq: 0 });
 
     const live = await h.pkRepo.getBattle(battle.id!);

@@ -99,4 +99,25 @@ export class CreateVideoRoomDto {
 
   @IsVideoRoomMaxViewers()
   maxViewers?: number;
+
+  @ApiPropertyOptional({ default: false, description: 'Whether paid entry is required to join.' })
+  @IsOptional()
+  @IsBoolean()
+  paidEntryEnabled?: boolean;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 1000000, description: 'Entry fee in Gold Coins when paid entry is enabled.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
+  entryFee?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 1000000, description: 'Alias for entryFee.' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
+  defaultEntryFee?: number;
 }
