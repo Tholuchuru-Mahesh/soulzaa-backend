@@ -32,6 +32,8 @@ export const VIDEO_ROOM_SOCKET_EVENTS = {
   DELETED: 'video_room.deleted',
   CLOSED: 'video_room.closed',
   LOCKED: 'video_room.locked',
+  GIFT_LOCK_ENABLED: 'video_room.gift_lock_enabled',
+  GIFT_LOCK_DISABLED: 'video_room.gift_lock_disabled',
   OWNERSHIP_TRANSFERRED: 'video_room.ownership_transferred',
   USER_JOINED: 'video_room.user_joined',
   USER_LEFT: 'video_room.user_left',

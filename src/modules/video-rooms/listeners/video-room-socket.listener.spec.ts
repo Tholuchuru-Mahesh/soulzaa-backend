@@ -99,6 +99,30 @@ describe('VideoRoomSocketListener', () => {
     );
   });
 
+  it('relays GiftLockEnabledEvent to video_room.gift_lock_enabled', () => {
+    handlers[VIDEO_ROOM_EVENTS.GIFT_LOCK_ENABLED]({
+      payload: { roomId: 'room-1', actorId: 'owner-1', giftId: 'gift-1' },
+    });
+    expect(sockets.emitToNamespaceRoom).toHaveBeenCalledWith(
+      '/video-room',
+      'room-1',
+      VIDEO_ROOM_SOCKET_EVENTS.GIFT_LOCK_ENABLED,
+      { roomId: 'room-1', actorId: 'owner-1', giftId: 'gift-1' },
+    );
+  });
+
+  it('relays GiftLockDisabledEvent to video_room.gift_lock_disabled', () => {
+    handlers[VIDEO_ROOM_EVENTS.GIFT_LOCK_DISABLED]({
+      payload: { roomId: 'room-1', actorId: 'owner-1' },
+    });
+    expect(sockets.emitToNamespaceRoom).toHaveBeenCalledWith(
+      '/video-room',
+      'room-1',
+      VIDEO_ROOM_SOCKET_EVENTS.GIFT_LOCK_DISABLED,
+      { roomId: 'room-1', actorId: 'owner-1' },
+    );
+  });
+
   it('relays RoomDeleted to the deleted client event', () => {
     handlers[VIDEO_ROOM_EVENTS.DELETED]({
       payload: { roomId: 'r1', actorId: 'a1', ownerId: 'o1' },

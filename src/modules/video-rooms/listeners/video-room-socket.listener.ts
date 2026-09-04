@@ -4,6 +4,8 @@ import { SocketManager } from 'src/infra/socket/socket.manager';
 import { VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS } from '../constants/video-room.constants';
 import {
   VIDEO_ROOM_EVENTS,
+  type GiftLockDisabledEvent,
+  type GiftLockEnabledEvent,
   type HostConnectedEvent,
   type HostDisconnectedEvent,
   type PresenceUpdatedEvent,
@@ -73,6 +75,12 @@ export class VideoRoomSocketListener implements OnModuleInit {
     );
     this.bus.subscribe<RoomLockedEvent>(VIDEO_ROOM_EVENTS.LOCKED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.LOCKED, e.payload),
+    );
+    this.bus.subscribe<GiftLockEnabledEvent>(VIDEO_ROOM_EVENTS.GIFT_LOCK_ENABLED, (e) =>
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.GIFT_LOCK_ENABLED, e.payload),
+    );
+    this.bus.subscribe<GiftLockDisabledEvent>(VIDEO_ROOM_EVENTS.GIFT_LOCK_DISABLED, (e) =>
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.GIFT_LOCK_DISABLED, e.payload),
     );
     this.bus.subscribe<RoomDeletedEvent>(VIDEO_ROOM_EVENTS.DELETED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.DELETED, e.payload),
