@@ -89,9 +89,17 @@ export interface VideoRoomStatisticsView {
 export interface VideoRoomDetailView {
   id: string;
   ownerId: string;
+  ownerName?: string | null;
+  hostUsername?: string | null;
+  hostFullName?: string | null;
+  hostAvatarUrl?: string | null;
+  ownerAvatarUrl?: string | null;
   name: string;
   description: string | null;
   imageKey: string | null;
+  thumbnailUrl?: string | null;
+  coverUrl?: string | null;
+  imageUrl?: string | null;
   categoryId: string | null;
   language: string | null;
   country: string | null;

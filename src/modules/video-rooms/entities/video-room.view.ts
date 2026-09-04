@@ -9,9 +9,16 @@ export interface VideoRoomView {
   id: string;
   ownerId: string;
   ownerName?: string;
+  hostUsername?: string;
+  hostFullName?: string;
+  hostAvatarUrl?: string | null;
+  ownerAvatarUrl?: string | null;
   name: string;
   description: string | null;
   imageKey: string | null;
+  thumbnailUrl?: string | null;
+  coverUrl?: string | null;
+  imageUrl?: string | null;
   categoryId: string | null;
   language: string | null;
   visibility: VideoRoomVisibility;

@@ -142,6 +142,12 @@ export interface VideoRoomDetail {
   room: VideoRoom;
   settings: VideoRoomSettings | null;
   statistics: VideoRoomStatistics | null;
+  owner?: {
+    id: string;
+    username: string;
+    fullName?: string | null;
+    avatarUrl?: string | null;
+  } | null;
 }
 
 /**
@@ -250,15 +256,35 @@ export class VideoRoomsRepository {
     return ids.map((id) => byId.get(id)).filter((r): r is VideoRoom => r !== undefined);
   }
 
-  /** The full detail read model: room + its 1:1 settings + statistics rows. */
+  /** The full detail read model: room + its 1:1 settings + statistics rows + owner. */
   async findDetail(id: string): Promise<VideoRoomDetail | null> {
     const room = await this.prisma.videoRoom.findFirst({ where: { id, deletedAt: null } });
     if (!room) return null;
-    const [settings, statistics] = await this.prisma.$transaction([
+    const [settings, statistics, owner, profile] = await Promise.all([
       this.prisma.videoRoomSettings.findUnique({ where: { roomId: id } }),
       this.prisma.videoRoomStatistics.findUnique({ where: { roomId: id } }),
+      this.prisma.user.findUnique({
+        where: { id: room.ownerId },
+        select: { id: true, username: true, fullName: true },
+      }),
+      this.prisma.userProfile.findUnique({
+        where: { userId: room.ownerId },
+        select: { avatarKey: true },
+      }),
     ]);
-    return { room, settings, statistics };
+    return {
+      room,
+      settings,
+      statistics,
+      owner: owner
+        ? {
+            id: owner.id,
+            username: owner.username,
+            fullName: owner.fullName,
+            avatarUrl: profile?.avatarKey ?? null,
+          }
+        : null,
+    };
   }
 
   /** A room's settings row, or null when it has none (VR-8 seat queue policy lookup). */

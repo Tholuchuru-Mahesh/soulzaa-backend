@@ -55,13 +55,21 @@ function toStatisticsView(stats: VideoRoomStatistics | null): VideoRoomStatistic
  * columns. One place owns the projection so a sensitive column cannot leak.
  */
 export function toVideoRoomDetailView(detail: VideoRoomDetail): VideoRoomDetailView {
-  const { room, settings, statistics } = detail;
+  const { room, settings, statistics, owner } = detail;
   return {
     id: room.id,
     ownerId: room.ownerId,
+    ownerName: owner?.fullName || owner?.username || undefined,
+    hostUsername: owner?.username || undefined,
+    hostFullName: owner?.fullName || undefined,
+    hostAvatarUrl: owner?.avatarUrl || undefined,
+    ownerAvatarUrl: owner?.avatarUrl || undefined,
     name: room.name,
     description: room.description,
     imageKey: room.imageKey,
+    thumbnailUrl: room.imageKey,
+    coverUrl: room.imageKey,
+    imageUrl: room.imageKey,
     categoryId: room.categoryId,
     language: room.language,
     country: room.country,
