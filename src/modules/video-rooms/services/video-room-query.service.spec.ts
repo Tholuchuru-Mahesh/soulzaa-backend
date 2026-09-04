@@ -43,6 +43,7 @@ function actor(id = 'owner', roles: PlatformRole[] = []): RoomActor {
 
 describe('VideoRoomQueryService', () => {
   let repo: any;
+  let gifts: any;
   let service: VideoRoomQueryService;
 
   beforeEach(() => {
@@ -60,7 +61,8 @@ describe('VideoRoomQueryService', () => {
       findByOwnerId: jest.fn().mockResolvedValue([]),
     };
     const config = { get: jest.fn().mockReturnValue({ cacheTtlSeconds: 60 }) };
-    service = new VideoRoomQueryService(repo, config as any);
+    gifts = { getGift: jest.fn().mockResolvedValue(null) };
+    service = new VideoRoomQueryService(repo, config as any, gifts);
   });
 
   describe('getDetail', () => {
@@ -89,6 +91,44 @@ describe('VideoRoomQueryService', () => {
       expect(view.lifecycleState).toBe(VideoRoomLifecycleState.LOCKED);
       expect(view.accessPolicy).toBe(VideoRoomAccessPolicy.PASSWORD);
       expect(repo.setCachedSnapshot).toHaveBeenCalledWith('r1', view, 60);
+    });
+
+    // Task 7: the mobile client renders the settings toggle + "required gift"
+    // dialog straight off this view, so a cache-miss read must resolve the
+    // gift's display info via GIFTS_SERVICE before caching the snapshot.
+    it('resolves the required entry gift when gift-lock is enabled', async () => {
+      repo.findDetail.mockResolvedValue({
+        room: fullRoom({ giftLockEnabled: true, requiredEntryGiftId: 'gift-1' }),
+        settings: null,
+        statistics: null,
+      });
+      gifts.getGift.mockResolvedValue({
+        id: 'gift-1',
+        name: 'Rose',
+        thumbnailUrl: 'https://x/rose.png',
+        coinValue: 10,
+      });
+      const view = await service.getDetail('r1');
+      expect(gifts.getGift).toHaveBeenCalledWith('gift-1');
+      expect(view.giftLockEnabled).toBe(true);
+      expect(view.requiredEntryGift).toEqual({
+        id: 'gift-1',
+        name: 'Rose',
+        thumbnailUrl: 'https://x/rose.png',
+        coinValue: 10,
+      });
+      expect(repo.setCachedSnapshot).toHaveBeenCalledWith('r1', view, 60);
+    });
+
+    it('does not call the gifts service when gift-lock is disabled', async () => {
+      repo.findDetail.mockResolvedValue({
+        room: fullRoom(),
+        settings: null,
+        statistics: null,
+      });
+      const view = await service.getDetail('r1');
+      expect(gifts.getGift).not.toHaveBeenCalled();
+      expect(view.requiredEntryGift).toBeNull();
     });
   });
 

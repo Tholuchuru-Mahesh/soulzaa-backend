@@ -1,17 +1,22 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PlatformRole, VideoRoom } from '@prisma/client';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated, normalizePagination } from 'src/common/utils/pagination.util';
+import { GIFTS_SERVICE, type IGiftsService } from 'src/modules/gifts/interfaces/gifts.service.interface';
 import { loadVideoRoomConfig } from '../config/video-room.config';
 import type { VideoRoomDetailView, VideoRoomStatusView } from '../entities/video-room-detail.view';
 import type { VideoRoomView } from '../entities/video-room.view';
 import type { ListVideoRoomsDto } from '../dto/list-video-rooms.dto';
 import type { SearchVideoRoomsDto } from '../dto/search-video-rooms.dto';
 import type { RoomActor } from '../interfaces/room-actor.interface';
-import { toVideoRoomDetailView, toVideoRoomStatusView } from '../mappers/video-room-detail.mapper';
+import {
+  resolveRequiredEntryGift,
+  toVideoRoomDetailView,
+  toVideoRoomStatusView,
+} from '../mappers/video-room-detail.mapper';
 import { toVideoRoomView } from '../mappers/video-room.mapper';
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 
@@ -29,6 +34,7 @@ export class VideoRoomQueryService {
   constructor(
     private readonly repo: VideoRoomsRepository,
     config: ConfigService,
+    @Inject(GIFTS_SERVICE) private readonly gifts: IGiftsService,
   ) {
     this.cacheTtlSeconds = loadVideoRoomConfig(config).cacheTtlSeconds;
   }
@@ -41,7 +47,8 @@ export class VideoRoomQueryService {
     const detail = await this.repo.findDetail(roomId);
     if (!detail) throw this.notFound(roomId);
 
-    const view = toVideoRoomDetailView(detail);
+    const requiredEntryGift = await resolveRequiredEntryGift(this.gifts, detail.room);
+    const view = toVideoRoomDetailView(detail, { requiredEntryGift });
     await this.repo.setCachedSnapshot(roomId, view, this.cacheTtlSeconds);
     return view;
   }

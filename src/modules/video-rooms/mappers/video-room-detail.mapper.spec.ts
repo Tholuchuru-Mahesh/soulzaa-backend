@@ -1,6 +1,14 @@
-import { VideoRoomChatMode, type VideoRoomSettings } from '@prisma/client';
-import { toSettingsView } from './video-room-detail.mapper';
+import {
+  VideoRoomChatMode,
+  VideoRoomStatus,
+  VideoRoomStreamingStatus,
+  VideoRoomVisibility,
+  type VideoRoomSettings,
+} from '@prisma/client';
+import { resolveRequiredEntryGift, toSettingsView, toVideoRoomDetailView } from './video-room-detail.mapper';
 import { WRITABLE_SETTINGS_FIELDS } from '../services/video-room-settings.service';
+import type { VideoRoomDetail } from '../repositories/video-rooms.repository';
+import type { IGiftsService } from '../../gifts/interfaces/gifts.service.interface';
 
 /**
  * A complete settings row. Values are deliberately the OPPOSITE of each
@@ -137,5 +145,160 @@ describe('toSettingsView', () => {
       hostSeatCount: 6,
       guestSeatCount: 2,
     });
+  });
+});
+
+/**
+ * Minimal valid room row for `toVideoRoomDetailView` (VideoRoomDetail['room']).
+ * `giftLockEnabled`/`requiredEntryGiftId` default OFF; override per-test.
+ */
+function detailRoom(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'room-1',
+    ownerId: 'owner-1',
+    name: 'Room',
+    description: null,
+    imageKey: null,
+    categoryId: null,
+    language: null,
+    country: null,
+    tags: [],
+    visibility: VideoRoomVisibility.PUBLIC,
+    isLocked: false,
+    isDiscoverable: true,
+    isVerified: false,
+    maxParticipants: 12,
+    maxViewers: 500,
+    status: VideoRoomStatus.OFFLINE,
+    streamingStatus: VideoRoomStreamingStatus.IDLE,
+    endedAt: null,
+    deletedAt: null,
+    metadata: null,
+    createdAt: new Date('2026-07-24T00:00:00.000Z'),
+    updatedAt: new Date('2026-07-24T00:00:00.000Z'),
+    giftLockEnabled: false,
+    requiredEntryGiftId: null,
+    ...overrides,
+  };
+}
+
+const requiredGift = {
+  id: 'gift-1',
+  name: 'Rose',
+  thumbnailUrl: 'https://x/rose.png',
+  coinValue: 10,
+};
+
+describe('toVideoRoomDetailView', () => {
+  /**
+   * The mobile client renders the settings toggle state and the "required
+   * gift" dialog straight off this view (no second fetch), so both the raw
+   * `giftLockEnabled` column and the resolved gift display info must ride
+   * together on the same object.
+   */
+  it('includes the resolved required entry gift when gift-lock is enabled', () => {
+    const detail: VideoRoomDetail = {
+      room: detailRoom({ giftLockEnabled: true, requiredEntryGiftId: 'gift-1' }) as any,
+      settings: null,
+      statistics: null,
+    };
+    const view = toVideoRoomDetailView(detail, { requiredEntryGift: requiredGift });
+    expect(view.giftLockEnabled).toBe(true);
+    expect(view.requiredEntryGift).toEqual(requiredGift);
+  });
+
+  it('omits the required gift when gift-lock is disabled', () => {
+    const detail: VideoRoomDetail = {
+      room: detailRoom({ giftLockEnabled: false, requiredEntryGiftId: null }) as any,
+      settings: null,
+      statistics: null,
+    };
+    const view = toVideoRoomDetailView(detail, {});
+    expect(view.giftLockEnabled).toBe(false);
+    expect(view.requiredEntryGift).toBeNull();
+  });
+
+  it('defaults requiredEntryGift to null when no extras argument is passed at all', () => {
+    const detail: VideoRoomDetail = {
+      room: detailRoom() as any,
+      settings: null,
+      statistics: null,
+    };
+    const view = toVideoRoomDetailView(detail);
+    expect(view.giftLockEnabled).toBe(false);
+    expect(view.requiredEntryGift).toBeNull();
+  });
+});
+
+/**
+ * `resolveRequiredEntryGift` is the ONE place that turns
+ * `giftLockEnabled`/`requiredEntryGiftId` into the display-ready gift object.
+ * Both `VideoRoomQueryService.getDetail()` and
+ * `VideoRoomLifecycleService`'s private `buildDetail()` call it before
+ * invoking `toVideoRoomDetailView` — sharing it here means a fix to the
+ * resolution rule (e.g. a deleted gift) lands in both call sites at once,
+ * instead of the cache-refresh path silently drifting from the read path.
+ */
+describe('resolveRequiredEntryGift', () => {
+  function giftsService(overrides: Partial<IGiftsService> = {}): IGiftsService {
+    return {
+      getGift: jest.fn().mockResolvedValue(null),
+      isGiftEnabled: jest.fn(),
+      listActiveGifts: jest.fn(),
+      getContextCoinsInRange: jest.fn(),
+      getTopFans: jest.fn(),
+      ...overrides,
+    } as unknown as IGiftsService;
+  }
+
+  it('returns null without calling the gifts service when gift-lock is disabled', async () => {
+    const gifts = giftsService();
+    const result = await resolveRequiredEntryGift(gifts, {
+      giftLockEnabled: false,
+      requiredEntryGiftId: 'gift-1',
+    });
+    expect(result).toBeNull();
+    expect(gifts.getGift).not.toHaveBeenCalled();
+  });
+
+  it('returns null when gift-lock is enabled but no gift id is set', async () => {
+    const gifts = giftsService();
+    const result = await resolveRequiredEntryGift(gifts, {
+      giftLockEnabled: true,
+      requiredEntryGiftId: null,
+    });
+    expect(result).toBeNull();
+    expect(gifts.getGift).not.toHaveBeenCalled();
+  });
+
+  it('resolves the gift display info when gift-lock is enabled and the gift exists', async () => {
+    const gifts = giftsService({
+      getGift: jest.fn().mockResolvedValue({
+        id: 'gift-1',
+        name: 'Rose',
+        thumbnailUrl: 'https://x/rose.png',
+        coinValue: 10,
+      }),
+    });
+    const result = await resolveRequiredEntryGift(gifts, {
+      giftLockEnabled: true,
+      requiredEntryGiftId: 'gift-1',
+    });
+    expect(gifts.getGift).toHaveBeenCalledWith('gift-1');
+    expect(result).toEqual({
+      id: 'gift-1',
+      name: 'Rose',
+      thumbnailUrl: 'https://x/rose.png',
+      coinValue: 10,
+    });
+  });
+
+  it('returns null when the referenced gift no longer exists in the catalog', async () => {
+    const gifts = giftsService({ getGift: jest.fn().mockResolvedValue(null) });
+    const result = await resolveRequiredEntryGift(gifts, {
+      giftLockEnabled: true,
+      requiredEntryGiftId: 'gift-deleted',
+    });
+    expect(result).toBeNull();
   });
 });

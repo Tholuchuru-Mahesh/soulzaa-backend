@@ -1,4 +1,5 @@
 import type { VideoRoom, VideoRoomSettings, VideoRoomStatistics } from '@prisma/client';
+import type { IGiftsService } from '../../gifts/interfaces/gifts.service.interface';
 import { deriveAccessPolicy, projectLifecycleState } from '../constants/video-room-lifecycle';
 import type { VideoRoomDetail } from '../repositories/video-rooms.repository';
 import type {
@@ -7,6 +8,40 @@ import type {
   VideoRoomStatisticsView,
   VideoRoomStatusView,
 } from '../entities/video-room-detail.view';
+
+/** The resolved, display-ready shape of a room's required entry gift. */
+export type RequiredEntryGiftView = NonNullable<VideoRoomDetailView['requiredEntryGift']>;
+
+/**
+ * Cross-module data the mapper cannot resolve on its own (unlike the raw
+ * paid-entry columns, which live directly on `room`). Optional so callers
+ * that never touch gift-lock (e.g. existing tests) keep compiling untouched.
+ */
+export interface VideoRoomDetailExtras {
+  requiredEntryGift?: RequiredEntryGiftView | null;
+}
+
+/**
+ * Turns the room's raw `giftLockEnabled`/`requiredEntryGiftId` columns into
+ * the display-ready gift object the mobile client renders directly, with no
+ * second fetch. This is the ONE place that resolution happens: both
+ * `VideoRoomQueryService.getDetail()` (cache-miss read) and
+ * `VideoRoomLifecycleService`'s private `buildDetail()` (cache refresh after
+ * every create/settings-update/go-live/end, etc.) call it before invoking
+ * `toVideoRoomDetailView`. They write to the SAME cached-snapshot key, so if
+ * only one of them resolved the gift, the other would routinely overwrite the
+ * cache with a view missing `requiredEntryGift` — sharing this function is
+ * what keeps both writers in agreement.
+ */
+export async function resolveRequiredEntryGift(
+  gifts: IGiftsService,
+  room: { giftLockEnabled: boolean; requiredEntryGiftId: string | null },
+): Promise<RequiredEntryGiftView | null> {
+  if (!room.giftLockEnabled || !room.requiredEntryGiftId) return null;
+  const gift = await gifts.getGift(room.requiredEntryGiftId);
+  if (!gift) return null;
+  return { id: gift.id, name: gift.name, thumbnailUrl: gift.thumbnailUrl, coinValue: gift.coinValue };
+}
 
 export function toSettingsView(settings: VideoRoomSettings | null): VideoRoomSettingsView | null {
   if (!settings) return null;
@@ -54,7 +89,10 @@ function toStatisticsView(stats: VideoRoomStatistics | null): VideoRoomStatistic
  * computing the projected `lifecycleState` + `accessPolicy` from the durable
  * columns. One place owns the projection so a sensitive column cannot leak.
  */
-export function toVideoRoomDetailView(detail: VideoRoomDetail): VideoRoomDetailView {
+export function toVideoRoomDetailView(
+  detail: VideoRoomDetail,
+  extras?: VideoRoomDetailExtras,
+): VideoRoomDetailView {
   const { room, settings, statistics, owner } = detail;
   return {
     id: room.id,
@@ -80,6 +118,8 @@ export function toVideoRoomDetailView(detail: VideoRoomDetail): VideoRoomDetailV
     paidEntryEnabled: (room as any).paidEntryEnabled ?? false,
     defaultEntryFee: (room as any).defaultEntryFee ? Number((room as any).defaultEntryFee) : null,
     entryFee: (room as any).defaultEntryFee ? Number((room as any).defaultEntryFee) : null,
+    giftLockEnabled: (room as any).giftLockEnabled ?? false,
+    requiredEntryGift: extras?.requiredEntryGift ?? null,
     isDiscoverable: room.isDiscoverable,
     isVerified: room.isVerified,
     maxParticipants: room.maxParticipants,

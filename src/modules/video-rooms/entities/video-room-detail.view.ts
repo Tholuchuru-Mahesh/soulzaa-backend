@@ -110,6 +110,8 @@ export interface VideoRoomDetailView {
   paidEntryEnabled: boolean;
   defaultEntryFee: number | null;
   entryFee?: number | null;
+  giftLockEnabled: boolean;
+  requiredEntryGift: { id: string; name: string; thumbnailUrl: string | null; coinValue: number } | null;
   isDiscoverable: boolean;
   isVerified: boolean;
   maxParticipants: number;

@@ -54,6 +54,7 @@ describe('VideoRoomLifecycleService', () => {
   let presence: any;
   let sessions: any;
   let state: any;
+  let gifts: any;
   let service: VideoRoomLifecycleService;
 
   beforeEach(() => {
@@ -99,6 +100,7 @@ describe('VideoRoomLifecycleService', () => {
     presence = { clearRoom: jest.fn().mockResolvedValue(undefined) };
     sessions = { endAllRoomSessions: jest.fn().mockResolvedValue([]) };
     state = { clear: jest.fn().mockResolvedValue(undefined) };
+    gifts = { getGift: jest.fn().mockResolvedValue(null) };
     const config = {
       get: jest.fn().mockReturnValue({
         maxRoomsPerOwner: 1,
@@ -125,6 +127,7 @@ describe('VideoRoomLifecycleService', () => {
       presence,
       sessions,
       state,
+      gifts,
       platformBans,
       broadBans,
     );
@@ -208,6 +211,35 @@ describe('VideoRoomLifecycleService', () => {
       await expect(service.create(actor, { name: 'My Room' } as any)).rejects.toThrow(
         'creation restricted',
       );
+    });
+
+    // Task 7 correction: refreshCache()/buildDetail() write to the SAME
+    // cached-snapshot key as VideoRoomQueryService.getDetail(). If this path
+    // did not also resolve the gift, every lifecycle-triggered cache refresh
+    // (create, settings updates, go-live, end, ...) would silently clobber
+    // the cache with a view missing requiredEntryGift.
+    it('resolves the required entry gift when refreshing the cached snapshot after create', async () => {
+      repo.findDetail.mockResolvedValue({
+        room: fullRoom({ giftLockEnabled: true, requiredEntryGiftId: 'gift-1' }),
+        settings: null,
+        statistics: null,
+      });
+      gifts.getGift.mockResolvedValue({
+        id: 'gift-1',
+        name: 'Rose',
+        thumbnailUrl: 'https://x/rose.png',
+        coinValue: 10,
+      });
+      const view = await service.create(actor, { name: 'My Room' } as any);
+      expect(gifts.getGift).toHaveBeenCalledWith('gift-1');
+      expect(view.giftLockEnabled).toBe(true);
+      expect(view.requiredEntryGift).toEqual({
+        id: 'gift-1',
+        name: 'Rose',
+        thumbnailUrl: 'https://x/rose.png',
+        coinValue: 10,
+      });
+      expect(repo.setCachedSnapshot).toHaveBeenCalledWith('r1', view, 60);
     });
   });
 

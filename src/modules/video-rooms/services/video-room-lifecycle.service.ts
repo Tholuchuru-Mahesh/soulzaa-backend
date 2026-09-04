@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Prisma,
@@ -12,6 +12,7 @@ import {
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { LockService } from 'src/infra/redis/lock.service';
+import { GIFTS_SERVICE, type IGiftsService } from 'src/modules/gifts/interfaces/gifts.service.interface';
 import { loadVideoRoomConfig, VideoRoomConfig } from '../config/video-room.config';
 import { VideoRoomAccessPolicy, isValidStatusTransition } from '../constants/video-room-lifecycle';
 import { VideoRoomPermission } from '../constants/video-room-permissions';
@@ -21,7 +22,7 @@ import type { LockVideoRoomDto } from '../dto/lock-video-room.dto';
 import type { UpdateVideoRoomDto } from '../dto/update-video-room.dto';
 import type { VideoRoomDetailView } from '../entities/video-room-detail.view';
 import type { RoomActor } from '../interfaces/room-actor.interface';
-import { toVideoRoomDetailView } from '../mappers/video-room-detail.mapper';
+import { resolveRequiredEntryGift, toVideoRoomDetailView } from '../mappers/video-room-detail.mapper';
 import {
   CreateVideoRoomData,
   UpdateVideoRoomData,
@@ -82,6 +83,7 @@ export class VideoRoomLifecycleService {
     private readonly presence: VideoRoomPresenceService,
     private readonly sessions: VideoRoomSessionService,
     private readonly state: VideoRoomStateService,
+    @Inject(GIFTS_SERVICE) private readonly gifts: IGiftsService,
     @Optional() private readonly platformBans?: PlatformBanService,
     @Optional() private readonly broadBans?: BroadBanService,
     @Optional() private readonly chatRepo?: VideoRoomChatRepository,
@@ -714,7 +716,11 @@ export class VideoRoomLifecycleService {
         HttpStatus.NOT_FOUND,
       );
     }
-    return toVideoRoomDetailView(detail);
+    // Shared with VideoRoomQueryService.getDetail() (same mapper helper) so a
+    // routine cache refresh (settings edit, go-live, end, etc.) never
+    // overwrites the cached snapshot with a view missing the resolved gift.
+    const requiredEntryGift = await resolveRequiredEntryGift(this.gifts, detail.room);
+    return toVideoRoomDetailView(detail, { requiredEntryGift });
   }
 
   private resolvePaidEntry(
