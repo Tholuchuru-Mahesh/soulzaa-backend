@@ -193,8 +193,8 @@ export class VideoRoomsRepository {
   async list(params: ListRoomsParams): Promise<{ items: VideoRoom[]; total: number }> {
     const where: Prisma.VideoRoomWhereInput = {
       deletedAt: null,
+      status: params.status ?? VideoRoomStatus.LIVE,
       ...(params.discoverableOnly ? { isDiscoverable: true } : {}),
-      ...(params.status ? { status: params.status } : {}),
     };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.videoRoom.findMany({
@@ -212,8 +212,8 @@ export class VideoRoomsRepository {
   async search(params: SearchRoomsParams): Promise<{ items: VideoRoom[]; total: number }> {
     const where: Prisma.VideoRoomWhereInput = {
       deletedAt: null,
+      status: params.status ?? VideoRoomStatus.LIVE,
       ...(params.discoverableOnly ? { isDiscoverable: true } : {}),
-      ...(params.status ? { status: params.status } : {}),
       ...(params.categoryId ? { categoryId: params.categoryId } : {}),
       ...(params.language ? { language: params.language } : {}),
       ...(params.country ? { country: params.country } : {}),
@@ -251,6 +251,16 @@ export class VideoRoomsRepository {
     if (ids.length === 0) return [];
     const rows = await this.prisma.videoRoom.findMany({
       where: { id: { in: ids }, deletedAt: null },
+    });
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return ids.map((id) => byId.get(id)).filter((r): r is VideoRoom => r !== undefined);
+  }
+
+  /** Fetch multiple LIVE rooms by id (preserves the given id order). */
+  async findLiveRoomsByIds(ids: string[]): Promise<VideoRoom[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.videoRoom.findMany({
+      where: { id: { in: ids }, deletedAt: null, status: VideoRoomStatus.LIVE },
     });
     const byId = new Map(rows.map((r) => [r.id, r]));
     return ids.map((id) => byId.get(id)).filter((r): r is VideoRoom => r !== undefined);
@@ -343,7 +353,7 @@ export class VideoRoomsRepository {
     const stats = await this.prisma.videoRoomStatistics.findMany({
       orderBy: [{ peakViewers: 'desc' }, { totalJoins: 'desc' }],
       skip: params.skip,
-      take: params.take,
+      take: params.take * 4,
       select: { roomId: true },
     });
     const ids = stats.map((s) => s.roomId);
@@ -352,16 +362,20 @@ export class VideoRoomsRepository {
     const where: Prisma.VideoRoomWhereInput = {
       id: { in: ids },
       deletedAt: null,
+      status: VideoRoomStatus.LIVE,
       ...(params.discoverableOnly ? { isDiscoverable: true } : {}),
     };
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.videoRoom.findMany({ where }),
       this.prisma.videoRoom.count({
-        where: { deletedAt: null, ...(params.discoverableOnly ? { isDiscoverable: true } : {}) },
+        where: { deletedAt: null, status: VideoRoomStatus.LIVE, ...(params.discoverableOnly ? { isDiscoverable: true } : {}) },
       }),
     ]);
     const byId = new Map(rows.map((r) => [r.id, r]));
-    const items = ids.map((id) => byId.get(id)).filter((r): r is VideoRoom => r !== undefined);
+    const items = ids
+      .map((id) => byId.get(id))
+      .filter((r): r is VideoRoom => r !== undefined)
+      .slice(0, params.take);
     return { items, total };
   }
 

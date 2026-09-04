@@ -11,7 +11,7 @@ import type { CacheService } from 'src/infra/redis/cache.service';
 import type { PrismaService } from 'src/infra/prisma/prisma.service';
 import type { RedisClient } from 'src/infra/redis/redis.constants';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
-import { VIDEO_ROOM_TRENDING_KEY } from '../constants/video-room.constants';
+import { VIDEO_ROOM_DEFAULT_HOST_SEATS, VIDEO_ROOM_TRENDING_KEY } from '../constants/video-room.constants';
 import { CreateVideoRoomData, VideoRoomsRepository } from './video-rooms.repository';
 
 /** A tx double whose model methods echo enough to assert on. */
@@ -88,6 +88,12 @@ describe('VideoRoomsRepository', () => {
         deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
         findMany: jest.fn().mockResolvedValue([]),
       },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'owner', username: 'host', fullName: 'Host User' }),
+      },
+      userProfile: {
+        findUnique: jest.fn().mockResolvedValue({ avatarKey: 'avatar.png' }),
+      },
       $transaction: jest.fn((arg: any) => (typeof arg === 'function' ? arg(tx) : Promise.all(arg))),
     };
     cache = {
@@ -133,7 +139,7 @@ describe('VideoRoomsRepository', () => {
     expect(roomArg).toMatchObject({ ownerId: 'owner', name: 'My Room', createdBy: 'owner' });
     // Sibling rows keyed by the new room id.
     expect(tx.videoRoomSettings.create).toHaveBeenCalledWith({
-      data: { roomId: 'r1', hostSeatCount: 9, guestSeatCount: 0 },
+      data: { roomId: 'r1', hostSeatCount: VIDEO_ROOM_DEFAULT_HOST_SEATS, guestSeatCount: 0 },
     });
     expect(tx.videoRoomStatistics.create).toHaveBeenCalledWith({ data: { roomId: 'r1' } });
     // Owner membership + authoritative OWNER grant.
@@ -157,21 +163,21 @@ describe('VideoRoomsRepository', () => {
     });
   });
 
-  it('createRoomTx materialises the declared seat layout (owner + 9 hosts) in the same tx', async () => {
+  it('createRoomTx materialises the declared seat layout (owner + default hosts) in the same tx', async () => {
     await repo.createRoomTx(createData({ ownerId: 'owner' }));
 
     const arg = tx.videoRoomSeat.createMany.mock.calls[0][0];
     expect(arg.skipDuplicates).toBe(true);
-    expect(arg.data).toHaveLength(10);
+    expect(arg.data).toHaveLength(1 + VIDEO_ROOM_DEFAULT_HOST_SEATS);
     expect(arg.data[0]).toMatchObject({
       roomId: 'r1',
       seatIndex: 0,
       seatType: VideoRoomSeatType.OWNER,
       createdBy: 'owner',
     });
-    expect(arg.data.slice(1).map((s: { seatIndex: number }) => s.seatIndex)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9,
-    ]);
+    expect(arg.data.slice(1).map((s: { seatIndex: number }) => s.seatIndex)).toEqual(
+      Array.from({ length: VIDEO_ROOM_DEFAULT_HOST_SEATS }, (_, i) => i + 1),
+    );
     expect(
       arg.data.slice(1).every((s: { seatType: string }) => s.seatType === VideoRoomSeatType.HOST),
     ).toBe(true);
@@ -256,6 +262,15 @@ describe('VideoRoomsRepository', () => {
     expect(prisma.videoRoom.findMany).not.toHaveBeenCalled();
   });
 
+  it('findLiveRoomsByIds hydrates LIVE non-deleted rooms preserving the id order', async () => {
+    prisma.videoRoom.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
+    const rooms = await repo.findLiveRoomsByIds(['b', 'a']);
+    expect(rooms.map((r: any) => r.id)).toEqual(['b', 'a']);
+    expect(prisma.videoRoom.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['b', 'a'] }, deletedAt: null, status: VideoRoomStatus.LIVE },
+    });
+  });
+
   it('findDetail returns null when the room is missing', async () => {
     prisma.videoRoom.findFirst.mockResolvedValue(null);
     expect(await repo.findDetail('r1')).toBeNull();
@@ -270,6 +285,12 @@ describe('VideoRoomsRepository', () => {
       room: { id: 'r1' },
       settings: { roomId: 'r1', allowChat: true },
       statistics: { roomId: 'r1', peakViewers: 3 },
+      owner: {
+        id: 'owner',
+        username: 'host',
+        fullName: 'Host User',
+        avatarUrl: 'avatar.png',
+      },
     });
   });
 

@@ -110,7 +110,7 @@ export class VideoRoomQueryService {
   async trending(limit: number): Promise<VideoRoomView[]> {
     const ids = await this.repo.trendingTopIds(limit);
     if (ids.length === 0) return [];
-    const rooms = await this.repo.findManyByIds(ids);
+    const rooms = await this.repo.findLiveRoomsByIds(ids);
     const prisma = (this.repo as any).prisma;
     if (!prisma) {
       return rooms.map((room) => toVideoRoomView(room, 0));

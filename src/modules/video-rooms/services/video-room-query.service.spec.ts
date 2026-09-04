@@ -56,6 +56,7 @@ describe('VideoRoomQueryService', () => {
       popular: jest.fn().mockResolvedValue({ items: [], total: 0 }),
       trendingTopIds: jest.fn().mockResolvedValue([]),
       findManyByIds: jest.fn().mockResolvedValue([]),
+      findLiveRoomsByIds: jest.fn().mockResolvedValue([]),
       findByOwnerId: jest.fn().mockResolvedValue([]),
     };
     const config = { get: jest.fn().mockReturnValue({ cacheTtlSeconds: 60 }) };
@@ -156,7 +157,7 @@ describe('VideoRoomQueryService', () => {
   describe('trending', () => {
     it('hydrates the top ids preserving zset order', async () => {
       repo.trendingTopIds.mockResolvedValue(['b', 'a']);
-      repo.findManyByIds.mockResolvedValue([fullRoom({ id: 'b' }), fullRoom({ id: 'a' })]);
+      repo.findLiveRoomsByIds.mockResolvedValue([fullRoom({ id: 'b' }), fullRoom({ id: 'a' })]);
       const items = await service.trending(10);
       expect(repo.trendingTopIds).toHaveBeenCalledWith(10);
       expect(items.map((r) => r.id)).toEqual(['b', 'a']);
@@ -165,7 +166,7 @@ describe('VideoRoomQueryService', () => {
     it('returns an empty list when nothing is trending', async () => {
       repo.trendingTopIds.mockResolvedValue([]);
       expect(await service.trending(10)).toEqual([]);
-      expect(repo.findManyByIds).not.toHaveBeenCalled();
+      expect(repo.findLiveRoomsByIds).not.toHaveBeenCalled();
     });
   });
 
