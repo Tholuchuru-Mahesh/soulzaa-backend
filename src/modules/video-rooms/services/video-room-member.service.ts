@@ -114,9 +114,9 @@ export class VideoRoomMemberService {
   }
 
   /**
-   * Join a room. Validates (exists → live → block → password → capacity → dup),
-   * writes the member + session + presence, bumps counters, publishes UserJoined
-   * + SessionCreated, and returns the full room-state sync.
+   * Join a room. Validates (exists → live → block → paid-entry → gift-lock →
+   * capacity → dup), writes the member + session + presence, bumps counters,
+   * publishes UserJoined + SessionCreated, and returns the full room-state sync.
    */
   async join(
     actor: RoomActor,

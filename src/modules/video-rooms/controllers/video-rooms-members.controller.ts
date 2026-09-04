@@ -64,7 +64,6 @@ export class VideoRoomMembersController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Room not found.' })
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Room not live / full.' })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Blocked from this room.' })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Incorrect room password.' })
   join(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) roomId: string,

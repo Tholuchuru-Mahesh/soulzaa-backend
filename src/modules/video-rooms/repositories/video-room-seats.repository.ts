@@ -539,9 +539,9 @@ export class VideoRoomSeatsRepository {
           ],
         },
         // Expiry-bound the grant: an ACCEPTED invitation is never swept to
-        // EXPIRED, so without this an accepted invite would bypass the room
-        // password indefinitely (surviving leave/rejoin and even a password
-        // rotation). The bypass now lasts only within the invitation's TTL.
+        // EXPIRED, so without this an accepted invite would remain a valid
+        // grant indefinitely (surviving leave/rejoin). The grant now lasts
+        // only within the invitation's TTL.
         expiresAt: { gt: new Date() },
       },
       select: { id: true },

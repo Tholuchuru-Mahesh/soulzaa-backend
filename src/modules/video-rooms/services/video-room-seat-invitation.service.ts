@@ -514,9 +514,8 @@ export class VideoRoomSeatInvitationService {
     return toVideoRoomInvitationView(inv);
   }
 
-  /** Accept a ROOM invitation (invitee only). Marks ACCEPTED — while the invitation
-   * is still within its TTL, the invitee's join() bypasses the private-room password
-   * (see member service + hasActiveRoomInvitation's expiry bound). Does not seat/join. */
+  /** Accept a ROOM invitation (invitee only). Marks ACCEPTED, within the
+   * invitation's TTL (see hasActiveRoomInvitation's expiry bound). Does not seat/join. */
   async acceptRoomInvite(
     actor: RoomActor,
     roomId: string,

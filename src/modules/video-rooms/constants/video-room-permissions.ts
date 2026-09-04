@@ -45,7 +45,7 @@ export enum VideoRoomPermission {
   GRANT_ROLES = 'GRANT_ROLES',
   /** Change the room theme / background. */
   CHANGE_THEME = 'CHANGE_THEME',
-  /** Lock/unlock the room (password / gift lock). */
+  /** Lock/unlock the room (gift lock). */
   LOCK_ROOM = 'LOCK_ROOM',
   /** Post/pin/remove room announcements. */
   MANAGE_ANNOUNCEMENTS = 'MANAGE_ANNOUNCEMENTS',
@@ -86,7 +86,7 @@ const MODERATOR_PERMISSIONS: readonly VideoRoomPermission[] = [
  * ADMIN is the PRD's Room Admin (production.txt:3349-3372): accept/reject seat
  * requests, invite to seats, remove from seats, mute, kick, pin, manage the
  * speaking queue. The PRD's "Admin Restrictions" section explicitly bars room
- * profile (MANAGE_ROOM), password/lock (LOCK_ROOM), admin appointment
+ * profile (MANAGE_ROOM), gift-lock (LOCK_ROOM), admin appointment
  * (GRANT_ROLES) and category/theme (CHANGE_THEME) — all of which stay owner-only.
  *
  * Built by extending MODERATOR_PERMISSIONS rather than listing them again, which

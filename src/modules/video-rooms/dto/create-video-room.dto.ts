@@ -45,8 +45,8 @@ export class CreateVideoRoomDto {
   @ApiPropertyOptional({
     enum: VideoRoomAccessPolicy,
     description:
-      'Declared access policy (PASSWORD / INVITE_ONLY / FOLLOWERS_ONLY / FRIENDS_ONLY / VIP_ONLY). ' +
-      'Stored now; join-gate enforcement lands with the join phase. PASSWORD requires a password.',
+      'Declared access policy (INVITE_ONLY / FOLLOWERS_ONLY / FRIENDS_ONLY / VIP_ONLY). ' +
+      'Stored now; join-gate enforcement lands with the join phase.',
   })
   @IsOptional()
   @IsEnum(VideoRoomAccessPolicy)

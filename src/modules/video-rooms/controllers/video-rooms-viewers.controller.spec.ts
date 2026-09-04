@@ -35,7 +35,7 @@ describe('VideoRoomViewersController', () => {
     await controller.join(
       USER,
       ROOM,
-      { socketId: 's1', deviceId: 'd1', platform: 'IOS', password: 'pw' },
+      { socketId: 's1', deviceId: 'd1', platform: 'IOS' },
       '1.2.3.4',
     );
     expect(viewer.joinAsViewer).toHaveBeenCalledWith(

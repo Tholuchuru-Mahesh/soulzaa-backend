@@ -160,12 +160,9 @@ export const ERROR_CODES = {
   /** Settings row absent for an existing room — data-integrity fault (500). */
   VIDEO_ROOM_SETTINGS_MISSING: 'VIDEO_ROOM_SETTINGS_MISSING',
   VIDEO_ROOM_DELETED: 'VIDEO_ROOM_DELETED',
-  VIDEO_ROOM_ALREADY_LOCKED: 'VIDEO_ROOM_ALREADY_LOCKED',
   // ---- Video Room member lifecycle (VR-3) ----
   /** Join attempted on a room whose status is not LIVE (409). */
   VIDEO_ROOM_ENDED: 'VIDEO_ROOM_ENDED',
-  /** Room password missing/incorrect on a locked room (400). */
-  VIDEO_ROOM_PASSWORD_INVALID: 'VIDEO_ROOM_PASSWORD_INVALID',
   /** Join blocked: room requires sending its designated entry gift first (402). */
   VIDEO_ROOM_GIFT_REQUIRED: 'VIDEO_ROOM_GIFT_REQUIRED',
   /** User is on the room's block-list (403). */
