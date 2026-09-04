@@ -44,6 +44,7 @@ describe('VideoRoomGiftContextHandler', () => {
   let pkScoring: Record<string, jest.Mock>;
   let queue: { enqueue: jest.Mock };
   let bus: { publish: jest.Mock };
+  let giftLockAccessRepo: { grantAccess: jest.Mock };
   let handler: VideoRoomGiftContextHandler;
 
   const setGiftConfig = (overrides: Record<string, unknown> = {}) => {
@@ -99,6 +100,7 @@ describe('VideoRoomGiftContextHandler', () => {
     };
     queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
     bus = { publish: jest.fn().mockResolvedValue(undefined) };
+    giftLockAccessRepo = { grantAccess: jest.fn().mockResolvedValue({ id: 'access-1' }) };
     setGiftConfig();
     handler = new VideoRoomGiftContextHandler(
       rooms as never,
@@ -108,6 +110,7 @@ describe('VideoRoomGiftContextHandler', () => {
       treasureProgress as never,
       queue as never,
       pkScoring as never,
+      giftLockAccessRepo as never,
       bus as never,
     );
   });
@@ -585,5 +588,122 @@ describe('VideoRoomGiftContextHandler', () => {
       await expect(effects.postCommit?.()).resolves.toBeUndefined();
       expect(pkScoring.mirror).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('VideoRoomGiftContextHandler — gift-lock grant', () => {
+  let handler: VideoRoomGiftContextHandler;
+  let rooms: any;
+  let giftLockAccessRepo: any;
+  let tx: any;
+
+  beforeEach(() => {
+    rooms = {
+      findById: jest.fn(),
+      getActiveBroadcastSession: jest.fn(),
+    };
+    giftLockAccessRepo = { grantAccess: jest.fn().mockResolvedValue({ id: 'access-1' }) };
+    tx = {};
+
+    // Construct with the handler's other existing collaborators as no-op
+    // mocks (moderation/config/registry/treasureProgress/queue/pkScoring/bus)
+    // — mirrors the top-level describe block's construction of `handler`,
+    // with `giftLockAccessRepo` inserted in its new constructor position.
+    const moderation: any = { isActivelyBlocked: jest.fn() };
+    const config: any = { get: jest.fn().mockReturnValue({}) };
+    const registry: any = { register: jest.fn() };
+    const treasureProgress: any = { apply: jest.fn(), shouldEmit: jest.fn(), mirror: jest.fn() };
+    const queue: any = { enqueue: jest.fn() };
+    const pkScoring: any = { apply: jest.fn(), mirror: jest.fn(), shouldEmit: jest.fn() };
+    const bus: any = { publish: jest.fn() };
+
+    handler = new VideoRoomGiftContextHandler(
+      rooms,
+      moderation,
+      config,
+      registry,
+      treasureProgress,
+      queue,
+      pkScoring,
+      giftLockAccessRepo,
+      bus,
+    );
+  });
+
+  it('grants gift-lock access when the required gift is sent to the room owner', async () => {
+    rooms.findById.mockResolvedValue({
+      id: 'room-1',
+      ownerId: 'owner-1',
+      giftLockEnabled: true,
+      requiredEntryGiftId: 'gift-required',
+    });
+    rooms.getActiveBroadcastSession.mockResolvedValue({ id: 'session-1' });
+
+    await (handler as any).grantGiftLockAccessIfApplicable(tx, {
+      contextId: 'room-1',
+      senderId: 'sender-1',
+      receiverIds: ['owner-1'],
+      gift: { id: 'gift-required' },
+      transactionId: 'txn-1',
+    });
+
+    expect(giftLockAccessRepo.grantAccess).toHaveBeenCalledWith(
+      {
+        userId: 'sender-1',
+        roomId: 'room-1',
+        sessionId: 'session-1',
+        giftId: 'gift-required',
+        giftTransactionId: 'txn-1',
+      },
+      tx,
+    );
+  });
+
+  it('does nothing when the room does not have gift-lock enabled', async () => {
+    rooms.findById.mockResolvedValue({ id: 'room-1', ownerId: 'owner-1', giftLockEnabled: false });
+    await (handler as any).grantGiftLockAccessIfApplicable(tx, {
+      contextId: 'room-1',
+      senderId: 'sender-1',
+      receiverIds: ['owner-1'],
+      gift: { id: 'gift-required' },
+      transactionId: 'txn-1',
+    });
+    expect(giftLockAccessRepo.grantAccess).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the sent gift is not the required gift', async () => {
+    rooms.findById.mockResolvedValue({
+      id: 'room-1',
+      ownerId: 'owner-1',
+      giftLockEnabled: true,
+      requiredEntryGiftId: 'gift-required',
+    });
+    rooms.getActiveBroadcastSession.mockResolvedValue({ id: 'session-1' });
+    await (handler as any).grantGiftLockAccessIfApplicable(tx, {
+      contextId: 'room-1',
+      senderId: 'sender-1',
+      receiverIds: ['owner-1'],
+      gift: { id: 'gift-OTHER' },
+      transactionId: 'txn-1',
+    });
+    expect(giftLockAccessRepo.grantAccess).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the owner is not among the receivers', async () => {
+    rooms.findById.mockResolvedValue({
+      id: 'room-1',
+      ownerId: 'owner-1',
+      giftLockEnabled: true,
+      requiredEntryGiftId: 'gift-required',
+    });
+    rooms.getActiveBroadcastSession.mockResolvedValue({ id: 'session-1' });
+    await (handler as any).grantGiftLockAccessIfApplicable(tx, {
+      contextId: 'room-1',
+      senderId: 'sender-1',
+      receiverIds: ['someone-else'],
+      gift: { id: 'gift-required' },
+      transactionId: 'txn-1',
+    });
+    expect(giftLockAccessRepo.grantAccess).not.toHaveBeenCalled();
   });
 });

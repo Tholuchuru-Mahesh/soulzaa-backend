@@ -497,6 +497,10 @@ describe('VR-12 PK integration', () => {
       treasureProgress as never,
       { enqueue: jest.fn().mockResolvedValue(undefined) } as never,
       scoring,
+      // No room in this fixture has gift-lock enabled, so this collaborator
+      // is never actually invoked — a no-op stand-in keeps the constructor
+      // call shape in sync with the real handler.
+      { grantAccess: jest.fn().mockResolvedValue(undefined) } as never,
       bus as never,
     );
 

@@ -14,6 +14,7 @@ import type {
 import { GiftContextRegistry } from 'src/modules/gifts/services/gift-context.registry';
 import { loadVideoRoomGiftConfig } from '../config/video-room-gift.config';
 import { VIDEO_ROOM_TREASURE_QUEUE_JOB } from '../constants/video-room-treasure.constants';
+import { VideoRoomGiftLockAccessRepository } from '../repositories/video-room-gift-lock-access.repository';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 import { VideoRoomPkRepository } from '../repositories/video-room-pk.repository';
@@ -57,6 +58,7 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
     private readonly treasureProgress: VideoRoomTreasureProgressService,
     private readonly queue: QueueService,
     private readonly pkScoring: VideoRoomPkScoringService,
+    private readonly giftLockAccessRepo: VideoRoomGiftLockAccessRepository,
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     @Optional() private readonly pkRepo?: VideoRoomPkRepository,
   ) {}
@@ -201,6 +203,7 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
 
     const treasure = await this.applyTreasure(tx, ctx);
     const pk = await this.applyPk(tx, ctx);
+    await this.grantGiftLockAccessIfApplicable(tx, ctx);
 
     // Neither subsystem left post-commit work: match the pre-VR-12 contract of
     // an absent `postCommit`, which the treasure-only "no ladder" case already
@@ -358,6 +361,42 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
     } catch (err) {
       this.logger.warn(`PK scoring failed for room ${ctx.contextId}: ${(err as Error).message}`);
       return idle;
+    }
+  }
+
+  /**
+   * Grants VideoRoomGiftLockAccess when this send is the room's designated
+   * entry gift, addressed to the room owner, while gift-lock is enabled.
+   * Best-effort: a failure here must never fail an already-paid gift send,
+   * matching this handler's existing treasure/PK guard convention.
+   */
+  private async grantGiftLockAccessIfApplicable(
+    tx: Prisma.TransactionClient,
+    ctx: GiftSendContext,
+  ): Promise<void> {
+    try {
+      const room = await this.rooms.findById(ctx.contextId);
+      if (!room?.giftLockEnabled || !room.requiredEntryGiftId) return;
+      if (ctx.gift.id !== room.requiredEntryGiftId) return;
+      if (!ctx.receiverIds.includes(room.ownerId)) return;
+
+      const activeSession = await this.rooms.getActiveBroadcastSession(ctx.contextId);
+      if (!activeSession) return;
+
+      await this.giftLockAccessRepo.grantAccess(
+        {
+          userId: ctx.senderId,
+          roomId: ctx.contextId,
+          sessionId: activeSession.id,
+          giftId: ctx.gift.id,
+          giftTransactionId: ctx.transactionId,
+        },
+        tx,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Gift-lock access grant failed for room ${ctx.contextId}: ${(err as Error).message}`,
+      );
     }
   }
 
