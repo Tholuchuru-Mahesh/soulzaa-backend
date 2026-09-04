@@ -47,6 +47,7 @@ describe('VideoRoomMemberService.join', () => {
   let identities: any;
   let platformAudit: any;
   let platformBans: any;
+  let giftLockAccessRepo: any;
   let service: VideoRoomMemberService;
 
   const actor = (id = 'u1', roles: any[] = []) => ({ id, roles });
@@ -68,6 +69,7 @@ describe('VideoRoomMemberService.join', () => {
       trendingRemove: jest.fn().mockResolvedValue(undefined),
       clearCachedSnapshot: jest.fn().mockResolvedValue(undefined),
       updateRoom: jest.fn().mockResolvedValue(undefined),
+      getActiveBroadcastSession: jest.fn().mockResolvedValue(null),
     };
     moderation = { isActivelyBlocked: jest.fn().mockResolvedValue(false) };
     passwords = { verify: jest.fn().mockResolvedValue(false) };
@@ -132,6 +134,7 @@ describe('VideoRoomMemberService.join', () => {
 
     platformAudit = { record: jest.fn().mockResolvedValue(undefined) };
     platformBans = { assertNotGloballyBanned: jest.fn().mockResolvedValue(undefined) };
+    giftLockAccessRepo = { hasGrantedAccess: jest.fn().mockResolvedValue(true) };
 
     service = new VideoRoomMemberService(
       repo,
@@ -148,11 +151,13 @@ describe('VideoRoomMemberService.join', () => {
       configMock(),
       seats as never,
       identities as never,
-      { isAccessGranted: jest.fn().mockResolvedValue(true) } as never,
-      undefined,
-      undefined,
-      platformAudit as never,
-      platformBans as never,
+      { isAccessGranted: jest.fn().mockResolvedValue(true) } as never, // entryAccessRepo
+      giftLockAccessRepo as never, // giftLockAccessRepo
+      undefined, // performanceStats
+      undefined, // investigationRecording
+      undefined, // reportRepo
+      platformAudit as never, // platformAudit
+      platformBans as never, // platformBans
     );
   });
 
@@ -205,6 +210,92 @@ describe('VideoRoomMemberService.join', () => {
     repo.findById.mockResolvedValue(liveRoom({ isLocked: true, passwordHash: 'h' }));
     seats.hasActiveRoomInvitation.mockResolvedValue(false);
     await expectCode(service.join(actor(), ROOM, {}, ctx), ERROR_CODES.VIDEO_ROOM_PASSWORD_INVALID);
+  });
+
+  describe('join — gift-lock gate', () => {
+    it('throws VIDEO_ROOM_GIFT_REQUIRED for a new viewer with no granted access', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'room-1',
+        ownerId: 'owner-1',
+        status: 'LIVE',
+        giftLockEnabled: true,
+        requiredEntryGiftId: 'gift-1',
+        maxViewers: 100,
+      });
+      repo.getMember.mockResolvedValue(null); // not already a member
+      repo.getActiveBroadcastSession.mockResolvedValue({
+        id: 'session-1',
+        paidEntryEnabled: false,
+      });
+      giftLockAccessRepo.hasGrantedAccess.mockResolvedValue(false);
+
+      await expect(
+        service.join({ id: 'viewer-1', roles: [] }, 'room-1', {}, { socketId: 'sock-1' }),
+      ).rejects.toMatchObject({ response: { errorCode: 'VIDEO_ROOM_GIFT_REQUIRED' } });
+    });
+
+    it('allows join when gift-lock access was already granted', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'room-1',
+        ownerId: 'owner-1',
+        status: 'LIVE',
+        giftLockEnabled: true,
+        requiredEntryGiftId: 'gift-1',
+        maxViewers: 100,
+      });
+      repo.getMember.mockResolvedValue(null);
+      repo.getActiveBroadcastSession.mockResolvedValue({
+        id: 'session-1',
+        paidEntryEnabled: false,
+      });
+      giftLockAccessRepo.hasGrantedAccess.mockResolvedValue(true);
+
+      await expect(
+        service.join({ id: 'viewer-1', roles: [] }, 'room-1', {}, { socketId: 'sock-1' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('never gates the room owner', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'room-1',
+        ownerId: 'owner-1',
+        status: 'LIVE',
+        giftLockEnabled: true,
+        requiredEntryGiftId: 'gift-1',
+        maxViewers: 100,
+      });
+      repo.getMember.mockResolvedValue(null);
+      repo.getActiveBroadcastSession.mockResolvedValue({
+        id: 'session-1',
+        paidEntryEnabled: false,
+      });
+
+      await expect(
+        service.join({ id: 'owner-1', roles: [] }, 'room-1', {}, { socketId: 'sock-1' }),
+      ).resolves.toBeDefined();
+      expect(giftLockAccessRepo.hasGrantedAccess).not.toHaveBeenCalled();
+    });
+
+    it('never gates an already-active member (e.g. a seat-holder)', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'room-1',
+        ownerId: 'owner-1',
+        status: 'LIVE',
+        giftLockEnabled: true,
+        requiredEntryGiftId: 'gift-1',
+        maxViewers: 100,
+      });
+      repo.getMember.mockResolvedValue({ isActive: true });
+      repo.getActiveBroadcastSession.mockResolvedValue({
+        id: 'session-1',
+        paidEntryEnabled: false,
+      });
+
+      await expect(
+        service.join({ id: 'viewer-1', roles: [] }, 'room-1', {}, { socketId: 'sock-1' }),
+      ).resolves.toBeDefined();
+      expect(giftLockAccessRepo.hasGrantedAccess).not.toHaveBeenCalled();
+    });
   });
 
   it('throws VIDEO_ROOM_CAPACITY_EXCEEDED when the room is full', async () => {
@@ -318,9 +409,11 @@ describe('VideoRoomMemberService.join', () => {
         configMock(),
         seats as never,
         identities as never,
-        { isAccessGranted: jest.fn().mockResolvedValue(true) } as never,
-        investigationRecording as any,
-        reportRepo as any,
+        { isAccessGranted: jest.fn().mockResolvedValue(true) } as never, // entryAccessRepo
+        giftLockAccessRepo as never, // giftLockAccessRepo
+        undefined, // performanceStats
+        investigationRecording as any, // investigationRecording
+        reportRepo as any, // reportRepo
       );
     });
 

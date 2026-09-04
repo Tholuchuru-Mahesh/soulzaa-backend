@@ -24,6 +24,7 @@ import type { VideoRoomSessionRecord } from '../interfaces/room-session-manager.
 import { toVideoRoomMemberView, toVideoRoomSessionView } from '../mappers/video-room-member.mapper';
 import { VideoRoomEntryAccessRepository } from '../repositories/video-room-entry-access.repository';
 import { VideoRoomEventsRepository } from '../repositories/video-room-events.repository';
+import { VideoRoomGiftLockAccessRepository } from '../repositories/video-room-gift-lock-access.repository';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
 import { VideoRoomReportRepository } from '../repositories/video-room-report.repository';
 import { VideoRoomSeatsRepository } from '../repositories/video-room-seats.repository';
@@ -102,6 +103,7 @@ export class VideoRoomMemberService {
     private readonly seats: VideoRoomSeatsRepository,
     private readonly identities: VideoRoomIdentityCache,
     private readonly entryAccessRepo: VideoRoomEntryAccessRepository,
+    private readonly giftLockAccessRepo: VideoRoomGiftLockAccessRepository,
     @Optional() private readonly performanceStats?: ModeratorPerformanceService,
     @Optional() private readonly investigationRecording?: InvestigationRecordingService,
     @Optional() private readonly reportRepo?: VideoRoomReportRepository,
@@ -191,6 +193,26 @@ export class VideoRoomMemberService {
             throw this.err(
               ERROR_CODES.INSUFFICIENT_BALANCE,
               `This broadcast session requires an entry fee of ${activeSession.entryFee} Gold Coins. Please pay the entry fee before joining.`,
+              HttpStatus.PAYMENT_REQUIRED,
+            );
+          }
+        }
+      }
+
+      // Gift-lock access check for non-privileged, non-moderator NEW joiners.
+      // An already-active member (including any seat-holder, since taking a
+      // seat requires having joined first) is never re-gated here.
+      if (!privileged && !isModerator && !alreadyMember && room.giftLockEnabled) {
+        const activeSession = await this.repo.getActiveBroadcastSession(roomId);
+        if (activeSession) {
+          const hasAccess = await this.giftLockAccessRepo.hasGrantedAccess(
+            actor.id,
+            activeSession.id,
+          );
+          if (!hasAccess) {
+            throw this.err(
+              ERROR_CODES.VIDEO_ROOM_GIFT_REQUIRED,
+              'This room requires sending its entry gift before you can join.',
               HttpStatus.PAYMENT_REQUIRED,
             );
           }

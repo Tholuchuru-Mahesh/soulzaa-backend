@@ -219,6 +219,7 @@ describe('VR-16 moderation engine (behavior)', () => {
       listActiveMembers: jest.fn().mockResolvedValue([]),
       countActiveMembers: jest.fn().mockResolvedValue(1),
       bumpStatsOnLeave: jest.fn().mockResolvedValue(undefined),
+      getActiveBroadcastSession: jest.fn().mockResolvedValue(null),
     };
     permissions = {
       assertPermission: jest.fn().mockResolvedValue(undefined),
@@ -315,6 +316,7 @@ describe('VR-16 moderation engine (behavior)', () => {
       { hasActiveRoomInvitation: jest.fn().mockResolvedValue(false) } as never,
       { resolve: jest.fn().mockResolvedValue(new Map()) } as never,
       { isAccessGranted: jest.fn().mockResolvedValue(true) } as never,
+      { hasGrantedAccess: jest.fn().mockResolvedValue(true) } as never,
     );
   });
 
