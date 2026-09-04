@@ -19,10 +19,12 @@ import { ParseUuidPipe } from 'src/common/pipes/parse-uuid.pipe';
 import { CreateVideoRoomDto } from '../dto/create-video-room.dto';
 import { ListVideoRoomsDto } from '../dto/list-video-rooms.dto';
 import { LockVideoRoomDto } from '../dto/lock-video-room.dto';
+import { PayEntryFeeDto } from '../dto/pay-entry-fee.dto';
 import { SearchVideoRoomsDto } from '../dto/search-video-rooms.dto';
 import { UpdateVideoRoomSettingsDto } from '../dto/update-video-room-settings.dto';
 import { UpdateVideoRoomDto } from '../dto/update-video-room.dto';
 import type { RoomActor } from '../interfaces/room-actor.interface';
+import { VideoRoomEntryPaymentService } from '../services/video-room-entry-payment.service';
 import { VideoRoomLifecycleService } from '../services/video-room-lifecycle.service';
 import { VideoRoomQueryService } from '../services/video-room-query.service';
 import { VideoRoomSettingsService } from '../services/video-room-settings.service';
@@ -40,6 +42,7 @@ export class VideoRoomsController {
     private readonly lifecycle: VideoRoomLifecycleService,
     private readonly query: VideoRoomQueryService,
     private readonly settings: VideoRoomSettingsService,
+    private readonly entryPayment: VideoRoomEntryPaymentService,
   ) {}
 
   private actor(user?: AuthenticatedUser): RoomActor {
@@ -202,5 +205,45 @@ export class VideoRoomsController {
   @ApiOperation({ summary: 'Restore a soft-deleted room' })
   restore(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUuidPipe) id: string) {
     return this.lifecycle.restore(this.actor(user), id);
+  }
+
+  // ---- Paid Entry / Gold Coin Access ----
+
+  @Get(':id/entry-status')
+  @ApiOperation({ summary: "Check whether current user needs paid entry to join the active broadcast session" })
+  getEntryStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+  ) {
+    return this.entryPayment.checkEntryStatus(user.id, id, user.roles);
+  }
+
+  @Post(':id/sessions/:sessionId/entry')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Pay entry fee in Gold Coins for a specific broadcast session' })
+  paySessionEntry(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Param('sessionId', ParseUuidPipe) sessionId: string,
+    @Body() dto: PayEntryFeeDto,
+  ) {
+    return this.entryPayment.payAndGrantAccess(this.actor(user), id, sessionId, dto);
+  }
+
+  @Post(':id/entry')
+  @NotGuest()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Pay entry fee in Gold Coins for the active broadcast session' })
+  async payActiveSessionEntry(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: PayEntryFeeDto,
+  ) {
+    const status = await this.entryPayment.checkEntryStatus(user.id, id, user.roles);
+    if (!status.sessionId) {
+      return { success: false, message: 'No active broadcast session in this room.' };
+    }
+    return this.entryPayment.payAndGrantAccess(this.actor(user), id, status.sessionId, dto);
   }
 }

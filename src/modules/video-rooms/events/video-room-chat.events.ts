@@ -49,6 +49,14 @@ export interface ChatMessagePayload {
   announcementId?: string;
   /** Present only on SYSTEM rows — the domain event that produced it. */
   systemEvent?: string;
+  /**
+   * Present only on SYSTEM rows that are ABOUT a specific member (joins,
+   * leaves, promotions, moderation). `senderId` on these rows is the system
+   * actor, so without this a client has no way to know who the message
+   * concerns — it can neither resolve a fresher display name nor let the row
+   * be tapped through to a profile.
+   */
+  subjectUserId?: string;
 }
 
 /** Per-request audit context threaded from the controller onto every event. */
@@ -199,6 +207,13 @@ export class ChatModeChangedEvent extends DomainEvent<{
   chatMode: string;
   allowChat: boolean;
   slowModeSeconds: number;
+  /**
+   * Carried so a connected client can retune its composer the moment the room's
+   * ceiling changes, instead of holding a stale one until its next refetch.
+   * The same field `VideoRoomSettingsView` projects — one source of truth,
+   * two deliveries.
+   */
+  chatMaxMessageLength: number;
   actorId: string;
   audit?: ChatAuditContext;
 }> {

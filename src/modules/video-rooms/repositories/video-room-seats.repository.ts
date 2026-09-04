@@ -439,15 +439,27 @@ export class VideoRoomSeatsRepository {
   }
 
   /** Persist a reconfigured layout onto the room's settings row. */
+  /**
+   * Persist the declared stage shape.
+   *
+   * NO `auditUpdate(actorId)` here, deliberately. `VideoRoomSettings` carries
+   * `updatedAt` but no `updatedBy`/`createdBy` columns, so spreading the audit
+   * stamp put an unknown field in the `data` object and Prisma rejected the
+   * whole call with a `PrismaClientValidationError` — surfacing as a 500 on
+   * `POST :id/seats/layout` and making the seat-count control impossible to
+   * use. `actorId` is still taken so the signature documents who asked, and so
+   * the audit trail (`seat.layout_changed` in the events log) keeps recording
+   * it; only the invalid column write is gone.
+   */
   async setSeatLayout(
     roomId: string,
     hostSeatCount: number,
     guestSeatCount: number,
-    actorId: string,
+    _actorId: string,
   ): Promise<void> {
     await this.prisma.videoRoomSettings.update({
       where: { roomId },
-      data: { hostSeatCount, guestSeatCount, ...auditUpdate(actorId) },
+      data: { hostSeatCount, guestSeatCount },
     });
   }
 

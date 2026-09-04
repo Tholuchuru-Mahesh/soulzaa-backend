@@ -73,12 +73,20 @@ export class ListGiftsDto {
   type?: GiftType;
 }
 
-/** Gift history filter (sent + received, optionally scoped to a context). */
+/** Gift history filter (sent + received, optionally scoped to a context or room type). */
 export class GiftHistoryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Scope to a single room/stream/conversation.' })
   @IsOptional()
   @IsUUID()
   contextId?: string;
+
+  @ApiPropertyOptional({
+    enum: GiftContextType,
+    description: 'Filter by context type (e.g. AUDIO_ROOM vs VIDEO_ROOM)',
+  })
+  @IsOptional()
+  @IsEnum(GiftContextType)
+  contextType?: GiftContextType;
 }
 
 /** Leaderboard read (top gifters / receivers, by period + scope). */

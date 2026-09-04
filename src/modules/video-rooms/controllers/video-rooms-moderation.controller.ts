@@ -535,12 +535,17 @@ export class VideoRoomsModerationController {
   @Get(':id/reports')
   @ApiOperation({
     summary: 'Paginated reports filed in the room',
-    description: 'Requires MANAGE_PARTICIPANTS. Optionally scoped to `targetUserId`.',
+    description:
+      'Requires REVIEW_REPORTS — the same permission every review/dismiss/notes action ' +
+      'asserts, and the one MODERATOR holds. (This summary previously said ' +
+      'MANAGE_PARTICIPANTS, which VideoRoomReportService has never checked; a client ' +
+      'gating the queue on that hid it from the role the queue exists for.) Optionally ' +
+      'scoped to `targetUserId`.',
   })
   @ApiParam({ name: 'id', description: 'Video room id (uuid)' })
   @ApiResponse({
     status: 403,
-    description: 'VIDEO_ROOM_FORBIDDEN — actor lacks MANAGE_PARTICIPANTS',
+    description: 'VIDEO_ROOM_FORBIDDEN — actor lacks REVIEW_REPORTS',
   })
   @ApiResponse({ status: 404, description: 'VIDEO_ROOM_NOT_FOUND' })
   listReports(

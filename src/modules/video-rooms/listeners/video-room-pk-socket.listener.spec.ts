@@ -67,17 +67,21 @@ describe('VideoRoomPkSocketListener', () => {
           attempt: 1,
           expiresAt: '2026-07-22T00:05:00.000Z',
         },
-        ['pkInvitationSent'],
+        // Broadcast under three aliases so every client-side listener
+        // convention picks it up (see the class doc's compat rationale) —
+        // the invitee is additionally reached directly via
+        // `emitToUserEverywhere`, which `emitted()` does not track here.
+        ['pkInvitationSent', 'video_room.pk.invitation_sent', 'pk:invitation_sent'],
       ],
       [
         VIDEO_ROOM_PK_EVENTS.INVITATION_ACCEPTED,
         { ...BASE, invitationId: 'i1', inviteeUserId: 'u1' },
-        ['pkInvitationAccepted'],
+        ['pkInvitationAccepted', 'video_room.pk.invitation_accepted'],
       ],
       [
         VIDEO_ROOM_PK_EVENTS.INVITATION_REJECTED,
         { ...BASE, invitationId: 'i1', inviteeUserId: 'u1' },
-        ['pkInvitationRejected'],
+        ['pkInvitationRejected', 'video_room.pk.invitation_rejected'],
       ],
       [
         VIDEO_ROOM_PK_EVENTS.STARTED,
@@ -91,7 +95,14 @@ describe('VideoRoomPkSocketListener', () => {
           teams: [],
           participants: [],
         },
-        ['pkStarted', 'pkCountdown'],
+        [
+          'pkStarted',
+          'video_room.pk.started',
+          'pk:started',
+          'pkCountdown',
+          'video_room.pk.countdown',
+          'pk:countdown',
+        ],
       ],
       [
         VIDEO_ROOM_PK_EVENTS.SCORE_UPDATED,

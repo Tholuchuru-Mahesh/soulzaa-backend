@@ -103,31 +103,26 @@ export abstract class BaseGateway
     return { ok: true };
   }
 
-  @SubscribeMessage('send_chat')
-  @SubscribeMessage('chat_message')
-  @SubscribeMessage('send_message')
-  async onChatMessage(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() body: { roomId: string; message?: string; text?: string },
-  ): Promise<{ ok: boolean }> {
-    const user = client.data.user as AuthenticatedUser | undefined;
-    const text = (body.message ?? body.text ?? '').trim();
-    if (!text || !body.roomId) return { ok: false };
-
-    const payload = {
-      roomId: body.roomId,
-      senderId: user?.id ?? 'user',
-      username: user?.username ?? user?.name ?? 'User',
-      avatarUrl: user?.avatarUrl,
-      text: text,
-      timestamp: new Date().toISOString(),
-    };
-
-    this.server.to(body.roomId).emit('chat:message', payload);
-    this.server.to(body.roomId).emit('video_room:chat_message', payload);
-    this.server.to(body.roomId).emit('video_room.chat_message_sent', payload);
-    return { ok: true };
-  }
+  /**
+   * There is deliberately NO generic chat relay on this base class.
+   *
+   * A `send_chat` / `chat_message` / `send_message` handler used to live here and
+   * echoed a client-supplied payload straight back to `server.to(roomId)`. It was
+   * removed because it was a total bypass of every chat gate the platform owns:
+   * it trusted `body.senderId` / `body.username` / `body.avatarUrl` (identity
+   * spoofing), never checked room membership (so any authenticated socket could
+   * inject into ANY room id, including one it had never joined), never consulted
+   * mute/ban/block or chat mode, never touched `VideoRoomChatRateLimiter` or the
+   * blocked-word scan, and persisted nothing — so the emitted payload carried no
+   * message id, no server timestamp and no ordering, which made client-side
+   * deduplication impossible.
+   *
+   * Durable room chat goes through the owning module's REST command
+   * (`POST /video-rooms/:id/chat/messages` for VR-9), which runs policy → rate
+   * limit → word scan → persist, and reaches clients as
+   * `video_room.chat_message_sent` via that module's socket listener. Ephemeral
+   * signals (typing, receipts) have their own authenticated gateway handlers.
+   */
 
   /** Application-level liveness check (Socket.IO's own ping/pong is transport-level). */
   @SubscribeMessage('ping')

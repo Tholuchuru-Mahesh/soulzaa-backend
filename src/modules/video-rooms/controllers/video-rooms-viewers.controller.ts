@@ -167,13 +167,22 @@ export class VideoRoomViewersController {
   @Post(':id/viewer/demote')
   @NotGuest()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Return a seated participant to the audience (host-driven)' })
+  @ApiOperation({
+    summary: 'Return a seated participant to the audience',
+    description:
+      'Demoting SOMEONE ELSE requires MANAGE_PARTICIPANTS and outranking the target. ' +
+      'Demoting YOURSELF (`targetUserId` = caller) is always allowed — stepping down from ' +
+      'your own seat is not a moderation action — except from the protected owner seat.',
+  })
   @ApiResponse({ status: HttpStatus.OK, description: 'Demoted to the audience.' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Room not found.' })
-  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Room not live.' })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'Room not live, target holds no seat, or the target holds the owner seat.',
+  })
   @ApiResponse({
     status: HttpStatus.FORBIDDEN,
-    description: 'Caller lacks MANAGE_PARTICIPANTS / outranks.',
+    description: 'Caller lacks MANAGE_PARTICIPANTS / outranks (never raised for self-demote).',
   })
   demote(
     @CurrentUser() user: AuthenticatedUser,

@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PlatformRole, VideoRoom, VideoRoomLogAction, VideoRoomMemberRole } from '@prisma/client';
+import { PlatformRole, VideoRoom, VideoRoomLogAction, VideoRoomMemberRole, VideoRoomStatus } from '@prisma/client';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { LockService } from 'src/infra/redis/lock.service';
@@ -9,6 +9,7 @@ import { loadVideoRoomConfig, VideoRoomConfig } from '../config/video-room.confi
 import {
   VIDEO_ROOM_DEFAULT_PAGE_SIZE,
   VIDEO_ROOM_MAX_PAGE_SIZE,
+  VIDEO_ROOM_SYSTEM_ACTOR_ID,
   videoRoomJoinLockKey,
 } from '../constants/video-room.constants';
 import type { VideoRoomDetailView } from '../entities/video-room-detail.view';
@@ -21,6 +22,7 @@ import { ConnectionType } from '../enums';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import type { VideoRoomSessionRecord } from '../interfaces/room-session-manager.interface';
 import { toVideoRoomMemberView, toVideoRoomSessionView } from '../mappers/video-room-member.mapper';
+import { VideoRoomEntryAccessRepository } from '../repositories/video-room-entry-access.repository';
 import { VideoRoomEventsRepository } from '../repositories/video-room-events.repository';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
 import { VideoRoomReportRepository } from '../repositories/video-room-report.repository';
@@ -39,6 +41,8 @@ import { ModeratorPerformanceService } from 'src/modules/moderator-performance/s
 import { InvestigationRecordingService } from 'src/modules/investigation-recording/services/investigation-recording.service';
 import { PlatformModerationAuditService } from 'src/modules/platform-moderation/services/platform-moderation-audit.service';
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
+import { VideoRoomChatRepository } from '../repositories/video-room-chat.repository';
+import { VideoRoomChatCacheService } from './video-room-chat-cache.service';
 
 /** Client-supplied join fields (from JoinRoomDto) + server-derived context. */
 export interface JoinContext {
@@ -97,11 +101,14 @@ export class VideoRoomMemberService {
     config: ConfigService,
     private readonly seats: VideoRoomSeatsRepository,
     private readonly identities: VideoRoomIdentityCache,
+    private readonly entryAccessRepo: VideoRoomEntryAccessRepository,
     @Optional() private readonly performanceStats?: ModeratorPerformanceService,
     @Optional() private readonly investigationRecording?: InvestigationRecordingService,
     @Optional() private readonly reportRepo?: VideoRoomReportRepository,
     @Optional() private readonly platformAudit?: PlatformModerationAuditService,
     @Optional() private readonly platformBans?: PlatformBanService,
+    @Optional() private readonly chatRepo?: VideoRoomChatRepository,
+    @Optional() private readonly chatCache?: VideoRoomChatCacheService,
   ) {
     this.cfg = loadVideoRoomConfig(config);
   }
@@ -162,6 +169,29 @@ export class VideoRoomMemberService {
               ERROR_CODES.VIDEO_ROOM_PASSWORD_INVALID,
               'Incorrect room password.',
               HttpStatus.BAD_REQUEST,
+            );
+          }
+        }
+      }
+
+      // Paid Entry access check for non-privileged, non-moderator members
+      if (!privileged && !isModerator) {
+        const activeSession = await this.repo.getActiveBroadcastSession(roomId);
+        if (
+          activeSession &&
+          activeSession.paidEntryEnabled &&
+          activeSession.entryFee &&
+          activeSession.entryFee > 0n
+        ) {
+          const hasGrantedAccess = await this.entryAccessRepo.hasGrantedAccess(
+            actor.id,
+            activeSession.id,
+          );
+          if (!hasGrantedAccess) {
+            throw this.err(
+              ERROR_CODES.INSUFFICIENT_BALANCE,
+              `This broadcast session requires an entry fee of ${activeSession.entryFee} Gold Coins. Please pay the entry fee before joining.`,
+              HttpStatus.PAYMENT_REQUIRED,
             );
           }
         }
@@ -338,6 +368,13 @@ export class VideoRoomMemberService {
     this.metrics.setViewers(liveCount);
     for (const record of ended) {
       this.metrics.observeSessionDuration(this.durationSeconds(record));
+    }
+
+    // Auto-end the broadcast when the last member leaves. The room transitions
+    // LIVE → ENDED → OFFLINE so the host can start a new broadcast session
+    // without creating a new room (persistent room model).
+    if (liveCount === 0 && room.status === VideoRoomStatus.LIVE) {
+      await this.autoEndBroadcast(room, roomId);
     }
   }
 
@@ -521,6 +558,106 @@ export class VideoRoomMemberService {
     });
     this.metrics.incLeave();
     this.metrics.observeSessionDuration(durationSeconds);
+
+    // Auto-end the broadcast when the last session is reclaimed by the monitor.
+    if (liveCount === 0) {
+      const currentRoom = await this.repo.findById(row.roomId);
+      if (currentRoom && currentRoom.status === VideoRoomStatus.LIVE) {
+        await this.autoEndBroadcast(currentRoom, row.roomId);
+      }
+    }
+  }
+
+  /**
+   * Auto-end a broadcast session when the room becomes empty.
+   *
+   * Lifecycle: LIVE → ENDED (broadcast over) → OFFLINE (ready for next session).
+   * Emits `video_room.closed` so all connected clients are evicted, then
+   * emits `video_room.updated` with `status: OFFLINE` so any lingering UI or
+   * the host's preview screen sees the room is ready to go live again.
+   *
+   * All writes use `VIDEO_ROOM_SYSTEM_ACTOR_ID` (system-initiated action).
+   * Errors are swallowed-and-logged: the member leave path already completed
+   * successfully and the auto-end is a best-effort follow-up.
+   */
+  private async autoEndBroadcast(room: VideoRoom, roomId: string): Promise<void> {
+    try {
+      const durationSeconds = Math.max(
+        0,
+        Math.floor((Date.now() - room.createdAt.getTime()) / 1000),
+      );
+
+      // ── Step 1: LIVE → ENDED & finalize broadcast session ──
+      await this.repo.endActiveBroadcastSession(roomId, 'AUTO_ENDED_NO_MEMBERS');
+      await this.repo.updateRoom(
+        roomId,
+        { status: VideoRoomStatus.ENDED, endedAt: new Date() },
+        VIDEO_ROOM_SYSTEM_ACTOR_ID,
+      );
+      await this.repo.trendingRemove(roomId);
+      await this.repo.clearCachedSnapshot(roomId);
+      if (this.chatRepo) {
+        await this.chatRepo.softDeleteRoomMessages(roomId, VIDEO_ROOM_SYSTEM_ACTOR_ID);
+      }
+      if (this.chatCache) {
+        await this.chatCache.invalidateRecent(roomId);
+        await this.chatCache.setPins(roomId, []);
+      }
+
+      // The member who triggered this already left cleanly, but hosts/seat
+      // holders/moderators aren't reflected in the viewer count that gated
+      // this call, so their presence rows (and any stray sessions/state
+      // snapshot) can still be sitting around. Clear the room's whole live
+      // runtime so the next broadcast doesn't inherit a stale roster/count.
+      await this.presence.clearRoom(roomId);
+      await this.sessions.endAllRoomSessions(roomId);
+      await this.repo.deactivateAllMembers(roomId, VIDEO_ROOM_SYSTEM_ACTOR_ID);
+      await this.state.clear(roomId);
+
+      await this.repo.appendLog({
+        roomId,
+        actorId: VIDEO_ROOM_SYSTEM_ACTOR_ID,
+        action: VideoRoomLogAction.ENDED,
+        metadata: { durationSeconds, reason: 'auto_end_empty_room' },
+      });
+
+      // Notify all clients that the broadcast session has ended.
+      await this.events.emitRoomClosed({
+        roomId,
+        actorId: VIDEO_ROOM_SYSTEM_ACTOR_ID,
+        ownerId: room.ownerId,
+        durationSeconds,
+      });
+
+      // ── Step 2: ENDED → OFFLINE (auto-reopen for next broadcast) ──
+      await this.repo.updateRoom(
+        roomId,
+        { status: VideoRoomStatus.OFFLINE, endedAt: null },
+        VIDEO_ROOM_SYSTEM_ACTOR_ID,
+      );
+      await this.repo.appendLog({
+        roomId,
+        actorId: VIDEO_ROOM_SYSTEM_ACTOR_ID,
+        action: VideoRoomLogAction.UPDATED,
+        metadata: { status: VideoRoomStatus.OFFLINE, reason: 'auto_reopen_after_broadcast' },
+      });
+
+      // Emit video_room.updated so any lingering viewers and the host's preview
+      // screen update to show the room is ready for the next broadcast.
+      await this.events.emitRoomUpdated({
+        roomId,
+        actorId: VIDEO_ROOM_SYSTEM_ACTOR_ID,
+        changed: ['status'],
+      });
+
+      this.logger.log(
+        `Video room ${roomId} auto-ended (empty room) and reopened to OFFLINE after ${durationSeconds}s.`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Auto-end for video room ${roomId} failed: ${(err as Error).message}`,
+      );
+    }
   }
 
   private durationSeconds(record: VideoRoomSessionRecord): number {

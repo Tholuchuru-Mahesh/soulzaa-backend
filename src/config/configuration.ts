@@ -335,6 +335,9 @@ export const videoRoomConfig = registerAs('videoRoom', () => ({
   // Viewer-mode audience source (VR-6): 'durable' (member-is-viewer) today;
   // 'ephemeral' (Redis-only, broadcast-scale) is a future implementation.
   viewerPresenceMode: env().VIDEO_ROOM_VIEWER_PRESENCE_MODE,
+  minEntryFee: env().VIDEO_ROOM_MIN_ENTRY_FEE,
+  maxEntryFee: env().VIDEO_ROOM_MAX_ENTRY_FEE,
+  entryCreatorPercentage: env().VIDEO_ROOM_ENTRY_CREATOR_PERCENTAGE,
   // Moderation & safety engine (VR-16): auto-mod detector thresholds/windows,
   // cooldown, expiry-sweep cadence, and text-bound mirrors. Every moderation
   // service/detector reads thresholds through this namespace — nothing is

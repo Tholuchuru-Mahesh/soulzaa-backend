@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AnalyticsModule } from 'src/modules/analytics/analytics.module';
 import { MobileWorkforceModule } from 'src/modules/mobile-workforce/mobile-workforce.module';
+import { StorageModule } from 'src/infra/storage/storage.module';
 import { ContentRequestController } from './controllers/content-request.controller';
 import { CreatorCenterController } from './controllers/creator-center.controller';
 import { OfficialInventoryController } from './controllers/official-inventory.controller';
@@ -21,7 +22,7 @@ import { OfficialInventoryService } from './services/official-inventory.service'
  * reward management surfaces.
  */
 @Module({
-  imports: [AnalyticsModule, MobileWorkforceModule],
+  imports: [AnalyticsModule, MobileWorkforceModule, StorageModule],
   controllers: [CreatorCenterController, ContentRequestController, OfficialInventoryController],
   providers: [
     CreatorCenterService,

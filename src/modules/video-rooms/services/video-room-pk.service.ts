@@ -232,12 +232,11 @@ export class VideoRoomPkService {
         }),
       );
 
-      // Side is derived from which of the DTO's two arrays an invitee is in —
-      // passing bare userIds here would silently default every invitee to
-      // RED (see `VideoRoomPkInvitationService`'s `normalizeInvitee`).
+      // Side is derived from which of the DTO's two arrays an invitee is in.
+      // The inviter (host who created the battle) is already committed and does not invite themselves.
       const invitees: PkInviteeInput[] = [
-        ...dto.red.map((userId) => ({ userId, side: VideoRoomPkSide.RED })),
-        ...dto.blue.map((userId) => ({ userId, side: VideoRoomPkSide.BLUE })),
+        ...dto.red.filter((userId) => userId !== actor.id).map((userId) => ({ userId, side: VideoRoomPkSide.RED })),
+        ...dto.blue.filter((userId) => userId !== actor.id).map((userId) => ({ userId, side: VideoRoomPkSide.BLUE })),
       ];
       await this.invitations.send(battle, invitees, actor.id);
       this.logger.debug(
@@ -274,6 +273,53 @@ export class VideoRoomPkService {
         `PK invitation accepted by ${actor.id} on battle ${battle.id} (request ${requestId ?? 'n/a'})`,
       );
       const refreshed = (await this.repo.getBattle(battle.id)) ?? battle;
+
+      if (refreshed.status === VideoRoomPkStatus.ACCEPTED) {
+        const now = new Date();
+        const countdownSeconds = 5;
+        const endsAt = new Date(
+          now.getTime() + countdownSeconds * 1000 + refreshed.durationSeconds * 1000,
+        );
+
+        const started = await this.state.transition(
+          refreshed.id,
+          VideoRoomPkStatus.ACCEPTED,
+          VideoRoomPkStatus.COUNTDOWN,
+          { startedAt: now, endsAt, countdownSeconds },
+        );
+        await this.timer.scheduleCountdown(
+          {
+            id: started.id,
+            roomId,
+            resumeSeq: started.resumeSeq,
+            countdownSeconds: started.countdownSeconds,
+          },
+          now,
+        );
+
+        const [teams, participants] = await this.loadSides(started.id);
+        await this.bus.publish(
+          new PkStartedEvent({
+            roomId,
+            battleId: started.id,
+            mode: started.mode,
+            countdownSeconds: started.countdownSeconds,
+            durationSeconds: started.durationSeconds,
+            startedAt: now.toISOString(),
+            endsAt: endsAt.toISOString(),
+            teams: teams.map(toTeamView),
+            participants: participants.map((p) => ({
+              userId: p.userId,
+              side: p.side,
+              teamId: p.teamId,
+            })),
+            requestId,
+          }),
+        );
+        const finalStarted = (await this.repo.getBattle(started.id)) ?? started;
+        return this.toResponse(finalStarted);
+      }
+
       return this.toResponse(refreshed);
     });
   }

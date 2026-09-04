@@ -13,7 +13,14 @@ describe('VideoRoomsChatController', () => {
   let controller: VideoRoomsChatController;
 
   beforeEach(() => {
-    chat = { send: jest.fn(), edit: jest.fn(), remove: jest.fn(), recall: jest.fn() };
+    chat = {
+      send: jest.fn(),
+      edit: jest.fn(),
+      remove: jest.fn(),
+      recall: jest.fn(),
+      // The command responses are mapped, so the mapper has to be on the mock.
+      toPayload: jest.fn((row?: { id?: string }) => ({ messageId: row?.id })),
+    };
     query = { history: jest.fn(), search: jest.fn(), unreadCount: jest.fn() };
     pins = { pin: jest.fn(), unpin: jest.fn(), listPinned: jest.fn() };
     announcements = { create: jest.fn(), update: jest.fn(), remove: jest.fn(), list: jest.fn() };
@@ -38,6 +45,25 @@ describe('VideoRoomsChatController', () => {
       { content: 'hi' },
       { ip: '10.0.0.1', requestId: 'req-1', userAgent: 'jest' },
     );
+  });
+
+  it('returns the mapped wire payload from send, never the raw row', async () => {
+    // The optimistic client bubble is reconciled against the socket broadcast,
+    // which keys on `messageId`. A raw Prisma row keys on `id`, so returning it
+    // would leave every self-sent message duplicated in the live feed.
+    chat.send.mockResolvedValue({ id: 'm-42', roomId: 'r1', senderId: 'u1' });
+
+    const result = await controller.send(USER, 'r1', { content: 'hi' } as never, META);
+
+    expect(chat.toPayload).toHaveBeenCalledWith({ id: 'm-42', roomId: 'r1', senderId: 'u1' });
+    expect(result).toEqual({ messageId: 'm-42' });
+  });
+
+  it('returns the mapped wire payload from edit too', async () => {
+    chat.edit.mockResolvedValue({ id: 'm-43' });
+    await expect(
+      controller.edit(USER, 'r1', 'm-43', { content: 'x' } as never, META),
+    ).resolves.toEqual({ messageId: 'm-43' });
   });
 
   it('passes the message id through on edit', async () => {

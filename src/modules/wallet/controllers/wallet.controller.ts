@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { CurrentUser } from 'src/modules/authorization/decorators/authorization.decorators';
 import { TransactionQueryFilterDto } from '../dto/wallet-query.dto';
-import { WalletHistoryQueryDto, WalletRewardsQueryDto } from '../dto/wallet.dto';
+import { WalletEarningsQueryDto, WalletHistoryQueryDto, WalletRewardsQueryDto } from '../dto/wallet.dto';
 import { BalanceService } from '../services/balance.service';
 import { TransactionQueryService } from '../services/transaction-query.service';
 import { WalletReadService } from '../services/wallet-read.service';
@@ -40,8 +40,8 @@ export class WalletController {
 
   @Get('earnings')
   @ApiOperation({ summary: 'Host/creator earnings summary (settlement-ready = EARNINGS balance)' })
-  earnings(@CurrentUser('id') userId: string) {
-    return this.read.getEarnings(userId);
+  earnings(@CurrentUser('id') userId: string, @Query() q?: WalletEarningsQueryDto) {
+    return this.read.getEarnings(userId, q?.roomType);
   }
 
   @Get('rewards')

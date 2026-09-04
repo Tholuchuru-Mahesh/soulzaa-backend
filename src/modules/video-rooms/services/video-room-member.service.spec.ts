@@ -26,6 +26,7 @@ function liveRoom(over: Record<string, unknown> = {}) {
     isLocked: false,
     passwordHash: null,
     maxViewers: 500,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
     ...over,
   };
 }
@@ -62,6 +63,11 @@ describe('VideoRoomMemberService.join', () => {
       countActiveMembers: jest.fn().mockResolvedValue(1),
       deactivateMember: jest.fn().mockResolvedValue(undefined),
       bumpStatsOnLeave: jest.fn().mockResolvedValue(undefined),
+      deactivateAllMembers: jest.fn().mockResolvedValue(undefined),
+      endActiveBroadcastSession: jest.fn().mockResolvedValue(undefined),
+      trendingRemove: jest.fn().mockResolvedValue(undefined),
+      clearCachedSnapshot: jest.fn().mockResolvedValue(undefined),
+      updateRoom: jest.fn().mockResolvedValue(undefined),
     };
     moderation = { isActivelyBlocked: jest.fn().mockResolvedValue(false) };
     passwords = { verify: jest.fn().mockResolvedValue(false) };
@@ -76,12 +82,14 @@ describe('VideoRoomMemberService.join', () => {
         participantCount: 0,
       }),
       restore: jest.fn().mockResolvedValue(null),
+      clear: jest.fn().mockResolvedValue(undefined),
     };
     sessions = {
       register: jest.fn().mockResolvedValue({ duplicateOf: null }),
       touchReconnect: jest.fn().mockResolvedValue(undefined),
       end: jest.fn().mockResolvedValue({ socketId: 's1', connectedAt: new Date().toISOString() }),
       endUserRoomSessions: jest.fn().mockResolvedValue([]),
+      endAllRoomSessions: jest.fn().mockResolvedValue([]),
       listUserSessions: jest.fn().mockResolvedValue([]),
       getSession: jest.fn().mockResolvedValue(null),
       roomSessionCount: jest.fn().mockResolvedValue(1),
@@ -93,6 +101,7 @@ describe('VideoRoomMemberService.join', () => {
       addModerator: jest.fn().mockResolvedValue(undefined),
       removeModerator: jest.fn().mockResolvedValue(undefined),
       isModeratorPresent: jest.fn().mockResolvedValue(false),
+      clearRoom: jest.fn().mockResolvedValue(undefined),
     };
     events = {
       emitUserJoined: jest.fn().mockResolvedValue(undefined),
@@ -102,6 +111,8 @@ describe('VideoRoomMemberService.join', () => {
       emitRoomSynchronized: jest.fn().mockResolvedValue(undefined),
       emitHeartbeatMissed: jest.fn().mockResolvedValue(undefined),
       emitSessionExpired: jest.fn().mockResolvedValue(undefined),
+      emitRoomClosed: jest.fn().mockResolvedValue(undefined),
+      emitRoomUpdated: jest.fn().mockResolvedValue(undefined),
     };
     eventsRepo = {
       appendEvent: jest.fn().mockResolvedValue(undefined),
@@ -137,7 +148,7 @@ describe('VideoRoomMemberService.join', () => {
       configMock(),
       seats as never,
       identities as never,
-      undefined,
+      { isAccessGranted: jest.fn().mockResolvedValue(true) } as never,
       undefined,
       undefined,
       platformAudit as never,
@@ -307,7 +318,7 @@ describe('VideoRoomMemberService.join', () => {
         configMock(),
         seats as never,
         identities as never,
-        undefined,
+        { isAccessGranted: jest.fn().mockResolvedValue(true) } as never,
         investigationRecording as any,
         reportRepo as any,
       );
@@ -427,6 +438,17 @@ describe('VideoRoomMemberService.join', () => {
   it('leave throws VIDEO_ROOM_NOT_FOUND for an unknown room', async () => {
     repo.findById.mockResolvedValue(null);
     await expectCode(service.leave(actor('u1'), ROOM, {}), ERROR_CODES.VIDEO_ROOM_NOT_FOUND);
+  });
+
+  it('leave auto-ends the broadcast when the last member leaves, tearing down presence/sessions/roster/state', async () => {
+    // presence.viewerCount is mocked to 0, so the leaving user is always "the
+    // last one" in this fixture — exercising the auto-end path on every leave.
+    await service.leave(actor('u1'), ROOM, { socketId: 's1' });
+
+    expect(presence.clearRoom).toHaveBeenCalledWith(ROOM);
+    expect(sessions.endAllRoomSessions).toHaveBeenCalledWith(ROOM);
+    expect(repo.deactivateAllMembers).toHaveBeenCalled();
+    expect(state.clear).toHaveBeenCalledWith(ROOM);
   });
 
   // ---- reconnect ----

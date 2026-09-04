@@ -1,6 +1,7 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import {
   CreatorDailyStat,
+  GiftContextType,
   GiftTxnStatus,
   RoomActivity,
   RoomDailyStat,
@@ -61,12 +62,39 @@ export class AnalyticsReportingService {
   ): Promise<RoomReportView> {
     await this.assertRoomManager(actor, roomId);
 
+    const effectiveDays = days > 0 ? days : 30;
     const dateKey = dateKeyOf();
-    const [activity, live, series, revenue] = await Promise.all([
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - effectiveDays - 1);
+    fromDate.setHours(0, 0, 0, 0);
+
+    const [activity, live, series, revenue, rangeGifts, rangeVisitors] = await Promise.all([
       this.repo.findRoomActivity(roomId),
       this.counters.readRoom(roomId, dateKey),
-      this.repo.listRoomDailyStats(roomId, dateKeyDaysAgo(days)),
+      this.repo.listRoomDailyStats(roomId, dateKeyDaysAgo(effectiveDays)),
       this.repo.getRevenueReports({ roomId, userId: GLOBAL_ANALYTICS_UUID }),
+      this.prisma.giftTransaction.findMany({
+        where: {
+          contextId: roomId,
+          status: GiftTxnStatus.COMPLETED,
+          createdAt: { gte: fromDate },
+        },
+        select: {
+          totalCoinValue: true,
+          creatorEarnings: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.roomVisitor.findMany({
+        where: {
+          roomId,
+          joinedAt: { gte: fromDate },
+        },
+        select: {
+          userId: true,
+          joinedAt: true,
+        },
+      }),
     ]);
 
     let giftCoins = 0n;
@@ -76,13 +104,21 @@ export class AnalyticsReportingService {
       creatorCoins += r.creatorCoins;
     }
 
+    let dbGiftsCount = 0;
     if (giftCoins === 0n) {
+      const isVideo = await this.prisma.videoRoom.findUnique({
+        where: { id: roomId },
+        select: { id: true },
+      });
+      const roomContextType = isVideo ? GiftContextType.VIDEO_ROOM : GiftContextType.AUDIO_ROOM;
       const dbGifts = await this.prisma.giftTransaction.aggregate({
-        where: { contextId: roomId, status: GiftTxnStatus.COMPLETED },
+        where: { contextId: roomId, status: GiftTxnStatus.COMPLETED, contextType: roomContextType },
         _sum: { totalCoinValue: true, creatorEarnings: true },
+        _count: true,
       });
       giftCoins = dbGifts._sum.totalCoinValue ?? 0n;
       creatorCoins = dbGifts._sum.creatorEarnings ?? 0n;
+      dbGiftsCount = dbGifts._count ?? 0;
     }
 
     const uniqueVisitors = await this.repo.countUniqueVisitors(roomId);
@@ -92,13 +128,115 @@ export class AnalyticsReportingService {
         roomId,
         peakParticipants: Math.max(live.peakParticipants, 1),
         totalJoined: Math.max(uniqueVisitors, live.uniqueVisitors, live.joins > 0 ? 1 : 0),
-        totalGifts: live.giftCount,
+        totalGifts: Math.max(live.giftCount, dbGiftsCount),
         totalGiftCoins: (giftCoins + BigInt(live.giftCoins)).toString(),
         totalSpeakingMinutes: Math.round(live.speakingSeconds / 60),
         durationSeconds: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
+    }
+
+    // Aggregate DB gifts by dateKey
+    const dbGiftsByDate = new Map<string, { giftCoins: number; giftsCount: number }>();
+    for (const g of rangeGifts) {
+      const key = dateKeyOf(g.createdAt);
+      const existing = dbGiftsByDate.get(key) || { giftCoins: 0, giftsCount: 0 };
+      existing.giftCoins += Number(g.totalCoinValue);
+      existing.giftsCount += 1;
+      dbGiftsByDate.set(key, existing);
+    }
+
+    // Aggregate DB visitors by dateKey
+    const dbVisitorsByDate = new Map<string, { joins: number; uniqueUsers: Set<string> }>();
+    for (const v of rangeVisitors) {
+      const key = dateKeyOf(v.joinedAt);
+      const existing = dbVisitorsByDate.get(key) || { joins: 0, uniqueUsers: new Set<string>() };
+      existing.joins += 1;
+      existing.uniqueUsers.add(v.userId);
+      dbVisitorsByDate.set(key, existing);
+    }
+
+    // Build complete dailySeries map for the requested days (ordered oldest -> newest)
+    const map = new Map(series.map((s) => [s.dateKey, s]));
+    const formattedSeries: RoomDailyStatView[] = [];
+
+    for (let i = effectiveDays - 1; i >= 0; i--) {
+      const key = dateKeyDaysAgo(i);
+      const existing = map.get(key);
+      const dbGift = dbGiftsByDate.get(key);
+      const dbVis = dbVisitorsByDate.get(key);
+
+      if (key === dateKey) {
+        const joins = Math.max(live.joins, dbVis?.joins ?? 0, existing?.joins ?? 0);
+        const uVis = Math.max(
+          live.uniqueVisitors,
+          dbVis?.uniqueUsers.size ?? 0,
+          existing?.uniqueVisitors ?? 0,
+        );
+        const peak = Math.max(live.peakParticipants, existing?.peakParticipants ?? 1);
+        const messages = Math.max(live.messages, existing?.messages ?? 0);
+        const gifts = Math.max(live.giftCount, dbGift?.giftsCount ?? 0, existing?.giftCount ?? 0);
+        const coins = Math.max(
+          live.giftCoins,
+          dbGift?.giftCoins ?? 0,
+          existing ? Number(existing.giftCoins) : 0,
+        );
+        const speaking = (existing ? Number(existing.speakingSeconds) : 0) + live.speakingSeconds;
+
+        formattedSeries.push({
+          dateKey: key,
+          joins,
+          uniqueVisitors: uVis,
+          peakParticipants: peak,
+          messages,
+          giftCount: gifts,
+          giftCoins: coins.toString(),
+          speakingSeconds: speaking.toString(),
+          engagementScore: existing?.engagementScore ?? this.rollup.roomEngagement(live),
+        });
+      } else if (existing) {
+        const gifts = Math.max(existing.giftCount, dbGift?.giftsCount ?? 0);
+        const coins = Math.max(Number(existing.giftCoins), dbGift?.giftCoins ?? 0);
+        const joins = Math.max(existing.joins, dbVis?.joins ?? 0);
+        const uVis = Math.max(existing.uniqueVisitors, dbVis?.uniqueUsers.size ?? 0);
+
+        formattedSeries.push({
+          dateKey: key,
+          joins,
+          uniqueVisitors: uVis,
+          peakParticipants: existing.peakParticipants,
+          messages: existing.messages,
+          giftCount: gifts,
+          giftCoins: coins.toString(),
+          speakingSeconds: existing.speakingSeconds.toString(),
+          engagementScore: existing.engagementScore,
+        });
+      } else if (dbGift || dbVis) {
+        formattedSeries.push({
+          dateKey: key,
+          joins: dbVis?.joins ?? 0,
+          uniqueVisitors: dbVis?.uniqueUsers.size ?? 0,
+          peakParticipants: dbVis?.uniqueUsers.size ? Math.min(dbVis.uniqueUsers.size, 10) : 1,
+          messages: 0,
+          giftCount: dbGift?.giftsCount ?? 0,
+          giftCoins: (dbGift?.giftCoins ?? 0).toString(),
+          speakingSeconds: '0',
+          engagementScore: 0,
+        });
+      } else {
+        formattedSeries.push({
+          dateKey: key,
+          joins: 0,
+          uniqueVisitors: 0,
+          peakParticipants: 0,
+          messages: 0,
+          giftCount: 0,
+          giftCoins: '0',
+          speakingSeconds: '0',
+          engagementScore: 0,
+        });
+      }
     }
 
     return {
@@ -108,20 +246,25 @@ export class AnalyticsReportingService {
         dateKey,
         joins: live.joins,
         messages: live.messages,
-        giftCount: live.giftCount,
-        giftCoins: live.giftCoins,
+        giftCount: Math.max(live.giftCount, dbGiftsCount),
+        giftCoins: live.giftCoins > 0 ? live.giftCoins : Number(giftCoins),
         speakingSeconds: live.speakingSeconds,
         uniqueVisitors: live.uniqueVisitors,
         peakParticipants: live.peakParticipants,
         engagementScore: this.rollup.roomEngagement(live),
       },
       revenue: { giftCoins: giftCoins.toString(), creatorCoins: creatorCoins.toString() },
-      dailySeries: series.map((s) => this.roomDailyView(s)),
+      dailySeries: formattedSeries,
     };
   }
 
-  /** A user's own creator analytics: today + lifetime totals + revenue + series. */
-  async getMyAnalytics(userId: string, days: number): Promise<CreatorAnalyticsView> {
+  /** A user's own creator analytics: today + lifetime totals + revenue + series (optionally scoped to AUDIO_ROOM or VIDEO_ROOM). */
+  async getMyAnalytics(
+    userId: string,
+    days: number,
+    roomType?: GiftContextType,
+  ): Promise<CreatorAnalyticsView> {
+    const effectiveRoomType = roomType ?? GiftContextType.AUDIO_ROOM;
     const now = new Date();
     const todayKey = dateKeyOf(now);
 
@@ -146,7 +289,11 @@ export class AnalyticsReportingService {
       this.repo.sumCreatorDailyStats(userId),
       this.repo.getRevenueReports({ userId, roomId: GLOBAL_ANALYTICS_UUID }),
       this.prisma.giftTransaction.aggregate({
-        where: { receiverId: userId, status: GiftTxnStatus.COMPLETED },
+        where: {
+          receiverId: userId,
+          status: GiftTxnStatus.COMPLETED,
+          contextType: effectiveRoomType,
+        },
         _sum: { creatorEarnings: true, totalCoinValue: true },
         _count: true,
       }),
@@ -162,6 +309,7 @@ export class AnalyticsReportingService {
         where: {
           receiverId: userId,
           status: GiftTxnStatus.COMPLETED,
+          contextType: effectiveRoomType,
           createdAt: { gte: fromDate },
         },
         select: {
@@ -194,9 +342,16 @@ export class AnalyticsReportingService {
 
     let giftCoins = 0n;
     let creatorCoins = 0n;
-    for (const r of revenue) {
-      giftCoins += r.giftCoins;
-      creatorCoins += r.creatorCoins;
+    if (effectiveRoomType === GiftContextType.AUDIO_ROOM) {
+      for (const r of revenue) {
+        giftCoins += r.giftCoins;
+        creatorCoins += r.creatorCoins;
+      }
+    }
+
+    if (giftCoins === 0n || effectiveRoomType === GiftContextType.VIDEO_ROOM) {
+      giftCoins = giftLifetime._sum.totalCoinValue ?? 0n;
+      creatorCoins = giftLifetime._sum.creatorEarnings ?? 0n;
     }
 
     const lifetimeGifts = Number(giftLifetime._sum.creatorEarnings ?? 0n);
@@ -235,34 +390,34 @@ export class AnalyticsReportingService {
 
     // Aggregate DB rooms hosted by dateKey and total
     const dbRoomsByDate = new Map<string, number>();
-    for (const r of audioRooms) {
+    const roomsToCount = effectiveRoomType === GiftContextType.VIDEO_ROOM ? videoRooms : audioRooms;
+    for (const r of roomsToCount) {
       const key = dateKeyOf(r.createdAt);
       dbRoomsByDate.set(key, (dbRoomsByDate.get(key) ?? 0) + 1);
     }
-    for (const r of videoRooms) {
-      const key = dateKeyOf(r.createdAt);
-      dbRoomsByDate.set(key, (dbRoomsByDate.get(key) ?? 0) + 1);
-    }
-    const totalDbRooms = audioRooms.length + videoRooms.length;
+    const totalDbRooms = roomsToCount.length;
     const totalRoomsHosted = Math.max(
       totalDbRooms,
-      (lifetimeStats.roomsHosted ?? 0) + live.roomsHosted,
+      effectiveRoomType === GiftContextType.AUDIO_ROOM
+        ? (lifetimeStats.roomsHosted ?? 0) + live.roomsHosted
+        : totalDbRooms,
     );
 
     // Build complete dailySeries map for the requested days (ordered oldest -> newest)
     const map = new Map(seriesRows.map((s) => [s.dateKey, s]));
     const formattedSeries: CreatorDailyStatView[] = [];
 
+    const isAudio = effectiveRoomType === GiftContextType.AUDIO_ROOM;
     for (let i = days - 1; i >= 0; i--) {
       const key = dateKeyDaysAgo(i);
-      const existing = map.get(key);
+      const existing = isAudio ? map.get(key) : undefined;
       const dbTxn = dbEarningsByDate.get(key);
       const dbRooms = dbRoomsByDate.get(key) ?? 0;
 
       if (key === todayKey) {
-        const liveEarn = live.creatorEarnings;
-        const liveCoins = live.giftCoinsReceived;
-        const liveCount = live.giftsReceivedCount;
+        const liveEarn = isAudio ? live.creatorEarnings : 0;
+        const liveCoins = isAudio ? live.giftCoinsReceived : 0;
+        const liveCount = isAudio ? live.giftsReceivedCount : 0;
 
         const giftsCount = Math.max(
           liveCount,
@@ -279,7 +434,11 @@ export class AnalyticsReportingService {
           dbTxn?.creatorEarnings ?? 0,
           existing ? Number(existing.creatorEarnings) : 0,
         );
-        const roomsRec = Math.max(live.roomsHosted, dbRooms, existing?.roomsHosted ?? 0);
+        const roomsRec = Math.max(
+          isAudio ? live.roomsHosted : 0,
+          dbRooms,
+          existing?.roomsHosted ?? 0,
+        );
 
         formattedSeries.push({
           dateKey: key,
@@ -288,9 +447,9 @@ export class AnalyticsReportingService {
           creatorEarnings: earningsRec.toString(),
           roomsHosted: roomsRec,
           speakingSeconds: (
-            (existing ? Number(existing.speakingSeconds) : 0) + live.speakingSeconds
+            (existing ? Number(existing.speakingSeconds) : 0) + (isAudio ? live.speakingSeconds : 0)
           ).toString(),
-          engagementScore: existing?.engagementScore ?? this.rollup.creatorEngagement(live),
+          engagementScore: existing?.engagementScore ?? (isAudio ? this.rollup.creatorEngagement(live) : 0),
         });
       } else if (existing) {
         const giftsCount = Math.max(existing.giftsReceivedCount, dbTxn?.giftsCount ?? 0);

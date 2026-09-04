@@ -586,6 +586,7 @@ export class GiftService {
     const where: Prisma.GiftTransactionWhereInput = {
       OR: [{ senderId: userId }, { receiverId: userId }],
       ...(q.contextId ? { contextId: q.contextId } : {}),
+      ...(q.contextType ? { contextType: q.contextType } : {}),
     };
     const [rows, total] = await this.repo.listTransactions(where, q.skip, q.limit);
 

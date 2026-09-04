@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import {
   AudioRoom,
+  GiftContextType,
   PlatformRole,
   RoomLogAction,
   RoomMemberRole,
@@ -1226,7 +1227,7 @@ export class AudioRoomsService implements IAudioRoomsService {
     const totalGifts = prisma
       ? await prisma.giftTransaction.aggregate({
           _sum: { totalCoinValue: true },
-          where: { contextId: room.id },
+          where: { contextId: room.id, contextType: GiftContextType.AUDIO_ROOM },
         })
       : null;
     const giftCoins = totalGifts ? Number(totalGifts._sum.totalCoinValue || 0) : 0;

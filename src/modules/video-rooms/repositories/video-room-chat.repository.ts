@@ -187,6 +187,13 @@ export class VideoRoomChatRepository {
     });
   }
 
+  async softDeleteRoomMessages(roomId: string, byUserId: string): Promise<void> {
+    await this.prisma.videoRoomMessage.updateMany({
+      where: { roomId, deletedAt: null },
+      data: { deletedAt: new Date(), deletedBy: byUserId },
+    });
+  }
+
   async recallMessage(id: string): Promise<void> {
     await this.prisma.videoRoomMessage.update({
       where: { id },

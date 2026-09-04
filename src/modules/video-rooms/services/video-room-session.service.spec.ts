@@ -231,6 +231,38 @@ describe('VideoRoomSessionService', () => {
     expect(redis.srem).not.toHaveBeenCalledWith(expect.stringContaining('r2'), 's2');
   });
 
+  it('endUserRoomSessions prunes an expired (already-TTL\'d) socket id from the user\'s own set', async () => {
+    // s1's per-connection record is gone (cache.get -> null, the default),
+    // simulating a client that dropped without a clean leave — its bare
+    // socketId nonetheless still sits in the user's reverse index because SET
+    // members never expire on their own.
+    redis.smembers.mockResolvedValue(['s1']);
+
+    const ended = await service.endUserRoomSessions('r1', 'u1');
+
+    expect(ended).toEqual([]);
+    expect(redis.srem).toHaveBeenCalledWith(expect.stringContaining('u1'), 's1');
+  });
+
+  it('endAllRoomSessions drains every known socket id from the room set, even ones whose record already expired', async () => {
+    // s1 has a live record; s2's already expired (cache.get resolves null for
+    // it) — both are still listed under the room's session set.
+    redis.smembers.mockResolvedValue(['s1', 's2']);
+    cache.get.mockImplementation((key: string) =>
+      key.includes('s1')
+        ? Promise.resolve({ roomId: 'r1', userId: 'u1', socketId: 's1', connectedAt: 't' })
+        : Promise.resolve(null),
+    );
+
+    const ended = await service.endAllRoomSessions('r1');
+
+    expect(ended.map((r) => r.socketId)).toEqual(['s1']);
+    // The unconditional drain must cover BOTH ids, not just the one `end()`
+    // found a record for — that's exactly the gap that let a room's session
+    // set accumulate stale entries forever across "end for everyone" cycles.
+    expect(redis.srem).toHaveBeenCalledWith(expect.stringContaining('r1'), 's1', 's2');
+  });
+
   it('markPresence stamps a new state without sliding lastSeenAt', async () => {
     cache.get.mockResolvedValue({
       roomId: 'r1',

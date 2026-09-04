@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { WalletCurrency, WalletEntryType, WalletTxnReason } from '@prisma/client';
+import { GiftContextType, WalletCurrency, WalletEntryType, WalletTxnReason } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
 import { PaginationQueryDto } from 'src/common/dto/pagination.dto';
@@ -62,11 +62,22 @@ export class WalletHistoryQueryDto extends PaginationQueryDto {
   reason?: WalletTxnReason;
 }
 
+/** Query for a user's earnings summary, optionally filtered by room type. */
+export class WalletEarningsQueryDto {
+  @ApiPropertyOptional({
+    enum: GiftContextType,
+    description: 'Filter host earnings by room context type (e.g. AUDIO_ROOM vs VIDEO_ROOM)',
+  })
+  @IsOptional()
+  @IsEnum(GiftContextType)
+  roomType?: GiftContextType;
+}
+
 /** Host/creator earnings summary. `settlementReady` is the current EARNINGS balance. */
 export class HostEarningsDto {
   @ApiProperty() totalEarned!: number;
   @ApiProperty() settlementReady!: number;
-  @ApiProperty({ type: Object }) bySource!: { gifts: number; treasure: number; pk: number };
+  @ApiProperty({ type: Object }) bySource!: { gifts: number; treasure: number; pk: number; entryFee?: number };
 }
 
 /** Admin-triggered reconciliation for one user. */

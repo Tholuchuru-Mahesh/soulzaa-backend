@@ -86,13 +86,20 @@ export class VideoRoomsChatController {
   @ApiResponse({ status: 409, description: 'DUPLICATE_MESSAGE · VIDEO_ROOM_ENDED' })
   @ApiResponse({ status: 422, description: 'BLOCKED_WORD' })
   @ApiResponse({ status: 429, description: 'CHAT_RATE_LIMITED · CHAT_SLOW_MODE' })
-  send(
+  async send(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) id: string,
     @Body() dto: SendChatMessageDto,
     @RequestMeta() meta: RequestMetadata,
   ) {
-    return this.chat.send(this.actor(user), id, dto, this.audit(meta));
+    // Mapped, never the raw Prisma row. The row exposes internal columns and
+    // names the primary key `id`, whereas history, the socket broadcast and
+    // every other message-carrying surface use `messageId` + ISO `createdAt`.
+    // A client that reconciles its optimistic bubble against
+    // `video_room.chat_message_sent` needs the SAME id field on both, so the
+    // command response has to speak the wire shape too.
+    const message = await this.chat.send(this.actor(user), id, dto, this.audit(meta));
+    return this.chat.toPayload(message);
   }
 
   @Patch(':id/chat/messages/:messageId')
@@ -103,14 +110,21 @@ export class VideoRoomsChatController {
     status: 409,
     description: 'VIDEO_ROOM_MESSAGE_EDIT_WINDOW_EXPIRED · VIDEO_ROOM_MESSAGE_NOT_EDITABLE',
   })
-  edit(
+  async edit(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseUuidPipe) id: string,
     @Param('messageId', ParseUuidPipe) messageId: string,
     @Body() dto: EditChatMessageDto,
     @RequestMeta() meta: RequestMetadata,
   ) {
-    return this.chat.edit(this.actor(user), id, messageId, dto.content, this.audit(meta));
+    const message = await this.chat.edit(
+      this.actor(user),
+      id,
+      messageId,
+      dto.content,
+      this.audit(meta),
+    );
+    return this.chat.toPayload(message);
   }
 
   @Delete(':id/chat/messages/:messageId')

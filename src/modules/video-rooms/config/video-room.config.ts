@@ -30,6 +30,9 @@ export interface VideoRoomConfig {
   qualitySampleEvery: number;
   defaultBeautyLevel: number;
   viewerPresenceMode: 'durable' | 'ephemeral';
+  minEntryFee: number;
+  maxEntryFee: number;
+  entryCreatorPercentage: number;
 }
 
 /** Raw shape as it comes off ConfigService (numbers may be strings at runtime). */
@@ -57,6 +60,9 @@ interface RawVideoRoomConfig {
   qualitySampleEvery: number | string;
   defaultBeautyLevel: number | string;
   viewerPresenceMode: string;
+  minEntryFee?: number | string;
+  maxEntryFee?: number | string;
+  entryCreatorPercentage?: number | string;
 }
 
 /** Read + coerce the `videoRoom` namespace into a typed VideoRoomConfig. */
@@ -89,5 +95,8 @@ export function loadVideoRoomConfig(config: ConfigService): VideoRoomConfig {
     qualitySampleEvery: Number(raw.qualitySampleEvery),
     defaultBeautyLevel: Number(raw.defaultBeautyLevel),
     viewerPresenceMode: String(raw.viewerPresenceMode) as 'durable' | 'ephemeral',
+    minEntryFee: Number(raw.minEntryFee ?? 1),
+    maxEntryFee: Number(raw.maxEntryFee ?? 1_000_000),
+    entryCreatorPercentage: Number(raw.entryCreatorPercentage ?? 100),
   };
 }

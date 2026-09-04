@@ -230,6 +230,52 @@ describe('VideoRoomViewerService', () => {
       expect(perm.assertOutranks).not.toHaveBeenCalled();
     });
 
+    // Stepping down from your own seat is not a moderation action: a plain
+    // HOST holds no MANAGE_PARTICIPANTS, and asserting it left a seated
+    // participant with no exit but leaving the room entirely.
+    it('demote skips assertPermission for self-demote and still vacates the seat', async () => {
+      repo.findById.mockResolvedValue({ id: 'r1', ownerId: 'owner', status: 'LIVE' });
+      seatState.getSnapshot.mockResolvedValue({
+        seats: [{ seatIndex: 3, status: 'OCCUPIED', occupantUserId: 'u1' }],
+      });
+      await svc.demote({ id: 'u1', roles: [] }, 'r1', { targetUserId: 'u1' }, '1.2.3.4');
+      expect(perm.assertPermission).not.toHaveBeenCalled();
+      expect(seat.vacateUser).toHaveBeenCalledWith('r1', 'u1', 'u1', 'seat.demoted', '1.2.3.4');
+      expect(media.demoteToSubscriber).toHaveBeenCalledWith('r1', 'u1', 'u1');
+      expect(events.emitViewerDemoted).toHaveBeenCalledWith({
+        roomId: 'r1',
+        userId: 'u1',
+        actorId: 'u1',
+      });
+    });
+
+    it('demote still asserts MANAGE_PARTICIPANTS when the target is someone else', async () => {
+      repo.findById.mockResolvedValue({ id: 'r1', ownerId: 'owner', status: 'LIVE' });
+      seatState.getSnapshot.mockResolvedValue({
+        seats: [{ seatIndex: 3, status: 'OCCUPIED', occupantUserId: 'u1' }],
+      });
+      perm.assertPermission.mockRejectedValueOnce(new Error('VIDEO_ROOM_FORBIDDEN'));
+      await expect(
+        svc.demote({ id: 'someone-else', roles: [] }, 'r1', { targetUserId: 'u1' }),
+      ).rejects.toThrow(/VIDEO_ROOM_FORBIDDEN/);
+      expect(seat.vacateUser).not.toHaveBeenCalled();
+    });
+
+    // Seat 0 is the protected owner seat: vacating it would leave the room
+    // hosted by nobody. The owner's exits are transfer or close.
+    it('demote refuses to vacate the owner seat, even for the owner themselves', async () => {
+      repo.findById.mockResolvedValue({ id: 'r1', ownerId: 'owner', status: 'LIVE' });
+      seatState.getSnapshot.mockResolvedValue({
+        seats: [{ seatIndex: 0, status: 'OCCUPIED', occupantUserId: 'owner' }],
+      });
+      await expect(
+        svc.demote({ id: 'owner', roles: [] }, 'r1', { targetUserId: 'owner' }),
+      ).rejects.toThrow(/owner seat|VIDEO_ROOM_FORBIDDEN/i);
+      expect(seat.vacateUser).not.toHaveBeenCalled();
+      expect(media.demoteToSubscriber).not.toHaveBeenCalled();
+      expect(events.emitViewerDemoted).not.toHaveBeenCalled();
+    });
+
     it('demote rejects when the room is not live', async () => {
       repo.findById.mockResolvedValue({ id: 'r1', ownerId: 'owner', status: 'ENDED' });
       await expect(

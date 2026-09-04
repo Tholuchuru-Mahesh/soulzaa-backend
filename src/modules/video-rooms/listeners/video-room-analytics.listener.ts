@@ -1,6 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { VIDEO_ROOM_EVENTS } from '../events/video-room.events';
+import {
+  VIDEO_ROOM_EVENTS,
+  RoomCreatedEvent,
+  RoomClosedEvent,
+  UserJoinedEvent,
+  UserLeftEvent,
+  ViewerJoinedEvent,
+  ViewerLeftEvent,
+} from '../events/video-room.events';
 import { VideoRoomAnalyticsProjectionRepository } from '../repositories/video-room-analytics-projection.repository';
 import { VideoRoomAnalyticsCacheService } from '../services/video-room-analytics-cache.service';
 
@@ -21,15 +29,15 @@ export class VideoRoomAnalyticsListener {
   }
 
   @OnEvent(VIDEO_ROOM_EVENTS.CREATED, { async: true })
-  async handleRoomCreated(payload: { roomId: string; ownerId: string }): Promise<void> {
+  async handleRoomCreated(event: RoomCreatedEvent): Promise<void> {
     try {
-      await this.cacheService.incrementActiveRooms(payload.roomId);
-      await this.cacheService.incrementActiveHosts(payload.ownerId);
+      await this.cacheService.incrementActiveRooms(event.payload.roomId);
+      await this.cacheService.incrementActiveHosts(event.payload.ownerId);
 
       const dateKey = this.getDateKey();
       await this.repository.upsertCreatorDailyStat({
         dateKey,
-        userId: payload.ownerId,
+        userId: event.payload.ownerId,
         roomsHosted: 1,
       });
     } catch (err: any) {
@@ -38,20 +46,16 @@ export class VideoRoomAnalyticsListener {
   }
 
   @OnEvent(VIDEO_ROOM_EVENTS.CLOSED, { async: true })
-  async handleRoomClosed(payload: {
-    roomId: string;
-    ownerId: string;
-    durationSeconds: number;
-  }): Promise<void> {
+  async handleRoomClosed(event: RoomClosedEvent): Promise<void> {
     try {
-      await this.cacheService.decrementActiveRooms(payload.roomId);
-      await this.cacheService.decrementActiveHosts(payload.ownerId);
+      await this.cacheService.decrementActiveRooms(event.payload.roomId);
+      await this.cacheService.decrementActiveHosts(event.payload.ownerId);
 
       const dateKey = this.getDateKey();
       await this.repository.upsertRoomDailyStat({
         dateKey,
-        roomId: payload.roomId,
-        speakingSeconds: BigInt(payload.durationSeconds || 0),
+        roomId: event.payload.roomId,
+        speakingSeconds: BigInt(event.payload.durationSeconds || 0),
       });
     } catch (err: any) {
       this.logger.error(`Error processing RoomClosed event: ${err.message}`);
@@ -59,20 +63,16 @@ export class VideoRoomAnalyticsListener {
   }
 
   @OnEvent(VIDEO_ROOM_EVENTS.USER_JOINED, { async: true })
-  async handleUserJoined(payload: {
-    roomId: string;
-    userId: string;
-    participantCount: number;
-  }): Promise<void> {
+  async handleUserJoined(event: UserJoinedEvent): Promise<void> {
     try {
-      await this.cacheService.trackActiveParticipant(payload.userId);
+      await this.cacheService.trackActiveParticipant(event.payload.userId);
 
       const dateKey = this.getDateKey();
       await this.repository.upsertRoomDailyStat({
         dateKey,
-        roomId: payload.roomId,
+        roomId: event.payload.roomId,
         joins: 1,
-        peakParticipants: payload.participantCount,
+        peakParticipants: event.payload.participantCount,
       });
     } catch (err: any) {
       this.logger.error(`Error processing UserJoined event: ${err.message}`);
@@ -80,31 +80,23 @@ export class VideoRoomAnalyticsListener {
   }
 
   @OnEvent(VIDEO_ROOM_EVENTS.USER_LEFT, { async: true })
-  async handleUserLeft(payload: {
-    roomId: string;
-    userId: string;
-    participantCount: number;
-  }): Promise<void> {
+  async handleUserLeft(event: UserLeftEvent): Promise<void> {
     try {
-      await this.cacheService.untrackActiveParticipant(payload.userId);
+      await this.cacheService.untrackActiveParticipant(event.payload.userId);
     } catch (err: any) {
       this.logger.error(`Error processing UserLeft event: ${err.message}`);
     }
   }
 
   @OnEvent(VIDEO_ROOM_EVENTS.VIEWER_JOINED, { async: true })
-  async handleViewerJoined(payload: {
-    roomId: string;
-    userId: string;
-    viewerCount: number;
-  }): Promise<void> {
+  async handleViewerJoined(event: ViewerJoinedEvent): Promise<void> {
     try {
-      await this.cacheService.trackActiveViewer(payload.userId);
+      await this.cacheService.trackActiveViewer(event.payload.userId);
 
       const dateKey = this.getDateKey();
       await this.repository.upsertRoomDailyStat({
         dateKey,
-        roomId: payload.roomId,
+        roomId: event.payload.roomId,
         uniqueVisitors: 1,
       });
     } catch (err: any) {
@@ -113,13 +105,9 @@ export class VideoRoomAnalyticsListener {
   }
 
   @OnEvent(VIDEO_ROOM_EVENTS.VIEWER_LEFT, { async: true })
-  async handleViewerLeft(payload: {
-    roomId: string;
-    userId: string;
-    viewerCount: number;
-  }): Promise<void> {
+  async handleViewerLeft(event: ViewerLeftEvent): Promise<void> {
     try {
-      await this.cacheService.untrackActiveViewer(payload.userId);
+      await this.cacheService.untrackActiveViewer(event.payload.userId);
     } catch (err: any) {
       this.logger.error(`Error processing ViewerLeft event: ${err.message}`);
     }

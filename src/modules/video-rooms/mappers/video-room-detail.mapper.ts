@@ -13,6 +13,8 @@ export function toSettingsView(settings: VideoRoomSettings | null): VideoRoomSet
   return {
     allowChat: settings.allowChat,
     slowModeSeconds: settings.slowModeSeconds,
+    chatMode: settings.chatMode,
+    chatMaxMessageLength: settings.chatMaxMessageLength,
     allowGifts: settings.allowGifts,
     allowTreasure: settings.allowTreasure,
     allowPk: settings.allowPk,
@@ -67,6 +69,9 @@ export function toVideoRoomDetailView(detail: VideoRoomDetail): VideoRoomDetailV
     visibility: room.visibility,
     accessPolicy: deriveAccessPolicy(room),
     isLocked: room.isLocked,
+    paidEntryEnabled: (room as any).paidEntryEnabled ?? false,
+    defaultEntryFee: (room as any).defaultEntryFee ? Number((room as any).defaultEntryFee) : null,
+    entryFee: (room as any).defaultEntryFee ? Number((room as any).defaultEntryFee) : null,
     isDiscoverable: room.isDiscoverable,
     isVerified: room.isVerified,
     maxParticipants: room.maxParticipants,

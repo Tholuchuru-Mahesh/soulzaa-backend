@@ -2,6 +2,7 @@ import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { VideoRoom, VideoRoomSeatStatus } from '@prisma/client';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
+import { isOwnerSeat } from '../constants/video-room-seat-lifecycle';
 import { VideoRoomPermission } from '../constants/video-room-permissions';
 import type { RoomActor } from '../interfaces/room-actor.interface';
 import { VIEWER_PRESENCE, type IViewerPresence } from '../interfaces/viewer-presence.interface';
@@ -123,8 +124,13 @@ export class VideoRoomViewerService {
 
   /**
    * Force a seated participant back to the audience. Reuses `vacateUser` +
-   * `demoteToSubscriber` — no new seat/media logic here. Self-demote skips the
-   * outranks check (you may always step down your own seat).
+   * `demoteToSubscriber` — no new seat/media logic here.
+   *
+   * SELF-DEMOTE is always allowed. Stepping down from your own seat is not a
+   * moderation action on someone else, so it asserts neither
+   * MANAGE_PARTICIPANTS nor outranking: a plain HOST holds no elevated
+   * permission, and requiring one left a seated participant with no exit but
+   * leaving the room entirely. Demoting SOMEONE ELSE still requires both.
    */
   async demote(
     actor: RoomActor,
@@ -133,9 +139,13 @@ export class VideoRoomViewerService {
     ip?: string,
   ): Promise<void> {
     const room = await this.requireLiveRoom(roomId);
-    await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_PARTICIPANTS);
+    const isSelf = actor.id === dto.targetUserId;
+    if (!isSelf) {
+      await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_PARTICIPANTS);
+    }
 
-    if ((await this.seatedSeatIndex(roomId, dto.targetUserId)) === null) {
+    const currentSeatIndex = await this.seatedSeatIndex(roomId, dto.targetUserId);
+    if (currentSeatIndex === null) {
       throw new BusinessException(
         ERROR_CODES.VIDEO_ROOM_NOT_PARTICIPANT,
         'That user is not a participant (holds no seat) in this room.',
@@ -143,7 +153,18 @@ export class VideoRoomViewerService {
       );
     }
 
-    if (actor.id !== dto.targetUserId) {
+    // Seat 0 is the protected owner seat. Vacating it would leave the room
+    // hosted by nobody, so the owner's exits are Transfer Ownership or Close
+    // Room — never a plain step-down.
+    if (isOwnerSeat(currentSeatIndex)) {
+      throw new BusinessException(
+        ERROR_CODES.VIDEO_ROOM_FORBIDDEN,
+        'The owner seat cannot be vacated. Transfer ownership or close the room instead.',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    if (!isSelf) {
       await this.permissions.assertOutranks(
         { id: room.id, ownerId: room.ownerId },
         actor.id,

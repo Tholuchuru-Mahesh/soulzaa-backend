@@ -43,17 +43,41 @@ export class VideoRoomPkSocketListener implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.bus.subscribe<PkInvitationSentEvent>(VIDEO_ROOM_PK_EVENTS.INVITATION_SENT, (e) =>
-      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_SENT, e.payload),
-    );
+    this.bus.subscribe<PkInvitationSentEvent>(VIDEO_ROOM_PK_EVENTS.INVITATION_SENT, (e) => {
+      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_SENT, e.payload);
+      this.toRoom(e.payload.roomId, 'video_room.pk.invitation_sent', e.payload);
+      this.toRoom(e.payload.roomId, 'pk:invitation_sent', e.payload);
+      this.sockets.emitToUserEverywhere(
+        e.payload.inviteeUserId,
+        VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_SENT,
+        e.payload,
+      );
+      this.sockets.emitToUserEverywhere(
+        e.payload.inviteeUserId,
+        'video_room.pk.invitation_sent',
+        e.payload,
+      );
+    });
 
-    this.bus.subscribe<PkInvitationAcceptedEvent>(VIDEO_ROOM_PK_EVENTS.INVITATION_ACCEPTED, (e) =>
-      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_ACCEPTED, e.payload),
-    );
+    this.bus.subscribe<PkInvitationAcceptedEvent>(VIDEO_ROOM_PK_EVENTS.INVITATION_ACCEPTED, (e) => {
+      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_ACCEPTED, e.payload);
+      this.toRoom(e.payload.roomId, 'video_room.pk.invitation_accepted', e.payload);
+      this.sockets.emitToUserEverywhere(
+        e.payload.inviteeUserId,
+        VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_ACCEPTED,
+        e.payload,
+      );
+    });
 
-    this.bus.subscribe<PkInvitationRejectedEvent>(VIDEO_ROOM_PK_EVENTS.INVITATION_REJECTED, (e) =>
-      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_REJECTED, e.payload),
-    );
+    this.bus.subscribe<PkInvitationRejectedEvent>(VIDEO_ROOM_PK_EVENTS.INVITATION_REJECTED, (e) => {
+      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_REJECTED, e.payload);
+      this.toRoom(e.payload.roomId, 'video_room.pk.invitation_rejected', e.payload);
+      this.sockets.emitToUserEverywhere(
+        e.payload.inviteeUserId,
+        VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_REJECTED,
+        e.payload,
+      );
+    });
 
     // PkCreatedEvent is deliberately NOT bridged: it fires the instant a
     // battle row + invitations are created, before `invitations.send()` has
@@ -64,13 +88,27 @@ export class VideoRoomPkSocketListener implements OnModuleInit {
     this.bus.subscribe<PkStartedEvent>(VIDEO_ROOM_PK_EVENTS.STARTED, (e) => {
       const p = e.payload;
       this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.STARTED, p);
+      this.toRoom(p.roomId, 'video_room.pk.started', p);
+      this.toRoom(p.roomId, 'pk:started', p);
       // A separate countdown trigger, derived from the same payload, so a
       // client driving only the countdown UI need not parse the full
       // started-battle payload.
       this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.COUNTDOWN, {
         roomId: p.roomId,
         battleId: p.battleId,
-        countdownSeconds: p.countdownSeconds,
+        countdownSeconds: p.countdownSeconds ?? 5,
+        startedAt: p.startedAt,
+      });
+      this.toRoom(p.roomId, 'video_room.pk.countdown', {
+        roomId: p.roomId,
+        battleId: p.battleId,
+        countdownSeconds: p.countdownSeconds ?? 5,
+        startedAt: p.startedAt,
+      });
+      this.toRoom(p.roomId, 'pk:countdown', {
+        roomId: p.roomId,
+        battleId: p.battleId,
+        countdownSeconds: p.countdownSeconds ?? 5,
         startedAt: p.startedAt,
       });
     });

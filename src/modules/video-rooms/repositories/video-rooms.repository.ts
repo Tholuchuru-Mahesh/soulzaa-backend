@@ -100,6 +100,16 @@ export interface CreateVideoRoomData {
   maxParticipants: number;
   maxViewers: number;
   creationSource: VideoRoomCreationSource;
+  /**
+   * The stage size to materialise, omitted ⇒ the platform default.
+   *
+   * Distinct from [maxParticipants]: this is how many SEATS exist, that is how
+   * many people may be in the room at all.
+   */
+  hostSeatCount?: number;
+  guestSeatCount?: number;
+  paidEntryEnabled?: boolean;
+  defaultEntryFee?: bigint | number | null;
   /** Optional metadata payload (e.g. { accessPolicy }); omitted → column stays null. */
   metadata?: Prisma.InputJsonValue;
 }
@@ -119,6 +129,8 @@ export interface UpdateVideoRoomData {
   isDiscoverable?: boolean;
   maxParticipants?: number;
   maxViewers?: number;
+  paidEntryEnabled?: boolean;
+  defaultEntryFee?: bigint | number | null;
   status?: VideoRoomStatus;
   streamingStatus?: VideoRoomStreamingStatus;
   endedAt?: Date | null;
@@ -158,6 +170,14 @@ export class VideoRoomsRepository {
   /** All of an owner's non-deleted rooms, newest first. */
   async findByOwnerId(ownerId: string): Promise<VideoRoom[]> {
     return this.prisma.videoRoom.findMany({
+      where: { ownerId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** Find an owner's permanent room (excluding soft-deleted), newest first. */
+  async findOwnedRoom(ownerId: string): Promise<VideoRoom | null> {
+    return this.prisma.videoRoom.findFirst({
       where: { ownerId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
     });
@@ -370,10 +390,13 @@ export class VideoRoomsRepository {
    * `VideoRoomSeatStateService.rebuild`.)
    */
   async createRoomTx(data: CreateVideoRoomData): Promise<VideoRoom> {
-    const seatLayout = buildSeatLayout(
-      VIDEO_ROOM_DEFAULT_HOST_SEATS,
-      VIDEO_ROOM_DEFAULT_GUEST_SEATS,
-    );
+    // The REQUESTED stage size, falling back to the platform default. This was
+    // hardcoded to the defaults, so a room created with "4 seats" still got a
+    // 10-seat stage and the settings page showed 10 — the choice made at
+    // creation was collected, sent, and then thrown away.
+    const hostSeatCount = data.hostSeatCount ?? VIDEO_ROOM_DEFAULT_HOST_SEATS;
+    const guestSeatCount = data.guestSeatCount ?? VIDEO_ROOM_DEFAULT_GUEST_SEATS;
+    const seatLayout = buildSeatLayout(hostSeatCount, guestSeatCount);
     return this.prisma.$transaction(async (tx) => {
       const room = await tx.videoRoom.create({
         data: {
@@ -389,6 +412,11 @@ export class VideoRoomsRepository {
           isLocked: data.isLocked,
           passwordHash: data.passwordHash,
           isDiscoverable: data.isDiscoverable,
+          paidEntryEnabled: data.paidEntryEnabled ?? false,
+          defaultEntryFee:
+            data.defaultEntryFee !== undefined && data.defaultEntryFee !== null
+              ? BigInt(data.defaultEntryFee)
+              : null,
           maxParticipants: data.maxParticipants,
           maxViewers: data.maxViewers,
           creationSource: data.creationSource,
@@ -401,8 +429,8 @@ export class VideoRoomsRepository {
       await tx.videoRoomSettings.create({
         data: {
           roomId: room.id,
-          hostSeatCount: VIDEO_ROOM_DEFAULT_HOST_SEATS,
-          guestSeatCount: VIDEO_ROOM_DEFAULT_GUEST_SEATS,
+          hostSeatCount,
+          guestSeatCount,
         },
       });
       await tx.videoRoomSeat.createMany({
@@ -592,6 +620,25 @@ export class VideoRoomsRepository {
   }
 
   /**
+   * Deactivate every still-active member of a room in one shot (room-wide
+   * teardown: "end for everyone"). Without this, members who were connected
+   * when the host force-ends the room never go through the per-user leave
+   * path, so their rows stay `isActive: true` and the room appears to still
+   * have its old roster/count on the next session.
+   */
+  async deactivateAllMembers(roomId: string, actorId: string): Promise<void> {
+    await this.prisma.videoRoomMember.updateMany({
+      where: { roomId, isActive: true },
+      data: {
+        isActive: false,
+        memberStatus: VideoRoomMemberStatus.LEFT,
+        leftAt: new Date(),
+        ...auditUpdate(actorId),
+      },
+    });
+  }
+
+  /**
    * Move a room to a new owner (VR-7 ownership transfer / recovery). `ownerId` is
    * the single source of truth for ownership — there is no owner grant row — so
    * this one write is what makes the handover authoritative.
@@ -750,5 +797,161 @@ export class VideoRoomsRepository {
 
   async clearCachedSnapshot(roomId: string): Promise<void> {
     await this.cache.del(videoRoomCacheKey(roomId));
+  }
+
+  // ---- Broadcast Session Lifecycle ----
+
+  /**
+   * Create a new ephemeral broadcast session for a video room or return existing active one.
+   */
+  async createBroadcastSession(
+    roomId: string,
+    hostId: string,
+    sessionData?: {
+      title?: string | null;
+      topic?: string | null;
+      category?: string | null;
+      imageKey?: string | null;
+      paidEntryEnabled?: boolean;
+      entryFee?: bigint | number | null;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<any> {
+    const client = tx ?? this.prisma;
+    const existing = await (client as any).videoBroadcastSession.findFirst({
+      where: { roomId, status: 'LIVE' },
+      orderBy: { startedAt: 'desc' },
+    });
+    if (existing) {
+      if (sessionData && (sessionData.title || sessionData.topic || sessionData.category || sessionData.imageKey)) {
+        await (client as any).videoBroadcastSession.update({
+          where: { id: existing.id },
+          data: {
+            ...(sessionData.title ? { title: sessionData.title } : {}),
+            ...(sessionData.topic ? { topic: sessionData.topic } : {}),
+            ...(sessionData.category ? { category: sessionData.category } : {}),
+            ...(sessionData.imageKey ? { imageKey: sessionData.imageKey } : {}),
+          },
+        }).catch(() => null);
+      }
+      return existing;
+    }
+
+    let paidEntryEnabled = sessionData?.paidEntryEnabled;
+    let entryFee: bigint | null | undefined = sessionData?.entryFee !== undefined && sessionData?.entryFee !== null
+      ? BigInt(sessionData.entryFee)
+      : undefined;
+
+    if (paidEntryEnabled === undefined || entryFee === undefined) {
+      const room = await (client as any).videoRoom.findUnique({
+        where: { id: roomId },
+        select: { paidEntryEnabled: true, defaultEntryFee: true },
+      });
+      if (room) {
+        paidEntryEnabled = paidEntryEnabled ?? room.paidEntryEnabled ?? false;
+        entryFee = entryFee ?? (room.defaultEntryFee ? BigInt(room.defaultEntryFee) : null);
+      }
+    }
+
+    return (client as any).videoBroadcastSession.create({
+      data: {
+        roomId,
+        hostId,
+        title: sessionData?.title ?? null,
+        topic: sessionData?.topic ?? null,
+        category: sessionData?.category ?? null,
+        imageKey: sessionData?.imageKey ?? null,
+        paidEntryEnabled: paidEntryEnabled ?? false,
+        entryFee: entryFee ?? null,
+        totalPaidEntrants: 0,
+        totalEntryRevenue: BigInt(0),
+        entryCreatorEarnings: BigInt(0),
+        status: 'LIVE',
+        startedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Get the active broadcast session for a video room.
+   */
+  async getActiveBroadcastSession(roomId: string): Promise<any | null> {
+    return (this.prisma as any).videoBroadcastSession.findFirst({
+      where: { roomId, status: 'LIVE' },
+      orderBy: { startedAt: 'desc' },
+    });
+  }
+
+  /**
+   * End the active broadcast session for a video room and record its duration & metrics.
+   */
+  async endActiveBroadcastSession(
+    roomId: string,
+    endReason: string,
+    stats?: {
+      totalViewers?: number;
+      peakViewers?: number;
+      uniqueViewers?: number;
+      totalGifts?: number;
+      totalGiftCoins?: bigint;
+      creatorEarnings?: bigint;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<any | null> {
+    const client = tx ?? this.prisma;
+    const active = await (client as any).videoBroadcastSession.findFirst({
+      where: { roomId, status: 'LIVE' },
+      orderBy: { startedAt: 'desc' },
+    });
+    if (!active) {
+      return null;
+    }
+
+    const endedAt = new Date();
+    const durationSeconds = Math.max(
+      0,
+      Math.floor((endedAt.getTime() - active.startedAt.getTime()) / 1000),
+    );
+
+    const endedSession = await (client as any).videoBroadcastSession.update({
+      where: { id: active.id },
+      data: {
+        status: 'ENDED',
+        endedAt,
+        endReason,
+        durationSeconds,
+        ...(stats?.totalViewers !== undefined ? { totalViewers: stats.totalViewers } : {}),
+        ...(stats?.peakViewers !== undefined ? { peakViewers: stats.peakViewers } : {}),
+        ...(stats?.uniqueViewers !== undefined ? { uniqueViewers: stats.uniqueViewers } : {}),
+        ...(stats?.totalGifts !== undefined ? { totalGifts: stats.totalGifts } : {}),
+        ...(stats?.totalGiftCoins !== undefined ? { totalGiftCoins: stats.totalGiftCoins } : {}),
+        ...(stats?.creatorEarnings !== undefined ? { creatorEarnings: stats.creatorEarnings } : {}),
+      },
+    });
+
+    await client.videoRoomStatistics.upsert({
+      where: { roomId },
+      create: {
+        roomId,
+        totalDurationSeconds: BigInt(durationSeconds),
+        lastActivityAt: endedAt,
+      },
+      update: {
+        totalDurationSeconds: { increment: BigInt(durationSeconds) },
+        lastActivityAt: endedAt,
+      },
+    }).catch(() => null);
+
+    return endedSession;
+  }
+
+  /**
+   * Find a broadcast session by its unique sessionId.
+   */
+  async findBroadcastSessionById(sessionId: string): Promise<any | null> {
+    return (this.prisma as any).videoBroadcastSession.findUnique({
+      where: { id: sessionId },
+      include: { room: true },
+    });
   }
 }

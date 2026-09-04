@@ -105,6 +105,9 @@ describe('VideoRoomChatSettingsService', () => {
       chatMode: VideoRoomChatMode.PARTICIPANTS_ONLY,
       allowChat: true,
       slowModeSeconds: 3,
+      // The composer's ceiling rides the same broadcast, so a client
+      // retunes the moment it changes.
+      chatMaxMessageLength: SETTINGS.chatMaxMessageLength,
       actorId: 'owner-1',
     });
   });

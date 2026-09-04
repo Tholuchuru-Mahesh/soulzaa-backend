@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { VoicePublishRole } from '@prisma/client';
+import { GiftContextType, VoicePublishRole } from '@prisma/client';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
 import {
@@ -232,26 +232,27 @@ export class AnalyticsActivityListener implements OnModuleInit {
 
   private async onGiftSent(event: GiftSentEvent): Promise<void> {
     const p = event.payload;
+    // Strictly AUDIO_ROOM only — video room gifts have their own isolated analytics and repositories.
+    if (p.contextType !== GiftContextType.AUDIO_ROOM) return;
+
     try {
       const dateKey = dateKeyOf();
 
       // 1. If sent in an audio room, increment room-level stats
-      if (p.contextType === 'AUDIO_ROOM') {
-        await this.repo.incrementRoomGifts(p.contextId, p.totalCoinValue);
+      await this.repo.incrementRoomGifts(p.contextId, p.totalCoinValue);
 
-        // Track Room Revenue
-        await this.repo.upsertRevenueReport(
-          dateKey,
-          p.contextId,
-          GLOBAL_ANALYTICS_UUID,
-          p.totalCoinValue,
-          p.creatorEarnings,
-        );
+      // Track Room Revenue
+      await this.repo.upsertRevenueReport(
+        dateKey,
+        p.contextId,
+        GLOBAL_ANALYTICS_UUID,
+        p.totalCoinValue,
+        p.creatorEarnings,
+      );
 
-        // Live counters: room gift revenue.
-        await this.counters.incrRoom(p.contextId, dateKey, 'giftCoins', p.totalCoinValue);
-        await this.counters.incrRoom(p.contextId, dateKey, 'giftCount', 1);
-      }
+      // Live counters: room gift revenue.
+      await this.counters.incrRoom(p.contextId, dateKey, 'giftCoins', p.totalCoinValue);
+      await this.counters.incrRoom(p.contextId, dateKey, 'giftCount', 1);
 
       // 2. Track Creator Revenue
       await this.repo.upsertRevenueReport(

@@ -40,6 +40,11 @@ model VideoRoom {
   streamingStatus VideoRoomStreamingStatus @default(IDLE)
   tags            String[]                 @default([])
   themeId         String?                  @db.Uuid
+  paidEntryEnabled Boolean                 @default(false)
+  defaultEntryFee  BigInt?
+
+  broadcastSessions VideoBroadcastSession[]
+  entryAccesses     VideoRoomEntryAccess[]
 
   @@index([status])
   @@index([ownerId])

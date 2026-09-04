@@ -30,4 +30,21 @@ export class SocialShareController {
   roomQr(@Param('roomId', ParseUUIDPipe) roomId: string) {
     return this.share.roomQr(roomId);
   }
+
+  @Get('video-rooms/:roomId/share')
+  @ApiOperation({
+    summary: 'Share content for a video room',
+    description:
+      'Distinct from the audio-room route: the deep link is `video-room/:id`, which is the ' +
+      'client route a video room actually lives at.',
+  })
+  videoRoomShare(@Param('roomId', ParseUUIDPipe) roomId: string) {
+    return this.share.videoRoomShare(roomId);
+  }
+
+  @Get('video-rooms/:roomId/qr')
+  @ApiOperation({ summary: 'QR content for a video room' })
+  videoRoomQr(@Param('roomId', ParseUUIDPipe) roomId: string) {
+    return this.share.videoRoomQr(roomId);
+  }
 }

@@ -314,6 +314,7 @@ describe('VR-16 moderation engine (behavior)', () => {
       config as never,
       { hasActiveRoomInvitation: jest.fn().mockResolvedValue(false) } as never,
       { resolve: jest.fn().mockResolvedValue(new Map()) } as never,
+      { isAccessGranted: jest.fn().mockResolvedValue(true) } as never,
     );
   });
 
