@@ -3,6 +3,7 @@ import {
   Prisma,
   VideoRoomBlock,
   VideoRoomBlockType,
+  VideoRoomKick,
   VideoRoomModerationActionType,
   VideoRoomModerationMuteType,
   VideoRoomModerationStatus,
@@ -11,7 +12,11 @@ import {
 import { auditCreate, auditUpdate } from 'src/common/utils/audit.util';
 import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { REDIS_CLIENT, RedisClient } from 'src/infra/redis/redis.constants';
-import { blocksMirrorKey, mutesMirrorKey } from '../constants/video-room-moderation.constants';
+import {
+  blocksMirrorKey,
+  kicksMirrorKey,
+  mutesMirrorKey,
+} from '../constants/video-room-moderation.constants';
 
 export interface CreateMuteInput {
   roomId: string;
@@ -29,6 +34,13 @@ export interface CreateBlockInput {
   type?: VideoRoomBlockType;
   reason?: string | null;
   expiresAt?: Date | null;
+}
+
+export interface CreateKickInput {
+  roomId: string;
+  userId: string;
+  moderatorId: string;
+  reason?: string | null;
 }
 
 export interface AppendModerationActionInput {
@@ -219,6 +231,65 @@ export class VideoRoomModerationRepository {
     });
   }
 
+  // ---- Kicks ----
+
+  async createKick(input: CreateKickInput): Promise<VideoRoomKick> {
+    return this.prisma.videoRoomKick.create({
+      data: {
+        roomId: input.roomId,
+        userId: input.userId,
+        moderatorId: input.moderatorId,
+        reason: input.reason ?? null,
+        ...auditCreate(input.moderatorId),
+      },
+    });
+  }
+
+  /** A user's current ACTIVE kick in a room, or null (the join-time gate). */
+  async findActiveKick(roomId: string, userId: string): Promise<VideoRoomKick | null> {
+    return this.prisma.videoRoomKick.findFirst({
+      where: {
+        roomId,
+        userId,
+        status: VideoRoomModerationStatus.ACTIVE,
+      },
+    });
+  }
+
+  /**
+   * Active kicks in a room (the room's kicklist), paginated. Optionally
+   * scoped to a single `userId`.
+   */
+  listActiveKicks(
+    roomId: string,
+    skip: number,
+    take: number,
+    userId?: string,
+  ): Promise<[VideoRoomKick[], number]> {
+    const where: Prisma.VideoRoomKickWhereInput = {
+      roomId,
+      status: VideoRoomModerationStatus.ACTIVE,
+      ...(userId ? { userId } : {}),
+    };
+    return this.prisma.$transaction([
+      this.prisma.videoRoomKick.findMany({ where, skip, take, orderBy: { createdAt: 'desc' } }),
+      this.prisma.videoRoomKick.count({ where }),
+    ]);
+  }
+
+  /** Lift a kick (restore the user). */
+  async liftKick(id: string, liftedBy: string): Promise<VideoRoomKick> {
+    return this.prisma.videoRoomKick.update({
+      where: { id },
+      data: {
+        status: VideoRoomModerationStatus.LIFTED,
+        liftedBy,
+        liftedAt: new Date(),
+        ...auditUpdate(liftedBy),
+      },
+    });
+  }
+
   // ---- Append-only audit ----
 
   async appendAction(input: AppendModerationActionInput): Promise<void> {
@@ -333,11 +404,37 @@ export class VideoRoomModerationRepository {
     return !!(await this.findActiveMute(roomId, userId));
   }
 
+  async addKickMirror(roomId: string, userId: string): Promise<void> {
+    await this.redis.sadd(kicksMirrorKey(roomId), userId);
+    await this.redis.set(this.kickMirrorUserKey(roomId, userId), '1');
+  }
+
+  async removeKickMirror(roomId: string, userId: string): Promise<void> {
+    await this.redis.srem(kicksMirrorKey(roomId), userId);
+    await this.redis.del(this.kickMirrorUserKey(roomId, userId));
+  }
+
+  async isKickedMirror(roomId: string, userId: string): Promise<boolean> {
+    return (await this.redis.sismember(kicksMirrorKey(roomId), userId)) === 1;
+  }
+
+  /** O(1) mirror-accelerated existence check for an active kick. */
+  async isActivelyKicked(roomId: string, userId: string): Promise<boolean> {
+    if (await this.isKickedMirror(roomId, userId)) {
+      return true;
+    }
+    return !!(await this.findActiveKick(roomId, userId));
+  }
+
   private muteMirrorUserKey(roomId: string, userId: string): string {
     return `${mutesMirrorKey(roomId)}:${userId}`;
   }
 
   private blockMirrorUserKey(roomId: string, userId: string): string {
     return `${blocksMirrorKey(roomId)}:${userId}`;
+  }
+
+  private kickMirrorUserKey(roomId: string, userId: string): string {
+    return `${kicksMirrorKey(roomId)}:${userId}`;
   }
 }

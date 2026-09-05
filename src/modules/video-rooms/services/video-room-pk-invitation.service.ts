@@ -18,7 +18,9 @@ import { VideoRoomPkInvitationRepository } from '../repositories/video-room-pk-i
 import { VideoRoomPkStateService } from './video-room-pk-state.service';
 
 /** The battle fields the invitation workflow actually needs. */
-export type PkBattleRef = Pick<VideoRoomPkBattle, 'id' | 'roomId' | 'status'>;
+export type PkBattleRef = Pick<VideoRoomPkBattle, 'id' | 'roomId' | 'status'> & {
+  durationSeconds?: number;
+};
 
 /**
  * `send()`'s invitee list. A bare userId defaults to RED — a dev/test
@@ -104,6 +106,7 @@ export class VideoRoomPkInvitationService {
           side,
           attempt: invitation.attempt,
           expiresAt: expiresAt.toISOString(),
+          durationSeconds: battle.durationSeconds,
         }),
       );
     }

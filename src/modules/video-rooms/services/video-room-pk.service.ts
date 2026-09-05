@@ -24,6 +24,7 @@ import {
   StartPKDto,
 } from '../dto/video-room-pk.dto';
 import {
+  PkCancelledEvent,
   PkCreatedEvent,
   PkPausedEvent,
   PkResumedEvent,
@@ -359,6 +360,8 @@ export class VideoRoomPkService {
       const battle = await this.requireCurrent(roomId);
       const reason = `Cancelled by ${actor.id}.`;
       await this.invitations.cancelAll(battle.id, reason);
+      await this.timer.cancelCountdown({ id: battle.id });
+      await this.timer.cancelEnd({ id: battle.id, resumeSeq: battle.resumeSeq });
       const cancelled = await this.state.transition(
         battle.id,
         battle.status,
@@ -367,6 +370,15 @@ export class VideoRoomPkService {
           cancelledAt: new Date(),
           failureReason: reason,
         },
+      );
+      await this.bus.publish(
+        new PkCancelledEvent({
+          roomId: battle.roomId,
+          battleId: battle.id,
+          cancelledBy: actor.id,
+          reason,
+          requestId,
+        }),
       );
       this.logger.debug(
         `PK battle ${battle.id} cancelled by ${actor.id} (request ${requestId ?? 'n/a'})`,

@@ -130,6 +130,18 @@ export class VideoRoomPkTimerService {
   }
 
   /**
+   * Best-effort cancellation of the pending countdown start job, called on cancel.
+   */
+  async cancelCountdown(battle: { id: string }): Promise<void> {
+    const jobId = `pk-start:${battle.id}`;
+    try {
+      await this.queueService.getQueue(QUEUE_NAMES.GIFT_PROCESSING).remove(jobId);
+    } catch (err) {
+      this.logger.warn(`Failed to cancel PK countdown job ${jobId}: ${(err as Error).message}`);
+    }
+  }
+
+  /**
    * Resume arithmetic.
    *
    * `endsAt` moves forward by exactly the paused duration, so a 300-second

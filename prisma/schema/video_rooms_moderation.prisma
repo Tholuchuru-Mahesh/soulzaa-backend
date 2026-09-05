@@ -51,6 +51,28 @@ model VideoRoomBlock {
   @@map("video_room_blocks")
 }
 
+/// A per-room kick — the durable "Kick List" a room's owner/admins manage. A
+/// kicked user is removed from the room AND barred from rejoining until a
+/// moderator restores them (status → LIFTED).
+model VideoRoomKick {
+  id          String                    @id @default(uuid()) @db.Uuid
+  roomId      String                    @db.Uuid
+  userId      String                    @db.Uuid
+  moderatorId String                    @db.Uuid
+  reason      String?
+  status      VideoRoomModerationStatus @default(ACTIVE)
+  liftedBy    String?                   @db.Uuid
+  liftedAt    DateTime?
+  createdBy   String?                   @db.Uuid
+  updatedBy   String?                   @db.Uuid
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@index([roomId, status])
+  @@index([userId, status])
+  @@map("video_room_kicks")
+}
+
 /// Append-only immutable audit of every moderator action (mute/unmute/block/
 /// unblock/kick/warn/role-grant/announcement). Write-once — the system of record
 /// for moderation review and compliance.
@@ -150,6 +172,7 @@ enum VideoRoomModerationActionType {
   BLOCK
   UNBLOCK
   KICK
+  UNKICK
   WARN
   ROLE_GRANTED
   ROLE_REVOKED

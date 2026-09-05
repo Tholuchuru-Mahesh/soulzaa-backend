@@ -23,8 +23,8 @@ describe('VideoRoomPkSocketListener', () => {
     listener.onModuleInit();
   });
 
-  it('relays all 11 outbound socket events', () => {
-    expect(bus.subscribe).toHaveBeenCalledTimes(11);
+  it('relays all 12 outbound socket events', () => {
+    expect(bus.subscribe).toHaveBeenCalledTimes(12);
   });
 
   // PkCreatedEvent fires before anyone is invited — broadcasting it would tell
@@ -144,6 +144,11 @@ describe('VideoRoomPkSocketListener', () => {
           totalBase: 1000,
         },
         ['pkEnded'],
+      ],
+      [
+        VIDEO_ROOM_PK_EVENTS.CANCELLED,
+        { ...BASE, cancelledBy: 'u1', reason: 'Cancelled by host' },
+        ['pkCancelled', 'video_room.pk.cancelled', 'pk:cancelled'],
       ],
       [
         VIDEO_ROOM_PK_EVENTS.WINNER_DECLARED,

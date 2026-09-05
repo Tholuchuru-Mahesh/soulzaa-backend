@@ -94,6 +94,7 @@ describe('VideoRoomPkService', () => {
     timer = {
       scheduleCountdown: jest.fn().mockResolvedValue(undefined),
       scheduleEnd: jest.fn().mockResolvedValue(undefined),
+      cancelCountdown: jest.fn().mockResolvedValue(undefined),
       cancelEnd: jest.fn().mockResolvedValue(undefined),
       computeResume: jest
         .fn()
@@ -355,11 +356,23 @@ describe('VideoRoomPkService', () => {
     repo.findCurrent.mockResolvedValue(current);
     await svc.cancel(owner, 'r1');
     expect(invitations.cancelAll).toHaveBeenCalledWith('b1', expect.any(String));
+    expect(timer.cancelCountdown).toHaveBeenCalledWith({ id: 'b1' });
+    expect(timer.cancelEnd).toHaveBeenCalledWith({ id: 'b1', resumeSeq: current.resumeSeq });
     expect(state.transition).toHaveBeenCalledWith(
       'b1',
       VideoRoomPkStatus.PENDING,
       VideoRoomPkStatus.CANCELLED,
       expect.anything(),
+    );
+    expect(bus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: VIDEO_ROOM_PK_EVENTS.CANCELLED,
+        payload: expect.objectContaining({
+          battleId: 'b1',
+          roomId: 'r1',
+          cancelledBy: 'owner',
+        }),
+      }),
     );
   });
 

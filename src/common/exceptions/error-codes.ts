@@ -167,6 +167,10 @@ export const ERROR_CODES = {
   VIDEO_ROOM_GIFT_REQUIRED: 'VIDEO_ROOM_GIFT_REQUIRED',
   /** User is on the room's block-list (403). */
   VIDEO_ROOM_BLOCKED: 'VIDEO_ROOM_BLOCKED',
+  /** User is on the room's kick-list (403). */
+  VIDEO_ROOM_KICKED: 'VIDEO_ROOM_KICKED',
+  /** Kick entry not found (404). */
+  VIDEO_ROOM_KICK_NOT_FOUND: 'VIDEO_ROOM_KICK_NOT_FOUND',
   /** Action requires an active membership the caller does not have (403). */
   VIDEO_ROOM_NOT_MEMBER: 'VIDEO_ROOM_NOT_MEMBER',
   /** A second live session for the same (user, device) was detected (409). */

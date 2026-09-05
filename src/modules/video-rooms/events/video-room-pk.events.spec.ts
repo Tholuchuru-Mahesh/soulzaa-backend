@@ -1,11 +1,16 @@
-import { PkEndedEvent, PkScoreUpdatedEvent, VIDEO_ROOM_PK_EVENTS } from './video-room-pk.events';
+import {
+  PkCancelledEvent,
+  PkEndedEvent,
+  PkScoreUpdatedEvent,
+  VIDEO_ROOM_PK_EVENTS,
+} from './video-room-pk.events';
 
 describe('video-room PK events', () => {
-  it('declares 12 event names, all namespaced', () => {
+  it('declares 13 event names, all namespaced', () => {
     const names = Object.values(VIDEO_ROOM_PK_EVENTS);
-    expect(names).toHaveLength(12);
+    expect(names).toHaveLength(13);
     expect(names.every((n) => n.startsWith('video_room.pk.'))).toBe(true);
-    expect(new Set(names).size).toBe(12);
+    expect(new Set(names).size).toBe(13);
   });
 
   it('binds each class to its declared name', () => {
@@ -20,6 +25,13 @@ describe('video-room PK events', () => {
       totalBase: 100,
     });
     expect(e.name).toBe(VIDEO_ROOM_PK_EVENTS.ENDED);
+
+    const cancelled = new PkCancelledEvent({
+      roomId: 'r',
+      battleId: 'b',
+      cancelledBy: 'u1',
+    });
+    expect(cancelled.name).toBe(VIDEO_ROOM_PK_EVENTS.CANCELLED);
   });
 
   it('carries roomId and battleId on every payload', () => {

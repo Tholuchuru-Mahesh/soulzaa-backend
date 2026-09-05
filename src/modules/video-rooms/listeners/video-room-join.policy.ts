@@ -38,6 +38,18 @@ export class VideoRoomJoinPolicy implements RoomJoinPolicy, OnModuleInit {
     const room = await this.repo.findById(roomId);
     if (!room || room.status !== 'LIVE') return 'deny';
 
+    if (room.ownerId !== userId) {
+      const activeKick = await this.prisma.videoRoomKick.findFirst({
+        where: { roomId, userId, status: 'ACTIVE' },
+      });
+      if (activeKick) return 'deny';
+
+      const activeBlock = await this.prisma.videoRoomBlock.findFirst({
+        where: { roomId, userId, status: 'ACTIVE' },
+      });
+      if (activeBlock) return 'deny';
+    }
+
     // If gift-lock is disabled for this room, join is allowed.
     if (!room.giftLockEnabled) return 'player';
 

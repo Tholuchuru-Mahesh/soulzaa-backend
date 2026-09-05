@@ -16,6 +16,7 @@ import {
   type UserMutedEvent,
   type UserReportedEvent,
   type UserUnblacklistedEvent,
+  type UserUnkickedEvent,
   type UserUnmutedEvent,
   type UserWarnedEvent,
 } from '../events/video-room-moderation.events';
@@ -44,6 +45,11 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
       const payload = this.anonymize(e.payload);
       this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_KICKED, payload);
       this.user(e.payload.targetUserId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_KICKED, payload);
+    });
+    this.bus.subscribe<UserUnkickedEvent>(VIDEO_ROOM_MODERATION_EVENTS.UNKICKED, (e) => {
+      const payload = this.anonymize(e.payload);
+      this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNKICKED, payload);
+      this.user(e.payload.targetUserId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNKICKED, payload);
     });
     this.bus.subscribe<UserBlacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.BLACKLISTED, (e) => {
       const payload = this.anonymize(e.payload);

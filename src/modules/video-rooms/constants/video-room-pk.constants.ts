@@ -21,6 +21,7 @@ export const VIDEO_ROOM_PK_SOCKET_EVENTS = {
   PAUSED: 'pkPaused',
   RESUMED: 'pkResumed',
   ENDED: 'pkEnded',
+  CANCELLED: 'pkCancelled',
   WINNER: 'pkWinner',
   RECOVERED: 'pkRecovered',
 } as const;

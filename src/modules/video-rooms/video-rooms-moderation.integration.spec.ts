@@ -132,6 +132,7 @@ class FakeRedis {
 describe('VR-16 moderation engine (behavior)', () => {
   let blocks: Record<string, unknown>[];
   let mutes: Record<string, unknown>[];
+  let kicks: Record<string, unknown>[];
   let actions: Record<string, unknown>[];
   let published: unknown[];
   let redis: FakeRedis;
@@ -153,10 +154,37 @@ describe('VR-16 moderation engine (behavior)', () => {
   beforeEach(() => {
     blocks = [];
     mutes = [];
+    kicks = [];
     actions = [];
     published = [];
 
     const prisma = {
+      videoRoomKick: {
+        create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          const row = { id: `kick-${kicks.length + 1}`, status: 'ACTIVE', ...data };
+          kicks.push(row);
+          return row;
+        }),
+        findFirst: jest.fn(
+          async ({ where }: { where: Record<string, unknown> }) =>
+            kicks.find(
+              (k) =>
+                k.roomId === where.roomId && k.userId === where.userId && k.status === where.status,
+            ) ?? null,
+        ),
+        findMany: jest.fn(async ({ where }: { where: Record<string, unknown> }) =>
+          kicks.filter((k) => k.roomId === where.roomId && k.status === where.status),
+        ),
+        count: jest.fn(
+          async ({ where }: { where: Record<string, unknown> }) =>
+            kicks.filter((k) => k.roomId === where.roomId && k.status === where.status).length,
+        ),
+        update: jest.fn(async ({ where, data }: { where: { id: string }; data: unknown }) => {
+          const row = kicks.find((k) => k.id === where.id) as Record<string, unknown>;
+          Object.assign(row, data as Record<string, unknown>);
+          return row;
+        }),
+      },
       videoRoomBlock: {
         create: jest.fn(async ({ data }: { data: Record<string, unknown> }) => {
           const row = { id: `block-${blocks.length + 1}`, status: 'ACTIVE', ...data };
@@ -387,6 +415,40 @@ describe('VR-16 moderation engine (behavior)', () => {
 
   it('an un-blacklisted user still joins normally through the same shared repository', async () => {
     await expect(memberService.join(actor('clean-user'), ROOM, {}, ctx)).resolves.toBeDefined();
+  });
+
+  it('kick populates the Redis kick mirror, join-gate rejects with VIDEO_ROOM_KICKED, and unkick restores rejoining', async () => {
+    const target = 'target-kicked';
+    rooms.getMember.mockResolvedValue({ isActive: true });
+
+    await moderationService.kick(actor('mod-1'), ROOM, target, 'misconduct');
+
+    // The durable kick row + the audit trail.
+    expect(kicks).toEqual([
+      expect.objectContaining({ roomId: ROOM, userId: target, status: 'ACTIVE' }),
+    ]);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ roomId: ROOM, targetUserId: target, action: 'KICK' }),
+      ]),
+    );
+    // The Redis enforcement mirror the join-gate reads.
+    await expect(moderationRepo.isKickedMirror(ROOM, target)).resolves.toBe(true);
+
+    // Rejoin rejected with VIDEO_ROOM_KICKED
+    await expect(memberService.join(actor(target), ROOM, {}, ctx)).rejects.toBeInstanceOf(
+      BusinessException,
+    );
+    await memberService.join(actor(target), ROOM, {}, ctx).catch((err) => {
+      expect((err as BusinessException).errorCode).toBe(ERROR_CODES.VIDEO_ROOM_KICKED);
+    });
+
+    // Unkick restores the user
+    await moderationService.unkick(actor('mod-1'), ROOM, target);
+    await expect(moderationRepo.isKickedMirror(ROOM, target)).resolves.toBe(false);
+
+    // User can now join normally
+    await expect(memberService.join(actor(target), ROOM, {}, ctx)).resolves.toBeDefined();
   });
 
   it('mute populates the Redis mute mirror and publishes UserMutedEvent', async () => {

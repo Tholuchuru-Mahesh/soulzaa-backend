@@ -17,6 +17,7 @@ export const VIDEO_ROOM_PK_EVENTS = {
   PAUSED: 'video_room.pk.paused',
   RESUMED: 'video_room.pk.resumed',
   ENDED: 'video_room.pk.ended',
+  CANCELLED: 'video_room.pk.cancelled',
   WINNER_DECLARED: 'video_room.pk.winner_declared',
   REWARD_DISTRIBUTED: 'video_room.pk.reward_distributed',
   RECOVERED: 'video_room.pk.recovered',
@@ -52,6 +53,7 @@ export class PkInvitationSentEvent extends DomainEvent<
     side: string;
     attempt: number;
     expiresAt: string;
+    durationSeconds?: number;
   }
 > {
   readonly name = VIDEO_ROOM_PK_EVENTS.INVITATION_SENT;
@@ -125,6 +127,15 @@ export class PkEndedEvent extends DomainEvent<
   }
 > {
   readonly name = VIDEO_ROOM_PK_EVENTS.ENDED;
+}
+
+export class PkCancelledEvent extends DomainEvent<
+  PkEventBase & {
+    cancelledBy: string;
+    reason?: string;
+  }
+> {
+  readonly name = VIDEO_ROOM_PK_EVENTS.CANCELLED;
 }
 
 export class PkWinnerDeclaredEvent extends DomainEvent<

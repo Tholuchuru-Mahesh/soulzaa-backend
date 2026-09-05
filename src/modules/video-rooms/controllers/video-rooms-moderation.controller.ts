@@ -159,6 +159,42 @@ export class VideoRoomsModerationController {
     return this.moderation.kickMany(this.actor(user), roomId, dto.userIds, dto.reason, meta);
   }
 
+  @Delete(':id/moderation/kick/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Restore / unkick a kicked member',
+    description: 'Requires KICK_USERS. Lifts the active kick entry so the user may rejoin.',
+  })
+  @ApiParam({ name: 'id', description: 'Video room id (uuid)' })
+  @ApiParam({ name: 'userId', description: 'The kicked user id (uuid)' })
+  @ApiResponse({ status: 200, description: 'Restored / unkicked.' })
+  @ApiResponse({ status: 403, description: 'VIDEO_ROOM_FORBIDDEN — actor lacks KICK_USERS' })
+  @ApiResponse({ status: 404, description: 'VIDEO_ROOM_NOT_FOUND · VIDEO_ROOM_KICK_NOT_FOUND' })
+  unkick(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Param('userId', ParseUuidPipe) userId: string,
+    @RequestMeta() meta: RequestMetadata,
+  ) {
+    return this.moderation.unkick(this.actor(user), roomId, userId, meta);
+  }
+
+  @Post(':id/moderation/unkick/:userId')
+  @UseGuards(ShiftActiveGuard, SuspendedGuard)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Restore / unkick a kicked member (POST alias)',
+  })
+  unkickPost(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Param('userId', ParseUuidPipe) userId: string,
+    @RequestMeta() meta: RequestMetadata,
+  ) {
+    return this.moderation.unkick(this.actor(user), roomId, userId, meta);
+  }
+
   // ======================= Blacklist =======================
 
   @Post(':id/moderation/blacklist')
@@ -592,6 +628,25 @@ export class VideoRoomsModerationController {
     @Query() query: ListModerationDto,
   ) {
     return this.query.blacklistedUsers(this.actor(user), roomId, query);
+  }
+
+  @Get(':id/kicked-users')
+  @ApiOperation({
+    summary: "The room's kick list (active kicks)",
+    description: 'Elevated read. Newest first, optionally scoped to `userId`.',
+  })
+  @ApiParam({ name: 'id', description: 'Video room id (uuid)' })
+  @ApiResponse({
+    status: 403,
+    description: 'VIDEO_ROOM_FORBIDDEN — no elevated moderation permission',
+  })
+  @ApiResponse({ status: 404, description: 'VIDEO_ROOM_NOT_FOUND' })
+  kickedUsers(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUuidPipe) roomId: string,
+    @Query() query: ListModerationDto,
+  ) {
+    return this.query.kickedUsers(this.actor(user), roomId, query);
   }
 
   @Get(':id/moderation/warnings')

@@ -26,6 +26,11 @@ export function blocksMirrorKey(roomId: string): string {
   return `video-room:{${roomId}}:blocks`;
 }
 
+/** SET mirror of users with an active kick entry in the room (join-gate). */
+export function kicksMirrorKey(roomId: string): string {
+  return `video-room:{${roomId}}:kicks`;
+}
+
 /** Per-room lock serialising moderation command mutations (kick/mute/block/…). */
 export function moderationLockKey(roomId: string): string {
   return `video-room:moderation:{${roomId}}`;
@@ -80,6 +85,7 @@ export const SYSTEM_MODERATOR_ID = '00000000-0000-0000-0000-000000000000';
  */
 export const VIDEO_ROOM_MODERATION_SOCKET_EVENTS = {
   USER_KICKED: 'userKicked',
+  USER_UNKICKED: 'userUnkicked',
   USER_BLACKLISTED: 'userBlacklisted',
   USER_UNBLACKLISTED: 'userUnblacklisted',
   USER_MUTED: 'userMuted',

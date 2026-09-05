@@ -158,6 +158,13 @@ export class VideoRoomMemberService {
             HttpStatus.FORBIDDEN,
           );
         }
+        if (await this.moderation.isActivelyKicked(roomId, actor.id)) {
+          throw this.err(
+            ERROR_CODES.VIDEO_ROOM_KICKED,
+            'You have been kicked from this room.',
+            HttpStatus.FORBIDDEN,
+          );
+        }
       }
 
       // Paid Entry access check for non-privileged, non-moderator members

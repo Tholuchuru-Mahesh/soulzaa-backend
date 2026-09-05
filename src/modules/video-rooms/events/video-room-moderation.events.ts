@@ -25,6 +25,7 @@ import type { MuteChannel } from '../dto/moderation.dto';
  */
 export const VIDEO_ROOM_MODERATION_EVENTS = {
   KICKED: 'video_room.user_kicked',
+  UNKICKED: 'video_room.user_unkicked',
   BLACKLISTED: 'video_room.user_blacklisted',
   UNBLACKLISTED: 'video_room.user_unblacklisted',
   MUTED: 'video_room.user_muted',
@@ -49,6 +50,11 @@ interface ModerationEventBase {
 
 export class UserKickedEvent extends DomainEvent<ModerationEventBase & { reason: string | null }> {
   readonly name = VIDEO_ROOM_MODERATION_EVENTS.KICKED;
+}
+
+/** A moderator restored a kicked user: they may rejoin the room. */
+export class UserUnkickedEvent extends DomainEvent<ModerationEventBase> {
+  readonly name = VIDEO_ROOM_MODERATION_EVENTS.UNKICKED;
 }
 
 export class UserBlacklistedEvent extends DomainEvent<

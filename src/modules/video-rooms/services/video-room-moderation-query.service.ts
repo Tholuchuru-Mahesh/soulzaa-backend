@@ -1,5 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import type { VideoRoomBlock, VideoRoomMute, VideoRoomWarning } from '@prisma/client';
+import type { VideoRoomBlock, VideoRoomKick, VideoRoomMute, VideoRoomWarning } from '@prisma/client';
 import { BusinessException, ERROR_CODES } from 'src/common/exceptions';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
@@ -102,6 +102,22 @@ export class VideoRoomModerationQueryService {
   ): Promise<Paginated<VideoRoomBlock>> {
     const ref = await this.requireElevatedRead(actor, roomId);
     const [rows, total] = await this.moderationRepo.listActiveBlocks(
+      ref.id,
+      query.skip,
+      query.limit,
+      query.userId,
+    );
+    return buildPaginated(rows, total, query.page, query.limit);
+  }
+
+  /** The room's kick list (active kicks), newest first, optionally scoped to `userId`. */
+  async kickedUsers(
+    actor: RoomActor,
+    roomId: string,
+    query: ListModerationDto,
+  ): Promise<Paginated<VideoRoomKick>> {
+    const ref = await this.requireElevatedRead(actor, roomId);
+    const [rows, total] = await this.moderationRepo.listActiveKicks(
       ref.id,
       query.skip,
       query.limit,

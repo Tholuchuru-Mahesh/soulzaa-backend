@@ -43,6 +43,7 @@ import {
   UserKickedEvent,
   UserMutedEvent,
   UserUnblacklistedEvent,
+  UserUnkickedEvent,
   UserUnmutedEvent,
   UserWarnedEvent,
 } from '../events/video-room-moderation.events';
@@ -155,6 +156,17 @@ export class VideoRoomModerationService {
           HttpStatus.BAD_REQUEST,
         );
       }
+      const existingKick = await this.moderationRepo.findActiveKick(ref.id, targetUserId);
+      const kick =
+        existingKick ??
+        (await this.moderationRepo.createKick({
+          roomId: ref.id,
+          userId: targetUserId,
+          moderatorId: actor.id,
+          reason: reason ?? null,
+        }));
+      await this.moderationRepo.addKickMirror(ref.id, targetUserId);
+
       await this.ejectFromRoom(ref.id, targetUserId, actor.id);
       await this.moderationRepo.appendAction({
         roomId: ref.id,
@@ -162,7 +174,7 @@ export class VideoRoomModerationService {
         targetUserId,
         action: VideoRoomModerationActionType.KICK,
         reason: reason ?? null,
-        metadata: this.auditMetadata(undefined, requestMeta),
+        metadata: this.auditMetadata({ kickId: kick.id }, requestMeta),
       });
 
       let evidenceId: string | undefined;
@@ -249,6 +261,69 @@ export class VideoRoomModerationService {
       }
     }
     return { kicked, skipped };
+  }
+
+  /**
+   * Restore ("unkick") a user: lift their ACTIVE kick so they may rejoin the room.
+   */
+  async unkick(
+    actor: RoomActor,
+    roomId: string,
+    targetUserId: string,
+    requestMeta?: RequestMetadata,
+  ): Promise<void> {
+    const ref = await this.requireRoom(roomId);
+    await this.permissions.assertPermission(actor, ref, VideoRoomPermission.KICK_USERS);
+
+    const room = await this.rooms.findById(roomId);
+    if (room?.ownerId) {
+      await this.scopeService.assertModeratorInScope(actor.id, room.ownerId);
+    }
+
+    let kickId: string | undefined;
+    await this.locks.withLock(moderationLockKey(ref.id), async () => {
+      const kick = await this.moderationRepo.findActiveKick(ref.id, targetUserId);
+      if (!kick) {
+        throw new BusinessException(
+          ERROR_CODES.VIDEO_ROOM_KICK_NOT_FOUND,
+          'That user is not on the kick list.',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      kickId = kick.id;
+      await this.moderationRepo.liftKick(kick.id, actor.id);
+      await this.moderationRepo.removeKickMirror(ref.id, targetUserId);
+      await this.moderationRepo.appendAction({
+        roomId: ref.id,
+        moderatorId: actor.id,
+        targetUserId,
+        action: VideoRoomModerationActionType.UNKICK,
+        reason: null,
+        metadata: this.auditMetadata({ kickId: kick.id }, requestMeta),
+      });
+
+      if (this.auditLog) {
+        void this.auditLog.logAction({
+          actorId: actor.id,
+          action: 'video_room.unkick',
+          resource: 'video_room',
+          resourceId: ref.id,
+          targetUserId,
+          ipAddress: requestMeta?.ip,
+          userAgent: requestMeta?.userAgent,
+          details: { targetUserId, kickId: kick.id },
+        });
+      }
+    });
+
+    await this.bus.publish(
+      new UserUnkickedEvent({
+        roomId: ref.id,
+        moderatorId: actor.id,
+        targetUserId,
+      }),
+    );
+    await this.notifyUser(targetUserId, 'video_room.unkicked', { roomId: ref.id });
   }
 
   // ======================= Blacklist / unblacklist =======================

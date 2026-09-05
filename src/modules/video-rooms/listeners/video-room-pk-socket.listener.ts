@@ -5,6 +5,7 @@ import { VIDEO_ROOM_PK_SOCKET_EVENTS } from '../constants/video-room-pk.constant
 import { VIDEO_ROOM_NAMESPACE } from '../constants/video-room.constants';
 import {
   VIDEO_ROOM_PK_EVENTS,
+  type PkCancelledEvent,
   type PkEndedEvent,
   type PkInvitationAcceptedEvent,
   type PkInvitationRejectedEvent,
@@ -137,6 +138,19 @@ export class VideoRoomPkSocketListener implements OnModuleInit {
       const blueScore = p.teams?.find((t) => t.side === 'BLUE')?.score ?? 0;
       const enriched = { ...p, redScore, blueScore };
       this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.ENDED, enriched);
+    });
+
+    this.bus.subscribe<PkCancelledEvent>(VIDEO_ROOM_PK_EVENTS.CANCELLED, (e) => {
+      const payload = {
+        roomId: e.payload.roomId,
+        battleId: e.payload.battleId,
+        status: 'CANCELLED',
+        cancelledBy: e.payload.cancelledBy,
+        reason: e.payload.reason,
+      };
+      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.CANCELLED, payload);
+      this.toRoom(e.payload.roomId, 'video_room.pk.cancelled', payload);
+      this.toRoom(e.payload.roomId, 'pk:cancelled', payload);
     });
 
     this.bus.subscribe<PkWinnerDeclaredEvent>(VIDEO_ROOM_PK_EVENTS.WINNER_DECLARED, (e) =>
