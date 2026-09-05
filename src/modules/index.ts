@@ -62,8 +62,12 @@ import { SupportTicketsModule } from './support-tickets/support-tickets.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
 import { ModerationApprovalModule } from './moderation-approval/moderation-approval.module';
 import { PlatformModerationModule } from './platform-moderation/platform-moderation.module';
+import { CoinOffersModule } from './coin-offers/coin-offers.module';
+import { BannersModule } from './banners/banners.module';
 
 export const DOMAIN_MODULES = [
+  BannersModule,
+  CoinOffersModule,
   TreasuryModule,
   PlatformConfigurationModule,
   OrganizationModule,

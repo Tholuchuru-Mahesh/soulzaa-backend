@@ -1,0 +1,78 @@
+/// Home Screen banners — Super-Admin-managed, ordered, with a redirect
+/// destination. `imageKey` is an S3 key resolved to a URL at read time via
+/// MediaUrlResolver, same convention as WealthLevel.iconUrl. The field name
+/// predates video support and stays as-is (renaming would touch every layer
+/// for no behavioral gain) — `mediaType` says how to interpret the key.
+enum BannerRedirectPage {
+  HOME
+  COINS
+  VIP
+  EVENTS
+  WALLET
+  /// Deep-links to a specific Audio Room — requires redirectTargetId.
+  AUDIO_ROOM
+  /// Opens in an in-app webview — requires externalUrl.
+  EXTERNAL_URL
+}
+
+enum BannerMediaType {
+  IMAGE
+  VIDEO
+}
+
+model HomeBanner {
+  id               String             @id @default(uuid()) @db.Uuid
+  title            String?
+  imageKey         String
+  /// How to render `imageKey` on mobile — a static image or an autoplaying
+  /// muted/looping video. Defaults to IMAGE so every banner created before
+  /// this field existed keeps rendering exactly as before.
+  mediaType        BannerMediaType    @default(IMAGE)
+  /// Crop focal point as a fraction of the media's own width/height (0.0-1.0
+  /// each, default 0.5/0.5 = center) — which part stays visible when
+  /// BoxFit.cover crops the media to fit the carousel's aspect ratio. Same
+  /// convention as CSS `object-position` percentages.
+  focalX           Float              @default(0.5)
+  focalY           Float              @default(0.5)
+  redirectPage     BannerRedirectPage
+  /// Audio room id — set only when redirectPage = AUDIO_ROOM.
+  redirectTargetId String?            @db.Uuid
+  /// Set only when redirectPage = EXTERNAL_URL.
+  externalUrl      String?
+  isActive         Boolean            @default(true)
+  sortOrder        Int                @default(0)
+  createdBy        String?            @db.Uuid
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@map("home_banners")
+}
+
+/// Who a CoinOffer applies to. FIRST_PURCHASE_ONLY / EXISTING_USERS_ONLY are
+/// evaluated against PurchaseOrder.status = COMPLETED history at purchase
+/// time — never account-creation age. See CoinOfferService.resolveEligibleOffer.
+enum CoinOfferEligibility {
+  FIRST_PURCHASE_ONLY
+  EXISTING_USERS_ONLY
+  ALL_USERS
+}
+
+/// A percentage-based bonus-coin promotion. At most one row per
+/// `eligibility` segment may have isActive = true at once — see the partial
+/// unique index below and CoinOfferService.toggle.
+model CoinOffer {
+  id          String               @id @default(uuid()) @db.Uuid
+  title       String
+  percentage  Int
+  eligibility CoinOfferEligibility @default(ALL_USERS)
+  isActive    Boolean              @default(true)
+  createdBy   String?              @db.Uuid
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  orders      PurchaseOrder[]
+
+  @@index([eligibility, isActive])
+  @@map("coin_offers")
+}

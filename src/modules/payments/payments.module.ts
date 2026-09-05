@@ -21,9 +21,11 @@ import { PurchaseQueryService } from './services/purchase-query.service';
 import { PurchaseReconciliationService } from './services/purchase-reconciliation.service';
 import { ReceiptVerificationService } from './services/receipt-verification.service';
 
+import { CoinOffersModule } from 'src/modules/coin-offers/coin-offers.module';
+
 @Global()
 @Module({
-  imports: [PrismaModule, PlatformConfigurationModule, TreasuryModule, WalletModule],
+  imports: [PrismaModule, PlatformConfigurationModule, TreasuryModule, WalletModule, CoinOffersModule],
   controllers: [CoinPurchaseController, GoogleRtdnController],
   providers: [
     GooglePlayApiClient,

@@ -42,6 +42,8 @@ model PurchaseOrder {
   status              PurchaseOrderStatus @default(CREATED)
   providerTxnRef      String?
   walletTransactionId String?             @db.Uuid
+  appliedCoinOfferId  String?             @db.Uuid
+  offerBonusCoinsAmount BigInt            @default(0)
   idempotencyKey      String              @unique
   metadata            Json?
   expiresAt           DateTime?
@@ -56,6 +58,7 @@ model PurchaseOrder {
   consumedAt          DateTime?
   receipts            PaymentReceipt[]
   package             CoinPackage         @relation(fields: [packageId], references: [id])
+  appliedCoinOffer    CoinOffer?          @relation(fields: [appliedCoinOfferId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([status])

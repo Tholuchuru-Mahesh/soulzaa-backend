@@ -4,6 +4,7 @@ import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { CreatePurchaseOrderDto } from '../dto/purchase-order.dto';
 import { CoinPackageService } from './coin-package.service';
 import { PurchaseAuditService } from './purchase-audit.service';
+import { CoinOfferService } from 'src/modules/coin-offers/services/coin-offer.service';
 
 @Injectable()
 export class PurchaseOrderService {
@@ -11,6 +12,7 @@ export class PurchaseOrderService {
     private readonly prisma: PrismaService,
     private readonly packageService: CoinPackageService,
     private readonly auditService: PurchaseAuditService,
+    private readonly coinOfferService: CoinOfferService,
   ) {}
 
   /**
@@ -37,7 +39,9 @@ export class PurchaseOrderService {
 
     const baseCoins = BigInt(pkg.coins);
     const bonusCoins = BigInt(pkg.bonusCoins);
-    const totalCoins = baseCoins + bonusCoins;
+    const offer = await this.coinOfferService.resolveEligibleOffer(userId);
+    const offerBonusCoins = offer ? (baseCoins * BigInt(offer.percentage)) / 100n : 0n;
+    const totalCoins = baseCoins + bonusCoins + offerBonusCoins;
 
     const orderNumber = `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 mins order expiration
@@ -50,6 +54,8 @@ export class PurchaseOrderService {
         provider: dto.provider,
         coinsAmount: baseCoins,
         bonusCoinsAmount: bonusCoins,
+        appliedCoinOfferId: offer?.id ?? null,
+        offerBonusCoinsAmount: offerBonusCoins,
         totalCoins,
         priceAmount: pkg.priceAmount,
         currency: pkg.currency,
@@ -129,6 +135,7 @@ export class PurchaseOrderService {
       ...order,
       coinsAmount: order.coinsAmount != null ? order.coinsAmount.toString() : '0',
       bonusCoinsAmount: order.bonusCoinsAmount != null ? order.bonusCoinsAmount.toString() : '0',
+      offerBonusCoinsAmount: order.offerBonusCoinsAmount != null ? order.offerBonusCoinsAmount.toString() : '0',
       totalCoins: order.totalCoins != null ? order.totalCoins.toString() : '0',
       priceAmount: order.priceAmount != null ? Number(order.priceAmount) : 0,
     };

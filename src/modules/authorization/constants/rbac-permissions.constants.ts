@@ -48,6 +48,24 @@ export type PermissionCategory = (typeof PERMISSION_CATEGORIES)[number];
 
 // Standard Granular Permissions across all Soulzaa Platform Modules
 export const DEFAULT_PERMISSIONS = [
+  // Coin Offers & Home Banners (Phase 1)
+  {
+    code: 'coin_offers.manage',
+    module: 'coin_offers',
+    action: 'manage',
+    category: 'WALLET',
+    displayName: 'Manage Coin Offers',
+    description: 'Can create, update, and manage promotional coin offers',
+  },
+  {
+    code: 'banners.manage',
+    module: 'banners',
+    action: 'manage',
+    category: 'PLATFORM',
+    displayName: 'Manage Home Banners',
+    description: 'Can manage promotional banners on the mobile home screen',
+  },
+
   // Enterprise Gift Engine (Phase 5)
   {
     code: 'gift.catalog.view',
@@ -1793,6 +1811,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRoleType, string[]> = {
    */
   ADMIN: [
     ...MEMBER_PERMISSIONS,
+    // Banners & Coin Offers
+    'banners.manage',
+    'coin_offers.manage',
     // User & creator management
     'user.view',
     'user.update',

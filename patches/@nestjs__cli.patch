@@ -1,0 +1,17 @@
+diff --git a/lib/utils/tree-kill.js b/lib/utils/tree-kill.js
+index 47f78a070523e7278c5137c584feed3689c62620..7748b0fabfbd7aedd26cb3d044b1d041abc442ab 100644
+--- a/lib/utils/tree-kill.js
++++ b/lib/utils/tree-kill.js
+@@ -4,7 +4,11 @@ exports.treeKillSync = treeKillSync;
+ const child_process_1 = require("child_process");
+ function treeKillSync(pid, signal) {
+     if (process.platform === 'win32') {
+-        (0, child_process_1.execSync)('taskkill /pid ' + pid + ' /T /F');
++        try {
++            (0, child_process_1.execSync)('taskkill /pid ' + pid + ' /T /F');
++        } catch (e) {
++            // Ignore errors if process is already dead
++        }
+         return;
+     }
+     const childs = getAllChilds(pid);

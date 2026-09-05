@@ -7,6 +7,11 @@ export const STORAGE_CATEGORIES = {
   PROFILE_IMAGE: 'profile-images',
   ROOM_BACKGROUND: 'room-backgrounds',
   EVENT_BANNER: 'event-banners',
+  // Home Screen banner carousel (Super Admin-managed) — its own namespace,
+  // separate from EVENT_BANNER, because it accepts video as well as images
+  // and EVENT_BANNER's policy (shared with the unrelated platform Events
+  // feature) must stay image-only.
+  HOME_BANNER: 'home-banners',
   GIFT_ASSET: 'gift-assets',
   GIFT_ANIMATION: 'gift-animations',
   COSMETIC_ASSET: 'cosmetic-assets',
@@ -52,6 +57,7 @@ export const PUBLIC_ASSET_PREFIXES: readonly string[] = [
   STORAGE_CATEGORIES.PROFILE_IMAGE,
   STORAGE_CATEGORIES.ROOM_BACKGROUND,
   STORAGE_CATEGORIES.EVENT_BANNER,
+  STORAGE_CATEGORIES.HOME_BANNER,
   STORAGE_CATEGORIES.GIFT_ASSET,
   STORAGE_CATEGORIES.GIFT_ANIMATION,
   STORAGE_CATEGORIES.COSMETIC_ASSET,
@@ -101,6 +107,14 @@ export const STORAGE_POLICIES: Record<MediaCategory, StoragePolicy> = {
     // 16:9 event banners run larger than a room cover; same ceiling as
     // room-backgrounds so the mobile picker's limits stay uniform.
     maxSizeBytes: 10 * MB,
+  },
+  [STORAGE_CATEGORIES.HOME_BANNER]: {
+    prefix: STORAGE_CATEGORIES.HOME_BANNER,
+    isImage: false,
+    allowedMime: [...IMAGE_MIME, 'video/mp4', 'video/webm'],
+    // Short promotional video banners run larger than a static image; same
+    // ceiling as the other mixed image/video categories (gifts, cosmetics).
+    maxSizeBytes: 50 * MB,
   },
   [STORAGE_CATEGORIES.GIFT_ASSET]: {
     prefix: STORAGE_CATEGORIES.GIFT_ASSET,
