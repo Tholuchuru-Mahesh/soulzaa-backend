@@ -763,4 +763,94 @@ describe('VideoRoomGiftContextHandler — gift-lock grant', () => {
     expect(giftLockAccessRepo.hasGrantedAccess).toHaveBeenCalledWith('sender-1', 'session-1', tx);
     expect(giftLockAccessRepo.grantAccess).not.toHaveBeenCalled();
   });
+
+  describe('gift-lock entry send suppressReceiverCashback', () => {
+    it('returns suppressReceiverCashback: true when sending the required entry gift to the room owner', async () => {
+      rooms.findById.mockResolvedValue({
+        id: ROOM,
+        ownerId: 'owner-1',
+        giftLockEnabled: true,
+        requiredEntryGiftId: 'gift-entry-1',
+      });
+      const effects = await handler.onSend(tx, {
+        contextType: GiftContextType.VIDEO_ROOM,
+        contextId: ROOM,
+        senderId: SENDER,
+        receiverIds: ['owner-1'],
+        gift: { id: 'gift-entry-1', name: 'Key', coinValue: 1500 } as any,
+        quantity: 1,
+        transactionId: 't1',
+        batchId: 'b1',
+        idempotencyKey: 'i1',
+        totalCoinValue: 1500,
+      });
+      expect(effects.suppressReceiverCashback).toBe(true);
+    });
+
+    it('returns suppressReceiverCashback: false when room has gift-lock disabled', async () => {
+      rooms.findById.mockResolvedValue({
+        id: ROOM,
+        ownerId: 'owner-1',
+        giftLockEnabled: false,
+        requiredEntryGiftId: 'gift-entry-1',
+      });
+      const effects = await handler.onSend(tx, {
+        contextType: GiftContextType.VIDEO_ROOM,
+        contextId: ROOM,
+        senderId: SENDER,
+        receiverIds: ['owner-1'],
+        gift: { id: 'gift-entry-1', name: 'Key', coinValue: 1500 } as any,
+        quantity: 1,
+        transactionId: 't1',
+        batchId: 'b1',
+        idempotencyKey: 'i1',
+        totalCoinValue: 1500,
+      });
+      expect(effects.suppressReceiverCashback).toBe(false);
+    });
+
+    it('returns suppressReceiverCashback: false when sending a different gift than the required entry gift', async () => {
+      rooms.findById.mockResolvedValue({
+        id: ROOM,
+        ownerId: 'owner-1',
+        giftLockEnabled: true,
+        requiredEntryGiftId: 'gift-entry-1',
+      });
+      const effects = await handler.onSend(tx, {
+        contextType: GiftContextType.VIDEO_ROOM,
+        contextId: ROOM,
+        senderId: SENDER,
+        receiverIds: ['owner-1'],
+        gift: { id: 'different-gift', name: 'Rose', coinValue: 1500 } as any,
+        quantity: 1,
+        transactionId: 't1',
+        batchId: 'b1',
+        idempotencyKey: 'i1',
+        totalCoinValue: 1500,
+      });
+      expect(effects.suppressReceiverCashback).toBe(false);
+    });
+
+    it('returns suppressReceiverCashback: false when recipient is not the room owner', async () => {
+      rooms.findById.mockResolvedValue({
+        id: ROOM,
+        ownerId: 'owner-1',
+        giftLockEnabled: true,
+        requiredEntryGiftId: 'gift-entry-1',
+      });
+      const effects = await handler.onSend(tx, {
+        contextType: GiftContextType.VIDEO_ROOM,
+        contextId: ROOM,
+        senderId: SENDER,
+        receiverIds: ['speaker-2'],
+        gift: { id: 'gift-entry-1', name: 'Key', coinValue: 1500 } as any,
+        quantity: 1,
+        transactionId: 't1',
+        batchId: 'b1',
+        idempotencyKey: 'i1',
+        totalCoinValue: 1500,
+      });
+      expect(effects.suppressReceiverCashback).toBe(false);
+    });
+  });
 });

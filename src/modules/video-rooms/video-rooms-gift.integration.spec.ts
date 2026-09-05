@@ -417,6 +417,67 @@ describe('VR-10 gift engine (integration)', () => {
     expect(gold).toHaveLength(0);
   });
 
+  it('suppresses GOLD cashback for video-room gift-lock entry gifts even above threshold, keeping DIAMOND earnings intact', async () => {
+    // Setup room with gift-lock enabled and required gift gift-1
+    harness.rooms.findById.mockResolvedValue({
+      id: ROOM,
+      ownerId: 'owner-1',
+      status: VideoRoomStatus.LIVE,
+      giftLockEnabled: true,
+      requiredEntryGiftId: 'gift-1',
+    });
+    harness.rooms.getMember.mockResolvedValue({
+      isActive: true,
+      role: VideoRoomMemberRole.PARTICIPANT,
+    });
+    // Send quantity 15 of gift-1 (100 coins each = 1,500 total, which is > 1000 cashback threshold)
+    const view = await send(VideoRoomGiftTarget.SINGLE, {
+      receiverId: 'owner-1',
+      quantity: 15,
+      idempotencyKey: 'idem-gift-lock-1',
+    });
+
+    const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
+    // DIAMOND (Soul Gems) credited at 50%: 1500 * 50% = 750
+    expect(credits.some((c) => c.currency === WalletCurrency.DIAMOND && c.amount === 750)).toBe(true);
+    // ZERO GOLD coins credited
+    const goldCredits = credits.filter((c) => c.currency === WalletCurrency.GOLD);
+    expect(goldCredits).toHaveLength(0);
+
+    // Ledger row cashbackAmount is 0 and appliedCashbackPct is 0
+    const row = harness.ledger.find((r) => r.idempotencyKey === 'idem-gift-lock-1');
+    expect(row?.creatorEarnings).toBe(750n);
+    expect(row?.cashbackAmount).toBe(0n);
+    expect(row?.appliedCashbackPct).toBe(0);
+    expect(view.transactions).toHaveLength(1);
+  });
+
+  it('credits normal GOLD cashback for gifts above threshold when gift-lock is not active', async () => {
+    harness.rooms.findById.mockResolvedValue({
+      id: ROOM,
+      ownerId: 'owner-1',
+      status: VideoRoomStatus.LIVE,
+      giftLockEnabled: false,
+    });
+    // Send quantity 15 (1,500 coins, above threshold 1,000)
+    await send(VideoRoomGiftTarget.SINGLE, {
+      receiverId: 'owner-1',
+      quantity: 15,
+      idempotencyKey: 'idem-normal-1',
+    });
+
+    const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
+    // DIAMOND credited at 50% = 750
+    expect(credits.some((c) => c.currency === WalletCurrency.DIAMOND && c.amount === 750)).toBe(true);
+    // GOLD cashback credited at 10% = 150
+    expect(credits.some((c) => c.currency === WalletCurrency.GOLD && c.amount === 150)).toBe(true);
+
+    const row = harness.ledger.find((r) => r.idempotencyKey === 'idem-normal-1');
+    expect(row?.creatorEarnings).toBe(750n);
+    expect(row?.cashbackAmount).toBe(150n);
+    expect(row?.appliedCashbackPct).toBe(10);
+  });
+
   it('records the creator-conversion-rate share of gift value as creator earnings (Soul Gems) on the ledger row', async () => {
     await send();
     // The creator conversion rate (default 50%) reaches the ledger as Soul

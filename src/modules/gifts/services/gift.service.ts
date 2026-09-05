@@ -433,6 +433,13 @@ export class GiftService implements IGiftsService {
         eventsToPublish.push(...effects.events);
         postCommitFn = effects.postCommit;
 
+        const effectiveCashbackCredited = effects.suppressReceiverCashback
+          ? 0
+          : availableBalanceCredited;
+        const effectiveCashbackPct = effects.suppressReceiverCashback
+          ? 0
+          : rules.cashbackPercent;
+
         // 3. Settle receiver wallet accounts & create immutable gift transaction rows.
         const rows: GiftTransaction[] = [];
         for (const receiverId of receiverIds) {
@@ -456,12 +463,12 @@ export class GiftService implements IGiftsService {
           }
 
           // Step 3b: Receiver Available Balance += 10% ONLY IF giftValue > 1000 (Rule 2 & Rule 3)
-          if (availableBalanceCredited > 0) {
+          if (effectiveCashbackCredited > 0) {
             await this.wallet.credit(
               {
                 userId: receiverId,
                 currency: WalletCurrency.GOLD,
-                amount: availableBalanceCredited,
+                amount: effectiveCashbackCredited,
                 reason: WalletTxnReason.GIFT_RECEIVE,
                 idempotencyKey: `gift-credit-available:${idempotencyKey}:${receiverId}`,
                 referenceType: GIFT_WALLET_REFERENCE_TYPE,
@@ -470,7 +477,7 @@ export class GiftService implements IGiftsService {
                   senderId,
                   batchId,
                   giftValue: perReceiverNum,
-                  availableBalanceCredited,
+                  availableBalanceCredited: effectiveCashbackCredited,
                 },
                 actorId: senderId,
               },
@@ -492,9 +499,9 @@ export class GiftService implements IGiftsService {
               unitCoinValue: unit,
               totalCoinValue: perReceiver,
               creatorEarnings,
-              cashbackAmount: BigInt(availableBalanceCredited),
+              cashbackAmount: BigInt(effectiveCashbackCredited),
               appliedEarningsPct: rules.earningsPercent,
-              appliedCashbackPct: rules.cashbackPercent,
+              appliedCashbackPct: effectiveCashbackPct,
               luckyMultiplier: lucky.multiplier,
               isLuckyWin: lucky.win,
               senderExp,
@@ -514,7 +521,7 @@ export class GiftService implements IGiftsService {
           rows.push(createdRow);
 
           this.logger.log(
-            `[Gift Settle] Txn: ${createdRow.id}, Context: ${dto.contextType}:${dto.contextId}, Sender: ${senderId}, Wallet credited recipient: ${receiverId}, Earnings (Gems): ${earningsNum}, Cashback (Gold): ${availableBalanceCredited}, Total Coin Value: ${perReceiverNum}`,
+            `[Gift Settle] Txn: ${createdRow.id}, Context: ${dto.contextType}:${dto.contextId}, Sender: ${senderId}, Wallet credited recipient: ${receiverId}, Earnings (Gems): ${earningsNum}, Cashback (Gold): ${effectiveCashbackCredited}, Total Coin Value: ${perReceiverNum}`,
           );
 
           if (gift.type === GiftType.PROFILE_FRAME) {

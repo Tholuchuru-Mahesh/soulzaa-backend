@@ -49,6 +49,12 @@ export interface GiftSendEffects {
   refundAmount: number;
   events: DomainEvent<unknown>[];
   postCommit?: () => Promise<void>;
+  /**
+   * When true, suppresses the receiver Available Balance (GOLD) cashback credit
+   * (e.g. for video room gift-lock entry gifts) while keeping the creator
+   * earnings (Soul Gems / DIAMOND) conversion intact.
+   */
+  suppressReceiverCashback?: boolean;
 }
 
 export interface IGiftContextHandler {

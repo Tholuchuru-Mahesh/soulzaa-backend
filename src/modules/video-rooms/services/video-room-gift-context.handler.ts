@@ -139,7 +139,9 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
     this.assertCountryAllowed(sender?.country);
 
     const allowViewerGifts = this.viewerGiftsAllowed(settings?.metadata);
-    const activeBattle = this.pkRepo ? await this.pkRepo.findCurrent(roomId).catch(() => null) : null;
+    const activeBattle = this.pkRepo
+      ? await this.pkRepo.findCurrent(roomId).catch(() => null)
+      : null;
 
     for (const receiverId of receiverIds) {
       const receiver = await this.rooms.getMember(roomId, receiverId);
@@ -207,34 +209,37 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
    * `postCommit`, via {@link publishPkEvents}, alongside the mirror write.
    */
   async onSend(tx: Prisma.TransactionClient, ctx: GiftSendContext): Promise<GiftSendEffects> {
+    const isGiftLockEntry = await this.isGiftLockEntrySend(ctx);
+
     const inert: GiftSendEffects = {
       acceptedAmount: ctx.totalCoinValue,
       refundAmount: 0,
       events: [],
+      suppressReceiverCashback: isGiftLockEntry,
     };
 
     const treasure = await this.applyTreasure(tx, ctx);
     const pk = await this.applyPk(tx, ctx);
-    await this.grantGiftLockAccessIfApplicable(tx, ctx);
+    await this.grantGiftLockAccessIfApplicable(tx, ctx, isGiftLockEntry);
 
     // Neither subsystem left post-commit work: match the pre-VR-12 contract of
     // an absent `postCommit`, which the treasure-only "no ladder" case already
     // relies on (a room with neither a treasure ladder nor a PK battle is truly
     // inert, not just quiet).
-    if (!treasure.postCommit && !pk.mirror) {
-      return { ...inert, events: [...treasure.events] };
+    if (!treasure?.postCommit && !pk?.mirror) {
+      return { ...inert, events: [...(treasure?.events ?? [])] };
     }
 
     return {
       ...inert,
-      events: [...treasure.events],
+      events: [...(treasure?.events ?? [])],
       postCommit: async () => {
-        await treasure.postCommit?.().catch((err: unknown) => {
+        await treasure?.postCommit?.().catch((err: unknown) => {
           this.logger.error(
             `Treasure postCommit failed for room ${ctx.contextId}: ${(err as Error).message}`,
           );
         });
-        if (pk.mirror) {
+        if (pk?.mirror) {
           await this.pkScoring.mirror(pk.mirror).catch((err: unknown) => {
             this.logger.warn(
               `PK mirror failed for battle ${pk.mirror!.battleId}: ${(err as Error).message}`,
@@ -303,7 +308,7 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
         countsTowardRanking: ctx.receiverIds.some((id) => id !== ctx.senderId),
       });
 
-      if (!result.sessionId) return empty;
+      if (!result?.sessionId) return empty;
 
       // A threshold crossing always broadcasts; routine progress is throttled so
       // a hot room cannot fan out hundreds of near-identical updates a second.
@@ -362,7 +367,7 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
   ): Promise<PkScoringResult> {
     const idle: PkScoringResult = { battleId: null, applied: 0, events: [], mirror: null };
     try {
-      return await this.pkScoring.apply(tx, {
+      const res = await this.pkScoring.apply(tx, {
         roomId: ctx.contextId,
         senderId: ctx.senderId,
         receiverIds: ctx.receiverIds,
@@ -370,9 +375,31 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
         giftTxnId: ctx.transactionId,
         batchId: ctx.batchId,
       });
+      return res ?? idle;
     } catch (err) {
       this.logger.warn(`PK scoring failed for room ${ctx.contextId}: ${(err as Error).message}`);
       return idle;
+    }
+  }
+
+  /**
+   * Identifies whether this send is the room's designated entry gift, addressed
+   * to the room owner, while gift-lock is enabled.
+   *
+   * For the video room gift entry lock flow:
+   * - Creator earnings conversion to Soul Gems (DIAMOND) continues via the standard
+   *   percentage set in Super Admin.
+   * - No Gold Coins (GOLD) are credited to the host wallet (suppressReceiverCashback = true).
+   */
+  private async isGiftLockEntrySend(ctx: GiftSendContext): Promise<boolean> {
+    try {
+      const room = await this.rooms.findById(ctx.contextId);
+      if (!room || !room.giftLockEnabled || !room.requiredEntryGiftId) return false;
+      if (ctx.gift.id !== room.requiredEntryGiftId) return false;
+      if (!ctx.receiverIds.includes(room.ownerId)) return false;
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -385,12 +412,11 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
   private async grantGiftLockAccessIfApplicable(
     tx: Prisma.TransactionClient,
     ctx: GiftSendContext,
+    isEntryGift?: boolean,
   ): Promise<void> {
     try {
-      const room = await this.rooms.findById(ctx.contextId);
-      if (!room?.giftLockEnabled || !room.requiredEntryGiftId) return;
-      if (ctx.gift.id !== room.requiredEntryGiftId) return;
-      if (!ctx.receiverIds.includes(room.ownerId)) return;
+      const isEligible = isEntryGift ?? (await this.isGiftLockEntrySend(ctx));
+      if (!isEligible) return;
 
       const activeSession = await this.rooms.getActiveBroadcastSession(ctx.contextId);
       if (!activeSession) return;
