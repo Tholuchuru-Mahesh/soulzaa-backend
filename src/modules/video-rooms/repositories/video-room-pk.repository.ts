@@ -68,6 +68,32 @@ export class VideoRoomPkRepository {
     });
   }
 
+  /** Cancel any non-terminal battle rows for a room (e.g. on room end or reset). */
+  async cancelNonTerminalForRoom(
+    roomId: string,
+    reason: string = 'Broadcast session ended or reset',
+    db: Db = this.prisma,
+  ): Promise<number> {
+    const { count } = await db.videoRoomPkBattle.updateMany({
+      where: {
+        roomId,
+        status: {
+          notIn: [
+            VideoRoomPkStatus.COMPLETED,
+            VideoRoomPkStatus.CANCELLED,
+            VideoRoomPkStatus.FAILED,
+          ],
+        },
+      },
+      data: {
+        status: VideoRoomPkStatus.CANCELLED,
+        cancelledAt: new Date(),
+        failureReason: reason,
+      },
+    });
+    return count;
+  }
+
   getBattle(id: string, db: Db = this.prisma): Promise<VideoRoomPkBattle | null> {
     return db.videoRoomPkBattle.findUnique({ where: { id } });
   }

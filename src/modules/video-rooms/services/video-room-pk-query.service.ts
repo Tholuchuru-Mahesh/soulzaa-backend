@@ -92,8 +92,15 @@ export class VideoRoomPkQueryService {
     const blueScore = teamViews.find((t) => t.side === 'BLUE')?.score ?? 0;
     const challenger = participantViews.find((p) => p.side === 'BLUE');
 
+    const isActive =
+      battle.status === VideoRoomPkStatus.LIVE ||
+      battle.status === VideoRoomPkStatus.COUNTDOWN ||
+      battle.status === VideoRoomPkStatus.ACCEPTED ||
+      battle.status === VideoRoomPkStatus.PAUSED ||
+      battle.status === VideoRoomPkStatus.RECOVERING;
+
     return {
-      active: true,
+      active: isActive,
       id: battle.id,
       roomId: battle.roomId,
       mode: battle.mode,

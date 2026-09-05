@@ -43,6 +43,7 @@ import { PlatformModerationAuditService } from 'src/modules/platform-moderation/
 import { PlatformBanService } from 'src/modules/platform-moderation/services/platform-ban.service';
 import { VideoRoomChatRepository } from '../repositories/video-room-chat.repository';
 import { VideoRoomChatCacheService } from './video-room-chat-cache.service';
+import { VideoRoomPkRepository } from '../repositories/video-room-pk.repository';
 
 /** Client-supplied join fields (from JoinRoomDto) + server-derived context. */
 export interface JoinContext {
@@ -109,6 +110,7 @@ export class VideoRoomMemberService {
     @Optional() private readonly platformBans?: PlatformBanService,
     @Optional() private readonly chatRepo?: VideoRoomChatRepository,
     @Optional() private readonly chatCache?: VideoRoomChatCacheService,
+    @Optional() private readonly pkRepo?: VideoRoomPkRepository,
   ) {
     this.cfg = loadVideoRoomConfig(config);
   }
@@ -635,6 +637,9 @@ export class VideoRoomMemberService {
       await this.sessions.endAllRoomSessions(roomId);
       await this.repo.deactivateAllMembers(roomId, VIDEO_ROOM_SYSTEM_ACTOR_ID);
       await this.state.clear(roomId);
+      if (this.pkRepo) {
+        await this.pkRepo.cancelNonTerminalForRoom(roomId, 'Broadcast auto-ended (no members)');
+      }
 
       await this.repo.appendLog({
         roomId,

@@ -38,6 +38,7 @@ import { PlatformBanService } from 'src/modules/platform-moderation/services/pla
 import { BroadBanService } from 'src/modules/platform-moderation/services/broad-ban.service';
 import { VideoRoomChatRepository } from '../repositories/video-room-chat.repository';
 import { VideoRoomChatCacheService } from './video-room-chat-cache.service';
+import { VideoRoomPkRepository } from '../repositories/video-room-pk.repository';
 
 /** The extended access policies that are persisted in metadata (not base visibility). */
 const METADATA_ACCESS_POLICIES: ReadonlySet<VideoRoomAccessPolicy> = new Set([
@@ -78,6 +79,7 @@ export class VideoRoomLifecycleService {
     @Optional() private readonly broadBans?: BroadBanService,
     @Optional() private readonly chatRepo?: VideoRoomChatRepository,
     @Optional() private readonly chatCache?: VideoRoomChatCacheService,
+    @Optional() private readonly pkRepo?: VideoRoomPkRepository,
   ) {
     this.config = loadVideoRoomConfig(config);
   }
@@ -174,6 +176,9 @@ export class VideoRoomLifecycleService {
             await this.chatCache.invalidateRecent(existing.id);
             await this.chatCache.setPins(existing.id, []);
           }
+        } else if (this.pkRepo) {
+          // A new broadcast session must always start with no active PK battle
+          await this.pkRepo.cancelNonTerminalForRoom(existing.id, 'Broadcast session restarted');
         }
 
         await this.repo.createBroadcastSession(existing.id, actor.id, {
@@ -500,6 +505,9 @@ export class VideoRoomLifecycleService {
     await this.sessions.endAllRoomSessions(roomId);
     await this.repo.deactivateAllMembers(roomId, actorId);
     await this.state.clear(roomId);
+    if (this.pkRepo) {
+      await this.pkRepo.cancelNonTerminalForRoom(roomId, 'Broadcast session ended or reset');
+    }
   }
 
   /** Reopen a closed room: ENDED -> OFFLINE (re-editable, ready to activate). */
