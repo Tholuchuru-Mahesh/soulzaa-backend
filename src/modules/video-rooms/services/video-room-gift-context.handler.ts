@@ -139,7 +139,7 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
     this.assertCountryAllowed(sender?.country);
 
     const allowViewerGifts = this.viewerGiftsAllowed(settings?.metadata);
-    const activeBattle = this.pkRepo ? await this.pkRepo.findLive(roomId).catch(() => null) : null;
+    const activeBattle = this.pkRepo ? await this.pkRepo.findCurrent(roomId).catch(() => null) : null;
 
     for (const receiverId of receiverIds) {
       const receiver = await this.rooms.getMember(roomId, receiverId);

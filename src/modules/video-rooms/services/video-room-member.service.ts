@@ -608,7 +608,12 @@ export class VideoRoomMemberService {
       await this.repo.endActiveBroadcastSession(roomId, 'AUTO_ENDED_NO_MEMBERS');
       await this.repo.updateRoom(
         roomId,
-        { status: VideoRoomStatus.ENDED, endedAt: new Date() },
+        {
+          status: VideoRoomStatus.ENDED,
+          endedAt: new Date(),
+          giftLockEnabled: false,
+          requiredEntryGiftId: null,
+        },
         VIDEO_ROOM_SYSTEM_ACTOR_ID,
       );
       await this.repo.trendingRemove(roomId);

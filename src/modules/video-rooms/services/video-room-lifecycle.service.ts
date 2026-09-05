@@ -134,6 +134,8 @@ export class VideoRoomLifecycleService {
           status: VideoRoomStatus.LIVE,
           streamingStatus: VideoRoomStreamingStatus.IDLE,
           endedAt: null,
+          giftLockEnabled: false,
+          requiredEntryGiftId: null,
           ...(this.metadataFor(dto.accessPolicy) ?? {}),
         };
 
@@ -397,7 +399,16 @@ export class VideoRoomLifecycleService {
     const room = await this.getRoomOrThrow(roomId);
     await this.permissions.assertPermission(actor, room, VideoRoomPermission.MANAGE_ROOM);
     this.assertTransition(room.status, VideoRoomStatus.LIVE);
-    await this.repo.updateRoom(roomId, { status: VideoRoomStatus.LIVE, endedAt: null }, actor.id);
+    await this.repo.updateRoom(
+      roomId,
+      {
+        status: VideoRoomStatus.LIVE,
+        endedAt: null,
+        giftLockEnabled: false,
+        requiredEntryGiftId: null,
+      },
+      actor.id,
+    );
     await this.repo.createBroadcastSession(roomId, actor.id, {
       title: room.name,
       topic: room.description,
@@ -434,7 +445,12 @@ export class VideoRoomLifecycleService {
     await this.repo.endActiveBroadcastSession(roomId, 'HOST_ENDED');
     await this.repo.updateRoom(
       roomId,
-      { status: VideoRoomStatus.ENDED, endedAt: new Date() },
+      {
+        status: VideoRoomStatus.ENDED,
+        endedAt: new Date(),
+        giftLockEnabled: false,
+        requiredEntryGiftId: null,
+      },
       actor.id,
     );
     await this.repo.trendingRemove(roomId);

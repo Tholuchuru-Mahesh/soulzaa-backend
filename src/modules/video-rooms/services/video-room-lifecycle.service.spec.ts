@@ -168,7 +168,11 @@ describe('VideoRoomLifecycleService', () => {
       repo.findByOwnerId.mockResolvedValue([fullRoom({ id: 'r1', status: VideoRoomStatus.ENDED })]);
       await service.create(actor, { name: 'x' } as any);
       expect(repo.createRoomTx).not.toHaveBeenCalled();
-      expect(repo.updateRoom.mock.calls[0][1]).toMatchObject({ status: VideoRoomStatus.LIVE });
+      expect(repo.updateRoom.mock.calls[0][1]).toMatchObject({
+        status: VideoRoomStatus.LIVE,
+        giftLockEnabled: false,
+        requiredEntryGiftId: null,
+      });
       expect(presence.clearRoom).toHaveBeenCalledWith('r1');
       expect(sessions.endAllRoomSessions).toHaveBeenCalledWith('r1');
       expect(repo.deactivateAllMembers).toHaveBeenCalledWith('r1', actor.id);
@@ -250,7 +254,11 @@ describe('VideoRoomLifecycleService', () => {
   describe('activate / close / reopen', () => {
     it('activate moves OFFLINE -> LIVE and bumps trending', async () => {
       await service.activate(actor, 'r1');
-      expect(repo.updateRoom.mock.calls[0][1]).toMatchObject({ status: VideoRoomStatus.LIVE });
+      expect(repo.updateRoom.mock.calls[0][1]).toMatchObject({
+        status: VideoRoomStatus.LIVE,
+        giftLockEnabled: false,
+        requiredEntryGiftId: null,
+      });
       expect(repo.trendingBump).toHaveBeenCalledWith('r1');
     });
 
@@ -285,7 +293,11 @@ describe('VideoRoomLifecycleService', () => {
         expect.anything(),
         VideoRoomPermission.CLOSE_ROOM,
       );
-      expect(repo.updateRoom.mock.calls[0][1]).toMatchObject({ status: VideoRoomStatus.ENDED });
+      expect(repo.updateRoom.mock.calls[0][1]).toMatchObject({
+        status: VideoRoomStatus.ENDED,
+        giftLockEnabled: false,
+        requiredEntryGiftId: null,
+      });
       expect(repo.trendingRemove).toHaveBeenCalledWith('r1');
       expect(events.emitRoomClosed).toHaveBeenCalled();
     });

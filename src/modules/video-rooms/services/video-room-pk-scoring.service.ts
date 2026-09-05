@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, VideoRoomPkParticipant, VideoRoomPkSide, VideoRoomPkTeam } from '@prisma/client';
+import { Prisma, VideoRoomPkParticipant, VideoRoomPkSide, VideoRoomPkStatus, VideoRoomPkTeam } from '@prisma/client';
 import type { DomainEvent } from 'src/common/events';
 import { CacheService } from 'src/infra/redis/cache.service';
 import { REDIS_CLIENT, type RedisClient } from 'src/infra/redis/redis.constants';
@@ -113,10 +113,24 @@ export class VideoRoomPkScoringService {
     // paid gift is otherwise still committable and swallowing here is what
     // lets it go through undisturbed.
     try {
-      // Only a LIVE battle scores. COUNTDOWN and PAUSED are silent no-ops: the
-      // gift still succeeds, it just does not count — a gift while the clock is
-      // frozen would create score with no time running against it.
-      const battle = await this.repo.findLive(input.roomId, tx);
+      let battle = await this.repo.findLive(input.roomId, tx);
+      if (!battle) {
+        const current = await this.repo.findCurrent(input.roomId, tx);
+        if (current && current.status === VideoRoomPkStatus.COUNTDOWN) {
+          const now = new Date();
+          const startedAt = current.startedAt ? new Date(current.startedAt).getTime() : 0;
+          const countdownMs = (current.countdownSeconds ?? 5) * 1000;
+          if (now.getTime() >= startedAt + countdownMs - 500) {
+            battle = await this.repo.transition(
+              current.id,
+              VideoRoomPkStatus.COUNTDOWN,
+              VideoRoomPkStatus.LIVE,
+              {},
+              tx,
+            );
+          }
+        }
+      }
       if (!battle) return idle;
 
       // Each receiver gets a WHOLE gift (gift.service.ts:196-200), so the per-leg
