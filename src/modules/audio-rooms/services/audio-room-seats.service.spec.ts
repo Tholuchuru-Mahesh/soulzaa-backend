@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { SeatType } from '@prisma/client';
+import { SeatHistoryAction, SeatInvitationStatus, SeatRequestStatus, SeatType } from '@prisma/client';
 import { IEventBus } from 'src/common/events';
 import { BusinessException } from 'src/common/exceptions';
 import { LockService } from 'src/infra/redis/lock.service';
@@ -45,6 +45,7 @@ describe('AudioRoomSeatsService', () => {
       getSeatByOccupant: jest.fn().mockResolvedValue(null),
       getSeatByIndex: jest.fn().mockResolvedValue(seat()),
       findPendingRequestByUser: jest.fn().mockResolvedValue(null),
+      findPendingRequestsByUser: jest.fn().mockResolvedValue([]),
       getRequest: jest.fn(),
       createRequest: jest.fn().mockResolvedValue({ id: 'req-1' }),
       resolveRequest: jest.fn().mockResolvedValue(undefined),
@@ -174,6 +175,173 @@ describe('AudioRoomSeatsService', () => {
     });
   });
 
+  describe('respondInvitation', () => {
+    const validInvite = {
+      id: 'inv-1',
+      roomId: 'r',
+      inviteeUserId: LISTENER.id,
+      seatIndex: 1,
+      status: SeatInvitationStatus.PENDING,
+      expiresAt: new Date(Date.now() + 60000),
+    };
+
+    it('accepts an invitation, seats user, and leaves pending request alone if none existed', async () => {
+      seats.getInvitation.mockResolvedValue(validInvite);
+      seats.findPendingRequestsByUser.mockResolvedValue([]);
+
+      await service.respondInvitation(LISTENER, 'r', 'inv-1', true);
+
+      expect(seats.setOccupant).toHaveBeenCalledWith('r', 1, LISTENER.id, LISTENER.id);
+      expect(seats.resolveInvitation).toHaveBeenCalledWith(
+        'inv-1',
+        SeatInvitationStatus.ACCEPTED,
+        LISTENER.id,
+      );
+      expect(seats.resolveRequest).not.toHaveBeenCalled();
+      expect(seats.dequeue).not.toHaveBeenCalled();
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.seat_updated',
+          payload: expect.objectContaining({
+            reason: 'invite_accepted',
+            subjectUserId: LISTENER.id,
+          }),
+        }),
+      );
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.seat_updated',
+          payload: expect.objectContaining({
+            reason: 'request_cancelled',
+          }),
+        }),
+      );
+    });
+
+    it('accepts an invitation and atomically clears pending seat request with real-time broadcast', async () => {
+      seats.getInvitation.mockResolvedValue(validInvite);
+      seats.findPendingRequestsByUser.mockResolvedValue([
+        {
+          id: 'req-pending-1',
+          roomId: 'r',
+          userId: LISTENER.id,
+          seatIndex: 2,
+          status: SeatRequestStatus.PENDING,
+        },
+      ]);
+
+      await service.respondInvitation(LISTENER, 'r', 'inv-1', true);
+
+      expect(seats.setOccupant).toHaveBeenCalledWith('r', 1, LISTENER.id, LISTENER.id);
+      expect(seats.resolveInvitation).toHaveBeenCalledWith(
+        'inv-1',
+        SeatInvitationStatus.ACCEPTED,
+        LISTENER.id,
+      );
+      expect(seats.resolveRequest).toHaveBeenCalledWith(
+        'req-pending-1',
+        SeatRequestStatus.CANCELLED,
+        LISTENER.id,
+      );
+      expect(seats.appendSeatHistory).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roomId: 'r',
+          actorId: LISTENER.id,
+          action: SeatHistoryAction.REQUEST_CANCELLED,
+        }),
+      );
+      expect(seats.dequeue).toHaveBeenCalledWith('r', LISTENER.id);
+
+      // Real-time synchronization: request_cancelled event emitted for host and all room admins
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.seat_updated',
+          payload: expect.objectContaining({
+            roomId: 'r',
+            reason: 'request_cancelled',
+            subjectUserId: LISTENER.id,
+          }),
+        }),
+      );
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.seat_updated',
+          payload: expect.objectContaining({
+            roomId: 'r',
+            reason: 'invite_accepted',
+            subjectUserId: LISTENER.id,
+          }),
+        }),
+      );
+    });
+
+    it('rejects an invitation without cancelling pending seat requests', async () => {
+      seats.getInvitation.mockResolvedValue(validInvite);
+      seats.findPendingRequestsByUser.mockResolvedValue([
+        { id: 'req-pending-1', roomId: 'r', userId: LISTENER.id, status: SeatRequestStatus.PENDING },
+      ]);
+
+      await service.respondInvitation(LISTENER, 'r', 'inv-1', false);
+
+      expect(seats.resolveInvitation).toHaveBeenCalledWith(
+        'inv-1',
+        SeatInvitationStatus.REJECTED,
+        LISTENER.id,
+      );
+      expect(seats.setOccupant).not.toHaveBeenCalled();
+      expect(seats.resolveRequest).not.toHaveBeenCalled();
+      expect(seats.dequeue).not.toHaveBeenCalled();
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.seat_updated',
+          payload: expect.objectContaining({
+            reason: 'invite_rejected',
+            subjectUserId: LISTENER.id,
+          }),
+        }),
+      );
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.seat_updated',
+          payload: expect.objectContaining({
+            reason: 'request_cancelled',
+          }),
+        }),
+      );
+    });
+
+    it('handles expired invitation without cancelling pending seat requests', async () => {
+      const expiredInvite = {
+        ...validInvite,
+        expiresAt: new Date(Date.now() - 10000),
+      };
+      seats.getInvitation.mockResolvedValue(expiredInvite);
+      seats.findPendingRequestsByUser.mockResolvedValue([
+        { id: 'req-pending-1', roomId: 'r', userId: LISTENER.id, status: SeatRequestStatus.PENDING },
+      ]);
+
+      await expect(service.respondInvitation(LISTENER, 'r', 'inv-1', true)).rejects.toThrow(
+        BusinessException,
+      );
+
+      expect(seats.resolveInvitation).toHaveBeenCalledWith(
+        'inv-1',
+        SeatInvitationStatus.EXPIRED,
+        LISTENER.id,
+      );
+      expect(seats.resolveRequest).not.toHaveBeenCalled();
+      expect(seats.dequeue).not.toHaveBeenCalled();
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.seat_updated',
+          payload: expect.objectContaining({
+            reason: 'request_cancelled',
+          }),
+        }),
+      );
+    });
+  });
+
   describe('takeSeat', () => {
     beforeEach(() =>
       seats.getSettings.mockResolvedValue({
@@ -208,6 +376,30 @@ describe('AudioRoomSeatsService', () => {
       seats.getSettings.mockResolvedValue({ requireApprovalForSeat: true });
       permissions.hasPermission.mockResolvedValue(false);
       await expect(service.takeSeat(LISTENER, 'r', 1)).rejects.toBeInstanceOf(BusinessException);
+    });
+
+    it('clears pending seat request when taking an open seat', async () => {
+      seats.findPendingRequestsByUser.mockResolvedValue([
+        { id: 'req-pending-1', roomId: 'r', userId: LISTENER.id, status: SeatRequestStatus.PENDING },
+      ]);
+
+      await service.takeSeat(LISTENER, 'r', 1);
+
+      expect(seats.resolveRequest).toHaveBeenCalledWith(
+        'req-pending-1',
+        SeatRequestStatus.CANCELLED,
+        LISTENER.id,
+      );
+      expect(seats.dequeue).toHaveBeenCalledWith('r', LISTENER.id);
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.seat_updated',
+          payload: expect.objectContaining({
+            reason: 'request_cancelled',
+            subjectUserId: LISTENER.id,
+          }),
+        }),
+      );
     });
 
     /**
@@ -577,6 +769,49 @@ describe('AudioRoomSeatsService', () => {
 
       expect(seats.setOccupant).not.toHaveBeenCalled();
       expect(bus.publish).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('onMemberLeave', () => {
+    it('clears pending seat request and broadcasts cancellation in real-time when user leaves', async () => {
+      seats.findPendingRequestsByUser.mockResolvedValue([
+        { id: 'req-leave-1', roomId: 'r', userId: LISTENER.id, status: SeatRequestStatus.PENDING },
+      ]);
+
+      await service.onMemberLeave('r', LISTENER.id);
+
+      expect(seats.resolveRequest).toHaveBeenCalledWith(
+        'req-leave-1',
+        SeatRequestStatus.CANCELLED,
+        LISTENER.id,
+      );
+      expect(seats.dequeue).toHaveBeenCalledWith('r', LISTENER.id);
+      expect(bus.publish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.seat_updated',
+          payload: expect.objectContaining({
+            roomId: 'r',
+            reason: 'request_cancelled',
+            subjectUserId: LISTENER.id,
+          }),
+        }),
+      );
+    });
+
+    it('does not publish request_cancelled when leaving user had no pending requests', async () => {
+      seats.findPendingRequestsByUser.mockResolvedValue([]);
+
+      await service.onMemberLeave('r', LISTENER.id);
+
+      expect(seats.resolveRequest).not.toHaveBeenCalled();
+      expect(bus.publish).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'audio_room.seat_updated',
+          payload: expect.objectContaining({
+            reason: 'request_cancelled',
+          }),
+        }),
+      );
     });
   });
 

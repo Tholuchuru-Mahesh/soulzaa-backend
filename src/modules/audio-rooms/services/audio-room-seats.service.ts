@@ -466,6 +466,7 @@ export class AudioRoomSeatsService {
     }
 
     let joinedSeatIndex: number = 0;
+    let hadPendingRequests = false;
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
       await this.assertActiveMember(roomId, actor.id);
       if (await this.seats.getSeatByOccupant(roomId, actor.id)) {
@@ -492,10 +493,14 @@ export class AudioRoomSeatsService {
         action: SeatHistoryAction.INVITE_ACCEPTED,
         seatIndex: seat.seatIndex,
       });
+      hadPendingRequests = await this.clearPendingRequestsForUser(roomId, actor.id);
       await this.bus.publish(
         new SeatJoinedEvent({ roomId, userId: actor.id, seatIndex: seat.seatIndex }),
       );
     });
+    if (hadPendingRequests) {
+      await this.publishUpdate(roomId, actor.id, 'request_cancelled', null, actor.id);
+    }
     await this.publishUpdate(roomId, actor.id, 'invite_accepted', joinedSeatIndex, actor.id);
     await this.rebuildStage(roomId);
   }
@@ -512,6 +517,7 @@ export class AudioRoomSeatsService {
       RoomPermission.MANAGE_SEATS,
     );
     let movedFrom: number | null = null;
+    let hadPendingRequests = false;
 
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
       const current = await this.seats.getSeatByOccupant(roomId, actor.id);
@@ -563,6 +569,8 @@ export class AudioRoomSeatsService {
         });
       }
 
+      hadPendingRequests = await this.clearPendingRequestsForUser(roomId, actor.id);
+
       // A move is one `moved` update, not a leave/join pair — matching
       // moveSpeaker. The pair would read as the owner dropping off the stage and
       // coming back, which flickers their badge and churns their voice role
@@ -573,6 +581,9 @@ export class AudioRoomSeatsService {
       }
     });
 
+    if (hadPendingRequests) {
+      await this.publishUpdate(roomId, actor.id, 'request_cancelled', null, actor.id);
+    }
     if (movedFrom !== null) {
       await this.publishUpdate(roomId, actor.id, 'moved', seatIndex, actor.id);
     }
@@ -871,14 +882,9 @@ export class AudioRoomSeatsService {
   /** A member left the room: vacate their seat, cancel any request, advance queue. */
   async onMemberLeave(roomId: string, userId: string): Promise<void> {
     if (!(await this.rooms.findLiveRoomRow(roomId))) return;
+    let hadPendingRequests = false;
     await this.locks.withLock(roomSeatLockKey(roomId), async () => {
-      const pendings = await this.seats.findPendingRequestsByUser(roomId, userId);
-      for (const pending of pendings) {
-        await this.seats.resolveRequest(pending.id, SeatRequestStatus.CANCELLED, userId);
-      }
-      if (pendings.length > 0) {
-        await this.seats.dequeue(roomId, userId);
-      }
+      hadPendingRequests = await this.clearPendingRequestsForUser(roomId, userId);
       const seat = await this.seats.getSeatByOccupant(roomId, userId);
       if (seat) {
         await this.vacate(roomId, seat, userId, userId, SeatHistoryAction.SEAT_LEFT);
@@ -886,6 +892,9 @@ export class AudioRoomSeatsService {
         await this.advanceQueue(roomId, seat, userId);
       }
     });
+    if (hadPendingRequests) {
+      await this.publishUpdate(roomId, userId, 'request_cancelled', null, userId);
+    }
     await this.rebuildStage(roomId);
   }
 
@@ -1145,6 +1154,28 @@ export class AudioRoomSeatsService {
   }
 
   // ======================= Guards / helpers =======================
+
+  /**
+   * Cancel and dequeue any pending seat requests for a user who has just occupied a seat or left.
+   * Appends seat history for each cancelled request.
+   * Returns true if any pending requests were cancelled.
+   */
+  private async clearPendingRequestsForUser(roomId: string, userId: string): Promise<boolean> {
+    const pendingRequests = await this.seats.findPendingRequestsByUser(roomId, userId);
+    if (pendingRequests.length === 0) return false;
+
+    for (const req of pendingRequests) {
+      await this.seats.resolveRequest(req.id, SeatRequestStatus.CANCELLED, userId);
+      await this.seats.appendSeatHistory({
+        roomId,
+        actorId: userId,
+        action: SeatHistoryAction.REQUEST_CANCELLED,
+        seatIndex: req.seatIndex ?? undefined,
+      });
+    }
+    await this.seats.dequeue(roomId, userId);
+    return true;
+  }
 
   private async assertRoomExists(roomId: string): Promise<AudioRoom> {
     const room = await this.rooms.findRoomRow(roomId);

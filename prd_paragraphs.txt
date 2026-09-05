@@ -1,0 +1,2922 @@
+[Normal] SOULZAA
+[Normal] Product Requirements Document (PRD)
+[Normal] Volume 1 – Product Vision, Business Rules & User Roles
+[Normal] Document Version: 1.0
+[Normal] Product Name: Soulzaa
+[Normal] Prepared For: Development Team
+[Normal] Prepared By: Product Team
+[Normal] Document Status: Final
+[Normal] Classification: Confidential
+[Normal] Last Updated: June 2026
+[Normal] Document Control
+[Normal] Document Approval
+[Normal] Table of Contents
+[Normal] Introduction
+[Normal] Product Overview
+[Normal] Vision
+[Normal] Mission
+[Normal] Business Objectives
+[Normal] Problem Statement
+[Normal] Proposed Solution
+[Normal] Target Audience
+[Normal] Core Features Overview
+[Normal] Product Modules
+[Normal] Business Model
+[Normal] Revenue Model
+[Normal] Coin Economy
+[Normal] VIP Membership System
+[Normal] Experience (EXP) System
+[Normal] User Level System
+[Normal] User Journey
+[Normal] Business Rules
+[Normal] Global Policies
+[Normal] User Roles
+[Normal] Role & Permission Matrix
+[Normal] Moderation Workflow
+[Normal] Country & Regional Hierarchy
+[Normal] Future Scalability
+[Normal] Success Metrics (KPIs)
+[Normal] Technical Scope
+[Normal] Assumptions
+[Normal] Out of Scope
+[Normal] Glossary
+[Normal] 1. Introduction
+[Normal] 1.1 Purpose
+[Normal] Soulzaa is a global social entertainment platform that enables users to communicate, socialize, and earn through real-time voice, video, live streaming, gaming, gifting, and community-building features.
+[Normal] The purpose of this document is to define the product vision, business objectives, organizational hierarchy, governance model, and high-level functional scope for the Soulzaa platform. This document serves as the foundation for all subsequent functional, technical, and implementation documents.
+[Normal] 1.2 Product Description
+[Normal] Soulzaa combines social networking, live entertainment, virtual gifting, gaming, and creator monetization into a unified platform capable of supporting millions of users worldwide.
+[Normal] The application provides a secure, scalable ecosystem where users can:
+[Normal] Meet new people
+[Normal] Join Audio Rooms
+[Normal] Join Video Rooms
+[Normal] Watch Live Streams
+[Normal] Host Events
+[Normal] Send Virtual Gifts
+[Normal] Play Multiplayer Games
+[Normal] Build Communities
+[Normal] Earn through Agencies
+[Normal] Purchase VIP Memberships
+[Normal] Participate in Rankings
+[Normal] Join Families (Guilds)
+[Normal] Build Creator Fanbases
+[Normal] 1.3 Product Type
+[Normal] Mobile Application (Android)
+[Normal] Mobile Application (iOS)
+[Normal] Web-based Admin Panel
+[Normal] 2. Product Overview
+[Normal] Soulzaa is a cloud-based, real-time social entertainment platform built to connect users across countries through immersive voice, video, gaming, and virtual economy experiences.
+[Normal] The platform provides:
+[Normal] Audio Rooms
+[Normal] Video Rooms
+[Normal] Live Streaming
+[Normal] One-to-One Chat
+[Normal] Voice Calls
+[Normal] Video Calls
+[Normal] Virtual Gifts
+[Normal] Wallet
+[Normal] Coin Recharge
+[Normal] Family System
+[Normal] Agency Management
+[Normal] Coin Seller Management
+[Normal] Business Development Portal
+[Normal] Admin Portal
+[Normal] Rankings
+[Normal] VIP Membership
+[Normal] Events
+[Normal] Interactive Games
+[Normal] 3. Vision
+[Normal] To become the world's leading social entertainment platform by providing a secure, engaging, and rewarding ecosystem where people connect through voice, video, gaming, and virtual communities while enabling creators and agencies to build sustainable digital businesses.
+[Normal] 4. Mission
+[Normal] To create a premium global social platform that empowers creators, entertainers, agencies, and communities through innovative engagement tools, transparent monetization, advanced moderation, and scalable technology.
+[Normal] 5. Business Objectives
+[Normal] The primary objectives of Soulzaa are:
+[Normal] Build a scalable cloud-native platform
+[Normal] Increase user engagement
+[Normal] Maximize creator earnings
+[Normal] Develop a transparent virtual coin economy
+[Normal] Maintain platform safety through AI-assisted and manual moderation
+[Normal] Support global multi-country operations
+[Normal] Deliver high-performance real-time communication
+[Normal] Create sustainable revenue streams
+[Normal] Provide enterprise-grade administration tools
+[Normal] 6. Problem Statement
+[Normal] Existing social entertainment platforms often face several limitations:
+[Normal] Unfair monetization models
+[Normal] Weak moderation systems
+[Normal] Lack of regional administration
+[Normal] Poor creator management
+[Normal] Limited community-building features
+[Normal] Weak agency ecosystem
+[Normal] Fragmented virtual economy
+[Normal] Limited gaming integration
+[Normal] 7. Proposed Solution
+[Normal] Soulzaa addresses these challenges by integrating:
+[Normal] Audio Communities
+[Normal] Video Communities
+[Normal] Live Streaming
+[Normal] Interactive Games
+[Normal] Virtual Gifting
+[Normal] VIP Membership
+[Normal] Family (Guild) System
+[Normal] Agency Management
+[Normal] Coin Seller Network
+[Normal] Multi-Level Moderation
+[Normal] Country-wise Administration
+[Normal] Regional Operations
+[Normal] Creator Monetization
+[Normal] 8. Target Audience
+[Normal] Soulzaa is designed for users aged 18 years and above.
+[Normal] Primary user groups include:
+[Normal] Content Creators
+[Normal] Live Streamers
+[Normal] Influencers
+[Normal] Gamers
+[Normal] Music Lovers
+[Normal] Agencies
+[Normal] Community Managers
+[Normal] Event Hosts
+[Normal] Social Networking Users
+[Normal] 9. Core Features Overview
+[Normal] User Authentication
+[Normal] User Profile
+[Normal] Friends & Following
+[Normal] Audio Rooms
+[Normal] Video Rooms
+[Normal] Live Streaming
+[Normal] PK Battles
+[Normal] Private Chat
+[Normal] Voice Calls
+[Normal] Video Calls
+[Normal] Wallet
+[Normal] Coin Recharge
+[Normal] Virtual Gifts
+[Normal] Treasure Boxes
+[Normal] Rocket Events
+[Normal] Rankings
+[Normal] Family (Guild)
+[Normal] VIP Membership
+[Normal] EXP System
+[Normal] User Levels
+[Normal] Daily Tasks
+[Normal] Notifications
+[Normal] Moderation
+[Normal] Admin Panel
+[Normal] 10. Product Modules
+[Normal] User Module
+[Normal] Registration
+[Normal] Login
+[Normal] Profile
+[Normal] Privacy
+[Normal] Settings
+[Normal] Wallet Module
+[Normal] Gold Coins
+[Normal] Free Coins
+[Normal] Recharge
+[Normal] Transactions
+[Normal] Communication Module
+[Normal] Chat
+[Normal] Voice Calls
+[Normal] Video Calls
+[Normal] Audio Room Module
+[Normal] Video Room Module
+[Normal] Live Streaming Module
+[Normal] Gaming Module
+[Normal] Family Module
+[Normal] VIP Module
+[Normal] Ranking Module
+[Normal] Moderation Module
+[Normal] Agency Module
+[Normal] Coin Seller Module
+[Normal] Business Development Module
+[Normal] Admin Portal
+[Normal] 11. Business Model
+[Normal] Soulzaa follows a virtual economy model where users purchase Gold Coins using real money to access premium experiences and virtual goods.
+[Normal] Revenue sources include:
+[Normal] Coin Purchases
+[Normal] VIP Membership
+[Normal] Gift Transactions
+[Normal] Agency Operations
+[Normal] Event Participation
+[Normal] Premium Games
+[Normal] Promotional Campaigns
+[Normal] 12. Revenue Model
+[Normal] Primary revenue streams include:
+[Normal] Coin Recharge
+[Normal] VIP Upgrades
+[Normal] Premium Virtual Gifts
+[Normal] Treasure Boxes
+[Normal] Rocket Events
+[Normal] Seasonal Events
+[Normal] Premium Games
+[Normal] Agency Services
+[Normal] 13. Coin Economy
+[Normal] Soulzaa operates using two virtual currencies:
+[Normal] Gold Coins
+[Normal] Purchased using real money.
+[Normal] Used for:
+[Normal] Sending Gifts
+[Normal] VIP Purchase
+[Normal] Treasure Boxes
+[Normal] Events
+[Normal] Premium Games
+[Normal] Restrictions:
+[Normal] Cannot be withdrawn
+[Normal] Cannot be transferred
+[Normal] Cannot be converted into cash
+[Normal] Free Coins
+[Normal] Earned through:
+[Normal] Daily Login
+[Normal] Events
+[Normal] Daily Tasks
+[Normal] Promotions
+[Normal] Games
+[Normal] Used only in supported casual games.
+[Normal] 4. VIP Membership
+[Normal] IP levels are determined based on lifetime Gold Coin purchases.
+[Normal] Levels:
+[Normal] Bronze
+[Normal] Silver
+[Normal] Gold
+[Normal] Platinum
+[Normal] Diamond
+[Normal] Elite
+[Normal] Titan
+[Normal] Benefits include:
+[Normal] Exclusive Badges
+[Normal] Profile Frames
+[Normal] Entry Effects
+[Normal] Premium Gifts
+[Normal] Priority Support
+[Normal] Exclusive Emojis
+[Normal] VIP Privileges
+[Normal] 15. Experience (EXP) System
+[Normal] Users earn EXP through:
+[Normal] Daily Login
+[Normal] Sending Gifts
+[Normal] Receiving Gifts
+[Normal] Joining Rooms
+[Normal] Live Streaming
+[Normal] Gaming
+[Normal] Events
+[Normal] EXP contributes toward user progression and unlockable rewards.
+[Normal] 16. User Level System
+[Normal] Each user has an independent activity-based level.
+[Normal] Rewards include:
+[Normal] Badges
+[Normal] Frames
+[Normal] Recognition
+[Normal] Unlockable Features
+[Normal] Higher Room Privileges
+[Normal] 17. User Journey
+[Normal] Register
+[Normal] Verify OTP
+[Normal] Complete Profile
+[Normal] Explore Platform
+[Normal] Join Rooms
+[Normal] Make Friends
+[Normal] Recharge Coins
+[Normal] Send Gifts
+[Normal] Earn EXP
+[Normal] Increase Level
+[Normal] Purchase VIP
+[Normal] Join Family
+[Normal] Become Creator
+[Normal] Become Agency (Optional)
+[Normal] 18. Business Rules
+[Normal] One account per mobile number.
+[Normal] One standard Audio Room per user.
+[Normal] Room owners manage their own rooms.
+[Normal] Gold Coins are non-refundable after usage.
+[Normal] Free Coins cannot be converted to Gold Coins.
+[Normal] Users must comply with Community Guidelines.
+[Normal] Moderators may mute, kick, or restrict users.
+[Normal] Officials supervise regional moderation.
+[Normal] Managers supervise country operations.
+[Normal] Admins supervise global operations.
+[Normal] Super Admin has unrestricted platform access.
+[Normal] 19. Global Policies
+[Normal] 18+ Platform
+[Normal] Zero Tolerance for Harassment
+[Normal] No Illegal Content
+[Normal] No Hate Speech
+[Normal] No Impersonation
+[Normal] No Fraud
+[Normal] No Exploitation
+[Normal] Respect User Privacy
+[Normal] Compliance with Applicable Laws
+[Normal] 20. User Roles
+[Normal] Super Admin
+[Normal] Admin
+[Normal] Country Manager
+[Normal] Official
+[Normal] Moderator
+[Normal] Business Development
+[Normal] Agency
+[Normal] Coin Seller
+[Normal] Host
+[Normal] User
+[Normal] 21. Role & Permission Matrix
+[Normal] A detailed matrix defining permissions for each role across all modules will be maintained in subsequent volumes.
+[Normal] 22. Moderation Workflow
+[Normal] Violation Detected
+[Normal] Report Submitted
+[Normal] Moderator Review
+[Normal] Warning / Mute / Kick / Temporary Ban
+[Normal] Escalation to Official (if required)
+[Normal] Escalation to Admin (critical cases)
+[Normal] Audit Log Updated
+[Normal] 23. Country & Regional Hierarchy
+[Normal] Super Admin – Global Platform
+[Normal] Admin – Global Operations
+[Normal] Manager – Country Level
+[Normal] Official – State / Regional Level
+[Normal] Moderator – Community Level
+[Normal] Agency – Host Management
+[Normal] Coin Seller – Authorized Coin Sales
+[Normal] User – Platform Participant
+[Normal] 24. Future Scalability
+[Normal] The platform is designed to support:
+[Normal] Multi-country Operations
+[Normal] Millions of Concurrent Users
+[Normal] Multi-language Support
+[Normal] Regional Moderation Teams
+[Normal] Distributed Infrastructure
+[Normal] Cloud-native Deployment
+[Normal] 25. Success Metrics (KPIs)
+[Normal] Daily Active Users (DAU)
+[Normal] Monthly Active Users (MAU)
+[Normal] Average Session Duration
+[Normal] Coin Purchase Volume
+[Normal] Gift Transaction Value
+[Normal] Room Engagement
+[Normal] Creator Retention
+[Normal] User Retention
+[Normal] Revenue Growth
+[Normal] 26. Technical Scope
+[Normal] This volume defines the business foundation. Technical implementation details, APIs, database schema, UI flows, architecture, DevOps, and deployment are documented in later PRD volumes.
+[Normal] 27. Assumptions
+[Normal] Users are at least 18 years old.
+[Normal] Stable internet connectivity is available.
+[Normal] Supported payment gateways are operational.
+[Normal] Moderation combines automated systems with human review.
+[Normal] 28. Out of Scope
+[Normal] The following features are not included in the current release:
+[Normal] Referral System
+[Normal] Crypto currency Payments
+[Normal] NFT Integration
+[Normal] Physical Marketplace
+[Normal] Social Commerce
+[Normal] 29. Glossary
+[Normal] Volume 2 – User Application
+[Normal] Authentication, Profile, Wallet, Communication, Audio Rooms, Video Rooms & Live Streaming
+[Normal] Version: 1.0
+[Normal] Product: Soulzaa
+[Normal] Prepared For: Development Team
+[Normal] Prepared By: Product Team
+[Normal] Document Status: Final
+[Normal] Confidentiality: Internal Use Only
+[Normal] Document Revision History
+[Normal] Table of Contents
+[Normal] Introduction
+[Normal] User Authentication
+[Normal] User Registration
+[Normal] Login
+[Normal] OTP Verification
+[Normal] Forgot Password
+[Normal] User Profile
+[Normal] Wallet
+[Normal] Coin Recharge
+[Normal] Transaction History
+[Normal] Friends & Following
+[Normal] Private Chat
+[Normal] Voice Calling
+[Normal] Video Calling
+[Normal] Audio Rooms
+[Normal] Video Rooms
+[Normal] Live Streaming
+[Normal] PK Battles
+[Normal] Notifications
+[Normal] Search
+[Normal] Privacy Settings
+[Normal] User Safety
+[Normal] Reports & Blocking
+[Normal] Logout
+[Normal] API Requirements
+[Normal] Database Design
+[Normal] Functional Requirements
+[Normal] Non-Functional Requirements
+[Normal] Acceptance Criteria
+[Normal] Future Enhancements
+[Normal] 1. Introduction
+[Normal] Purpose
+[Normal] This document defines all end-user functionality of the Soulzaa mobile application. It specifies the behavior of every user-facing feature, business logic, validations, workflows, and system interactions required for implementation.
+[Normal] 2. Authentication
+[Normal] Objective
+[Normal] Provide secure and seamless user authentication with multiple login options while ensuring account security and session management.
+[Normal] Supported Login Methods
+[Normal] Mobile Number + OTP
+[Normal] Email + Password
+[Normal] Google Login
+[Normal] Apple Login (iOS)
+[Normal] Functional Requirements
+[Normal] One mobile number must map to only one account.
+[Normal] Email address must be unique.
+[Normal] JWT Access Token and Refresh Token shall be issued upon successful login.
+[Normal] Sessions shall automatically expire after inactivity.
+[Normal] Admin Portal shall allow forced logout from all devices.
+[Normal] Validation Rules
+[Normal] Mobile number format validation.
+[Normal] Email format validation.
+[Normal] Password strength validation.
+[Normal] OTP expiry validation.
+[Normal] Maximum login attempts.
+[Normal] Business Rules
+[Normal] Guest accounts cannot purchase VIP.
+[Normal] Guest accounts cannot recharge coins.
+[Normal] Guest accounts cannot create rooms.
+[Normal] Guest users must register before making purchases.
+[Normal] Error Handling
+[Normal] Acceptance Criteria
+[Normal] ✓ User can log in successfully.
+[Normal] ✓ JWT is generated.
+[Normal] ✓ Profile loads successfully.
+[Normal] ✓ Wallet loads successfully.
+[Normal] ✓ Notifications sync.
+[Normal] 3. User Registration
+[Normal] Registration Flow
+[Normal] Enter Full Name
+[Normal] Username
+[Normal] Mobile Number
+[Normal] Email (Optional)
+[Normal] Password
+[Normal] Gender
+[Normal] Date of Birth
+[Normal] Country
+[Normal] Preferred Language
+[Normal] Accept Terms
+[Normal] Verify OTP
+[Normal] Registration Completed
+[Normal] System Actions
+[Normal] Create User
+[Normal] Generate User ID
+[Normal] Create Wallet
+[Normal] Create Default Profile
+[Normal] Award Welcome Bonus (Optional)
+[Normal] Send Welcome Notification
+[Normal] Validation
+[Normal] Username
+[Normal] Minimum 4 characters
+[Normal] Maximum 20 characters
+[Normal] Must be unique
+[Normal] Password
+[Normal] Minimum 8 characters
+[Normal] One uppercase
+[Normal] One lowercase
+[Normal] One number
+[Normal] One special character
+[Normal] Age
+[Normal] Minimum 18 years.
+[Normal] 4. Login
+[Normal] After successful authentication:
+[Normal] Fetch Profile
+[Normal] Fetch Wallet
+[Normal] Load Notifications
+[Normal] Update Online Status
+[Normal] Load Friend Requests
+[Normal] Redirect to Home Dashboard
+[Normal] 5. OTP Verification
+[Normal] Supported For
+[Normal] Registration
+[Normal] Login
+[Normal] Forgot Password
+[Normal] Mobile Change
+[Normal] Email Change
+[Normal] Features
+[Normal] SMS OTP
+[Normal] Email OTP
+[Normal] 60 Second Timer
+[Normal] Maximum 5 Attempts
+[Normal] Automatic Expiry
+[Normal] Resend OTP
+[Normal] 6. User Profile
+[Normal] Profile Information
+[Normal] Basic Details
+[Normal] User ID
+[Normal] Username
+[Normal] Full Name
+[Normal] Bio
+[Normal] Gender
+[Normal] Birthday
+[Normal] Country
+[Normal] State
+[Normal] Language
+[Normal] Profile Statistics
+[Normal] Followers
+[Normal] Following
+[Normal] Friends
+[Normal] Gifts Sent
+[Normal] Gifts Received
+[Normal] Coins Received
+[Normal] Audio Hours
+[Normal] Video Hours
+[Normal] Live Hours
+[Normal] User Level
+[Normal] VIP Level
+[Normal] Total EXP
+[Normal] Profile Actions
+[Normal] Follow
+[Normal] Unfollow
+[Normal] Send Message
+[Normal] Voice Call
+[Normal] Video Call
+[Normal] Send Gift
+[Normal] Report
+[Normal] Block
+[Normal] Share
+[Normal] 7. Wallet
+[Normal] Wallet contains
+[Normal] Gold Coins
+[Normal] Purchased with money.
+[Normal] Usage
+[Normal] Gifts
+[Normal] VIP
+[Normal] Treasure Box
+[Normal] Events
+[Normal] Free Coins
+[Normal] Earned by
+[Normal] Daily Login
+[Normal] Tasks
+[Normal] Games
+[Normal] Restrictions Cannot
+[Normal] Withdraw
+[Normal] Gift
+[Normal] Convert
+[Normal] Wallet History
+[Normal] Recharge
+[Normal] Spending
+[Normal] Earnings
+[Normal] Pending Transactions
+[Normal] 8. Coin Recharge
+[Normal] Supported Payment Methods
+[Normal] UPI
+[Normal] Google Pay
+[Normal] PhonePe
+[Normal] Paytm
+[Normal] Debit Card
+[Normal] Credit Card
+[Normal] Net Banking
+[Normal] Apple Pay
+[Normal] International Cards
+[Normal] Recharge Flow
+[Normal] Select Package
+[Normal] ↓
+[Normal] Payment Gateway
+[Normal] ↓
+[Normal] Verify Payment
+[Normal] ↓
+[Normal] Credit Coins
+[Normal] ↓
+[Normal] Transaction Log
+[Normal] ↓
+[Normal] Push Notification
+[Normal] 9. Friends & Following
+[Normal] Features
+[Normal] Follow
+[Normal] Unfollow
+[Normal] Friend Request
+[Normal] Accept
+[Normal] Reject
+[Normal] Remove Friend
+[Normal] Search Friends
+[Normal] Friend Card Displays
+[Normal] Online Status
+[Normal] Last Seen
+[Normal] Live Status
+[Normal] Current Room
+[Normal] 10. Private Chat
+[Normal] Supported Messages
+[Normal] Text
+[Normal] Emoji
+[Normal] GIF
+[Normal] Images
+[Normal] Video
+[Normal] Voice Notes
+[Normal] Files
+[Normal] Stickers
+[Normal] Features
+[Normal] Reply
+[Normal] Delete
+[Normal] Pin
+[Normal] Archive
+[Normal] Forward
+[Normal] Read Receipts
+[Normal] Typing Indicator
+[Normal] 11. Voice Calls
+[Normal] Supports
+[Normal] One-to-One Voice Call
+[Normal] Features
+[Normal] Speaker
+[Normal] Mute
+[Normal] Hold
+[Normal] Background Mode
+[Normal] Network Recovery
+[Normal] Call Timer
+[Normal] 12. Video Calls
+[Normal] Supports
+[Normal] HD Video Call
+[Normal] Features
+[Normal] Front Camera
+[Normal] Rear Camera
+[Normal] Beauty Filter
+[Normal] Camera Off
+[Normal] Speaker
+[Normal] Mute
+[Normal] Network Recovery
+[Normal] 13. Audio Rooms
+[Normal] Room Creation
+[Normal] Name
+[Normal] Picture
+[Normal] Category
+[Normal] Language
+[Normal] Description
+[Normal] Roles
+[Normal] Owner
+[Normal] Admin
+[Normal] Speaker
+[Normal] Listener
+[Normal] Room Features
+[Normal] Lock Room
+[Normal] Password
+[Normal] Invite
+[Normal] Stage Seats
+[Normal] Gifts
+[Normal] Treasure Box
+[Normal] Rocket
+[Normal] Music
+[Normal] Voice Effects
+[Normal] Emoji
+[Normal] Attendance
+[Normal] 14. Video Rooms
+[Normal] Supports
+[Normal] Multi-seat Video
+[Normal] Viewer Mode
+[Normal] Beauty Filters
+[Normal] PK
+[Normal] Chat
+[Normal] Gifts
+[Normal] Treasure Box
+[Normal] Lock Room With Gifts 
+[Normal] 15. Live Streaming
+[Normal] Host Features
+[Normal] Start
+[Normal] Pause
+[Normal] End
+[Normal] Guest Invite
+[Normal] PK
+[Normal] Goals
+[Normal] Gifts
+[Normal] Statistics
+[Normal] Premium
+[Normal] Viewer Features
+[Normal] Watch
+[Normal] Like
+[Normal] Share
+[Normal] Gift
+[Normal] Comment
+[Normal] Join Fan Club
+[Normal] 16. PK Battles
+[Normal] Supports
+[Normal] One vs One
+[Normal] Team PK 
+[Normal] Features
+[Normal] Timer
+[Normal] Live Score
+[Normal] Gift Count
+[Normal] Winner Badge
+[Normal] Ranking
+[Normal] Match History
+[Normal] 17. Notifications
+[Normal] Types
+[Normal] Friend Request
+[Normal] Gifts
+[Normal] Messages
+[Normal] Calls
+[Normal] Live
+[Normal] Room Invite
+[Normal] VIP
+[Normal] Recharge
+[Normal] Announcements
+[Normal] 18. Search
+[Normal] Search By
+[Normal] User ID
+[Normal] Username
+[Normal] Room ID
+[Normal] Live Host
+[Normal] Family
+[Normal] Agency
+[Normal] 19. Privacy Settings
+[Normal] Online Status
+[Normal] Last Seen
+[Normal] Profile Visibility
+[Normal] Call Permission
+[Normal] Message Permission
+[Normal] Friend Request Permission
+[Normal] Blocked Users
+[Normal] 20. User Safety
+[Normal] Two-Factor Authentication
+[Normal] Login Alerts
+[Normal] Device Management
+[Normal] AI Moderation
+[Normal] Spam Detection
+[Normal] 21. Reports & Blocking
+[Normal] Users can report:
+[Normal] Abuse
+[Normal] Harassment
+[Normal] Spam
+[Normal] Fraud
+[Normal] Fake Profile
+[Normal] Copyright
+[Normal] Adult Content
+[Normal] Blocking Options
+[Normal] Block
+[Normal] Unblock
+[Normal] Hide Messages
+[Normal] Prevent Calls
+[Normal] Prevent Invites
+[Normal] 22. Logout
+[Normal] Options
+[Normal] Current Device
+[Normal] All Devices
+[Normal] System Actions
+[Normal] Invalidate JWT
+[Normal] Refresh Push Token
+[Normal] Mark User Offline
+[Normal] 23. API Requirements
+[Normal] Include endpoint specifications for:
+[Normal] Authentication
+[Normal] Profile
+[Normal] Wallet
+[Normal] Recharge
+[Normal] Chat
+[Normal] Calls
+[Normal] Rooms
+[Normal] Live
+[Normal] Notifications
+[Normal] Reports
+[Normal] 24. Database Design
+[Normal] Core tables:
+[Normal] Users
+[Normal] User Profiles
+[Normal] Wallets
+[Normal] Transactions
+[Normal] Friends
+[Normal] Followers
+[Normal] Messages
+[Normal] Conversations
+[Normal] Audio Rooms
+[Normal] Video Rooms
+[Normal] Live Streams
+[Normal] Notifications
+[Normal] Reports
+[Normal] Login Sessions
+[Normal] Devices
+[Normal] 25. Functional Requirements Summary
+[Normal] Secure multi-factor authentication.
+[Normal] Complete profile management.
+[Normal] Dual-wallet system.
+[Normal] Real-time messaging.
+[Normal] HD voice and video calling.
+[Normal] Audio and video room management.
+[Normal] Live streaming with gifting and PK battles.
+[Normal] Comprehensive privacy and moderation features.
+[Normal] Scalable architecture supporting millions of users.
+[Heading 1] 26. Database Design
+[Heading 2] Purpose
+[Normal (Web)] This section defines the database entities required to support the User Application module. It provides the development team with a high-level view of the data model before detailed database schema design.
+[Heading 3] Core Tables / Collections
+[Heading 4] User Management
+[Normal (Web)] Users
+[Normal (Web)] User Profiles
+[Normal (Web)] User Devices
+[Normal (Web)] Login Sessions
+[Heading 4] Authentication
+[Normal (Web)] OTP Records
+[Normal (Web)] Password Reset Tokens
+[Normal (Web)] User Sessions
+[Heading 4] Wallet
+[Normal (Web)] Wallets
+[Normal (Web)] Wallet Transactions
+[Normal (Web)] Coin Recharge History
+[Normal (Web)] Payment Transactions
+[Heading 4] Social
+[Normal (Web)] Friends
+[Normal (Web)] Followers
+[Normal (Web)] Friend Requests
+[Normal (Web)] Blocked Users
+[Heading 4] Communication
+[Normal (Web)] Conversations
+[Normal (Web)] Messages
+[Normal (Web)] Attachments
+[Normal (Web)] Call Logs
+[Heading 4] Rooms
+[Normal (Web)] Audio Rooms
+[Normal (Web)] Audio Room Members
+[Normal (Web)] Video Rooms
+[Normal (Web)] Video Room Members
+[Heading 4] Live
+[Normal (Web)] Live Streams
+[Normal (Web)] Live Participants
+[Normal (Web)] PK Battles
+[Heading 4] Notifications
+[Normal (Web)] Notifications
+[Normal (Web)] Notification Preferences
+[Heading 4] Moderation
+[Normal (Web)] Reports
+[Normal (Web)] Report Actions
+[Heading 1] 27. Functional Requirements
+[Heading 2] Purpose
+[Normal (Web)] This section summarizes the functional capabilities that the User Application must support.
+[Heading 3] Authentication
+[Normal (Web)] Secure registration and login.
+[Normal (Web)] Multi-factor authentication.
+[Normal (Web)] OTP verification.
+[Normal (Web)] Session management.
+[Heading 3] Profile
+[Normal (Web)] Create and update profile.
+[Normal (Web)] Upload profile picture.
+[Normal (Web)] Manage privacy settings.
+[Heading 3] Wallet
+[Normal (Web)] Maintain Gold Coin and Free Coin balances.
+[Normal (Web)] Recharge wallet.
+[Normal (Web)] View transaction history.
+[Heading 3] Communication
+[Normal (Web)] One-to-one  Audio/Video chat
+[Normal (Web)] Voice calling.
+[Normal (Web)] Video calling.
+[Normal (Web)] Media sharing.
+[Heading 3] Audio Rooms
+[Normal (Web)] Create and manage rooms.
+[Normal (Web)] Seat management.
+[Normal (Web)] Gifts.
+[Normal (Web)] Treasure Boxes.
+[Normal (Web)] Moderation.
+[Heading 3] Video Rooms
+[Normal (Web)] Multi-seat interaction.
+[Normal (Web)] Viewer mode.
+[Normal (Web)] PK battles.
+[Normal (Web)] Live chat.
+[Heading 3] Live Streaming
+[Normal (Web)] Host live sessions.
+[Normal (Web)] Audience engagement.
+[Normal (Web)] Virtual gifting.
+[Normal (Web)] PK battles.
+[Heading 3] Notifications
+[Normal (Web)] Real-time push notifications.
+[Normal (Web)] In-app notifications.
+[Normal (Web)] Event notifications.
+[Heading 3] User Safety
+[Normal (Web)] Report users.
+[Normal (Web)] Block users.
+[Normal (Web)] Privacy controls.
+[Normal (Web)] AI-assisted moderation.
+[Heading 1] 28. Non-Functional Requirements
+[Heading 2] Performance
+[Normal (Web)] API response time should be less than 300 ms under normal load.
+[Normal (Web)] Chat message delivery should occur within 1 second.
+[Normal (Web)] Voice and video latency should remain below 250 ms where network conditions permit.
+[Heading 2] Scalability
+[Normal (Web)] Support millions of registered users.
+[Normal (Web)] Support hundreds of thousands of concurrent users.
+[Normal (Web)] Horizontal scaling capability.
+[Heading 2] Availability
+[Normal (Web)] Target uptime of 99.9%.
+[Normal (Web)] Automatic failover.
+[Normal (Web)] Disaster recovery support.
+[Heading 2] Security
+[Normal (Web)] HTTPS/TLS encryption.
+[Normal (Web)] JWT authentication.
+[Normal (Web)] Secure password hashing.
+[Normal (Web)] OTP verification.
+[Normal (Web)] Device verification.
+[Normal (Web)] API rate limiting.
+[Heading 2] Reliability
+[Normal (Web)] Automatic reconnection.
+[Normal (Web)] Offline message synchronization.
+[Normal (Web)] Retry mechanisms for failed requests.
+[Heading 2] Usability
+[Normal (Web)] Simple navigation.
+[Normal (Web)] Responsive UI.
+[Normal (Web)] Accessibility support.
+[Normal (Web)] Multi-language readiness.
+[Heading 1] 29. Acceptance Criteria
+[Normal (Web)] The User Application shall be considered complete when all of the following conditions are met.
+[Heading 3] Authentication
+[Normal (Web)] Users can register successfully.
+[Normal (Web)] Users can log in using all supported methods.
+[Normal (Web)] OTP verification works correctly.
+[Normal (Web)] Password recovery functions properly.
+[Heading 3] Profile
+[Normal (Web)] Users can update profile information.
+[Normal (Web)] Profile images upload successfully.
+[Normal (Web)] Privacy settings are applied correctly.
+[Heading 3] Wallet
+[Normal (Web)] Coin recharge completes successfully.
+[Normal (Web)] Wallet balances update instantly.
+[Normal (Web)] Transaction history is accurate.
+[Heading 3] Communication
+[Normal (Web)] Messages are delivered in real time.
+[Normal (Web)] Voice calls connect successfully.
+[Normal (Web)] Video calls maintain stable quality.
+[Heading 3] Audio Rooms
+[Normal (Web)] Users can create rooms.
+[Normal (Web)] Moderation controls function correctly.
+[Normal (Web)] Gifts are delivered successfully.
+[Heading 3] Video Rooms
+[Normal (Web)] Multi-seat functionality works correctly.
+[Normal (Web)] Chat is synchronized.
+[Normal (Web)] PK battles operate as expected.
+[Heading 3] Live Streaming
+[Normal (Web)] Hosts can start and end streams.
+[Normal (Web)] Viewers receive live updates.
+[Normal (Web)] Gifts and rankings update in real time.
+[Heading 3] Notifications
+[Normal (Web)] Push notifications are delivered.
+[Normal (Web)] In-app notifications synchronize correctly.
+[Heading 3] Quality
+[Normal (Web)] No Critical defects.
+[Normal (Web)] No High-priority defects.
+[Normal (Web)] Performance targets achieved.
+[Normal (Web)] Security testing passed.
+[Normal (Web)] User Acceptance Testing (UAT) approved.
+[Heading 1] 30. Future Enhancements
+[Normal (Web)] The following features are planned for future releases and are not included in the current scope.
+[Heading 2] Social Features
+[Normal (Web)] AI Friend Recommendations
+[Normal (Web)] AI Matchmaking
+[Normal (Web)] Interest-Based Communities
+[Normal (Web)] Story Status
+[Normal (Web)] Group Chat
+[Normal (Web)] Voice Notes in Groups
+[Normal (Web)] 1:1 Private Video Chat 
+[Heading 2] Communication
+[Normal (Web)] Group Voice Calls
+[Normal (Web)] Group Video Calls
+[Normal (Web)] Screen Sharing
+[Normal (Web)] Virtual Backgrounds
+[Normal (Web)] Live Translation
+[Heading 2] Rooms
+[Normal (Web)] AI Room Moderation
+[Normal (Web)] Room Templates
+[Normal (Web)] Scheduled Rooms
+[Normal (Web)] Cross-Room Collaboration
+[Heading 2] Live Streaming
+[Normal (Web)] Team PK Battles
+[Normal (Web)] Multi-Host Live
+[Normal (Web)] Live Shopping
+[Normal (Web)] Fan Clubs
+[Normal (Web)] Subscription Streams
+[Heading 2] Wallet & Payments
+[Normal (Web)] Regional Payment Methods
+[Normal (Web)] Subscription Billing
+[Normal (Web)] Promotional Coupons
+[Normal (Web)] Referral Rewards
+[Heading 2] Security
+[Normal (Web)] Biometric Login
+[Normal (Web)] Risk-Based Authentication
+[Normal (Web)] AI Fraud Detection
+[Heading 2] Global Expansion
+[Normal (Web)] Multi-language support
+[Normal (Web)] Multi-currency support
+[Normal (Web)] Regional content moderation
+[Normal (Web)] Country-specific compliance
+[Normal] Volume 3 
+[Normal] Virtual Economy, Gifts, VIP, Games, Rankings & Family System
+[Normal] Version: 1.0
+[Normal] Product: Soulzaa
+[Normal] Prepared For: Development Team
+[Normal] Prepared By: Product Team
+[Normal] Document Status: Final
+[Normal] Classification: Confidential
+[Normal] Document Revision History
+[Normal] Table of Contents
+[Normal] Introduction
+[Normal] Coin Economy
+[Normal] Coin Packages
+[Normal] Wallet Rules
+[Normal] Gifts System
+[Normal] Gift Categories
+[Normal] Treasure Box System
+[Normal] Rocket Events
+[Normal] VIP Membership
+[Normal] EXP System
+[Normal] User Levels
+[Normal] Daily Tasks
+[Normal] Attendance Rewards
+[Normal] Family (Guild) System
+[Normal] Rankings
+[Normal] Games Overview
+[Normal] Greedy
+[Normal] Roullette
+[Normal] Slots
+[Normal] Jackpot
+[Normal] UNO
+[Normal] Ludo
+[Normal] Carrom
+[Normal] Domino
+[Normal] Reward System
+[Normal] Event System
+[Normal] Economy Protection
+[Normal] API Requirements
+[Normal] Database Design
+[Normal] Functional Requirements
+[Normal] Non-Functional Requirements
+[Normal] Acceptance Criteria
+[Normal] Future Enhancements
+[Normal] 1. Introduction
+[Normal] Purpose
+[Normal] This document defines the complete virtual economy and engagement systems of the Soulzaa platform, including the wallet, virtual currencies, gifting ecosystem, VIP program, experience points (EXP), family system, rankings, games, rewards, and seasonal events.
+[Normal] The goal is to provide a secure, scalable, and transparent economy that maximizes user engagement and creator monetization.
+[Normal] 2. Coin Economy
+[Normal] Objective
+[Normal] Soulzaa operates a dual-currency virtual economy.
+[Normal] Gold Coins
+[Normal] Purchased using real money.
+[Normal] Used for:
+[Normal] Virtual Gifts
+[Normal] VIP Membership
+[Normal] Treasure Boxes
+[Normal] Rocket Events
+[Normal] Premium Games
+[Normal] Paid Events
+[Normal] Restrictions:
+[Normal] Cannot be transferred between users.
+[Normal] Cannot be converted into cash.
+[Normal] Cannot be refunded after consumption.
+[Normal] Cannot become negative.
+[Normal] Free Coins
+[Normal] Earned through:
+[Normal] Daily Login
+[Normal] Daily Tasks
+[Normal] Attendance Rewards
+[Normal] Promotional Events
+[Normal] Casual Games
+[Normal] Used only for:
+[Normal] UNO
+[Normal] Ludo
+[Normal] Carrom
+[Normal] Domino
+[Normal] Restrictions:
+[Normal] Cannot purchase gifts.
+[Normal] Cannot purchase VIP.
+[Normal] Cannot open Treasure Boxes.
+[Normal] Cannot be withdrawn.
+[Normal] Cannot be converted into Gold Coins.
+[Normal] Business Rules
+[Normal] Every coin transaction must have a unique transaction ID.
+[Normal] All wallet transactions are immutable.
+[Normal] Wallet balances must never become negative.
+[Normal] Failed payments must not credit coins.
+[Normal] Duplicate payment callbacks must be ignored.
+[Normal] 3. Coin Packages
+[Normal] Coin packages are configurable through the Admin Panel.
+[Normal] Example packages:
+[Normal] Package properties: 
+[Normal] Package ID
+[Normal] Display Name
+[Normal] Price
+[Normal] Coin Quantity
+[Normal] Bonus Coins
+[Normal] Promotional Tag
+[Normal] Active/Inactive
+[Normal] Country Availability
+[Normal] 4. Wallet Rules
+[Normal] The wallet displays:
+[Normal] Gold Coin Balance
+[Normal] Free Coin Balance
+[Normal] Total Recharge
+[Normal] Total Gifts Sent
+[Normal] Total Gifts Received
+[Normal] Total Coins Spent
+[Normal] Pending Transactions
+[Normal] Transaction History
+[Normal] Business Rules
+[Normal] Every transaction is permanently logged.
+[Normal] Wallet adjustments require Admin authorization.
+[Normal] Every manual adjustment generates an audit log.
+[Normal] 5. Gifts System
+[Normal] Users can send animated gifts in:
+[Normal] Audio Rooms
+[Normal] Video Rooms
+[Normal] Live Streams
+[Normal] Private Chats 
+[Normal] Each gift transaction includes:
+[Normal] Animation
+[Normal] Sound Effect
+[Normal] Sender Information
+[Normal] Receiver Information
+[Normal] Coin Deduction
+[Normal] Wallet Update
+[Normal] Transaction Log
+[Normal] Analytics Update
+[Normal] 6. Gift Categories
+[Normal] Gift types:
+[Normal] Standard Gifts
+[Normal] Premium Gifts
+[Normal] Luxury Gifts
+[Normal] Event Gifts
+[Normal] VIP Exclusive Gifts
+[Normal] Each gift contains:
+[Normal] Gift ID
+[Normal] Name
+[Normal] Category
+[Normal] Coin Value
+[Normal] Animation
+[Normal] Sound
+[Normal] Availability
+[Normal] VIP Restriction
+[Normal] 7. Treasure Box System
+[Normal] Treasure Boxes increase engagement in rooms and live streams.
+[Normal] Levels:
+[Normal] Rules:
+[Normal] Only the room owner or authorized admin can create a Treasure Box.
+[Normal] Rewards are distributed automatically.
+[Normal] Every Treasure Box event is logged.
+[Normal] Admin can configure duration, reward distribution, and eligibility.
+[Normal] 8. Rocket Events
+[Normal] Rocket Events are premium gifting celebrations.
+[Normal] Features:
+[Normal] Triggered by selected premium gifts.
+[Normal] Full-screen animation.
+[Normal] Broadcast to all participants.
+[Normal] Special sound effects.
+[Normal] Temporary room highlights.
+[Normal] Event history.
+[Normal] Admin configuration:
+[Normal] Trigger gifts
+[Normal] Animation duration
+[Normal] Display priority
+[Normal] Country availability
+[Normal] 9. VIP Membership
+[Normal] VIP is based on lifetime Gold Coin purchases.
+[Normal] Levels:
+[Normal] Bronze
+[Normal] Silver
+[Normal] Gold
+[Normal] Platinum
+[Normal] Diamond
+[Normal] Elite
+[Normal] Titan
+[Normal] Benefits:
+[Normal] VIP Badge
+[Normal] Profile Frame
+[Normal] Entry Effects
+[Normal] Exclusive Gifts
+[Normal] Exclusive Emojis
+[Normal] Priority Support
+[Normal] Daily Rewards
+[Normal] Exclusive Events
+[Normal] 10. EXP System
+[Normal] Users earn EXP through:
+[Normal] Daily Login
+[Normal] Joining Rooms
+[Normal] Sending Gifts
+[Normal] Receiving Gifts
+[Normal] Streaming
+[Normal] Gaming
+[Normal] Completing Tasks
+[Normal] Participating in Events
+[Normal] EXP contributes to:
+[Normal] User Level
+[Normal] VIP Progress
+[Normal] Unlockable Features
+[Normal] 11. User Levels
+[Normal] User Levels are independent of VIP.
+[Normal] Rewards include:
+[Normal] Badges
+[Normal] Frames
+[Normal] Recognition
+[Normal] Exclusive Features
+[Normal] Achievement Milestones
+[Normal] 12. Daily Tasks
+[Normal] Example tasks:
+[Normal] Login
+[Normal] Join Audio Room
+[Normal] Join Video Room
+[Normal] Watch Live Stream
+[Normal] Send Gift
+[Normal] Recharge Coins
+[Normal] Add Friend
+[Normal] Send Message
+[Normal] Play Games
+[Normal] Rewards:
+[Normal] Free Coins
+[Normal] EXP
+[Normal] Badges
+[Normal] Event Tokens
+[Normal] 13. Attendance Rewards
+[Normal] Daily login rewards are based on streaks.
+[Normal] Example milestones:
+[Normal] Day 1
+[Normal] Day 2
+[Normal] Day 3
+[Normal] Day 7
+[Normal] Day 15
+[Normal] Day 30
+[Normal] Rewards may include:
+[Normal] Free Coins
+[Normal] EXP
+[Normal] Frames
+[Normal] Gift Coupons
+[Normal] Special Items
+[Normal] 14. Family (Guild) System
+[Normal] Users may create or join a Family.
+[Normal] Roles:
+[Normal] Leader
+[Normal] Co-Leader
+[Normal] Elder
+[Normal] Member
+[Normal] Features:
+[Normal] Family Chat
+[Normal] Family Events
+[Normal] Family Rankings
+[Normal] Family Gifts
+[Normal] Family Missions
+[Normal] Member Management
+[Normal] 15. Rankings
+[Normal] Leaderboards include:
+[Normal] Daily
+[Normal] Weekly
+[Normal] Monthly
+[Normal] All-Time
+[Normal] Top Gifters
+[Normal] Top Receivers
+[Normal] Top Streamers
+[Normal] Top Families
+[Normal] Displayed in:
+[Normal] Audio Rooms
+[Normal] Video Rooms
+[Normal] Live Streams
+[Normal] User Profiles
+[Normal] 16. Games Overview
+[Normal] Premium Games
+[Normal] Greedy
+[Normal] Roullette
+[Normal] Slots
+[Normal] Jackpot
+[Normal] Casual Games
+[Normal] UNO
+[Normal] Ludo
+[Normal] Carrom
+[Normal] Domino
+[Normal] Each game should define:
+[Normal] Objective
+[Normal] Entry Rules
+[Normal] Currency Used
+[Normal] Matchmaking
+[Normal] Rewards
+[Normal] Exit Conditions
+[Normal] Anti-Cheat Measures
+[Normal] 17–24. Individual Game Specifications
+[Normal] Each game (Greedy, Flip, Slots, Jackpot, UNO, Ludo, Carrom, Domino) should have its own section covering:
+[Normal] Purpose
+[Normal] Gameplay Flow
+[Normal] Entry Requirements
+[Normal] Coin Usage
+[Normal] Reward Calculation
+[Normal] Randomization/Fairness
+[Normal] Match History
+[Normal] Business Rules
+[Normal] Edge Cases
+[Normal] Acceptance Criteria
+[Normal] 25. Reward System
+[Normal] Rewards include:
+[Normal] Free Coins
+[Normal] EXP
+[Normal] Frames
+[Normal] Badges
+[Normal] VIP Progress
+[Normal] Seasonal Rewards
+[Normal] Event Rewards
+[Normal] 26. Event System
+[Normal] Supported events:
+[Normal] Festival Events
+[Normal] Anniversary Events
+[Normal] Lucky Gift Events
+[Normal] Double Recharge
+[Normal] Double EXP
+[Normal] Admin can configure:
+[Normal] Start Date
+[Normal] End Date
+[Normal] Eligibility
+[Normal] Rewards
+[Normal] Visibility
+[Normal] 27. Economy Protection
+[Normal] Security mechanisms:
+[Normal] Anti-Fraud Monitoring
+[Normal] Duplicate Transaction Prevention
+[Normal] Gift Abuse Detection
+[Normal] Coin Abuse Detection
+[Normal] Automated Anomaly Alerts
+[Normal] Manual Audit Tools
+[Normal] Admin-Authorized Rollbacks
+[Normal] 28. API Requirements
+[Normal] Core APIs include:
+[Normal] Wallet
+[Normal] Coin Packages
+[Normal] Recharge
+[Normal] Gifts
+[Normal] Treasure Boxes
+[Normal] Rocket Events
+[Normal] VIP
+[Normal] EXP
+[Normal] Levels
+[Normal] Families
+[Normal] Rankings
+[Normal] Games
+[Normal] Rewards
+[Normal] Events
+[Normal] Attendance
+[Normal] Daily Tasks
+[Normal] 29. Database Design
+[Normal] Primary tables:
+[Normal] Wallets
+[Normal] Wallet Transactions
+[Normal] Coin Packages
+[Normal] Gifts
+[Normal] Gift Categories
+[Normal] Treasure Boxes
+[Normal] Rocket Events
+[Normal] VIP Memberships
+[Normal] EXP Logs
+[Normal] User Levels
+[Normal] Daily Tasks
+[Normal] Attendance Records
+[Normal] Families
+[Normal] Family Members
+[Normal] Family Rankings
+[Normal] User Rankings
+[Normal] Game Sessions
+[Normal] Greedy Matches
+[Normal] Flip Matches
+[Normal] Slot Spins
+[Normal] Jackpot Events
+[Normal] UNO Matches
+[Normal] Ludo Matches
+[Normal] Carrom Matches
+[Normal] Domino Matches
+[Normal] Rewards
+[Normal] Seasonal Events
+[Normal] 30. Functional Requirements Summary
+[Normal] Dual-currency virtual economy.
+[Normal] Configurable coin packages.
+[Normal] Secure wallet management.
+[Normal] Rich gifting ecosystem with animations.
+[Normal] Multi-level Treasure Box system.
+[Normal] Rocket Events for premium gifting.
+[Normal] VIP membership and EXP progression.
+[Normal] Family (Guild) management.
+[Normal] Comprehensive rankings.
+[Normal] Integrated casual and premium games.
+[Normal] Daily tasks, attendance rewards, and seasonal events.
+[Normal] Fraud prevention and audit-ready financial operations.
+[Normal] 31. Non-Functional Requirements
+[Normal] Purpose
+[Normal] This section defines the quality attributes, performance expectations, security standards, scalability requirements, and operational characteristics for the Soulzaaa Virtual Economy, Games, VIP, Rankings, and Family System.
+[Normal] Performance
+[Normal] The platform shall ensure high-performance processing for all economy and gaming operations.
+[Normal] Requirements
+[Normal] Wallet balance updates shall be reflected immediately after successful transactions.
+[Normal] Gift transactions shall complete within 2 seconds under normal network conditions.
+[Normal] Treasure Box reward distribution shall complete automatically within 5 seconds after the event ends.
+[Normal] Game matchmaking shall occur within 10 seconds under normal load.
+[Normal] Leaderboards shall refresh automatically at configurable intervals.
+[Normal] Event reward distribution shall be processed without noticeable delays.
+[Normal] Scalability
+[Normal] The economy system shall support continuous platform growth.
+[Normal] Requirements
+[Normal] Support 10+ million registered users.
+[Normal] Support 500,000+ concurrent online users.
+[Normal] Handle millions of wallet transactions per day.
+[Normal] Support thousands of simultaneous Treasure Box events.
+[Normal] Support thousands of concurrent game sessions.
+[Normal] Support country-wise expansion without redesign.
+[Normal] Security
+[Normal] The virtual economy shall provide enterprise-grade financial security.
+[Normal] Requirements
+[Normal] All wallet transactions shall be encrypted during transmission.
+[Normal] Every transaction shall have a unique Transaction ID.
+[Normal] Wallet balances shall never become negative.
+[Normal] Coin duplication shall be prevented.
+[Normal] Duplicate payment callbacks shall be ignored.
+[Normal] Every manual wallet adjustment shall require administrator authorization.
+[Normal] Sensitive APIs shall use JWT authentication and Role-Based Access Control (RBAC).
+[Normal] Availability
+[Normal] Target system uptime: 99.9%
+[Normal] Automatic service recovery after failures.
+[Normal] Continuous wallet availability.
+[Normal] High availability for gift delivery and rankings.
+[Normal] Reliability
+[Normal] Failed transactions shall automatically retry where appropriate.
+[Normal] Game sessions shall recover from temporary network interruptions.
+[Normal] Event progress shall be preserved during reconnects.
+[Normal] Wallet consistency shall be maintained under all failure conditions.
+[Normal] Audit & Compliance
+[Normal] Every financial transaction shall be permanently recorded.
+[Normal] Audit logs shall be immutable.
+[Normal] Financial reports shall support reconciliation.
+[Normal] Economy changes shall be traceable.
+[Normal] 32. Acceptance Criteria
+[Normal] The Virtual Economy module shall be considered complete only when all of the following conditions are successfully verified.
+[Normal] Coin Economy
+[Normal] Gold Coins can be purchased successfully.
+[Normal] Free Coins are awarded correctly.
+[Normal] Wallet balances update immediately.
+[Normal] Duplicate transactions are prevented.
+[Normal] Coin Packages
+[Normal] All configured packages display correctly.
+[Normal] Promotional packages activate according to schedule.
+[Normal] Country-specific packages are supported.
+[Normal] Gifts
+[Normal] Gifts deduct the correct number of coins.
+[Normal] Animations play correctly.
+[Normal] Receiver receives gifts instantly.
+[Normal] Gift history is recorded accurately.
+[Normal] Treasure Box
+[Normal] Treasure Boxes unlock only when sufficient Gold Coins are available.
+[Normal] Rewards are distributed correctly.
+[Normal] Event history is stored successfully.
+[Normal] Invalid participants cannot claim rewards.
+[Normal] Rocket Events
+[Normal] Premium gifts trigger Rocket Events.
+[Normal] Full-screen animations display correctly.
+[Normal] Event broadcasts reach all participants.
+[Normal] VIP
+[Normal] VIP level upgrades occur automatically.
+[Normal] VIP badges display correctly.
+[Normal] VIP privileges activate immediately.
+[Normal] EXP & User Levels
+[Normal] EXP is awarded correctly.
+[Normal] User Levels increase automatically.
+[Normal] Rewards unlock at the correct levels.
+[Normal] Family System
+[Normal] Users can create Families.
+[Normal] Members can join and leave.
+[Normal] Family roles function correctly.
+[Normal] Rankings update automatically.
+[Normal] Games
+[Normal] Every game shall satisfy:
+[Normal] Matchmaking works correctly.
+[Normal] Rewards are calculated accurately.
+[Normal] Randomization is fair.
+[Normal] Results are stored successfully.
+[Normal] Anti-cheat validation passes.
+[Normal] Rankings
+[Normal] Daily rankings reset correctly.
+[Normal] Weekly rankings update automatically.
+[Normal] Monthly rankings calculate accurately.
+[Normal] Family rankings refresh correctly.
+[Normal] Events
+[Normal] Events start and end according to schedule.
+[Normal] Rewards distribute automatically.
+[Normal] Eligibility rules are enforced.
+[Normal] Overall Quality
+[Normal] Before production release:
+[Normal] No Critical defects.
+[Normal] No High-priority defects.
+[Normal] Security testing passed.
+[Normal] Performance testing passed.
+[Normal] User Acceptance Testing (UAT) approved.
+[Normal] Financial reconciliation validated.
+[Normal] 33. Future Enhancements
+[Normal] The following capabilities are planned for future releases and are outside the scope of the current implementation.
+[Normal] Economy
+[Normal] Coin Coupons
+[Normal] Gift Vouchers
+[Normal] Promotional Wallet Credits
+[Normal] Subscription-based Coin Plans
+[Normal] Multi-currency support
+[Normal] VIP
+[Normal] Monthly VIP Pass
+[Normal] VIP Missions
+[Normal] VIP Marketplace
+[Normal] VIP Loyalty Rewards
+[Normal] VIP Seasonal Challenges
+[Normal] Gifts
+[Normal] AI Recommended Gifts
+[Normal] Personalized Gift Collections
+[Normal] Custom User Gifts
+[Normal] Animated Combo Gifts
+[Normal] Interactive Gift Battles
+[Normal] Games
+[Normal] Future premium games:
+[Normal] Poker
+[Normal] Teen Patti
+[Normal] Rummy
+[Normal] Chess
+[Normal] Bingo
+[Normal] Fishing Game
+[Normal] Crash Game
+[Normal] Wheel of Fortune
+[Normal] Family System
+[Normal] Family Voice Rooms
+[Normal] Family Wars
+[Normal] Family Tournaments
+[Normal] Family Shops
+[Normal] Family Achievements
+[Normal] Family Economy
+[Normal] Rankings
+[Normal] Country Rankings
+[Normal] Regional Rankings
+[Normal] Friends Leaderboard
+[Normal] Seasonal Rankings
+[Normal] Creator Performance Rankings
+[Normal] Agency Rankings
+[Normal] Events
+[Normal] Global Festival Events
+[Normal] Lucky Spin Events
+[Normal] Mega Jackpot Events
+[Normal] Cross-Country Competitions
+[Normal] Team PK Championships
+[Normal] Anniversary Campaigns
+[Normal] AI Features
+[Normal] AI Reward Recommendations
+[Normal] AI Fraud Detection
+[Normal] AI Event Personalization
+[Normal] AI Player Matching
+[Normal] AI VIP Recommendations
+[Normal] Analytics
+[Normal] Real-time Revenue Dashboard
+[Normal] Predictive Economy Analytics
+[Normal] User Spending Insights
+[Normal] Gift Trend Analytics
+[Normal] Game Performance Reports
+[Heading 2] Volume 4 
+[Heading 2] Admin Portal, Organization Management & Platform Operations
+[Normal (Web)] Version: 1.0
+[Normal (Web)] Product: Soulzaa
+[Normal (Web)] Prepared For: Development Team
+[Normal (Web)] Prepared By: Product Team
+[Normal (Web)] Document Status: Final
+[Normal (Web)] Classification: Confidential – Internal Use Only
+[Heading 1] Document Revision History
+[Heading 1] Table of Contents
+[Normal (Web)] Introduction
+[Normal (Web)] Admin Portal Overview
+[Normal (Web)] Dashboard
+[Normal (Web)] Super Admin Module
+[Normal (Web)] Admin Module
+[Normal (Web)] Country Manager Module
+[Normal (Web)] Official Module
+[Normal (Web)] Moderator Module
+[Normal (Web)] Business Development Module
+[Normal (Web)] Agency Module
+[Normal (Web)] Coin Seller Module
+[Normal (Web)] User Management
+[Normal (Web)] Room Management
+[Normal (Web)] Live Stream Management
+[Normal (Web)] Wallet Management
+[Normal (Web)] Coin Package Management
+[Normal (Web)] Gift Management
+[Normal (Web)] VIP Management
+[Normal (Web)] Ranking Management
+[Normal (Web)] Event Management
+[Normal (Web)] Reports & Moderation
+[Normal (Web)] Notification Center
+[Normal (Web)] Analytics Dashboard
+[Normal (Web)] Audit Logs
+[Normal (Web)] Role & Permission Management
+[Normal (Web)] Security & Compliance
+[Normal (Web)] Administrative APIs
+[Normal (Web)] Database Design
+[Normal (Web)] Functional Requirements
+[Normal (Web)] Non-Functional Requirements
+[Normal (Web)] Acceptance Criteria
+[Normal (Web)] Future Enhancements
+[Heading 1] 1. Introduction
+[Heading 2] Purpose
+[Normal (Web)] This document defines all administrative, operational, moderation, financial, and management modules of the Soulzaa platform. It specifies role-based access control (RBAC), organizational hierarchy, platform management workflows, and administrative operations.
+[Normal (Web)] The Admin Portal is a secure web application used to manage every aspect of the platform, including users, content, finances, moderation, agencies, regional operations, and analytics.
+[Heading 1] 2. Admin Portal Overview
+[Heading 2] Objective
+[Normal (Web)] Provide a centralized administrative system that enables authorized personnel to manage the platform securely and efficiently.
+[Heading 3] Key Capabilities
+[Normal (Web)] User Management
+[Normal (Web)] Financial Operations
+[Normal (Web)] Content Moderation
+[Normal (Web)] Room Management
+[Normal (Web)] Live Stream Management
+[Normal (Web)] Gift & Coin Configuration
+[Normal (Web)] VIP Configuration
+[Normal (Web)] Event Management
+[Normal (Web)] Analytics
+[Normal (Web)] Audit Logging
+[Normal (Web)] Regional Administration
+[Heading 3] Business Rules
+[Normal (Web)] Only authenticated administrators can access the portal.
+[Normal (Web)] All permissions are role-based.
+[Normal (Web)] Every administrative action must be logged.
+[Normal (Web)] Sensitive actions require confirmation.
+[Normal (Web)] High-risk operations may require two-factor authentication.
+[Heading 1] 3. Dashboard
+[Heading 2] Purpose
+[Normal (Web)] Provide a real-time overview of platform operations.
+[Heading 3] Dashboard Widgets
+[Heading 4] User Statistics
+[Normal (Web)] Total Users
+[Normal (Web)] Online Users
+[Normal (Web)] New Registrations
+[Normal (Web)] Daily Active Users (DAU)
+[Normal (Web)] Monthly Active Users (MAU)
+[Heading 4] Financial Statistics
+[Normal (Web)] Total Revenue
+[Normal (Web)] Coin Sales
+[Normal (Web)] Recharge Transactions
+[Normal (Web)] Gift Revenue
+[Normal (Web)] VIP Purchases
+[Heading 4] Platform Statistics
+[Normal (Web)] Active Audio Rooms
+[Normal (Web)] Active Video Rooms
+[Normal (Web)] Live Streams
+[Normal (Web)] Running Games
+[Normal (Web)] Pending Reports
+[Heading 4] Regional Statistics
+[Normal (Web)] Country-wise Users
+[Normal (Web)] State-wise Users
+[Normal (Web)] Agency Performance
+[Normal (Web)] Official Performance
+[Heading 3] Dashboard Filters
+[Normal (Web)] Today
+[Normal (Web)] Yesterday
+[Normal (Web)] Last 7 Days
+[Normal (Web)] Last 30 Days
+[Normal (Web)] Monthly
+[Normal (Web)] Custom Date Range
+[Heading 1] 4. Super Admin Module
+[Heading 2] Objective
+[Normal (Web)] The Super Admin has unrestricted authority over the Soulzaa platform.
+[Heading 3] Responsibilities
+[Normal (Web)] Create and remove Admin accounts
+[Normal (Web)] Assign Country Managers
+[Normal (Web)] Configure countries and regions
+[Normal (Web)] Configure platform settings
+[Normal (Web)] Manage payment gateways
+[Normal (Web)] Configure coin economy
+[Normal (Web)] Configure gifts and VIP
+[Normal (Web)] Manage games
+[Normal (Web)] Configure APIs
+[Normal (Web)] View complete analytics
+[Normal (Web)] Generate financial reports
+[Normal (Web)] Access audit logs
+[Normal (Web)] Broadcast global announcements
+[Normal (Web)] Execute emergency platform controls
+[Heading 3] Restrictions
+[Normal (Web)] None. The Super Admin cannot be restricted by any other role.
+[Heading 1] 5. Admin Module
+[Heading 2] Responsibilities
+[Normal (Web)] Manage users
+[Normal (Web)] Approve Agencies
+[Normal (Web)] Approve Coin Sellers
+[Normal (Web)] Suspend accounts
+[Normal (Web)] Manage rooms
+[Normal (Web)] Moderate live streams
+[Normal (Web)] Configure gifts
+[Normal (Web)] Configure Treasure Boxes
+[Normal (Web)] Configure Rocket Events
+[Normal (Web)] View analytics
+[Normal (Web)] Process wallet adjustments
+[Normal (Web)] Send notifications
+[Heading 3] Restrictions
+[Normal (Web)] Cannot modify Super Admin settings.
+[Normal (Web)] Cannot assign Super Admin privileges.
+[Heading 1] 6. Country Manager Module
+[Normal (Web)] Each supported country has one Country Manager.
+[Heading 3] Responsibilities
+[Normal (Web)] Manage Officials
+[Normal (Web)] Review regional reports
+[Normal (Web)] Monitor country analytics
+[Normal (Web)] Monitor agencies
+[Normal (Web)] Monitor coin sellers
+[Normal (Web)] Approve regional events
+[Normal (Web)] Review country revenue
+[Normal (Web)] Escalate critical issues
+[Normal (Web)] Support Officials
+[Heading 3] Example
+[Normal (Web)] Country: India
+[Normal (Web)] Manager: One assigned Country Manager
+[Heading 1] 7. Official Module
+[Normal (Web)] Officials are responsible for one assigned state or region.
+[Heading 3] Responsibilities
+[Normal (Web)] Community moderation
+[Normal (Web)] Regional events
+[Normal (Web)] Support users
+[Normal (Web)] Review reports
+[Normal (Web)] Monitor rooms
+[Normal (Web)] Assist agencies
+[Normal (Web)] Escalate violations
+[Normal (Web)] Reports to:
+[Normal (Web)] Country Manager
+[Heading 1] 8. Moderator Module
+[Heading 2] Responsibilities
+[Normal (Web)] Review reports
+[Normal (Web)] Moderate chats
+[Normal (Web)] Moderate Audio Rooms
+[Normal (Web)] Moderate Video Rooms
+[Normal (Web)] Moderate Live Streams
+[Normal (Web)] Remove inappropriate content
+[Normal (Web)] Mute users
+[Normal (Web)] Kick users
+[Normal (Web)] Issue warnings
+[Normal (Web)] Apply temporary bans / permanent bans
+[Normal (Web)] Escalate serious violations
+[Normal (Web)] Moderator has no badge and no visibility he can enter any broads 
+[Heading 3] Restrictions
+[Normal (Web)] Moderators cannot:
+[Normal (Web)] Delete accounts
+[Normal (Web)] Modify wallets
+[Normal (Web)] Configure financial settings
+[Normal (Web)] Assign roles
+[Heading 1] 9. Business Development Module
+[Heading 2] Responsibilities
+[Normal (Web)] Recruit agencies
+[Normal (Web)] Recruit hosts
+[Normal (Web)] Promote Soulzaa
+[Normal (Web)] Organize campaigns
+[Normal (Web)] Expand regional operations
+[Normal (Web)] Build partnerships
+[Normal (Web)] Track recruitment performance
+[Heading 3] Dashboard
+[Normal (Web)] Agency Performance
+[Normal (Web)] Recruitment Statistics
+[Normal (Web)] Monthly Targets
+[Normal (Web)] Commission Reports
+[Heading 1] 10. Agency Module
+[Heading 2] Features
+[Normal (Web)] Invite Hosts
+[Normal (Web)] Remove Hosts
+[Normal (Web)] View Earnings
+[Normal (Web)] View Gift Statistics
+[Normal (Web)] Performance Reports
+[Normal (Web)] Daily Statistics
+[Normal (Web)] Monthly Statistics
+[Heading 3] Dashboard
+[Normal (Web)] Total Hosts
+[Normal (Web)] Active Hosts
+[Normal (Web)] Revenue
+[Normal (Web)] Monthly Earnings
+[Heading 3] Business Rule
+[Normal (Web)] An agency may only manage its own registered hosts .
+[Heading 1] 11. Coin Seller Module
+[Heading 2] Dashboard
+[Normal (Web)] Coins Buying and Selling
+[Normal (Web)] Sales History
+[Normal (Web)] Monthly Performance
+[Heading 3] Permissions
+[Normal (Web)] Sell Gold Coins
+[Normal (Web)] Buy Gold Coins
+[Normal (Web)] View Transactions
+[Normal (Web)] View Customer History
+[Normal (Web)] Generate Sales Reports
+[Normal (Web)] Seller badge only get for agency leader after reaching his target
+[Heading 3] Restrictions
+[Normal (Web)] Cannot:
+[Normal (Web)] Modify wallets
+[Normal (Web)] Change coin pricing
+[Normal (Web)] Configure packages
+[Heading 1] 12. User Management
+[Normal (Web)] Administrators  can:
+[Normal (Web)] Search Users
+[Normal (Web)] View Profiles
+[Normal (Web)] Suspend Accounts
+[Normal (Web)] Ban Users
+[Normal (Web)] Unban Users
+[Normal (Web)] Reset Passwords
+[Normal (Web)] Verify Users
+[Normal (Web)] Remove Verification
+[Normal (Web)] View Login History
+[Normal (Web)] View Devices
+[Normal (Web)] View Wallet
+[Heading 1] 13. Room Management
+[Heading 2] Audio Rooms
+[Normal (Web)] Close Room
+[Normal (Web)] Lock Room
+[Normal (Web)] Remove Owner
+[Normal (Web)] View Members
+[Normal (Web)] View Gifts
+[Normal (Web)] View Logs
+[Heading 2] Video Rooms
+[Normal (Web)] Close Room
+[Normal (Web)] Remove Participants
+[Normal (Web)] Disable Chat
+[Normal (Web)] View Reports
+[Heading 1] 14. Live Stream Management
+[Normal (Web)] Administrators  may:
+[Normal (Web)] Stop Live Streams
+[Normal (Web)] Suspend Streams
+[Normal (Web)] View Statistics
+[Normal (Web)] Review Reports
+[Normal (Web)] Ban Hosts
+[Normal (Web)] Remove Streams
+[Heading 1] 15. Wallet Management
+[Normal (Web)] Functions:
+[Normal (Web)] View Wallet
+[Normal (Web)] Credit Coins
+[Normal (Web)] Debit Coins
+[Normal (Web)] Freeze Wallet
+[Normal (Web)] Unfreeze Wallet
+[Normal (Web)] View Transactions
+[Normal (Web)] Every adjustment requires:
+[Normal (Web)] Reason
+[Normal (Web)] Approval (if applicable)
+[Normal (Web)] Audit Log Entry
+[Heading 1] 16. Coin Package Management
+[Normal (Web)] Administrators can:
+[Normal (Web)] Create Packages
+[Normal (Web)] Edit Packages
+[Normal (Web)] Delete Packages
+[Normal (Web)] Add Bonus Coins
+[Normal (Web)] Schedule Promotions
+[Normal (Web)] Enable or Disable Packages
+[Heading 1] 17. Gift Management
+[Normal (Web)] Functions:
+[Normal (Web)] Create Gifts
+[Normal (Web)] Edit Gifts
+[Normal (Web)] Delete Gifts
+[Normal (Web)] Upload Animations
+[Normal (Web)] Upload Sound Effects
+[Normal (Web)] Configure Coin Values
+[Normal (Web)] Schedule Event Gifts
+[Heading 1] 18. VIP Management
+[Normal (Web)] Configuration includes:
+[Normal (Web)] VIP Levels
+[Normal (Web)] Benefits
+[Normal (Web)] Badges
+[Normal (Web)] Frames
+[Normal (Web)] Entry Effects
+[Normal (Web)] Renewal Rules
+[Normal (Web)] Expiry Rules
+[Heading 1] 19. Ranking Management
+[Normal (Web)] Manage rankings for:
+[Normal (Web)] Daily
+[Normal (Web)] Weekly
+[Normal (Web)] Monthly
+[Normal (Web)] Family
+[Normal (Web)] Host
+[Normal (Web)] Gifter
+[Normal (Web)] Country
+[Normal (Web)] Administrators can recalculate or reset rankings if required.
+[Heading 1] 20. Event Management
+[Normal (Web)] Supported events:
+[Normal (Web)] Festival Events
+[Normal (Web)] Treasure Boxes
+[Normal (Web)] Rocket Events
+[Normal (Web)] Double Recharge
+[Normal (Web)] Double EXP
+[Normal (Web)] Seasonal Campaigns
+[Normal (Web)] Configuration:
+[Normal (Web)] Start Date
+[Normal (Web)] End Date
+[Normal (Web)] Rewards
+[Normal (Web)] Rules
+[Normal (Web)] Visibility
+[Heading 1] 21. Reports & Moderation
+[Heading 3] Report Categories
+[Normal (Web)] Abuse
+[Normal (Web)] Harassment
+[Normal (Web)] Spam
+[Normal (Web)] Fraud
+[Normal (Web)] Fake Accounts
+[Normal (Web)] Copyright
+[Normal (Web)] Adult Content
+[Heading 3] Escalation Workflow
+[Normal (Web)] User Report
+[Normal (Web)] ↓
+[Normal (Web)] Moderator Review
+[Normal (Web)] ↓
+[Normal (Web)] Official Review (if escalated)
+[Normal (Web)] ↓
+[Normal (Web)] Country Manager Review (if required)
+[Normal (Web)] ↓
+[Normal (Web)] Admin
+[Normal (Web)] ↓
+[Normal (Web)] Super Admin (critical cases)
+[Normal (Web)] Every action must generate an audit record.
+[Heading 1] 22. Notification Center
+[Normal (Web)] Administrators can send:
+[Normal (Web)] Push Notifications
+[Normal (Web)] In-App Notifications
+[Normal (Web)] Maintenance Alerts
+[Normal (Web)] Event Announcements
+[Normal (Web)] Promotional Messages
+[Normal (Web)] Country-Specific Notifications
+[Normal (Web)] Region-Specific Notifications
+[Heading 1] 23. Analytics Dashboard
+[Normal (Web)] Analytics include:
+[Heading 3] User Analytics
+[Normal (Web)] DAU
+[Normal (Web)] MAU
+[Normal (Web)] Retention
+[Normal (Web)] New Users
+[Heading 3]  Financial Analytics
+[Normal (Web)] Revenue
+[Normal (Web)] Recharge
+[Normal (Web)] Gift Revenue
+[Normal (Web)] VIP Revenue
+[Heading 3] Platform Analytics
+[Normal (Web)] Room Activity
+[Normal (Web)] Live Activity
+[Normal (Web)] Game Activity
+[Normal (Web)] Server Utilization
+[Heading 3] Regional Analytics
+[Normal (Web)] Country Performance
+[Normal (Web)] State Performance
+[Normal (Web)] Agency Performance
+[Normal (Web)] Official Performance
+[Heading 1] 24. Audit Logs
+[Normal (Web)] Every administrative action is recorded.
+[Normal (Web)] Audit fields:
+[Normal (Web)] Admin ID
+[Normal (Web)] Role
+[Normal (Web)] Action
+[Normal (Web)] Module
+[Normal (Web)] Timestamp
+[Normal (Web)] Device
+[Normal (Web)] IP Address
+[Normal (Web)] Previous Value
+[Normal (Web)] Updated Value
+[Heading 3] Business Rules
+[Normal (Web)] Audit logs are immutable.
+[Normal (Web)] Audit logs cannot be edited or deleted.
+[Normal (Web)] Logs are retained according to platform policy.
+[Heading 1] 25. Role & Permission Management
+[Normal (Web)] Supported roles:
+[Normal (Web)] Super Admin
+[Normal (Web)] Admin
+[Normal (Web)] Country Manager
+[Normal (Web)] Official
+[Normal (Web)] Moderator
+[Normal (Web)] Business Development
+[Normal (Web)] Agency
+[Normal (Web)] Coin Seller
+[Normal (Web)] Permissions are:
+[Normal (Web)] Module-Based
+[Normal (Web)] Feature-Based
+[Normal (Web)] Action-Based (View, Create, Update, Delete, Approve)
+[Normal (Web)] Only the Super Admin can modify system-wide role permissions.
+[Heading 1] 26. Security & Compliance
+[Normal (Web)] Administrative security requirements:
+[Normal (Web)] Role-Based Access Control (RBAC)
+[Normal (Web)] Multi-Factor Authentication (MFA)
+[Normal (Web)] Session Timeout
+[Normal (Web)] IP Logging
+[Normal (Web)] Device Tracking
+[Normal (Web)] Password Policy
+[Normal (Web)] Sensitive Action Confirmation
+[Normal (Web)] Encryption of Sensitive Data
+[Heading 1] 27. Administrative APIs
+[Normal (Web)] Core administrative APIs:
+[Normal (Web)] User Management
+[Normal (Web)] Wallet Management
+[Normal (Web)] Coin Packages
+[Normal (Web)] Gifts
+[Normal (Web)] VIP
+[Normal (Web)] Rankings
+[Normal (Web)] Reports
+[Normal (Web)] Rooms
+[Normal (Web)] Live Streams
+[Normal (Web)] Notifications
+[Normal (Web)] Agencies
+[Normal (Web)] Coin Sellers
+[Normal (Web)] Business Development
+[Normal (Web)] Managers
+[Normal (Web)] Officials
+[Normal (Web)] Badges 
+[Normal (Web)] Moderators
+[Normal (Web)] Analytics
+[Normal (Web)] Audit Logs
+[Heading 1] 28. Database Design
+[Normal (Web)] Primary tables:
+[Normal (Web)] Admin Users
+[Normal (Web)] Roles
+[Normal (Web)] Permissions
+[Normal (Web)] User Reports
+[Normal (Web)] Moderation Actions
+[Normal (Web)] Managers
+[Normal (Web)] Officials
+[Normal (Web)] Moderators
+[Normal (Web)] Agencies
+[Normal (Web)] Agency Members
+[Normal (Web)] Coin Sellers
+[Normal (Web)] Business Development
+[Normal (Web)] Coin Packages
+[Normal (Web)] Gift Catalog
+[Normal (Web)] VIP Configuration
+[Normal (Web)] Event Configuration
+[Normal (Web)] Notification Queue
+[Normal (Web)] Audit Logs
+[Normal (Web)] Analytics Cache
+[Normal (Web)] Wallet Adjustments
+[Normal (Web)] User Suspensions
+[Normal (Web)] Ban History
+[Normal (Web)] Room Logs
+[Normal (Web)] Live Stream Logs
+[Heading 1] 29. Functional Requirements Summary
+[Normal (Web)] Secure web-based administration with comprehensive RBAC.
+[Normal (Web)] Multi-level organizational hierarchy: Super Admin → Admin → Country Manager → Official → Moderator.
+[Normal (Web)] Dedicated operational modules for Business Development, Agencies, and Coin Sellers and each role has badge on their profile section .
+[Normal (Web)] Complete management of users, rooms, live streams, wallets, gifts, VIP, rankings, and events.
+[Normal (Web)] Advanced moderation workflow with structured escalation.
+[Normal (Web)] Real-time analytics and reporting.
+[Normal (Web)] Immutable audit logging for all administrative actions.
+[Normal (Web)] Scalable architecture supporting global operations across multiple countries and regions.
+[Normal] 30. Non-Functional Requirements
+[Normal] Purpose
+[Normal] This section defines the quality attributes and operational requirements of the Soulzaa Administration Portal to ensure security, performance, scalability, reliability, and maintainability.
+[Normal] Performance
+[Normal] Admin dashboard shall load within 3 seconds under normal conditions.
+[Normal] User search results shall be returned within 2 seconds.
+[Normal] Wallet adjustment operations shall complete within 3 seconds.
+[Normal] Analytics reports shall be generated within acceptable response times based on report size.
+[Normal] Scalability
+[Normal] Support administration of 10+ million users.
+[Normal] Support multiple concurrent administrators across different countries and regions.
+[Normal] Scale horizontally as platform usage grows.
+[Normal] Handle large volumes of moderation requests without degradation.
+[Normal] Availability
+[Normal] Minimum 99.9% system availability.
+[Normal] High availability with automatic failover.
+[Normal] Zero single points of failure for critical services.
+[Normal] Scheduled maintenance shall not impact active user sessions unnecessarily.
+[Normal] Security
+[Normal] All administrative access shall require authentication.
+[Normal] Role-Based Access Control (RBAC) shall restrict access based on assigned permissions.
+[Normal] Sensitive operations shall be recorded in immutable audit logs.
+[Normal] All communication shall use HTTPS with TLS encryption.
+[Normal] Session timeout and automatic logout shall be enforced for inactive administrators.
+[Normal] Reliability
+[Normal] Administrative actions shall execute reliably without data inconsistency.
+[Normal] Audit logs shall never be editable or deletable.
+[Normal] Failed operations shall provide rollback or retry mechanisms where applicable.
+[Normal] Compliance
+[Normal] Administrative operations shall comply with applicable privacy and security regulations.
+[Normal] Financial adjustments shall maintain complete audit trails.
+[Normal] User data shall be protected according to platform policies.
+[Normal] 31. Acceptance Criteria
+[Normal] The following acceptance criteria must be satisfied before the Admin Portal is approved for production deployment.
+[Normal] Dashboard
+[Normal] Dashboard displays accurate platform statistics.
+[Normal] Data refreshes correctly.
+[Normal] Widgets load successfully.
+[Normal] User Management
+[Normal] Users can be searched using supported filters.
+[Normal] Suspend, Ban, Unban, Verify, and Reset Password actions work correctly.
+[Normal] Login history and device information display accurately.
+[Normal] Room Management
+[Normal] Audio and Video Rooms can be monitored and managed.
+[Normal] Rooms can be closed or locked successfully.
+[Normal] Moderation actions execute correctly.
+[Normal] Wallet Management
+[Normal] Wallet balances display accurately.
+[Normal] Credit and Debit operations update balances correctly.
+[Normal] Every adjustment creates an audit log.
+[Normal] Coin Package Management
+[Normal] Packages can be created, edited, enabled, disabled, and deleted.
+[Normal] Promotional offers are applied correctly.
+[Normal] Gift Management
+[Normal] Gifts are created and updated successfully.
+[Normal] Animations and sound files upload correctly.
+[Normal] Coin values are applied accurately.
+[Normal] VIP Management
+[Normal] VIP configurations are saved successfully.
+[Normal] Benefits are applied immediately after configuration.
+[Normal] Reports & Moderation
+[Normal] User reports follow the correct escalation workflow.
+[Normal] Moderator actions are logged.
+[Normal] Serious violations reach Officials, Managers, and Admins as configured.
+[Normal] Analytics
+[Normal] Reports generate accurate platform statistics.
+[Normal] Country, State, Agency, and Official reports display correctly.
+[Normal] Audit Logs
+[Normal] Every administrative action is recorded.
+[Normal] Logs cannot be modified or deleted.
+[Normal] Overall Acceptance
+[Normal] All role permissions function correctly.
+[Normal] No critical or high-severity defects remain.
+[Normal] Security testing and User Acceptance Testing (UAT) are successfully completed.
+[Normal] 32. Future Enhancements
+[Normal] The following features are planned for future versions of the Soulzaa Administration Portal.
+[Normal] AI Administration
+[Normal] AI-assisted moderation.
+[Normal] AI fraud detection.
+[Normal] AI-powered user behavior analysis.
+[Normal] Automated violation detection.
+[Normal] Advanced Analytics
+[Normal] Predictive revenue analytics.
+[Normal] User growth forecasting.
+[Normal] Real-time heat maps.
+[Normal] Creator performance intelligence.
+[Normal] Agency Management
+[Normal] Automated agency onboarding.
+[Normal] AI host recommendations.
+[Normal] Agency commission automation.
+[Normal] Regional performance benchmarking.
+[Normal] Business Development
+[Normal] Campaign management tools.
+[Normal] Lead tracking dashboard.
+[Normal] Partnership management.
+[Normal] Recruitment automation.
+[Normal] Notification Enhancements
+[Normal] Personalized notification campaigns.
+[Normal] Scheduled notification templates.
+[Normal] Advanced audience segmentation.
+[Normal] A/B testing for campaigns.
+[Normal] Financial Management
+[Normal] Automated settlement processing.
+[Normal] Regional tax management.
+[Normal] Multi-currency reporting.
+[Normal] Advanced revenue reconciliation.
+[Normal] Security
+[Normal] Multi-Factor Authentication (MFA) for administrators.
+[Normal] IP-based access restrictions.
+[Normal] Device trust management.
+[Normal] Advanced security monitoring.
+[Normal] Global Expansion
+[Normal] Multi-language Admin Portal.
+[Normal] Multi-time zone support.
+[Normal] Country-specific policy management.
+[Normal] Regional compliance modules.
+[Normal] Volume 5
+[Normal] Technical Architecture, System Design, APIs, Database, Security & DevOps
+[Normal] Version: 1.0
+[Normal] Prepared For: Development Team
+[Normal] Prepared By: Product Team
+[Normal] Status: Final
+[Normal] Classification: Confidential
+[Normal] Table of Contents
+[Normal] Introduction
+[Normal] Overall System Architecture
+[Normal] Technology Stack
+[Normal] Mobile Application Architecture
+[Normal] Backend Architecture
+[Normal] Web Admin Architecture
+[Normal] Database Design
+[Normal] Storage Architecture
+[Normal] API Standards
+[Normal] Authentication & Authorization
+[Normal] Real-Time Communication
+[Normal] Payment Integration
+[Normal] Push Notification Service
+[Normal] Media Processing
+[Normal] Security Architecture
+[Normal] Performance & Scalability
+[Normal] Logging & Monitoring
+[Normal] DevOps Pipeline
+[Normal] Testing Strategy
+[Normal] Deployment Strategy
+[Normal] Disaster Recovery
+[Normal] Infrastructure Architecture
+[Normal] Development Roadmap
+[Normal] API Catalog
+[Normal] Database Schema
+[Normal] Coding Standards
+[Normal] Third-Party Services
+[Normal] Non-Functional Requirements
+[Normal] Acceptance Criteria
+[Normal] Future Enhancements
+[Normal] 1. Introduction
+[Normal] Purpose
+[Normal] This document defines the complete technical architecture for the Soulzaa platform, including backend services, mobile applications, administrative portal, infrastructure, APIs, databases, security, deployment, monitoring, and operational requirements.
+[Normal] The objective is to provide the engineering team with a comprehensive technical blueprint that ensures scalability, security, maintainability, and high availability.
+[Normal] 2. Overall System Architecture
+[Normal] Soulzaa adopts a cloud-native, service-oriented architecture.
+[Normal] Core Components
+[Normal] Android Application
+[Normal] iOS Application
+[Normal] Web Admin Portal
+[Normal] Backend API Gateway
+[Normal] Authentication Service
+[Normal] Wallet Service
+[Normal] Chat Service
+[Normal] Audio Room Service
+[Normal] Video Room Service
+[Normal] Live Streaming Service
+[Normal] Gift Service
+[Normal] Game Service
+[Normal] Notification Service
+[Normal] Analytics Service
+[Normal] Payment Service
+[Normal] Database Cluster
+[Normal] Redis Cache
+[Normal] Object Storage
+[Normal] Monitoring Stack
+[Normal] Communication
+[Normal] HTTPS (REST APIs)
+[Normal] WebSocket (Socket.IO)
+[Normal] ZEGOCLOUD SDK
+[Normal] Firebase/APNs
+[Normal] 3. Technology Stack
+[Normal] Mobile
+[Normal] React Native CLI
+[Normal] TypeScript
+[Normal] Redux Toolkit
+[Normal] React Navigation
+[Normal] React Query
+[Normal] Backend
+[Normal] Node.js
+[Normal] Express.js
+[Normal] TypeScript
+[Normal] Database
+[Normal] MongoDB Atlas
+[Normal] Redis
+[Normal] Real-Time
+[Normal] Socket.IO
+[Normal] ZEGOCLOUD SDK
+[Normal] Admin
+[Normal] React.js
+[Normal] Material UI
+[Normal] Tailwind CSS
+[Normal] Storage
+[Normal] AWS S3 / Cloudflare R2
+[Normal] DevOps
+[Normal] Docker
+[Normal] Nginx
+[Normal] GitHub Actions
+[Normal] 4. Backend Architecture
+[Normal] Services include:
+[Normal] Authentication Service
+[Normal] User Service
+[Normal] Wallet Service
+[Normal] Gift Service
+[Normal] VIP Service
+[Normal] Room Service
+[Normal] Live Service
+[Normal] Chat Service
+[Normal] Family Service
+[Normal] Ranking Service
+[Normal] Notification Service
+[Normal] Admin Service
+[Normal] Analytics Service
+[Normal] Each service exposes:
+[Normal] REST APIs
+[Normal] WebSocket Events
+[Normal] Internal Service APIs
+[Normal] 5. Database Design
+[Normal] Collections/Tables include:
+[Normal] User Domain
+[Normal] Users
+[Normal] Profiles
+[Normal] Devices
+[Normal] Sessions
+[Normal] Wallet Domain
+[Normal] Wallets
+[Normal] Transactions
+[Normal] Coin Packages
+[Normal] Social Domain
+[Normal] Friends
+[Normal] Followers
+[Normal] Messages
+[Normal] Conversations
+[Normal] Entertainment Domain
+[Normal] Audio Rooms
+[Normal] Video Rooms
+[Normal] Live Streams
+[Normal] PK Battles
+[Normal] Gifts
+[Normal] Treasure Boxes
+[Normal] Rocket Events
+[Normal] Games
+[Normal] Administration Domain
+[Normal] Admin Users
+[Normal] Roles
+[Normal] Permissions
+[Normal] Audit Logs
+[Normal] Reports
+[Normal] Analytics Domain
+[Normal] User Analytics
+[Normal] Revenue Analytics
+[Normal] Event Analytics
+[Normal] 6. API Standards
+[Normal] REST APIs
+[Normal] JSON Responses
+[Normal] HTTPS Only
+[Normal] JWT Authentication
+[Normal] Pagination
+[Normal] Filtering
+[Normal] Sorting
+[Normal] Versioning
+[Normal] Swagger Documentation
+[Normal] Rate Limiting
+[Normal] Standard HTTP Status Codes
+[Normal] 7. Security Architecture
+[Normal] Security measures include:
+[Normal] TLS Encryption
+[Normal] JWT Authentication
+[Normal] Refresh Tokens
+[Normal] bcrypt Password Hashing
+[Normal] OTP Verification
+[Normal] Device Verification
+[Normal] Role-Based Access Control (RBAC)
+[Normal] Secure File Upload Validation
+[Normal] SQL/NoSQL Injection Prevention
+[Normal] XSS Prevention
+[Normal] CSRF Protection
+[Normal] API Rate Limiting
+[Normal] Audit Logging
+[Normal] 8. Performance & Scalability
+[Normal] Target capabilities:
+[Normal] 10+ Million Registered Users
+[Normal] 500,000+ Concurrent Users
+[Normal] Horizontal Auto Scaling
+[Normal] Load Balancers
+[Normal] Redis Caching
+[Normal] Database Replication
+[Normal] CDN Distribution
+[Normal] Queue-Based Processing
+[Normal] 9. Logging & Monitoring
+[Normal] Monitoring tools:
+[Normal] Prometheus
+[Normal] Grafana
+[Normal] ELK Stack
+[Normal] Sentry
+[Normal] Metrics include:
+[Normal] API Latency
+[Normal] Error Rates
+[Normal] Database Performance
+[Normal] Server Health
+[Normal] Payment Success Rate
+[Normal] Room Activity
+[Normal] 10. DevOps Pipeline
+[Normal] Pipeline:
+[Normal] Developer Commit
+[Normal] ↓
+[Normal] GitHub
+[Normal] ↓
+[Normal] Automated Build
+[Normal] ↓
+[Normal] Unit Tests
+[Normal] ↓
+[Normal] Security Scan
+[Normal] ↓
+[Normal] Staging
+[Normal] ↓
+[Normal] QA Approval
+[Normal] ↓
+[Normal] Production Deployment
+[Normal] ↓
+[Normal] Monitoring
+[Normal] 11. Testing Strategy
+[Normal] Testing includes:
+[Normal] Unit Testing
+[Normal] Integration Testing
+[Normal] API Testing
+[Normal] UI Testing
+[Normal] Regression Testing
+[Normal] Load Testing
+[Normal] Penetration Testing
+[Normal] User Acceptance Testing (UAT)
+[Normal] 12. Deployment Strategy
+[Normal] Environments:
+[Normal] Development
+[Normal] QA
+[Normal] Staging
+[Normal] Production
+[Normal] Deployment requirements:
+[Normal] Zero-Downtime Deployment
+[Normal] Automated Rollback
+[Normal] Health Checks
+[Normal] Backup Validation
+[Normal] 13. Disaster Recovery
+[Normal] Requirements:
+[Normal] Daily Database Backups
+[Normal] Point-in-Time Recovery
+[Normal] Multi-Region Replication
+[Normal] Automated Failover
+[Normal] Objectives:
+[Normal] RPO ≤ 15 Minutes
+[Normal] RTO ≤ 1 Hour
+[Normal] 14. Coding Standards
+[Normal] Development standards:
+[Normal] TypeScript Strict Mode
+[Normal] ESLint
+[Normal] Prettier
+[Normal] Git Flow Branching
+[Normal] Conventional Commits
+[Normal] API Versioning Policy
+[Normal] Code Review Required
+[Normal] Minimum Test Coverage (80%)
+[Normal] 15. Third-Party Integrations
+[Normal] ZEGOCLOUD (Audio/Video/Live)
+[Normal] Razorpay
+[Normal] Stripe
+[Normal] Firebase Cloud Messaging
+[Normal] Apple Push Notification Service
+[Normal] AWS S3 / Cloudflare R2
+[Normal] Google Sign-In
+[Normal] Apple Sign-In
+[Normal] 16. Non-Functional Requirements
+[Normal] 99.9% Uptime
+[Normal] Average API Response < 300 ms
+[Normal] End-to-End Encryption for Sensitive Data
+[Normal] Horizontal Scalability
+[Normal] Multi-Tenant Ready
+[Normal] Multi-Country Support
+[Normal] High Availability
+[Normal] Disaster Recovery Compliance
+[Normal] 17. Development Milestones
+[Normal] Phase 1: Authentication, Profiles, Wallet, Chat
+[Normal] Phase 2: Audio Rooms, Video Rooms, Calls
+[Normal] Phase 3: Live Streaming, PK Battles, Gifts
+[Normal] Phase 4: VIP, Economy, Games, Families
+[Normal] Phase 5: Admin Portal, Moderation, Agencies
+[Normal] Phase 6: QA, Security Audit, Deployment, Store Release
+[Normal] 18. API Catalog
+[Normal] A comprehensive catalog should document every endpoint with:
+[Normal] Endpoint URL
+[Normal] HTTP Method
+[Normal] Authentication Requirements
+[Normal] Request Schema
+[Normal] Response Schema
+[Normal] Error Codes
+[Normal] Rate Limits
+[Normal] Example Requests/Responses
+[Normal] 19. Database Schema
+[Normal] Each collection/table should specify:
+[Normal] Entity Name
+[Normal] Field Definitions
+[Normal] Data Types
+[Normal] Constraints
+[Normal] Relationships
+[Normal] Indexes
+[Normal] Sample Records
+[Normal] 20. Deployment Strategy
+[Normal] Purpose
+[Normal] Define how the Soulzaa platform will be deployed across all environments while ensuring high availability and minimal downtime.
+[Normal] Deployment Environments
+[Normal] Local Development
+[Normal] Development Server
+[Normal] QA Environment
+[Normal] Staging Environment
+[Normal] Production Environment
+[Normal] Deployment Requirements
+[Normal] Zero-downtime deployment
+[Normal] Blue-Green Deployment (preferred)
+[Normal] Rolling Deployment
+[Normal] Automatic Rollback
+[Normal] Health Checks
+[Normal] Version Tracking
+[Normal] Environment Variables Management
+[Normal] Business Rules
+[Normal] Production deployment requires QA approval.
+[Normal] Database migrations must execute before application startup.
+[Normal] Rollback should occur automatically if health checks fail.
+[Normal] 21. Disaster Recovery & Business Continuity
+[Normal] Purpose
+[Normal] Ensure that platform services can recover quickly from failures.
+[Normal] Backup Strategy
+[Normal] Daily Full Backup
+[Normal] Hourly Incremental Backup
+[Normal] Point-in-Time Recovery
+[Normal] Cross-Region Backup Replication
+[Normal] Recovery Objectives
+[Normal] RPO (Recovery Point Objective): ≤ 15 Minutes
+[Normal] RTO (Recovery Time Objective): ≤ 1 Hour
+[Normal] Disaster Recovery Features
+[Normal] Multi-Region Database Replication
+[Normal] Automatic Failover
+[Normal] Redundant Load Balancers
+[Normal] Backup Verification
+[Normal] Quarterly Disaster Recovery Testing
+[Normal] 22. Infrastructure Architecture
+[Normal] Cloud Infrastructure
+[Normal] Compute
+[Normal] Application Servers
+[Normal] API Servers
+[Normal] WebSocket Servers
+[Normal] Background Worker Servers
+[Normal] Storage
+[Normal] MongoDB Cluster
+[Normal] Redis Cluster
+[Normal] Object Storage (AWS S3 / Cloudflare R2)
+[Normal] Network
+[Normal] CDN
+[Normal] WAF (Web Application Firewall)
+[Normal] Load Balancer
+[Normal] DNS Management
+[Normal] Scalability
+[Normal] Auto Scaling Groups
+[Normal] Kubernetes (Future)
+[Normal] Horizontal Scaling
+[Normal] 23. Development Roadmap
+[Normal] Phase 1 – Core Platform
+[Normal] Authentication
+[Normal] User Profiles
+[Normal] Wallet
+[Normal] Chat
+[Normal] Admin Authentication
+[Normal] Phase 2 – Social Features
+[Normal] Audio Rooms
+[Normal] Video Rooms
+[Normal] Voice Calls
+[Normal] Video Calls
+[Normal] Notifications
+[Normal] Phase 3 – Entertainment
+[Normal] Live Streaming
+[Normal] PK Battles
+[Normal] Gifts
+[Normal] Treasure Boxes
+[Normal] Rocket Events
+[Normal] Phase 4 – Virtual Economy
+[Normal] VIP System
+[Normal] Coin Economy
+[Normal] Family System
+[Normal] Rankings
+[Normal] Games
+[Normal] Phase 5 – Administration
+[Normal] Agency Management
+[Normal] Coin Seller Management
+[Normal] Business Development
+[Normal] Analytics
+[Normal] Moderation
+[Normal] Phase 6 – Production
+[Normal] QA
+[Normal] Performance Testing
+[Normal] Security Audit
+[Normal] Production Release
+[Normal] 24. API Catalog
+[Normal] Every API should include:
+[Normal] API Information
+[Normal] Module
+[Normal] Endpoint URL
+[Normal] HTTP Method
+[Normal] Authentication Required
+[Normal] Permission Required
+[Normal] Request Headers
+[Normal] Request Body
+[Normal] Response Format
+[Normal] Error Codes
+[Normal] Example Request
+[Normal] Example Response
+[Normal] Rate Limits
+[Normal] Version
+[Normal] API Categories
+[Normal] Authentication
+[Normal] User
+[Normal] Wallet
+[Normal] Chat
+[Normal] Rooms
+[Normal] Live Streaming
+[Normal] Gifts
+[Normal] VIP
+[Normal] Games
+[Normal] Family
+[Normal] Admin
+[Normal] Analytics
+[Normal] 25. Database Schema
+[Normal] Each collection/table must contain:
+[Normal] Entity Details
+[Normal] Table Name
+[Normal] Description
+[Normal] Fields
+[Normal] Data Type
+[Normal] Nullable
+[Normal] Default Value
+[Normal] Validation Rules
+[Normal] Primary Key
+[Normal] Foreign Key
+[Normal] Relationships
+[Normal] Indexes
+[Normal] Example Collections
+[Normal] Users
+[Normal] Wallets
+[Normal] Messages
+[Normal] AudioRooms
+[Normal] VideoRooms
+[Normal] LiveStreams
+[Normal] Gifts
+[Normal] Families
+[Normal] Reports
+[Normal] AuditLogs
+[Normal] 26. Coding Standards & Development Guidelines
+[Normal] Backend Standards
+[Normal] TypeScript Strict Mode
+[Normal] ESLint
+[Normal] Prettier
+[Normal] Clean Architecture
+[Normal] SOLID Principles
+[Normal] Frontend Standards
+[Normal] Component-Based Architecture
+[Normal] Reusable Components
+[Normal] Lazy Loading
+[Normal] State Management
+[Normal] Git Standards
+[Normal] Git Flow
+[Normal] Pull Request Reviews
+[Normal] Code Review Approval
+[Normal] Conventional Commits
+[Normal] Documentation Standards
+[Normal] Swagger/OpenAPI
+[Normal] JSDoc
+[Normal] README Files
+[Normal] 27. Third-Party Services & Integrations
+[Normal] Authentication
+[Normal] Google Sign-In
+[Normal] Apple Sign-In
+[Normal] Real-Time
+[Normal] ZEGOCLOUD
+[Normal] Payment
+[Normal] Razorpay
+[Normal] Stripe
+[Normal] Notifications
+[Normal] Firebase Cloud Messaging
+[Normal] Apple Push Notification Service
+[Normal] Storage
+[Normal] AWS S3
+[Normal] Cloudflare R2
+[Normal] Analytics
+[Normal] Firebase Analytics
+[Normal] Google Analytics
+[Normal] Mixpanel (Optional)
+[Normal] Crash Reporting
+[Normal] Sentry
+[Normal] Firebase Crashlytics
+[Normal] 28. Non-Functional Requirements
+[Normal] Performance
+[Normal] API Response Time < 300 ms
+[Normal] Message Delivery < 1 second
+[Normal] Live Stream Latency < 2 seconds
+[Normal] Availability
+[Normal] 99.9% Uptime
+[Normal] Automatic Failover
+[Normal] Scalability
+[Normal] 10+ Million Users
+[Normal] 500,000+ Concurrent Users
+[Normal] Reliability
+[Normal] Data Consistency
+[Normal] Transaction Integrity
+[Normal] Security
+[Normal] End-to-End Encryption (where applicable)
+[Normal] Secure Authentication
+[Normal] Data Privacy Compliance
+[Normal] 29. Acceptance Criteria
+[Normal] The platform will be considered production-ready when:
+[Normal] Functional
+[Normal] All approved features are implemented.
+[Normal] All user roles function correctly.
+[Normal] Wallet transactions are accurate.
+[Normal] Real-time communication is stable.
+[Normal] Performance
+[Normal] Load testing targets are achieved.
+[Normal] API response times meet benchmarks.
+[Normal] Security
+[Normal] Security audit completed.
+[Normal] Penetration testing passed.
+[Normal] No Critical or High vulnerabilities remain.
+[Normal] Quality
+[Normal] 95%+ critical test cases passed.
+[Normal] UAT sign-off received.
+[Normal] App Store and Play Store guidelines satisfied.
+[Normal] 30. Future Enhancements
+[Normal] Planned Improvements
+[Normal] AI Features
+[Normal] AI Content Moderation
+[Normal] AI Chat Translation
+[Normal] AI Voice Translation
+[Normal] AI Gift Recommendation
+[Normal] Platform Enhancements
+[Normal] Kubernetes Deployment
+[Normal] Microservices Migration
+[Normal] GraphQL APIs
+[Normal] Multi-CDN Support
+[Normal] Edge Computing
+[Normal] Global Data Centers
+[Normal] User Features
+[Normal] Referral System
+[Normal] NFT Marketplace (Optional)
+[Normal] Creator Marketplace
+[Normal] Subscription System
+[Normal] AI Virtual Hosts
+[Normal] Advanced Analytics Dashboard
+[Heading 1] Soulzaa Games
+[Heading 2] 1. Greedy Food
+[Normal] Overview
+• Real-time multiplayer game running 24/7.
+• One global round for all users.
+• Round: 30s betting + 10s wheel spin.
+• Backend is authoritative for all results.
+
+Betting Items
+Veg: Carrot(5x), Corn(5x), Broccoli(5x), Tomato(5x)
+Non-Veg: Burger(10x), Chicken(15x), Mutton(25x), Crab(45x)
+Special Results (not bettable): Veg Salad, Non-Veg Salad.
+Veg Salad pays all Veg bets. Non-Veg Salad pays all Non-Veg bets.
+
+Rules
+• Players may bet on one, many, or all 8 items.
+• Chips: 100, 500, 1K ,x	10K, 50K.
+• Bets lock immediately after placement.
+• Coins are deducted instantly.
+• No edit/cancel/refund/transfer.
+• Last 8 results show only winning items.
+• Top 3 winners shown with profile picture, username, amount won.
+• Live winner ticker scrolls for all users.
+• Personal history stores round number, bets, result, win/loss, payout.
+
+Backend Logic
+• After betting closes, calculate liability for all 10 outcomes.
+• Carrot/Corn/Broccoli/Tomato pay only respective bets.
+• Veg Salad pays all Veg bets.
+• Burger/Chicken/Mutton/Crab pay respective bets.
+• Non-Veg Salad pays all Non-Veg bets.
+• Select outcome according to configured profit-protection business rules.
+• Wheel animation is visual only and stops on backend-selected result.
+
+[Heading 2] 2. Roulette
+[Normal] Overview
+• Real-time multiplayer game running 24/7.
+• One global round.
+• 30s betting + 10s wheel spin.
+• Backend controls all outcomes.
+
+Betting Options
+• Red (2x)
+• Black (2x)
+• Even (2x)
+• Odd (2x)
+• Number Groups: 1-12, 13-24, 25-36 (3x)
+• Zero (0) Green (30x)
+
+Rules
+• Chips: 100, 500, 1K, 10K, 50K.
+• Multiple bets allowed.
+• Bets lock immediately.
+• No edit/cancel/refund.
+• Last 8 winning numbers displayed.
+• Top 3 winners with profile picture, username and amount.
+• Live winner ticker for all users.
+• Personal betting history maintained.
+
+Backend Logic
+• After betting closes, calculate liability for every possible winning number (0-36).
+• For each number, include applicable Red/Black, Even/Odd, Group and Zero payouts.
+• Compare all liabilities and choose the result according to configured profit-protection business rules.
+• Wheel animation is visual only and follows the backend-selected result.
+[Normal] 3. Lucky Fruit
+[Normal] Overview
+[Normal] • Real-time multiplayer game running 24/7.
+• One global round.
+• 30s betting + 10s result animation.
+• Backend controls all outcomes.
+• Same winning result is displayed to all players.
+[Normal] Betting Options
+[Normal] • 🍍 Pineapple (5x)
+• 🥝 Kiwi (5x)
+• 🫐 Blueberry (5x)
+• 🍑 Peach (5x)
+• 🍐 Pear (10x)
+• 🥥 Coconut (15x)
+• 🐉 Dragon Fruit (25x)
+• 🍈 Muskmelon (45x)
+• Small Lucky (Backend Result Only)
+• Big Lucky (Backend Result Only)
+[Normal] Rules
+[Normal] • Chips: 100, 500, 1K, 10K, 50K.
+• Players can bet on one fruit, multiple fruits, or all eight fruits.
+• Small Lucky and Big Lucky are not betting options.
+• If Small Lucky wins, all 5x fruits become winning bets.
+• If Big Lucky wins, all premium fruits become winning bets.
+• Bets lock immediately after placement.
+• No edit/cancel/refund.
+• Last 8 winning fruits displayed.
+• Top 3 winners with profile picture, username, and amount won.
+• Live winner ticker for all users.
+• Personal betting history maintained.
+[Normal] Backend Logic
+[Normal] • After betting closes, calculate liability for every possible winning result.
+• Calculate payout liability for Pineapple, Kiwi, Blueberry, Peach, Pear, Coconut, Dragon Fruit, Muskmelon, Small Lucky, and Big Lucky.
+• Compare all liabilities and choose the result according to the configured Platform Profit Protection business rules.
+• Animation is visual only and follows the backend-selected result.
+[Normal] 4. Phoenix vs Wolf (Card Battle)
+[Normal] Overview
+[Normal] • Real-time multiplayer card battle game running 24/7.
+• One global round.
+• 30s betting + 10s card reveal animation.
+• Backend controls all outcomes.
+• Same winning result is displayed to all players.
+[Normal] Betting Options
+[Normal] • 🟥 Phoenix (2x)
+• 🟨 Draw (25x)
+• 🟦 Wolf (2x)
+[Normal] Rules
+[Normal] • Chips: 100, 500, 1K, 10K, 50K.
+• Players can bet on Phoenix, Wolf, or Draw.
+• Multiple bets allowed.
+• Bets lock immediately after placement.
+• No edit/cancel/refund.
+• Highest card wins.
+• Draw occurs when both cards have the same value.
+• Card order: A, 2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K.
+• Last 8 results displayed (Phoenix, Wolf, or Draw).
+• Top 3 winners with profile picture, username, and amount won.
+• Live winner ticker for all users.
+• Personal betting history maintained.
+[Normal] Backend Logic
+[Normal] • After betting closes, calculate liability for Phoenix, Wolf, and Draw.
+• Compare all liabilities and choose the result according to the configured Platform Profit Protection business rules.
+• After selecting the winning side, generate valid card values that match the selected outcome.
+• Example: If Phoenix wins, generate cards where Phoenix has a higher value than Wolf. If Draw wins, generate identical card values.
+• Card reveal animation is visual only and follows the backend-selected result.
+[Normal] Backend Liability Calculation Engine
+[Normal] Overview
+[Normal] The Backend Liability Calculation Engine is the core decision-making system for all premium multiplayer games in Soulzaaa, including Greedy Food, Roulette, Lucky Fruit, and Phoenix vs Wolf.
+[Normal] Its primary objective is to protect the platform's virtual economy by evaluating all possible outcomes and selecting a winning result according to the configured business rules.
+[Normal] The client application must never calculate or influence the winning result. All calculations must be performed securely on the backend server.
+[Normal] Platform Profit Protection
+[Normal] The game engine must be designed to keep the platform profitable over time by evaluating payout liabilities for all possible outcomes and selecting the winning result according to the configured business rules.
+[Normal] The backend should always ensure that the platform remains financially sustainable while still providing a fair and engaging gaming experience.
+[Normal] This logic should remain configurable through the Admin Panel for future business requirements.
+[Normal] Step 1 – Close Betting
+[Normal] When the betting timer reaches 0 seconds:
+[Normal] Stop accepting new bets.
+[Normal] Lock all existing bets.
+[Normal] Save all betting transactions.
+[Normal] Retrieve all bets placed for the current round.
+[Normal] No additional bets are accepted after this point.
+[Normal] Step 2 – Calculate Total Bets
+[Normal] The backend calculates the total Gold Coins placed on every betting option for the current round.
+[Normal] Example:
+[Normal] Betting Option	Total Bet
+[Normal] Option A	1,000,000
+[Normal] Option B	3,000,000
+[Normal] Option C	2,500,000
+[Normal] Option D	500,000
+[Normal] The betting options differ depending on the game (Greedy Food, Roulette, Lucky Fruit, or Phoenix vs Wolf).
+[Normal] Step 3 – Calculate Payout Liability
+[Normal] For every possible winning outcome, calculate the total payout liability.
+[Normal] The liability is the total amount the platform would pay if that outcome becomes the winner.
+[Normal] Example:
+[Normal] If Option A wins:
+[Normal] Liability = Total Bet on Option A × Multiplier
+[Normal] If a game contains grouped outcomes (such as Veg Salad, Small Lucky, or Number Groups), the backend must calculate the combined payout for all winning bets associated with that result.
+[Normal] This calculation must be performed for every possible outcome.
+[Normal] Step 4 – Compare All Liabilities
+[Normal] After calculating every possible payout,
+[Normal] the backend compares the liability of every outcome.
+[Normal] Example:
+[Normal] Possible Result	Liability
+[Normal] Result A	5M
+[Normal] Result B	12M
+[Normal] Result C	18M
+[Normal] Result D	8M
+[Normal] Step 5 – Select Winning Result
+[Normal] By default, the backend should select the winning result with the lowest payout liability, helping the platform remain profitable over time.
+[Normal] The selected result is then stored as the official result for that round.
+[Normal] The winning result must always be generated before the client-side animation begins.
+[Normal] Step 6 – Generate Game Result
+[Normal] Depending on the game:
+[Normal] Greedy Food → Select winning food item or Salad.
+[Normal] Lucky Fruit → Select winning fruit or Lucky result.
+[Normal] Roulette → Select winning number (0–36).
+[Normal] Phoenix vs Wolf → Select winning side, then generate valid card values matching that outcome.
+[Normal] The generated result is sent to all connected players.
+[Normal] Every player receives the same result.
+[Normal] Step 7 – Start Result Animation
+[Normal] After the backend has selected the winner:
+[Normal] Send the result to all clients.
+[Normal] Start the wheel, fruit, or card animation.
+[Normal] Animation duration: 10 seconds.
+[Normal] The animation must stop exactly on the backend-selected result.
+[Normal] Animations are visual only.
+[Normal] They never determine the winner.
+[Normal] Step 8 – Settle Bets
+[Normal] After the animation finishes:
+[Normal] Calculate player winnings.
+[Normal] Credit Gold Coins to winners.
+[Normal] Record wallet transactions.
+[Normal] Update player history.
+[Normal] Update Top 3 Winners.
+[Normal] Update Live Winner Ticker.
+[Normal] Save round summary.
+[Normal] Step 9 – Store Round Information
+[Normal] Every completed round must be permanently stored.
+[Normal] Store: Only for superadmin
+[Normal] Round Number 
+[Normal] Winning Result 
+[Normal] Total Bets 
+[Normal] Total Payout
+[Normal] Platform Profit 
+[Normal] Total Players 
+[Normal] Top 3 Winners
+[Normal] Wallet Transactions
+[Normal] Timestamp
+[Normal] This information is used for analytics, auditing, customer support, and dispute resolution.
+[Normal] Security Rules
+[Normal] All calculations must happen on the backend.
+[Normal] The client application must never calculate the winning result.
+[Normal] The client must never calculate payouts.
+[Normal] Wallet balance must always be verified by the backend.
+[Normal] Every bet must generate a transaction record.
+[Normal] Every payout must generate a transaction record.
+[Normal] Every completed round must be permanently stored.
+[Normal] Every API request must be authenticated.
+[Normal] All game events must be recorded in audit logs.
+[Normal] All premium games (Greedy Food, Roulette, Lucky Fruit, and Phoenix vs Wolf) should use the same backend liability calculation engine. Only the betting options, multipliers, and UI animations differ between games. By sharing a common backend engine, the platform ensures consistent behavior, simplified maintenance, improved scalability, and reduced development effort.
