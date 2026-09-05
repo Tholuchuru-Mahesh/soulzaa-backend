@@ -9,6 +9,7 @@ FROM base AS deps
 # every postinstall script (ERR_PNPM_IGNORED_BUILDS) and @prisma/engines never
 # downloads its query engine.
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml ./
+COPY patches ./patches
 RUN pnpm install --frozen-lockfile
 
 # ---------- Build ----------
