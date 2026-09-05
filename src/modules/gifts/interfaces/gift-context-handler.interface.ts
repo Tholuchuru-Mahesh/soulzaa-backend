@@ -51,10 +51,21 @@ export interface GiftSendEffects {
   postCommit?: () => Promise<void>;
   /**
    * When true, suppresses the receiver Available Balance (GOLD) cashback credit
-   * (e.g. for video room gift-lock entry gifts) while keeping the creator
-   * earnings (Soul Gems / DIAMOND) conversion intact.
+   * entirely — used for video room gift-lock entry gifts where the receiver
+   * earns only Soul Gems (DIAMOND) and the sender receives no gold back.
    */
   suppressReceiverCashback?: boolean;
+  /**
+   * When true, redirects the Gold Coin cashback to the sender instead of the
+   * receiver. Used for normal video/audio room gifting: the receiver earns
+   * Soul Gems via the earningsPercent path and the sender receives a Gold Coin
+   * cashback at the configured `gift.sender_cashback_percentage`.
+   *
+   * Note: this flag is mutually exclusive with `suppressReceiverCashback`.
+   * When `suppressReceiverCashback` is true, no cashback is credited at all
+   * regardless of this flag.
+   */
+  redirectCashbackToSender?: boolean;
 }
 
 export interface IGiftContextHandler {

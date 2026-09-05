@@ -785,9 +785,11 @@ describe('VideoRoomGiftContextHandler — gift-lock grant', () => {
         totalCoinValue: 1500,
       });
       expect(effects.suppressReceiverCashback).toBe(true);
+      // Gift-lock entry: no gold cashback to anyone — soul gems only to receiver.
+      expect(effects.redirectCashbackToSender).toBe(false);
     });
 
-    it('returns suppressReceiverCashback: false when room has gift-lock disabled', async () => {
+    it('returns suppressReceiverCashback: false and redirectCashbackToSender: true when room has gift-lock disabled (normal video gift)', async () => {
       rooms.findById.mockResolvedValue({
         id: ROOM,
         ownerId: 'owner-1',
@@ -806,10 +808,12 @@ describe('VideoRoomGiftContextHandler — gift-lock grant', () => {
         idempotencyKey: 'i1',
         totalCoinValue: 1500,
       });
+      // Normal video room gift: receiver earns soul gems, sender earns gold cashback.
       expect(effects.suppressReceiverCashback).toBe(false);
+      expect(effects.redirectCashbackToSender).toBe(true);
     });
 
-    it('returns suppressReceiverCashback: false when sending a different gift than the required entry gift', async () => {
+    it('returns suppressReceiverCashback: false and redirectCashbackToSender: true when sending a different gift than the required entry gift (normal video gift)', async () => {
       rooms.findById.mockResolvedValue({
         id: ROOM,
         ownerId: 'owner-1',
@@ -828,10 +832,12 @@ describe('VideoRoomGiftContextHandler — gift-lock grant', () => {
         idempotencyKey: 'i1',
         totalCoinValue: 1500,
       });
+      // Normal video room gift (different from entry gift): receiver earns soul gems, sender earns gold cashback.
       expect(effects.suppressReceiverCashback).toBe(false);
+      expect(effects.redirectCashbackToSender).toBe(true);
     });
 
-    it('returns suppressReceiverCashback: false when recipient is not the room owner', async () => {
+    it('returns suppressReceiverCashback: false and redirectCashbackToSender: true when recipient is not the room owner (normal video gift)', async () => {
       rooms.findById.mockResolvedValue({
         id: ROOM,
         ownerId: 'owner-1',
@@ -850,7 +856,9 @@ describe('VideoRoomGiftContextHandler — gift-lock grant', () => {
         idempotencyKey: 'i1',
         totalCoinValue: 1500,
       });
+      // Normal video room gift (recipient is not owner): receiver earns soul gems, sender earns gold cashback.
       expect(effects.suppressReceiverCashback).toBe(false);
+      expect(effects.redirectCashbackToSender).toBe(true);
     });
   });
 });

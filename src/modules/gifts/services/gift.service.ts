@@ -210,8 +210,9 @@ export class GiftService implements IGiftsService {
     earningsPercent: number;
     cashbackPercent: number;
     cashbackThreshold: number;
+    senderCashbackPercent: number;
   }> {
-    const [earningsPercent, cashbackPercent, cashbackThreshold] = await Promise.all([
+    const [earningsPercent, cashbackPercent, cashbackThreshold, senderCashbackPercent] = await Promise.all([
       // The creator conversion rate (Gold-Coin gifting value → Soul Gems).
       // Default 50 lives once, here — matches the seeded `PlatformSetting`
       // row exactly, so an unconfigured environment still behaves correctly.
@@ -219,16 +220,23 @@ export class GiftService implements IGiftsService {
       this.platformConfig.get<any>('gift.receiver_earnings_percentage', 50).catch(() => 50),
       this.platformConfig.get<any>('gift.receiver_cashback_percentage').catch(() => 10),
       this.platformConfig.get<any>('gift.receiver_cashback_threshold').catch(() => 1000),
+      this.platformConfig.get<any>('gift.sender_cashback_percentage').catch(() => null),
     ]);
 
     const earnNum = earningsPercent != null ? Number(earningsPercent) : 50;
     const cashNum = cashbackPercent != null ? Number(cashbackPercent) : 10;
     const threshNum = cashbackThreshold != null ? Number(cashbackThreshold) : 1000;
+    const senderCashNum = senderCashbackPercent != null ? Number(senderCashbackPercent) : NaN;
+
+    const resolvedCashbackPct = !isNaN(cashNum) ? cashNum : 10;
+    const resolvedSenderCashbackPct =
+      !isNaN(senderCashNum) && senderCashNum >= 0 ? senderCashNum : resolvedCashbackPct;
 
     return {
       earningsPercent: !isNaN(earnNum) && earnNum > 0 ? earnNum : 50,
-      cashbackPercent: !isNaN(cashNum) ? cashNum : 10,
+      cashbackPercent: resolvedCashbackPct,
       cashbackThreshold: !isNaN(threshNum) ? threshNum : 1000,
+      senderCashbackPercent: resolvedSenderCashbackPct,
     };
   }
 
@@ -431,14 +439,19 @@ export class GiftService implements IGiftsService {
             })
           : { acceptedAmount: totalNum, refundAmount: 0, events: [] };
         eventsToPublish.push(...effects.events);
-        postCommitFn = effects.postCommit;
+             const effectiveCashbackPct = effects.redirectCashbackToSender
+          ? rules.senderCashbackPercent
+          : effects.suppressReceiverCashback
+            ? 0
+            : rules.cashbackPercent;
 
-        const effectiveCashbackCredited = effects.suppressReceiverCashback
-          ? 0
-          : availableBalanceCredited;
-        const effectiveCashbackPct = effects.suppressReceiverCashback
-          ? 0
-          : rules.cashbackPercent;
+        const effectiveCashbackCredited = effects.redirectCashbackToSender
+          ? (originalGiftValue >= rules.cashbackThreshold
+              ? Math.floor((originalGiftValue * rules.senderCashbackPercent) / 100)
+              : 0)
+          : effects.suppressReceiverCashback
+            ? 0
+            : availableBalanceCredited;
 
         // 3. Settle receiver wallet accounts & create immutable gift transaction rows.
         const rows: GiftTransaction[] = [];
@@ -462,26 +475,38 @@ export class GiftService implements IGiftsService {
             creditTxnId = creditResult.transactionId;
           }
 
-          // Step 3b: Receiver Available Balance += 10% ONLY IF giftValue > 1000 (Rule 2 & Rule 3)
+          // Step 3b: Available Balance (GOLD) cashback.
+          // For video room gift-lock entry: sender receives the cashback (host gets no gold).
+          // For normal gifting / audio rooms: receiver receives the cashback.
           if (effectiveCashbackCredited > 0) {
+            const cashbackRecipientId = effects.redirectCashbackToSender
+              ? senderId
+              : receiverId;
+            const cashbackReason = effects.redirectCashbackToSender
+              ? WalletTxnReason.GIFT_CASHBACK
+              : WalletTxnReason.GIFT_RECEIVE;
+
             await this.wallet.credit(
               {
-                userId: receiverId,
+                userId: cashbackRecipientId,
                 currency: WalletCurrency.GOLD,
                 amount: effectiveCashbackCredited,
-                reason: WalletTxnReason.GIFT_RECEIVE,
-                idempotencyKey: `gift-credit-available:${idempotencyKey}:${receiverId}`,
+                reason: cashbackReason,
+                idempotencyKey: effects.redirectCashbackToSender
+                  ? `gift-credit-sender-cashback:${idempotencyKey}:${receiverId}`
+                  : `gift-credit-available:${idempotencyKey}:${receiverId}`,
                 referenceType: GIFT_WALLET_REFERENCE_TYPE,
                 metadata: {
                   giftId: gift.id,
                   senderId,
+                  receiverId,
                   batchId,
                   giftValue: perReceiverNum,
                   availableBalanceCredited: effectiveCashbackCredited,
+                  isSenderCashback: effects.redirectCashbackToSender ?? false,
                 },
                 actorId: senderId,
               },
-
               tx,
             );
           }
@@ -514,6 +539,7 @@ export class GiftService implements IGiftsService {
                 batchId,
                 acceptedAmount: effects.acceptedAmount,
                 refundAmount: effects.refundAmount,
+                cashbackRecipient: effects.redirectCashbackToSender ? 'SENDER' : 'RECEIVER',
               } as Prisma.InputJsonValue,
             },
             tx,
@@ -521,7 +547,7 @@ export class GiftService implements IGiftsService {
           rows.push(createdRow);
 
           this.logger.log(
-            `[Gift Settle] Txn: ${createdRow.id}, Context: ${dto.contextType}:${dto.contextId}, Sender: ${senderId}, Wallet credited recipient: ${receiverId}, Earnings (Gems): ${earningsNum}, Cashback (Gold): ${effectiveCashbackCredited}, Total Coin Value: ${perReceiverNum}`,
+            `[Gift Settle] Txn: ${createdRow.id}, Context: ${dto.contextType}:${dto.contextId}, Sender: ${senderId}, Wallet credited recipient: ${receiverId}, Earnings (Gems): ${earningsNum}, Cashback (Gold): ${effectiveCashbackCredited} (to ${effects.redirectCashbackToSender ? 'SENDER' : 'RECEIVER'}), Total Coin Value: ${perReceiverNum}`,
           );
 
           if (gift.type === GiftType.PROFILE_FRAME) {
