@@ -209,6 +209,7 @@ describe('VideoRoomLifecycleService', () => {
         name: 'Rose',
         thumbnailUrl: 'https://x/rose.png',
         coinValue: 10,
+        enabled: true,
       });
       const view = await service.create(actor, { name: 'My Room' } as any);
       expect(gifts.getGift).toHaveBeenCalledWith('gift-1');

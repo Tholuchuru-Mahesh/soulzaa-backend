@@ -1,9 +1,10 @@
-import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PlatformRole, VideoRoom, VideoRoomLogAction, VideoRoomMemberRole, VideoRoomStatus } from '@prisma/client';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import { LockService } from 'src/infra/redis/lock.service';
+import { GIFTS_SERVICE, type IGiftsService } from 'src/modules/gifts/interfaces/gifts.service.interface';
 import type { PublicIdentity } from 'src/modules/users/interfaces/profile.interface';
 import { loadVideoRoomConfig, VideoRoomConfig } from '../config/video-room.config';
 import {
@@ -27,7 +28,6 @@ import { VideoRoomEventsRepository } from '../repositories/video-room-events.rep
 import { VideoRoomGiftLockAccessRepository } from '../repositories/video-room-gift-lock-access.repository';
 import { VideoRoomModerationRepository } from '../repositories/video-room-moderation.repository';
 import { VideoRoomReportRepository } from '../repositories/video-room-report.repository';
-import { VideoRoomSeatsRepository } from '../repositories/video-room-seats.repository';
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
 import { VideoRoomsMetrics } from '../video-rooms.metrics';
 import { derivePresenceState } from './video-room-presence-state';
@@ -98,10 +98,10 @@ export class VideoRoomMemberService {
     private readonly metrics: VideoRoomsMetrics,
     private readonly locks: LockService,
     config: ConfigService,
-    private readonly seats: VideoRoomSeatsRepository,
     private readonly identities: VideoRoomIdentityCache,
     private readonly entryAccessRepo: VideoRoomEntryAccessRepository,
     private readonly giftLockAccessRepo: VideoRoomGiftLockAccessRepository,
+    @Inject(GIFTS_SERVICE) private readonly gifts: IGiftsService,
     @Optional() private readonly performanceStats?: ModeratorPerformanceService,
     @Optional() private readonly investigationRecording?: InvestigationRecordingService,
     @Optional() private readonly reportRepo?: VideoRoomReportRepository,
@@ -184,19 +184,32 @@ export class VideoRoomMemberService {
       // Gift-lock access check for non-privileged, non-moderator NEW joiners.
       // An already-active member (including any seat-holder, since taking a
       // seat requires having joined first) is never re-gated here.
+      //
+      // This is a soft paywall, so it must fail OPEN on misconfiguration: if
+      // the room's required gift has since been disabled or deleted from the
+      // catalog, `GiftService.sendGiftBatch` rejects any attempt to send it
+      // (GIFT_DISABLED / GIFT_NOT_FOUND), meaning nobody could ever satisfy
+      // the block. Without this check the room would silently become
+      // unjoinable for every new viewer until the host manually disables
+      // gift-lock — worse than just letting them in.
       if (!privileged && !isModerator && !alreadyMember && room.giftLockEnabled) {
-        const activeSession = await this.repo.getActiveBroadcastSession(roomId);
-        if (activeSession) {
-          const hasAccess = await this.giftLockAccessRepo.hasGrantedAccess(
-            actor.id,
-            activeSession.id,
-          );
-          if (!hasAccess) {
-            throw this.err(
-              ERROR_CODES.VIDEO_ROOM_GIFT_REQUIRED,
-              'This room requires sending its entry gift before you can join.',
-              HttpStatus.PAYMENT_REQUIRED,
+        const giftStillSendable = room.requiredEntryGiftId
+          ? await this.gifts.isGiftEnabled(room.requiredEntryGiftId)
+          : false;
+        if (giftStillSendable) {
+          const activeSession = await this.repo.getActiveBroadcastSession(roomId);
+          if (activeSession) {
+            const hasAccess = await this.giftLockAccessRepo.hasGrantedAccess(
+              actor.id,
+              activeSession.id,
             );
+            if (!hasAccess) {
+              throw this.err(
+                ERROR_CODES.VIDEO_ROOM_GIFT_REQUIRED,
+                'This room requires sending its entry gift before you can join.',
+                HttpStatus.PAYMENT_REQUIRED,
+              );
+            }
           }
         }
       }

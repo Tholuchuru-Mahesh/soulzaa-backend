@@ -106,6 +106,7 @@ describe('VideoRoomQueryService', () => {
         name: 'Rose',
         thumbnailUrl: 'https://x/rose.png',
         coinValue: 10,
+        enabled: true,
       });
       const view = await service.getDetail('r1');
       expect(gifts.getGift).toHaveBeenCalledWith('gift-1');

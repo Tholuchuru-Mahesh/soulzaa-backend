@@ -310,10 +310,10 @@ describe('VR-16 moderation engine (behavior)', () => {
       { incJoin: jest.fn(), setViewers: jest.fn() } as never,
       locks as never,
       config as never,
-      { hasActiveRoomInvitation: jest.fn().mockResolvedValue(false) } as never,
       { resolve: jest.fn().mockResolvedValue(new Map()) } as never,
       { isAccessGranted: jest.fn().mockResolvedValue(true) } as never,
       { hasGrantedAccess: jest.fn().mockResolvedValue(true) } as never,
+      { isGiftEnabled: jest.fn().mockResolvedValue(true) } as never, // gifts (GIFTS_SERVICE)
     );
   });
 

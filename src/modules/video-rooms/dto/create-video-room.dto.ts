@@ -11,7 +11,6 @@ import {
   IsVideoRoomMaxParticipants,
   IsVideoRoomMaxViewers,
   IsVideoRoomName,
-  IsVideoRoomPassword,
 } from '../validators/video-room.validators';
 
 /**
@@ -51,9 +50,6 @@ export class CreateVideoRoomDto {
   @IsOptional()
   @IsEnum(VideoRoomAccessPolicy)
   accessPolicy?: VideoRoomAccessPolicy;
-
-  @IsVideoRoomPassword()
-  password?: string;
 
   @ApiPropertyOptional({ description: 'Free-form discovery tags (all must match on search).' })
   @IsOptional()

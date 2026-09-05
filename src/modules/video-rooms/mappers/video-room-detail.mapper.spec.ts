@@ -277,6 +277,7 @@ describe('resolveRequiredEntryGift', () => {
         name: 'Rose',
         thumbnailUrl: 'https://x/rose.png',
         coinValue: 10,
+        enabled: true,
       }),
     });
     const result = await resolveRequiredEntryGift(gifts, {
@@ -297,6 +298,29 @@ describe('resolveRequiredEntryGift', () => {
     const result = await resolveRequiredEntryGift(gifts, {
       giftLockEnabled: true,
       requiredEntryGiftId: 'gift-deleted',
+    });
+    expect(result).toBeNull();
+  });
+
+  /**
+   * Fix 1 (gift-lock bricking): a required gift disabled after the room
+   * locked itself to it must stop being advertised as the requirement — the
+   * client's "required gift" dialog otherwise points at something
+   * `GiftService.sendGiftBatch` will always reject (GIFT_DISABLED).
+   */
+  it('returns null when the referenced gift has since been disabled in the catalog', async () => {
+    const gifts = giftsService({
+      getGift: jest.fn().mockResolvedValue({
+        id: 'gift-1',
+        name: 'Rose',
+        thumbnailUrl: 'https://x/rose.png',
+        coinValue: 10,
+        enabled: false,
+      }),
+    });
+    const result = await resolveRequiredEntryGift(gifts, {
+      giftLockEnabled: true,
+      requiredEntryGiftId: 'gift-1',
     });
     expect(result).toBeNull();
   });

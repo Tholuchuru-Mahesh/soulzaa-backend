@@ -39,7 +39,10 @@ export async function resolveRequiredEntryGift(
 ): Promise<RequiredEntryGiftView | null> {
   if (!room.giftLockEnabled || !room.requiredEntryGiftId) return null;
   const gift = await gifts.getGift(room.requiredEntryGiftId);
-  if (!gift) return null;
+  // A disabled/deleted gift can no longer be sent (GiftService rejects it),
+  // so it is no longer a real requirement — advertising it as one would have
+  // the client's "required gift" dialog point at something unsendable.
+  if (!gift || !gift.enabled) return null;
   return { id: gift.id, name: gift.name, thumbnailUrl: gift.thumbnailUrl, coinValue: gift.coinValue };
 }
 

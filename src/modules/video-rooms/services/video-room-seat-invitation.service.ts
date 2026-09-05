@@ -514,8 +514,8 @@ export class VideoRoomSeatInvitationService {
     return toVideoRoomInvitationView(inv);
   }
 
-  /** Accept a ROOM invitation (invitee only). Marks ACCEPTED, within the
-   * invitation's TTL (see hasActiveRoomInvitation's expiry bound). Does not seat/join. */
+  /** Accept a ROOM invitation (invitee only). Marks ACCEPTED. Does not seat or
+   * join the room itself — the invitee still calls join separately. */
   async acceptRoomInvite(
     actor: RoomActor,
     roomId: string,

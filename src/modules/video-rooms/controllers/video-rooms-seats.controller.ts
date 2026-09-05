@@ -397,7 +397,7 @@ export class VideoRoomSeatsController {
   @NotGuest()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Accept a room invitation (invitee) → gains private-room access on next join',
+    summary: 'Accept a room invitation (invitee)',
   })
   @ApiResponse({ status: HttpStatus.OK, description: 'Room invitation accepted.' })
   acceptRoomInvite(

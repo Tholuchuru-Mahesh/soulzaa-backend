@@ -8,8 +8,6 @@ import {
   VIDEO_ROOM_MIN_VIEWERS,
   VIDEO_ROOM_NAME_MAX,
   VIDEO_ROOM_NAME_MIN,
-  VIDEO_ROOM_PASSWORD_MAX,
-  VIDEO_ROOM_PASSWORD_MIN,
 } from '../constants/video-room.constants';
 
 /**
@@ -34,15 +32,6 @@ export function IsVideoRoomDescription(): PropertyDecorator {
     IsOptional(),
     IsString(),
     Length(0, VIDEO_ROOM_DESCRIPTION_MAX),
-  );
-}
-
-export function IsVideoRoomPassword(): PropertyDecorator {
-  return applyDecorators(
-    ApiPropertyOptional({ minLength: VIDEO_ROOM_PASSWORD_MIN, maxLength: VIDEO_ROOM_PASSWORD_MAX }),
-    IsOptional(),
-    IsString(),
-    Length(VIDEO_ROOM_PASSWORD_MIN, VIDEO_ROOM_PASSWORD_MAX),
   );
 }
 

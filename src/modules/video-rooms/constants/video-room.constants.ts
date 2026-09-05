@@ -141,8 +141,6 @@ export const VIDEO_ROOM_CHAT_INBOUND_EVENTS = {
 export const VIDEO_ROOM_NAME_MIN = 3;
 export const VIDEO_ROOM_NAME_MAX = 60;
 export const VIDEO_ROOM_DESCRIPTION_MAX = 500;
-export const VIDEO_ROOM_PASSWORD_MIN = 4;
-export const VIDEO_ROOM_PASSWORD_MAX = 64;
 export const VIDEO_ROOM_MIN_PARTICIPANTS = 2;
 export const VIDEO_ROOM_MIN_VIEWERS = 0;
 

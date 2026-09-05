@@ -40,7 +40,7 @@ describe('VideoRoomMemberService.join', () => {
   let query: any;
   let metrics: any;
   let locks: any;
-  let seats: any;
+  let gifts: any;
   let identities: any;
   let platformAudit: any;
   let platformBans: any;
@@ -125,7 +125,9 @@ describe('VideoRoomMemberService.join', () => {
       setViewers: jest.fn(),
     };
     locks = { withLock: jest.fn((_k: string, fn: () => Promise<unknown>) => fn()) };
-    seats = { hasActiveRoomInvitation: jest.fn().mockResolvedValue(false) };
+    // Default true: existing gift-lock tests exercise a still-enabled gift;
+    // the fail-open behaviour (Fix 1) is exercised by its own test below.
+    gifts = { isGiftEnabled: jest.fn().mockResolvedValue(true) };
     identities = { resolve: jest.fn().mockResolvedValue(new Map()) };
 
     platformAudit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -144,10 +146,10 @@ describe('VideoRoomMemberService.join', () => {
       metrics,
       locks,
       configMock(),
-      seats as never,
       identities as never,
       { isAccessGranted: jest.fn().mockResolvedValue(true) } as never, // entryAccessRepo
       giftLockAccessRepo as never, // giftLockAccessRepo
+      gifts as never, // gifts (GIFTS_SERVICE)
       undefined, // performanceStats
       undefined, // investigationRecording
       undefined, // reportRepo
@@ -245,6 +247,32 @@ describe('VideoRoomMemberService.join', () => {
       await expect(
         service.join({ id: 'owner-1', roles: [] }, 'room-1', {}, { socketId: 'sock-1' }),
       ).resolves.toBeDefined();
+      expect(giftLockAccessRepo.hasGrantedAccess).not.toHaveBeenCalled();
+    });
+
+    it('fails OPEN (lets the joiner in) when the required gift has since been disabled in the catalog', async () => {
+      repo.findById.mockResolvedValue({
+        id: 'room-1',
+        ownerId: 'owner-1',
+        status: 'LIVE',
+        giftLockEnabled: true,
+        requiredEntryGiftId: 'gift-1',
+        maxViewers: 100,
+      });
+      repo.getMember.mockResolvedValue(null); // not already a member
+      repo.getActiveBroadcastSession.mockResolvedValue({
+        id: 'session-1',
+        paidEntryEnabled: false,
+      });
+      gifts.isGiftEnabled.mockResolvedValue(false); // gift disabled/deleted since lock was set
+      giftLockAccessRepo.hasGrantedAccess.mockResolvedValue(false); // nobody could ever satisfy this
+
+      await expect(
+        service.join({ id: 'viewer-1', roles: [] }, 'room-1', {}, { socketId: 'sock-1' }),
+      ).resolves.toBeDefined();
+      expect(gifts.isGiftEnabled).toHaveBeenCalledWith('gift-1');
+      // The misconfigured lock must not even bother checking granted access —
+      // it fails open before that read.
       expect(giftLockAccessRepo.hasGrantedAccess).not.toHaveBeenCalled();
     });
 
@@ -378,10 +406,10 @@ describe('VideoRoomMemberService.join', () => {
         metrics,
         locks,
         configMock(),
-        seats as never,
         identities as never,
         { isAccessGranted: jest.fn().mockResolvedValue(true) } as never, // entryAccessRepo
         giftLockAccessRepo as never, // giftLockAccessRepo
+        gifts as never, // gifts (GIFTS_SERVICE)
         undefined, // performanceStats
         investigationRecording as any, // investigationRecording
         reportRepo as any, // reportRepo
