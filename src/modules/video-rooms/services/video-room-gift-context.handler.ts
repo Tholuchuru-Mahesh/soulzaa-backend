@@ -117,8 +117,18 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
       );
     }
 
+    // An entry gift for a gift-locked room is sent BEFORE the entrant's join
+    // completes (the join is gated on this gift being paid). Identify this case
+    // so prospective joiners are not rejected with NOT_ROOM_MEMBER.
+    const isEntryGift =
+      Boolean(room.giftLockEnabled) &&
+      Boolean(room.requiredEntryGiftId) &&
+      req.gift.id === room.requiredEntryGiftId &&
+      receiverIds.length === 1 &&
+      receiverIds[0] === room.ownerId;
+
     const sender = await this.rooms.getMember(roomId, senderId);
-    if (!sender?.isActive) {
+    if (!sender?.isActive && !isEntryGift) {
       throw new BusinessException(
         ERROR_CODES.NOT_ROOM_MEMBER,
         'You are not in this room.',
@@ -126,7 +136,7 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
       );
     }
 
-    this.assertCountryAllowed(sender.country);
+    this.assertCountryAllowed(sender?.country);
 
     const allowViewerGifts = this.viewerGiftsAllowed(settings?.metadata);
     const activeBattle = this.pkRepo ? await this.pkRepo.findLive(roomId).catch(() => null) : null;
@@ -145,7 +155,9 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
         }
       }
 
-      if (!receiver?.isActive && !isPkParticipant) {
+      const isEntryRecipient = isEntryGift && receiverId === room.ownerId;
+
+      if (!receiver?.isActive && !isPkParticipant && !isEntryRecipient) {
         throw new BusinessException(
           ERROR_CODES.GIFT_RECEIVER_INVALID,
           'A recipient is not in this room.',

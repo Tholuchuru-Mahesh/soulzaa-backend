@@ -189,11 +189,33 @@ describe('VideoRoomGiftContextHandler', () => {
       });
     });
 
-    it('rejects a sender who is not an active member', async () => {
+    it('rejects a sender who is not an active member when not an entry gift', async () => {
       rooms.getMember.mockResolvedValue(member({ isActive: false }));
       await expect(handler.validate(REQ as never)).rejects.toMatchObject({
         errorCode: ERROR_CODES.NOT_ROOM_MEMBER,
       });
+    });
+
+    it('allows a non-member sender when paying the required entry gift to the room owner', async () => {
+      rooms.findById.mockResolvedValue({
+        id: ROOM,
+        status: VideoRoomStatus.LIVE,
+        ownerId: 'owner-1',
+        giftLockEnabled: true,
+        requiredEntryGiftId: 'g1',
+      });
+      // Sender is not in the room; receiver is the room owner
+      rooms.getMember.mockImplementation((_room: string, userId: string) =>
+        Promise.resolve(userId === 'owner-1' ? member({ role: VideoRoomMemberRole.HOST }) : null),
+      );
+
+      const entryGiftReq = {
+        ...REQ,
+        receiverIds: ['owner-1'],
+        gift: { id: 'g1', name: 'Rose', coinValue: 10 },
+      };
+
+      await expect(handler.validate(entryGiftReq as never)).resolves.toBeUndefined();
     });
 
     it('rejects a receiver who is not in the room', async () => {
