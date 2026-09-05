@@ -58,6 +58,8 @@ import { VideoRoomMediaService } from './video-room-media.service';
 import { VideoRoomReportService } from './video-room-report.service';
 import { VideoRoomSessionService } from './video-room-session.service';
 import { VideoRoomSystemMessageService } from './video-room-system-message.service';
+import { VideoRoomSeatService } from './video-room-seat.service';
+import { VideoRoomPresenceService } from './video-room-presence.service';
 import {
   VideoRoomPermissionService,
   type PermissionRoomRef,
@@ -123,6 +125,8 @@ export class VideoRoomModerationService {
     @Optional() @Inject(NOTIFICATION_SERVICE) private readonly notifications?: INotificationService,
     @Optional() private readonly systemMessages?: VideoRoomSystemMessageService,
     @Optional() private readonly platformAudit?: PlatformModerationAuditService,
+    @Optional() private readonly seats?: VideoRoomSeatService,
+    @Optional() private readonly presence?: VideoRoomPresenceService,
   ) {}
 
   // ======================= Kick =======================
@@ -1360,8 +1364,18 @@ export class VideoRoomModerationService {
     actorId: string,
   ): Promise<void> {
     await this.rooms.deactivateMember(roomId, targetUserId, actorId);
-    this.sockets.disconnectUserInNamespace(VIDEO_ROOM_NAMESPACE, targetUserId);
+    if (this.seats) {
+      await this.seats.vacateUser(roomId, targetUserId, actorId, 'seat.demoted');
+    }
+    if (this.presence) {
+      await this.presence.removeViewer(roomId, targetUserId);
+      await this.presence.removeParticipant(roomId, targetUserId);
+      const liveCount = await this.presence.viewerCount(roomId);
+      await this.rooms.bumpStatsOnLeave(roomId, liveCount);
+    }
     await this.session.endUserRoomSessions(roomId, targetUserId);
+    this.sockets.leaveRoomInNamespace?.(VIDEO_ROOM_NAMESPACE, roomId, targetUserId);
+    this.sockets.disconnectUserInNamespace?.(VIDEO_ROOM_NAMESPACE, targetUserId);
   }
 
   /**

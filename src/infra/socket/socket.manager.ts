@@ -593,6 +593,19 @@ export class SocketManager {
   }
 
   /**
+   * Remove a user from a specific room channel in a namespace, leaving their
+   * socket connection open to receive targeted events (e.g. moderation notices).
+   */
+  leaveRoomInNamespace(namespace: string, roomId: string, userId: string): void {
+    const server = this.serverForNamespace(namespace);
+    if (!server) {
+      this.logger.warn(`leaveRoomInNamespace: no server for namespace "${namespace}"`);
+      return;
+    }
+    server.in(userRoom(userId)).socketsLeave(roomId);
+  }
+
+  /**
    * Emit an event to one user's sockets within a single namespace only (e.g.
    * `/live`), leaving their sockets on every other namespace — DMs, other
    * rooms, calling, etc. — untouched. Mirrors `disconnectUserInNamespace`'s

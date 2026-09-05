@@ -114,6 +114,20 @@ describe('VideoRoomModerationService', () => {
       liftBlock: jest.fn().mockResolvedValue(undefined),
       addBlockMirror: jest.fn().mockResolvedValue(undefined),
       removeBlockMirror: jest.fn().mockResolvedValue(undefined),
+      findActiveKick: jest.fn().mockResolvedValue(null),
+      createKick: jest.fn().mockImplementation(({ roomId, userId, moderatorId, reason }) =>
+        Promise.resolve({
+          id: 'kick-1',
+          roomId,
+          userId,
+          moderatorId,
+          reason: reason ?? null,
+          status: 'ACTIVE',
+        }),
+      ),
+      liftKick: jest.fn().mockResolvedValue(undefined),
+      addKickMirror: jest.fn().mockResolvedValue(undefined),
+      removeKickMirror: jest.fn().mockResolvedValue(undefined),
       findActiveMute: jest.fn().mockResolvedValue(null),
       createMute: jest.fn().mockImplementation(({ roomId, userId, moderatorId, type, reason }) =>
         Promise.resolve({
@@ -145,6 +159,11 @@ describe('VideoRoomModerationService', () => {
       disconnectUserInNamespace: jest.fn().mockImplementation(() => {
         callOrder.push('disconnectUserInNamespace');
       }),
+      leaveRoomInNamespace: jest.fn().mockImplementation(() => {
+        callOrder.push('leaveRoomInNamespace');
+      }),
+      emitToNamespaceRoom: jest.fn(),
+      emitToUserEverywhere: jest.fn(),
     };
     locks = { withLock: jest.fn((_k: string, fn: () => unknown) => fn()) };
     metrics = {
@@ -267,6 +286,7 @@ describe('VideoRoomModerationService', () => {
       await subject.kick(ACTOR, ROOM.id, TARGET, 'spamming');
 
       expect(rooms.deactivateMember).toHaveBeenCalledWith(ROOM.id, TARGET, ACTOR.id);
+      expect(sockets.leaveRoomInNamespace).toHaveBeenCalledWith(VIDEO_ROOM_NAMESPACE, ROOM.id, TARGET);
       expect(sockets.disconnectUserInNamespace).toHaveBeenCalledWith(VIDEO_ROOM_NAMESPACE, TARGET);
       expect(session.endUserRoomSessions).toHaveBeenCalledWith(ROOM.id, TARGET);
       expect(moderationRepo.appendAction).toHaveBeenCalledWith(
@@ -504,7 +524,7 @@ describe('VideoRoomModerationService', () => {
       await subject.blacklist(ACTOR, ROOM.id, TARGET, 'abuse');
 
       expect(rooms.deactivateMember).toHaveBeenCalledWith(ROOM.id, TARGET, ACTOR.id);
-      expect(sockets.disconnectUserInNamespace).toHaveBeenCalledWith(VIDEO_ROOM_NAMESPACE, TARGET);
+      expect(sockets.leaveRoomInNamespace).toHaveBeenCalledWith(VIDEO_ROOM_NAMESPACE, ROOM.id, TARGET);
       expect(session.endUserRoomSessions).toHaveBeenCalledWith(ROOM.id, TARGET);
     });
   });
@@ -1328,7 +1348,7 @@ describe('VideoRoomModerationService', () => {
       await subject.autoKick(ROOM.id, TARGET, 'rapid-join-leave', { detector: 'rapid_join_leave' });
 
       expect(rooms.deactivateMember).toHaveBeenCalledWith(ROOM.id, TARGET, SYSTEM_MODERATOR_ID);
-      expect(sockets.disconnectUserInNamespace).toHaveBeenCalledWith(VIDEO_ROOM_NAMESPACE, TARGET);
+      expect(sockets.leaveRoomInNamespace).toHaveBeenCalledWith(VIDEO_ROOM_NAMESPACE, ROOM.id, TARGET);
       expect(session.endUserRoomSessions).toHaveBeenCalledWith(ROOM.id, TARGET);
       expect(moderationRepo.appendAction).toHaveBeenCalledWith(
         expect.objectContaining({

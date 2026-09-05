@@ -45,11 +45,19 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
       const payload = this.anonymize(e.payload);
       this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_KICKED, payload);
       this.user(e.payload.targetUserId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_KICKED, payload);
+      this.room(e.payload.roomId, 'video_room.kicked', payload);
+      this.user(e.payload.targetUserId, 'video_room.kicked', payload);
+      this.room(e.payload.roomId, 'room.kicked', payload);
+      this.user(e.payload.targetUserId, 'room.kicked', payload);
     });
     this.bus.subscribe<UserUnkickedEvent>(VIDEO_ROOM_MODERATION_EVENTS.UNKICKED, (e) => {
       const payload = this.anonymize(e.payload);
       this.room(e.payload.roomId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNKICKED, payload);
       this.user(e.payload.targetUserId, VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNKICKED, payload);
+      this.room(e.payload.roomId, 'video_room.unkicked', payload);
+      this.user(e.payload.targetUserId, 'video_room.unkicked', payload);
+      this.room(e.payload.roomId, 'room.unkicked', payload);
+      this.user(e.payload.targetUserId, 'room.unkicked', payload);
     });
     this.bus.subscribe<UserBlacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.BLACKLISTED, (e) => {
       const payload = this.anonymize(e.payload);
@@ -59,14 +67,24 @@ export class VideoRoomModerationSocketListener implements OnModuleInit {
         VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_BLACKLISTED,
         payload,
       );
+      this.room(e.payload.roomId, 'video_room.blacklisted', payload);
+      this.user(e.payload.targetUserId, 'video_room.blacklisted', payload);
+      this.room(e.payload.roomId, 'video_room.banned', payload);
+      this.user(e.payload.targetUserId, 'video_room.banned', payload);
+      this.room(e.payload.roomId, 'room.banned', payload);
+      this.user(e.payload.targetUserId, 'room.banned', payload);
     });
-    this.bus.subscribe<UserUnblacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.UNBLACKLISTED, (e) =>
+    this.bus.subscribe<UserUnblacklistedEvent>(VIDEO_ROOM_MODERATION_EVENTS.UNBLACKLISTED, (e) => {
+      const payload = this.anonymize(e.payload);
       this.room(
         e.payload.roomId,
         VIDEO_ROOM_MODERATION_SOCKET_EVENTS.USER_UNBLACKLISTED,
-        this.anonymize(e.payload),
-      ),
-    );
+        payload,
+      );
+      this.room(e.payload.roomId, 'video_room.unblacklisted', payload);
+      this.room(e.payload.roomId, 'video_room.unbanned', payload);
+      this.room(e.payload.roomId, 'room.unbanned', payload);
+    });
     this.bus.subscribe<UserMutedEvent>(VIDEO_ROOM_MODERATION_EVENTS.MUTED, (e) =>
       this.room(
         e.payload.roomId,
