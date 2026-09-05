@@ -438,6 +438,7 @@ export class GiftService implements IGiftsService {
               totalCoinValue: totalNum,
             })
           : { acceptedAmount: totalNum, refundAmount: 0, events: [] };
+        postCommitFn = effects.postCommit;
         eventsToPublish.push(...effects.events);
              const effectiveCashbackPct = effects.redirectCashbackToSender
           ? rules.senderCashbackPercent
@@ -637,7 +638,11 @@ export class GiftService implements IGiftsService {
     }
 
     if (postCommitFn) {
-      await postCommitFn();
+      try {
+        await postCommitFn();
+      } catch (err) {
+        this.logger.error(`Gift postCommit failed: ${(err as Error).message}`);
+      }
     }
 
     return transactionResult;
