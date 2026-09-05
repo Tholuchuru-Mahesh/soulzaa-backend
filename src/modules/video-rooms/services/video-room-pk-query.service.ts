@@ -86,6 +86,12 @@ export class VideoRoomPkQueryService {
       this.readScoreMirror(battle.id),
     ]);
 
+    const teamViews = teams.map((t) => this.teamView(t, mirror));
+    const participantViews = participants.map((p) => this.participantView(p));
+    const redScore = teamViews.find((t) => t.side === 'RED')?.score ?? 0;
+    const blueScore = teamViews.find((t) => t.side === 'BLUE')?.score ?? 0;
+    const challenger = participantViews.find((p) => p.side === 'BLUE');
+
     return {
       active: true,
       id: battle.id,
@@ -99,8 +105,11 @@ export class VideoRoomPkQueryService {
       serverTime: new Date().toISOString(),
       isDraw: battle.isDraw,
       winningTeamId: battle.winningTeamId,
-      teams: teams.map((t) => this.teamView(t, mirror)),
-      participants: participants.map((p) => this.participantView(p)),
+      teams: teamViews,
+      redScore,
+      blueScore,
+      challengerUserId: challenger?.userId,
+      participants: participantViews,
     };
   }
 

@@ -87,35 +87,41 @@ export class VideoRoomPkSocketListener implements OnModuleInit {
 
     this.bus.subscribe<PkStartedEvent>(VIDEO_ROOM_PK_EVENTS.STARTED, (e) => {
       const p = e.payload;
-      this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.STARTED, p);
-      this.toRoom(p.roomId, 'video_room.pk.started', p);
-      this.toRoom(p.roomId, 'pk:started', p);
+      const redScore = p.teams?.find((t) => t.side === 'RED')?.score ?? 0;
+      const blueScore = p.teams?.find((t) => t.side === 'BLUE')?.score ?? 0;
+      const challengerUserId = p.participants?.find((part) => part.side === 'BLUE')?.userId;
+      const enriched = { ...p, redScore, blueScore, challengerUserId };
+
+      this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.STARTED, enriched);
+      this.toRoom(p.roomId, 'video_room.pk.started', enriched);
+      this.toRoom(p.roomId, 'pk:started', enriched);
+
       // A separate countdown trigger, derived from the same payload, so a
       // client driving only the countdown UI need not parse the full
       // started-battle payload.
-      this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.COUNTDOWN, {
+      const countdownPayload = {
         roomId: p.roomId,
         battleId: p.battleId,
         countdownSeconds: p.countdownSeconds ?? 5,
+        durationSeconds: p.durationSeconds,
         startedAt: p.startedAt,
-      });
-      this.toRoom(p.roomId, 'video_room.pk.countdown', {
-        roomId: p.roomId,
-        battleId: p.battleId,
-        countdownSeconds: p.countdownSeconds ?? 5,
-        startedAt: p.startedAt,
-      });
-      this.toRoom(p.roomId, 'pk:countdown', {
-        roomId: p.roomId,
-        battleId: p.battleId,
-        countdownSeconds: p.countdownSeconds ?? 5,
-        startedAt: p.startedAt,
-      });
+        endsAt: p.endsAt,
+        challengerUserId,
+        redScore,
+        blueScore,
+      };
+      this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.COUNTDOWN, countdownPayload);
+      this.toRoom(p.roomId, 'video_room.pk.countdown', countdownPayload);
+      this.toRoom(p.roomId, 'pk:countdown', countdownPayload);
     });
 
-    this.bus.subscribe<PkScoreUpdatedEvent>(VIDEO_ROOM_PK_EVENTS.SCORE_UPDATED, (e) =>
-      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.SCORE_UPDATED, e.payload),
-    );
+    this.bus.subscribe<PkScoreUpdatedEvent>(VIDEO_ROOM_PK_EVENTS.SCORE_UPDATED, (e) => {
+      const p = e.payload;
+      const redScore = p.teams?.find((t) => t.side === 'RED')?.score ?? 0;
+      const blueScore = p.teams?.find((t) => t.side === 'BLUE')?.score ?? 0;
+      const enriched = { ...p, redScore, blueScore };
+      this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.SCORE_UPDATED, enriched);
+    });
 
     this.bus.subscribe<PkPausedEvent>(VIDEO_ROOM_PK_EVENTS.PAUSED, (e) =>
       this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.PAUSED, e.payload),
@@ -125,9 +131,13 @@ export class VideoRoomPkSocketListener implements OnModuleInit {
       this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.RESUMED, e.payload),
     );
 
-    this.bus.subscribe<PkEndedEvent>(VIDEO_ROOM_PK_EVENTS.ENDED, (e) =>
-      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.ENDED, e.payload),
-    );
+    this.bus.subscribe<PkEndedEvent>(VIDEO_ROOM_PK_EVENTS.ENDED, (e) => {
+      const p = e.payload;
+      const redScore = p.teams?.find((t) => t.side === 'RED')?.score ?? 0;
+      const blueScore = p.teams?.find((t) => t.side === 'BLUE')?.score ?? 0;
+      const enriched = { ...p, redScore, blueScore };
+      this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.ENDED, enriched);
+    });
 
     this.bus.subscribe<PkWinnerDeclaredEvent>(VIDEO_ROOM_PK_EVENTS.WINNER_DECLARED, (e) =>
       this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.WINNER, e.payload),

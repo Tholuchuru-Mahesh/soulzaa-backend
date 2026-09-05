@@ -193,9 +193,13 @@ export class PKResponseDto {
   @ApiPropertyOptional({ example: false }) isDraw?: boolean;
   @ApiPropertyOptional({ nullable: true, example: null }) winningTeamId?: string | null;
   @ApiPropertyOptional({ type: [PKScoreDto] }) teams?: PKScoreDto[];
+  @ApiPropertyOptional({ example: 1500 }) redScore?: number;
+  @ApiPropertyOptional({ example: 1200 }) blueScore?: number;
+  @ApiPropertyOptional({ example: 'b3f1c2d4-...' }) challengerUserId?: string;
   @ApiPropertyOptional({
     type: [PKParticipantView],
     description: 'Per-participant score breakdown.',
   })
   participants?: PKParticipantView[];
 }
+

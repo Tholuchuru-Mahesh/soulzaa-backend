@@ -617,6 +617,18 @@ export class VideoRoomPkService {
     const [loadedTeams, loadedParticipants] =
       teams && participants ? [teams, participants] : await this.loadSides(battle.id);
 
+    const teamViews = loadedTeams.map((t) => ({ teamId: t.id, side: t.side, score: Number(t.score) }));
+    const participantViews = loadedParticipants.map((p) => ({
+      userId: p.userId,
+      teamId: p.teamId,
+      side: p.side,
+      score: Number(p.score),
+      giftCount: p.giftCount,
+    }));
+    const redScore = teamViews.find((t) => t.side === 'RED')?.score ?? 0;
+    const blueScore = teamViews.find((t) => t.side === 'BLUE')?.score ?? 0;
+    const challenger = participantViews.find((p) => p.side === 'BLUE');
+
     return {
       active: true,
       id: battle.id,
@@ -630,14 +642,11 @@ export class VideoRoomPkService {
       serverTime: new Date().toISOString(),
       isDraw: battle.isDraw,
       winningTeamId: battle.winningTeamId,
-      teams: loadedTeams.map((t) => ({ teamId: t.id, side: t.side, score: Number(t.score) })),
-      participants: loadedParticipants.map((p) => ({
-        userId: p.userId,
-        teamId: p.teamId,
-        side: p.side,
-        score: Number(p.score),
-        giftCount: p.giftCount,
-      })),
+      teams: teamViews,
+      redScore,
+      blueScore,
+      challengerUserId: challenger?.userId,
+      participants: participantViews,
     };
   }
 }
