@@ -160,6 +160,8 @@ export class PKParticipantView {
   @ApiProperty({ enum: ['RED', 'BLUE'] }) side!: string;
   @ApiProperty({ example: 150 }) score!: number;
   @ApiProperty({ example: 3 }) giftCount!: number;
+  @ApiPropertyOptional({ example: 'john_doe' }) username?: string | null;
+  @ApiPropertyOptional({ example: 'https://example.com/avatar.jpg' }) avatarUrl?: string | null;
 }
 
 export class PKResponseDto {
@@ -196,6 +198,8 @@ export class PKResponseDto {
   @ApiPropertyOptional({ example: 1500 }) redScore?: number;
   @ApiPropertyOptional({ example: 1200 }) blueScore?: number;
   @ApiPropertyOptional({ example: 'b3f1c2d4-...' }) challengerUserId?: string;
+  @ApiPropertyOptional({ example: 'john_doe' }) challengerUsername?: string | null;
+  @ApiPropertyOptional({ example: 'https://example.com/avatar.jpg' }) challengerAvatarUrl?: string | null;
   @ApiPropertyOptional({
     type: [PKParticipantView],
     description: 'Per-participant score breakdown.',

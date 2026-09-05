@@ -1,6 +1,8 @@
-import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit, Optional } from '@nestjs/common';
 import { EVENT_BUS, type IEventBus } from 'src/common/events';
 import { SocketManager } from 'src/infra/socket/socket.manager';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
+import { USERS_SERVICE, type IUsersService } from 'src/modules/users/interfaces/users.service.interface';
 import { VIDEO_ROOM_PK_SOCKET_EVENTS } from '../constants/video-room-pk.constants';
 import { VIDEO_ROOM_NAMESPACE } from '../constants/video-room.constants';
 import {
@@ -41,22 +43,64 @@ export class VideoRoomPkSocketListener implements OnModuleInit {
   constructor(
     @Inject(EVENT_BUS) private readonly bus: IEventBus,
     private readonly sockets: SocketManager,
+    @Optional() @Inject(USERS_SERVICE) private readonly users?: IUsersService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
 
   onModuleInit(): void {
-    this.bus.subscribe<PkInvitationSentEvent>(VIDEO_ROOM_PK_EVENTS.INVITATION_SENT, (e) => {
-      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_SENT, e.payload);
-      this.toRoom(e.payload.roomId, 'video_room.pk.invitation_sent', e.payload);
-      this.toRoom(e.payload.roomId, 'pk:invitation_sent', e.payload);
+    this.bus.subscribe<PkInvitationSentEvent>(VIDEO_ROOM_PK_EVENTS.INVITATION_SENT, async (e) => {
+      let inviterUsername: string | null = null;
+      let inviterAvatarUrl: string | null = null;
+      let inviteeUsername: string | null = null;
+      let inviteeAvatarUrl: string | null = null;
+      if (this.users) {
+        try {
+          const inviter = await this.users.findById(e.payload.inviterUserId);
+          inviterUsername = inviter?.username ?? null;
+          const invitee = await this.users.findById(e.payload.inviteeUserId);
+          inviteeUsername = invitee?.username ?? null;
+        } catch {
+          // ignore
+        }
+      }
+      if (this.prisma) {
+        try {
+          const [inviterProf, inviteeProf] = await Promise.all([
+            this.prisma.userProfile.findUnique({
+              where: { userId: e.payload.inviterUserId },
+              select: { avatarUrl: true },
+            }),
+            this.prisma.userProfile.findUnique({
+              where: { userId: e.payload.inviteeUserId },
+              select: { avatarUrl: true },
+            }),
+          ]);
+          inviterAvatarUrl = inviterProf?.avatarUrl ?? null;
+          inviteeAvatarUrl = inviteeProf?.avatarUrl ?? null;
+        } catch {
+          // ignore
+        }
+      }
+      const enriched = {
+        ...e.payload,
+        inviterUsername,
+        inviterAvatarUrl,
+        inviteeUsername,
+        inviteeAvatarUrl,
+      };
+
+      this.toRoom(e.payload.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_SENT, enriched);
+      this.toRoom(e.payload.roomId, 'video_room.pk.invitation_sent', enriched);
+      this.toRoom(e.payload.roomId, 'pk:invitation_sent', enriched);
       this.sockets.emitToUserEverywhere(
         e.payload.inviteeUserId,
         VIDEO_ROOM_PK_SOCKET_EVENTS.INVITATION_SENT,
-        e.payload,
+        enriched,
       );
       this.sockets.emitToUserEverywhere(
         e.payload.inviteeUserId,
         'video_room.pk.invitation_sent',
-        e.payload,
+        enriched,
       );
     });
 
@@ -86,12 +130,57 @@ export class VideoRoomPkSocketListener implements OnModuleInit {
     // announce a battle to the room that no client can yet accept, reject, or
     // watch. INVITATION_SENT is the first PK signal a client should ever see.
 
-    this.bus.subscribe<PkStartedEvent>(VIDEO_ROOM_PK_EVENTS.STARTED, (e) => {
+    this.bus.subscribe<PkStartedEvent>(VIDEO_ROOM_PK_EVENTS.STARTED, async (e) => {
       const p = e.payload;
       const redScore = p.teams?.find((t) => t.side === 'RED')?.score ?? 0;
       const blueScore = p.teams?.find((t) => t.side === 'BLUE')?.score ?? 0;
       const challengerUserId = p.participants?.find((part) => part.side === 'BLUE')?.userId;
-      const enriched = { ...p, redScore, blueScore, challengerUserId };
+
+      // Enrich participants with usernames and avatars
+      const enrichedParticipants = await Promise.all(
+        (p.participants ?? []).map(async (part) => {
+          let username: string | null = null;
+          let avatarUrl: string | null = null;
+          if (this.users) {
+            try {
+              const u = await this.users.findById(part.userId);
+              username = u?.username ?? null;
+            } catch {
+              // ignore
+            }
+          }
+          if (this.prisma) {
+            try {
+              const prof = await this.prisma.userProfile.findUnique({
+                where: { userId: part.userId },
+                select: { avatarUrl: true },
+              });
+              avatarUrl = prof?.avatarUrl ?? null;
+            } catch {
+              // ignore
+            }
+          }
+          return {
+            ...part,
+            username,
+            avatarUrl,
+          };
+        }),
+      );
+
+      const challenger = enrichedParticipants.find((part) => part.side === 'BLUE');
+      const challengerUsername = challenger?.username ?? null;
+      const challengerAvatarUrl = challenger?.avatarUrl ?? null;
+
+      const enriched = {
+        ...p,
+        redScore,
+        blueScore,
+        challengerUserId,
+        challengerUsername,
+        challengerAvatarUrl,
+        participants: enrichedParticipants,
+      };
 
       this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.STARTED, enriched);
       this.toRoom(p.roomId, 'video_room.pk.started', enriched);
@@ -108,8 +197,13 @@ export class VideoRoomPkSocketListener implements OnModuleInit {
         startedAt: p.startedAt,
         endsAt: p.endsAt,
         challengerUserId,
+        challengerUsername,
+        challengerAvatarUrl,
         redScore,
         blueScore,
+        participants: enrichedParticipants,
+        teams: p.teams,
+        mode: p.mode,
       };
       this.toRoom(p.roomId, VIDEO_ROOM_PK_SOCKET_EVENTS.COUNTDOWN, countdownPayload);
       this.toRoom(p.roomId, 'video_room.pk.countdown', countdownPayload);

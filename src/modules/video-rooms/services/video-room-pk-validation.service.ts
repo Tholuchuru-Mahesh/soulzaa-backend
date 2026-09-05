@@ -251,5 +251,14 @@ export class VideoRoomPkValidationService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    if (
+      dto.mode === VideoRoomPkMode.TEAM &&
+      (dto.red.length < 1 || dto.blue.length < 1)
+    ) {
+      throw new PKBattleException(
+        'A team battle needs at least one participant on each side.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 }

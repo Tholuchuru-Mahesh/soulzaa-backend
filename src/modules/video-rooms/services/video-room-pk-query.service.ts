@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   VideoRoomPkBattle,
   VideoRoomPkMode,
@@ -8,7 +8,9 @@ import {
 } from '@prisma/client';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
 import { buildPaginated } from 'src/common/utils/pagination.util';
+import { PrismaService } from 'src/infra/prisma/prisma.service';
 import { REDIS_CLIENT, type RedisClient } from 'src/infra/redis/redis.constants';
+import { USERS_SERVICE, type IUsersService } from 'src/modules/users/interfaces/users.service.interface';
 import { VideoRoomPermission } from '../constants/video-room-permissions';
 import { isPkTerminal, pkScoreKey } from '../constants/video-room-pk.constants';
 import {
@@ -64,6 +66,8 @@ export class VideoRoomPkQueryService {
     private readonly rooms: VideoRoomsRepository,
     private readonly permissions: VideoRoomPermissionService,
     @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
+    @Optional() @Inject(USERS_SERVICE) private readonly users?: IUsersService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
 
   /**
@@ -87,7 +91,36 @@ export class VideoRoomPkQueryService {
     ]);
 
     const teamViews = teams.map((t) => this.teamView(t, mirror));
-    const participantViews = participants.map((p) => this.participantView(p));
+    const participantViews = await Promise.all(
+      participants.map(async (p) => {
+        let username: string | null = null;
+        let avatarUrl: string | null = null;
+        if (this.users) {
+          try {
+            const u = await this.users.findById(p.userId);
+            username = u?.username ?? null;
+          } catch {
+            // ignore
+          }
+        }
+        if (this.prisma) {
+          try {
+            const profile = await this.prisma.userProfile.findUnique({
+              where: { userId: p.userId },
+              select: { avatarUrl: true },
+            });
+            avatarUrl = profile?.avatarUrl ?? null;
+          } catch {
+            // ignore
+          }
+        }
+        return {
+          ...this.participantView(p),
+          username,
+          avatarUrl,
+        };
+      }),
+    );
     const redScore = teamViews.find((t) => t.side === 'RED')?.score ?? 0;
     const blueScore = teamViews.find((t) => t.side === 'BLUE')?.score ?? 0;
     const challenger = participantViews.find((p) => p.side === 'BLUE');
@@ -116,6 +149,8 @@ export class VideoRoomPkQueryService {
       redScore,
       blueScore,
       challengerUserId: challenger?.userId,
+      challengerUsername: challenger?.username ?? null,
+      challengerAvatarUrl: challenger?.avatarUrl ?? null,
       participants: participantViews,
     };
   }
