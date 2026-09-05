@@ -2,7 +2,7 @@
 -- Safe on PostgreSQL 12+; production runs 16 (docker-compose.prod.yml). The new
 -- value is only added here, never used in this migration, which is the case
 -- Postgres forbids inside a single transaction.
-ALTER TYPE "NotificationType" ADD VALUE 'MODERATOR_TASK_COMPLETED';
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'MODERATOR_TASK_COMPLETED';
 
 -- AlterTable
 -- Additive only. Every non-null column carries a DEFAULT, so existing rows
