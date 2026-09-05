@@ -68,15 +68,15 @@ export class VideoRoomPkSocketListener implements OnModuleInit {
           const [inviterProf, inviteeProf] = await Promise.all([
             this.prisma.userProfile.findUnique({
               where: { userId: e.payload.inviterUserId },
-              select: { avatarUrl: true },
+              select: { avatarKey: true },
             }),
             this.prisma.userProfile.findUnique({
               where: { userId: e.payload.inviteeUserId },
-              select: { avatarUrl: true },
+              select: { avatarKey: true },
             }),
           ]);
-          inviterAvatarUrl = inviterProf?.avatarUrl ?? null;
-          inviteeAvatarUrl = inviteeProf?.avatarUrl ?? null;
+          inviterAvatarUrl = inviterProf?.avatarKey ?? null;
+          inviteeAvatarUrl = inviteeProf?.avatarKey ?? null;
         } catch {
           // ignore
         }
@@ -153,9 +153,9 @@ export class VideoRoomPkSocketListener implements OnModuleInit {
             try {
               const prof = await this.prisma.userProfile.findUnique({
                 where: { userId: part.userId },
-                select: { avatarUrl: true },
+                select: { avatarKey: true },
               });
-              avatarUrl = prof?.avatarUrl ?? null;
+              avatarUrl = prof?.avatarKey ?? null;
             } catch {
               // ignore
             }

@@ -107,9 +107,9 @@ export class VideoRoomPkQueryService {
           try {
             const profile = await this.prisma.userProfile.findUnique({
               where: { userId: p.userId },
-              select: { avatarUrl: true },
+              select: { avatarKey: true },
             });
-            avatarUrl = profile?.avatarUrl ?? null;
+            avatarUrl = profile?.avatarKey ?? null;
           } catch {
             // ignore
           }
