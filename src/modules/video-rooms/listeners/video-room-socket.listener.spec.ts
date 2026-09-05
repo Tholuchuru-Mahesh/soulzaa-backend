@@ -16,7 +16,7 @@ describe('VideoRoomSocketListener', () => {
         return () => undefined;
       }),
     };
-    sockets = { emitToNamespaceRoom: jest.fn() };
+    sockets = { emitToNamespaceRoom: jest.fn(), emitToNamespace: jest.fn() };
     listener = new VideoRoomSocketListener(bus, sockets);
     listener.onModuleInit();
   });

@@ -11,6 +11,7 @@ export function toVideoRoomView(
   giftCoins?: number,
   ownerName?: string,
   ownerAvatarUrl?: string,
+  spectatorCount?: number,
 ): VideoRoomView {
   return {
     id: room.id,
@@ -28,12 +29,15 @@ export function toVideoRoomView(
     categoryId: room.categoryId,
     language: room.language,
     visibility: room.visibility,
-    isLocked: room.giftLockEnabled,
+    isLocked: (room as any).giftLockEnabled ?? false,
     isDiscoverable: room.isDiscoverable,
     maxParticipants: room.maxParticipants,
     maxViewers: room.maxViewers,
     status: room.status,
     createdAt: room.createdAt,
     giftCoins: giftCoins,
+    spectatorCount: spectatorCount ?? 0,
+    activeViewers: spectatorCount ?? 0,
+    participantCount: spectatorCount ?? 0,
   };
 }

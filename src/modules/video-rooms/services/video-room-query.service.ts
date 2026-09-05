@@ -1,6 +1,6 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PlatformRole, VideoRoom } from '@prisma/client';
+import { PlatformRole, VideoRoom, VideoRoomStatus } from '@prisma/client';
 import { BusinessException } from 'src/common/exceptions/business.exception';
 import { ERROR_CODES } from 'src/common/exceptions/error-codes';
 import type { Paginated } from 'src/common/interfaces/api-response.interface';
@@ -19,6 +19,7 @@ import {
 } from '../mappers/video-room-detail.mapper';
 import { toVideoRoomView } from '../mappers/video-room.mapper';
 import { VideoRoomsRepository } from '../repositories/video-rooms.repository';
+import { VideoRoomPresenceService } from './video-room-presence.service';
 
 /**
  * The read side of the video-room lifecycle (VR-2, CQRS-ready). Pure queries — no
@@ -35,6 +36,7 @@ export class VideoRoomQueryService {
     private readonly repo: VideoRoomsRepository,
     config: ConfigService,
     @Inject(GIFTS_SERVICE) private readonly gifts: IGiftsService,
+    @Optional() private readonly presence?: VideoRoomPresenceService,
   ) {
     this.cacheTtlSeconds = loadVideoRoomConfig(config).cacheTtlSeconds;
   }
@@ -42,13 +44,34 @@ export class VideoRoomQueryService {
   /** Full room detail (cache-first). Throws VIDEO_ROOM_NOT_FOUND (404) if missing. */
   async getDetail(roomId: string): Promise<VideoRoomDetailView> {
     const cached = await this.repo.getCachedSnapshot<VideoRoomDetailView>(roomId);
-    if (cached) return cached;
+    if (cached) {
+      if (cached.status === VideoRoomStatus.LIVE && this.presence) {
+        try {
+          const liveCount = await this.presence.viewerCount(roomId);
+          cached.spectatorCount = liveCount;
+          cached.activeViewers = liveCount;
+          cached.participantCount = liveCount;
+        } catch {}
+      }
+      return cached;
+    }
 
     const detail = await this.repo.findDetail(roomId);
     if (!detail) throw this.notFound(roomId);
 
-    const requiredEntryGift = await resolveRequiredEntryGift(this.gifts, detail.room);
-    const view = toVideoRoomDetailView(detail, { requiredEntryGift });
+    let spectatorCount = 0;
+    if (detail.room.status === VideoRoomStatus.LIVE) {
+      try {
+        const [redisCount, dbCount] = await Promise.all([
+          this.presence ? this.presence.viewerCount(roomId) : 0,
+          this.repo.countActiveMembers(roomId),
+        ]);
+        spectatorCount = Math.max(redisCount, dbCount);
+      } catch {}
+    }
+
+    const requiredEntryGift = await resolveRequiredEntryGift(this.gifts, detail.room as any);
+    const view = toVideoRoomDetailView(detail, { requiredEntryGift, spectatorCount });
     await this.repo.setCachedSnapshot(roomId, view, this.cacheTtlSeconds);
     return view;
   }
@@ -118,9 +141,12 @@ export class VideoRoomQueryService {
     const ids = await this.repo.trendingTopIds(limit);
     if (ids.length === 0) return [];
     const rooms = await this.repo.findLiveRoomsByIds(ids);
+    const liveCounts = await this.resolveLiveCounts(rooms);
     const prisma = (this.repo as any).prisma;
     if (!prisma) {
-      return rooms.map((room) => toVideoRoomView(room, 0));
+      return rooms.map((room) =>
+        toVideoRoomView(room, 0, undefined, undefined, liveCounts.get(room.id) ?? 0),
+      );
     }
     const sums = await prisma.giftTransaction.groupBy({
       by: ['contextId'],
@@ -139,7 +165,13 @@ export class VideoRoomQueryService {
       owners.map((o: any) => [o.id, o.fullName || o.username]),
     );
     return rooms.map((room) =>
-      toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)),
+      toVideoRoomView(
+        room,
+        sumMap.get(room.id) || 0,
+        ownerMap.get(room.ownerId),
+        undefined,
+        liveCounts.get(room.id) ?? 0,
+      ),
     );
   }
 
@@ -147,9 +179,12 @@ export class VideoRoomQueryService {
   async mine(actor: RoomActor): Promise<VideoRoomView[]> {
     const rooms = await this.repo.findByOwnerId(actor.id);
     const ids = rooms.map((r) => r.id);
+    const liveCounts = await this.resolveLiveCounts(rooms);
     const prisma = (this.repo as any).prisma;
     if (!prisma) {
-      return rooms.map((room) => toVideoRoomView(room, 0));
+      return rooms.map((room) =>
+        toVideoRoomView(room, 0, undefined, undefined, liveCounts.get(room.id) ?? 0),
+      );
     }
     const sums = await prisma.giftTransaction.groupBy({
       by: ['contextId'],
@@ -168,8 +203,34 @@ export class VideoRoomQueryService {
       owners.map((o: any) => [o.id, o.fullName || o.username]),
     );
     return rooms.map((room) =>
-      toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)),
+      toVideoRoomView(
+        room,
+        sumMap.get(room.id) || 0,
+        ownerMap.get(room.ownerId),
+        undefined,
+        liveCounts.get(room.id) ?? 0,
+      ),
     );
+  }
+
+  private async resolveLiveCounts(rooms: VideoRoom[]): Promise<Map<string, number>> {
+    const liveRooms = rooms.filter((r) => r.status === VideoRoomStatus.LIVE);
+    if (liveRooms.length === 0) return new Map();
+
+    const counts = await Promise.all(
+      liveRooms.map(async (r) => {
+        try {
+          const [redisCount, dbCount] = await Promise.all([
+            this.presence ? this.presence.viewerCount(r.id) : 0,
+            this.repo.countActiveMembers(r.id),
+          ]);
+          return [r.id, Math.max(redisCount, dbCount)] as const;
+        } catch {
+          return [r.id, 0] as const;
+        }
+      }),
+    );
+    return new Map(counts);
   }
 
   private async paginateViews(
@@ -179,9 +240,12 @@ export class VideoRoomQueryService {
     limit: number,
   ): Promise<Paginated<VideoRoomView>> {
     const roomIds = rooms.map((r) => r.id);
+    const liveCounts = await this.resolveLiveCounts(rooms);
     const prisma = (this.repo as any).prisma;
     if (!prisma) {
-      const mapped = rooms.map((room) => toVideoRoomView(room, 0));
+      const mapped = rooms.map((room) =>
+        toVideoRoomView(room, 0, undefined, undefined, liveCounts.get(room.id) ?? 0),
+      );
       return buildPaginated(mapped, total, page, limit);
     }
     const sums = await prisma.giftTransaction.groupBy({
@@ -201,7 +265,13 @@ export class VideoRoomQueryService {
       owners.map((o: any) => [o.id, o.fullName || o.username]),
     );
     const mapped = rooms.map((room) =>
-      toVideoRoomView(room, sumMap.get(room.id) || 0, ownerMap.get(room.ownerId)),
+      toVideoRoomView(
+        room,
+        sumMap.get(room.id) || 0,
+        ownerMap.get(room.ownerId),
+        undefined,
+        liveCounts.get(room.id) ?? 0,
+      ),
     );
     return buildPaginated(mapped, total, page, limit);
   }

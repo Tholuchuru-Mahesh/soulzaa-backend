@@ -37,7 +37,7 @@ export enum VideoRoomAccessPolicy {
 /** The subset of a room row the lifecycle projection reads. */
 export interface LifecycleProjectionInput {
   status: VideoRoomStatus;
-  giftLockEnabled: boolean;
+  giftLockEnabled?: boolean;
   streamingStatus: VideoRoomStreamingStatus;
   deletedAt: Date | null;
   metadata: unknown;

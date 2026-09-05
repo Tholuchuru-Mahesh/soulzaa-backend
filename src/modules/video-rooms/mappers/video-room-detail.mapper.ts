@@ -19,6 +19,7 @@ export type RequiredEntryGiftView = NonNullable<VideoRoomDetailView['requiredEnt
  */
 export interface VideoRoomDetailExtras {
   requiredEntryGift?: RequiredEntryGiftView | null;
+  spectatorCount?: number;
 }
 
 /**
@@ -135,6 +136,9 @@ export function toVideoRoomDetailView(
     updatedAt: room.updatedAt,
     settings: toSettingsView(settings),
     statistics: toStatisticsView(statistics),
+    spectatorCount: extras?.spectatorCount ?? statistics?.currentViewers ?? 0,
+    activeViewers: extras?.spectatorCount ?? statistics?.currentViewers ?? 0,
+    participantCount: extras?.spectatorCount ?? statistics?.currentViewers ?? 0,
   };
 }
 
@@ -144,7 +148,7 @@ export function toVideoRoomStatusView(room: VideoRoom): VideoRoomStatusView {
     roomId: room.id,
     lifecycleState: projectLifecycleState(room),
     status: room.status,
-    isLocked: room.giftLockEnabled,
+    isLocked: (room as any).giftLockEnabled ?? false,
     streamingStatus: room.streamingStatus,
     isDeleted: room.deletedAt != null,
     endedAt: room.endedAt,

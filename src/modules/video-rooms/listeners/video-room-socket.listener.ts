@@ -48,11 +48,21 @@ export class VideoRoomSocketListener implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.bus.subscribe<RoomCreatedEvent>(VIDEO_ROOM_EVENTS.CREATED, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.CREATED, e.payload),
-    );
+    this.bus.subscribe<RoomCreatedEvent>(VIDEO_ROOM_EVENTS.CREATED, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.CREATED, e.payload);
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS.CREATED, e.payload);
+    });
     this.bus.subscribe<RoomClosedEvent>(VIDEO_ROOM_EVENTS.CLOSED, (e) => {
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.CLOSED, e.payload);
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS.CLOSED, e.payload);
+      this.emit(e.payload.roomId, 'video_room.viewer_count_updated', {
+        roomId: e.payload.roomId,
+        count: 0,
+      });
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, 'video_room.viewer_count_updated', {
+        roomId: e.payload.roomId,
+        count: 0,
+      });
       this.sockets.emitToNamespaceRoom(
         VIDEO_ROOM_NAMESPACE,
         e.payload.roomId,
@@ -78,37 +88,76 @@ export class VideoRoomSocketListener implements OnModuleInit {
     this.bus.subscribe<GiftLockDisabledEvent>(VIDEO_ROOM_EVENTS.GIFT_LOCK_DISABLED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.GIFT_LOCK_DISABLED, e.payload),
     );
-    this.bus.subscribe<RoomDeletedEvent>(VIDEO_ROOM_EVENTS.DELETED, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.DELETED, e.payload),
-    );
+    this.bus.subscribe<RoomDeletedEvent>(VIDEO_ROOM_EVENTS.DELETED, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.DELETED, e.payload);
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS.DELETED, e.payload);
+    });
     // Restore is a state change with no dedicated client event; relay as `updated`.
     this.bus.subscribe<RoomRestoredEvent>(VIDEO_ROOM_EVENTS.RESTORED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.UPDATED, e.payload),
     );
-    this.bus.subscribe<UserJoinedEvent>(VIDEO_ROOM_EVENTS.USER_JOINED, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.USER_JOINED, e.payload),
-    );
-    this.bus.subscribe<UserLeftEvent>(VIDEO_ROOM_EVENTS.USER_LEFT, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.USER_LEFT, e.payload),
-    );
-    this.bus.subscribe<ViewerJoinedEvent>(VIDEO_ROOM_EVENTS.VIEWER_JOINED, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.VIEWER_CONNECTED, e.payload),
-    );
-    this.bus.subscribe<ViewerLeftEvent>(VIDEO_ROOM_EVENTS.VIEWER_LEFT, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.VIEWER_DISCONNECTED, e.payload),
-    );
+    this.bus.subscribe<UserJoinedEvent>(VIDEO_ROOM_EVENTS.USER_JOINED, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.USER_JOINED, e.payload);
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS.USER_JOINED, e.payload);
+      this.emit(e.payload.roomId, 'video_room.viewer_count_updated', {
+        roomId: e.payload.roomId,
+        count: e.payload.participantCount,
+      });
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, 'video_room.viewer_count_updated', {
+        roomId: e.payload.roomId,
+        count: e.payload.participantCount,
+      });
+    });
+    this.bus.subscribe<UserLeftEvent>(VIDEO_ROOM_EVENTS.USER_LEFT, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.USER_LEFT, e.payload);
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS.USER_LEFT, e.payload);
+      this.emit(e.payload.roomId, 'video_room.viewer_count_updated', {
+        roomId: e.payload.roomId,
+        count: e.payload.participantCount,
+      });
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, 'video_room.viewer_count_updated', {
+        roomId: e.payload.roomId,
+        count: e.payload.participantCount,
+      });
+    });
+    this.bus.subscribe<ViewerJoinedEvent>(VIDEO_ROOM_EVENTS.VIEWER_JOINED, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.VIEWER_CONNECTED, e.payload);
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS.VIEWER_CONNECTED, e.payload);
+      this.emit(e.payload.roomId, 'video_room.viewer_count_updated', {
+        roomId: e.payload.roomId,
+        count: e.payload.viewerCount,
+      });
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, 'video_room.viewer_count_updated', {
+        roomId: e.payload.roomId,
+        count: e.payload.viewerCount,
+      });
+    });
+    this.bus.subscribe<ViewerLeftEvent>(VIDEO_ROOM_EVENTS.VIEWER_LEFT, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.VIEWER_DISCONNECTED, e.payload);
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS.VIEWER_DISCONNECTED, e.payload);
+      this.emit(e.payload.roomId, 'video_room.viewer_count_updated', {
+        roomId: e.payload.roomId,
+        count: e.payload.viewerCount,
+      });
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, 'video_room.viewer_count_updated', {
+        roomId: e.payload.roomId,
+        count: e.payload.viewerCount,
+      });
+    });
     this.bus.subscribe<HostConnectedEvent>(VIDEO_ROOM_EVENTS.HOST_CONNECTED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.HOST_CONNECTED, e.payload),
     );
     this.bus.subscribe<HostDisconnectedEvent>(VIDEO_ROOM_EVENTS.HOST_DISCONNECTED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.HOST_DISCONNECTED, e.payload),
     );
-    this.bus.subscribe<StreamStartedEvent>(VIDEO_ROOM_EVENTS.STREAM_STARTED, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.STREAM_READY, e.payload),
-    );
-    this.bus.subscribe<StreamStoppedEvent>(VIDEO_ROOM_EVENTS.STREAM_STOPPED, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.STREAM_CLOSED, e.payload),
-    );
+    this.bus.subscribe<StreamStartedEvent>(VIDEO_ROOM_EVENTS.STREAM_STARTED, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.STREAM_READY, e.payload);
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS.STREAM_READY, e.payload);
+    });
+    this.bus.subscribe<StreamStoppedEvent>(VIDEO_ROOM_EVENTS.STREAM_STOPPED, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.STREAM_CLOSED, e.payload);
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS.STREAM_CLOSED, e.payload);
+    });
 
     // ---- VR-3 member/presence lifecycle (client-facing) ----
     this.bus.subscribe<UserDisconnectedEvent>(VIDEO_ROOM_EVENTS.USER_DISCONNECTED, (e) =>
@@ -117,9 +166,10 @@ export class VideoRoomSocketListener implements OnModuleInit {
     this.bus.subscribe<UserReconnectedEvent>(VIDEO_ROOM_EVENTS.USER_RECONNECTED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.USER_RECONNECTED, e.payload),
     );
-    this.bus.subscribe<PresenceUpdatedEvent>(VIDEO_ROOM_EVENTS.PRESENCE_UPDATED, (e) =>
-      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.PRESENCE_UPDATED, e.payload),
-    );
+    this.bus.subscribe<PresenceUpdatedEvent>(VIDEO_ROOM_EVENTS.PRESENCE_UPDATED, (e) => {
+      this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.PRESENCE_UPDATED, e.payload);
+      this.sockets.emitToNamespace(VIDEO_ROOM_NAMESPACE, VIDEO_ROOM_SOCKET_EVENTS.PRESENCE_UPDATED, e.payload);
+    });
     // Room sync relays as the client-facing `state_sync` event.
     this.bus.subscribe<RoomSynchronizedEvent>(VIDEO_ROOM_EVENTS.ROOM_SYNCHRONIZED, (e) =>
       this.emit(e.payload.roomId, VIDEO_ROOM_SOCKET_EVENTS.STATE_SYNC, e.payload),

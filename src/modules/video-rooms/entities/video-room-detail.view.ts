@@ -125,6 +125,9 @@ export interface VideoRoomDetailView {
   updatedAt: Date;
   settings: VideoRoomSettingsView | null;
   statistics: VideoRoomStatisticsView | null;
+  spectatorCount?: number;
+  activeViewers?: number;
+  participantCount?: number;
 }
 
 /** The "verify room status" projection — the lifecycle snapshot for a room. */

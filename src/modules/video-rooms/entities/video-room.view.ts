@@ -31,4 +31,7 @@ export interface VideoRoomView {
   status: VideoRoomStatus;
   createdAt: Date;
   giftCoins?: number;
+  spectatorCount?: number;
+  activeViewers?: number;
+  participantCount?: number;
 }
