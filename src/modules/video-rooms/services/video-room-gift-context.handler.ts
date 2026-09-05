@@ -215,10 +215,10 @@ export class VideoRoomGiftContextHandler implements IGiftContextHandler, OnModul
       acceptedAmount: ctx.totalCoinValue,
       refundAmount: 0,
       events: [],
-      // Gift-lock entry: suppress receiver cashback, no gold to anyone (soul gems only).
-      // Normal video room gift: redirect gold cashback to the sender (not the receiver).
+      // Gift-lock entry: suppress receiver gold cashback (soul gems only to receiver, nothing to sender).
+      // Normal video room gift: receiver earns soul gems + gold cashback normally.
       suppressReceiverCashback: isGiftLockEntry,
-      redirectCashbackToSender: !isGiftLockEntry,
+      redirectCashbackToSender: false,
     };
 
     const treasure = await this.applyTreasure(tx, ctx);

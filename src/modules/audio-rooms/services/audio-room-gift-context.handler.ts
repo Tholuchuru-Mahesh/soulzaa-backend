@@ -206,10 +206,6 @@ export class AudioRoomGiftContextHandler implements IGiftContextHandler, OnModul
       refundAmount: contribution.refundAmount,
       events,
       postCommit: contribution.postCommit,
-      // Normal audio room gifting: receiver earns Soul Gems (DIAMOND) via the
-      // shared earningsPercent path; the Gold Coin cashback (10%) is credited
-      // to the sender, not the receiver.
-      redirectCashbackToSender: true,
     };
   }
 }

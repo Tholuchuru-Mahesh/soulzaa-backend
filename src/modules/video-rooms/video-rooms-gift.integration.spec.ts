@@ -461,7 +461,7 @@ describe('VR-10 gift engine (integration)', () => {
     expect(view.transactions).toHaveLength(1);
   });
 
-  it('credits GOLD cashback to sender and DIAMOND earnings to receiver for normal video room gifts above threshold', async () => {
+  it('credits GOLD cashback to receiver and DIAMOND earnings to receiver for normal video room gifts above threshold', async () => {
     harness.rooms.findById.mockResolvedValue({
       id: ROOM,
       ownerId: 'owner-1',
@@ -478,12 +478,12 @@ describe('VR-10 gift engine (integration)', () => {
     const credits = harness.walletMoves.filter((m) => m.kind === 'credit');
     // DIAMOND credited to receiver (owner-1) at 50% = 750
     expect(credits.some((c) => c.userId === 'owner-1' && c.currency === WalletCurrency.DIAMOND && c.amount === 750)).toBe(true);
-    // Receiver (owner-1) gets ZERO GOLD
-    expect(credits.filter((c) => c.userId === 'owner-1' && c.currency === WalletCurrency.GOLD)).toHaveLength(0);
-    // GOLD cashback credited to SENDER at 10% = 150
-    const senderGold = credits.filter((c) => c.userId === SENDER_ID && c.currency === WalletCurrency.GOLD);
-    expect(senderGold).toHaveLength(1);
-    expect(senderGold[0].amount).toBe(150);
+    // GOLD cashback credited to receiver (owner-1) at 10% = 150
+    const receiverGold = credits.filter((c) => c.userId === 'owner-1' && c.currency === WalletCurrency.GOLD);
+    expect(receiverGold).toHaveLength(1);
+    expect(receiverGold[0].amount).toBe(150);
+    // Sender gets NO GOLD
+    expect(credits.filter((c) => c.userId === SENDER_ID && c.currency === WalletCurrency.GOLD)).toHaveLength(0);
 
     const row = harness.ledger.find((r) => r.idempotencyKey === 'idem-normal-1');
     expect(row?.creatorEarnings).toBe(750n);

@@ -52,18 +52,15 @@ export interface GiftSendEffects {
   /**
    * When true, suppresses the receiver Available Balance (GOLD) cashback credit
    * entirely — used for video room gift-lock entry gifts where the receiver
-   * earns only Soul Gems (DIAMOND) and the sender receives no gold back.
+   * earns only Soul Gems (DIAMOND) and no gold is returned to anyone.
+   * Normal audio/video room gifts leave this false so the receiver gets both
+   * Soul Gems (DIAMOND) and a Gold Coin cashback.
    */
   suppressReceiverCashback?: boolean;
   /**
    * When true, redirects the Gold Coin cashback to the sender instead of the
-   * receiver. Used for normal video/audio room gifting: the receiver earns
-   * Soul Gems via the earningsPercent path and the sender receives a Gold Coin
-   * cashback at the configured `gift.sender_cashback_percentage`.
-   *
-   * Note: this flag is mutually exclusive with `suppressReceiverCashback`.
-   * When `suppressReceiverCashback` is true, no cashback is credited at all
-   * regardless of this flag.
+   * receiver. Currently always false — cashback always goes to the receiver in
+   * all normal gifting contexts. Reserved for future use.
    */
   redirectCashbackToSender?: boolean;
 }
