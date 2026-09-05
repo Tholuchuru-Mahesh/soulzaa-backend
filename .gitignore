@@ -58,3 +58,5 @@ test/**/*.d.ts
 .env.bak*
 .env.*.bak
 *.conflict.bak
+
+.worktrees/
